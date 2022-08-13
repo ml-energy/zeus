@@ -19,10 +19,10 @@ jobs:
             mkdocs.yml
             Dockerfile
       - uses: actions/setup-python@v2
-        if: steps.changed-files.outputs.any_modified
+        if: steps.changed-files.outputs.any_modified == 'true'
         with:
           python-version: 3.x
       - run: pip install -r docs/requirements.txt
-        if: steps.changed-files.outputs.any_modified
+        if: steps.changed-files.outputs.any_modified == 'true'
       - run: mkdocs gh-deploy --force
-        if: steps.changed-files.outputs.any_modified
+        if: steps.changed-files.outputs.any_modified == 'true'
