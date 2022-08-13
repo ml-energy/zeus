@@ -1,0 +1,12 @@
+.dockerignore
+Dockerfile
+
+**/*.pyc
+**/*.pyo
+**/__pycache__/
+zeus.egg-info/
+
+.gitignore
+.git/
+
+**/data/

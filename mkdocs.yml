@@ -1,0 +1,104 @@
+# Project information
+site_name: Zeus Project
+site_url: https://ml.energy/zeus
+site_author: Jae-Won Chung
+site_description: An energy optimization framework for DNN training
+edit_uri: ""
+
+# Repository
+repo_name: SymbioticLab/Zeus
+repo_url: https://github.com/SymbioticLab/Zeus
+
+# Copyright
+copyright: Copyright &copy; 2022 Jae-Won Chung
+
+# Theme configuration
+theme:
+  name: material
+  logo: assets/img/logo.svg
+  favicon: assets/img/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - search.suggest
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.instant
+  palette:
+    - scheme: slate
+      primary: zeus
+      accent: zeus
+      toggle:
+        icon: fontawesome/solid/sun
+        name: Switch to light mode
+    - scheme: default
+      primary: zeus
+      accent: zeus
+      toggle:
+        icon: fontawesome/regular/moon
+        name: Switch to dark mode
+
+
+# MkDocs plugins
+plugins:
+  - search
+  - autorefs
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - mkdocstrings:
+      watch:
+        - zeus
+      handlers:
+        python:
+          import:
+            - https://pytorch.org/docs/stable/objects.inv
+          options:
+            show_root_heading: true
+            members_order: "source"
+            filters: ["!Test"]
+            separate_signature: true
+            docstring_options:
+              ignore_init_summary: true
+
+# Extensions
+markdown_extensions:
+  - meta
+  - admonition
+  - attr_list
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - pymdownx.details
+  - pymdownx.critic
+
+# Appearance
+extra_css:
+  - assets/css/custom.css
+  - assets/css/color.css
+
+# Page tree
+nav:
+  - Home: index.md
+  - Overview: overview.md
+  - Getting Started:
+    - getting_started/index.md
+    - Environment setup: getting_started/environment.md
+    - Installing and building: getting_started/installing_and_building.md
+    - Integrating Zeus: getting_started/integrating.md
+  - Extending Zeus: extend.md
+  - Source Code Reference: reference/
+
+# Extra stuff
+extra:
+  social:
+    - name: Zeus GitHub repository
+      icon: fontawesome/brands/github
+      link: https://github.com/SymbioticLab/Zeus
+    - name: Zeus Docker Hub registry
+      icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/symbioticlab/zeus
