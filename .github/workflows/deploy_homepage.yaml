@@ -26,3 +26,9 @@ jobs:
         if: steps.changed-files.outputs.any_modified == 'true'
       - run: mkdocs gh-deploy --force
         if: steps.changed-files.outputs.any_modified == 'true'
+      - uses: peter-evans/repository-dispatch@v2
+        if: steps.changed-files.outputs.any_modified == 'true'
+        with:
+          token: ${{ secrets.ML_ENERGY_REPO_ACCESS_TOKEN }}
+          repository: ml-energy/zeus
+          event-type: pull-gh-pages
