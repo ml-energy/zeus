@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "Please consider citing our paper if you find Zeus to be related to your research project."
+authors:
+- family-names: "Chung"
+  given-names: "Jae-Won"
+title: "Zeus: Understanding and Optimizing GPU Energy Consumption of DNN Training"
+url: "https://github.com/SymbioticLab/Zeus"
+preferred-citation:
+  type: conference-paper
+  authors:
+  - family-names: "You"
+    given-names: "Jie"
+  - family-names: "Chung"
+    given-names: "Jae-Won"
+  - family-names: "Chowdhury"
+    given-names: "Mosharaf"
+  booktitle: NSDI
+  year: 2023
