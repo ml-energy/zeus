@@ -10,6 +10,9 @@
 Zeus automatically optimizes the **energy and time** of training a DNN to a target validation metric by finding the optimal **batch size** and **GPU power limit**.
 
 Please refer to our [NSDI '23 publication](/) for details.
+Checkout [Overview](https://ml.energy/zeus/overview) for a summary.
+
+Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 
 ## Repository Organization
 
