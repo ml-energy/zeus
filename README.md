@@ -1,7 +1,7 @@
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/logo_dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/img/logo_light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/img/logo_dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/img/logo_light.svg">
   <img alt="Zeus logo" width="55%">
 </picture>
 <h1>An Energy Optimization Framework for DNN Training</h1>
