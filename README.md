@@ -38,7 +38,11 @@ Please refer to our [NSDI '23 publication](/) for details.
 └── trace/               # 🗃️ Train and power traces for various GPUs and DNNs
 ```
 
-## Docker image
+## Getting Started
+
+Refer to [Getting started](https://ml.energy/zeus/getting_started) for complete instructions on environment setup, installation, and integration.
+
+### Docker image
 
 We provide a Docker image fully equipped with all dependencies and environments.
 The only command you need is:
@@ -52,28 +56,19 @@ docker run -it \
     bash
 ```
 
-Refer to [`docs/environment.md`](docs/environment.md) for details.
+Refer to [Environment setup](https://ml.energy/zeus/getting_started/environment) for details.
 
-## Examples
+### Examples
+
+We provide working examples for integrating and running Zeus:
 
 - [Integrating Zeus with computer vision](examples/cifar100)
 - [Integrating Zeus with NLP](examples/capriccio)
 - [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](examples/trace_driven)
 
-## Installing and Building
-
-The core of Zeus is a Python package named [`zeus`](zeus) and a [GPU power monitor](zeus_monitor).
-
-Refer to [`docs/install_and_build.md`](docs/install_and_build.md) for instructions.
 
 ## Extending Zeus
 
 You can easily implement custom policies for batch size and power limit optimization and plug it into Zeus.
 
 Refer to [`docs/extend.md`](docs/extend.md) for details.
-
-## Citation
-
-```BibTeX
-TODO: BibTeX here
-```
