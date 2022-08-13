@@ -1,0 +1,19 @@
+name: Deploy homepage
+on:
+  repository_dispatch:
+    types: [pull-gh-pages]
+jobs:
+  pull_gh_pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: SymbioticLab/Zeus
+          token: ${{ secrets.ZEUS_REPO_ACCESS_TOKEN }}
+          ref: gh-pages
+      - run: |
+        git config user.name "Jae-Won Chung"
+        git config user.email "jwnchung@umich.edu"
+        git add .
+        git commit -m "Deploy from SymbioticLab/Zeus:gh-pages commit $(git rev-parse --short HEAD)"
+        git push
