@@ -9,8 +9,9 @@
 
 Zeus automatically optimizes the **energy and time** of training a DNN to a target validation metric by finding the optimal **batch size** and **GPU power limit**.
 
+TODO: arxiv link here
 Please refer to our [NSDI '23 publication](/) for details.
-Checkout [Overview](https://ml.energy/zeus/overview) for a summary.
+Checkout [Overview](https://ml.energy/zeus/overview/) for a summary.
 
 Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 
@@ -59,7 +60,7 @@ docker run -it \
     bash
 ```
 
-Refer to [Environment setup](https://ml.energy/zeus/getting_started/environment) for details.
+Refer to [Environment setup](https://ml.energy/zeus/getting_started/environment/) for details.
 
 ### Examples
 
@@ -74,11 +75,12 @@ We provide working examples for integrating and running Zeus:
 
 You can easily implement custom policies for batch size and power limit optimization and plug it into Zeus.
 
-Refer to [`docs/extend.md`](docs/extend.md) for details.
+Refer to [Extending Zeus](https://ml.energy/zeus/extend/) for details.
 
 # Reference
 
 Please consider citing our paper if you find Zeus to be related to your research project.
+TODO: arxiv bibtex here
 
 ```bibtex
 @inproceedings{zeus-nsdi23,
