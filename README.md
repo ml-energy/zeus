@@ -75,3 +75,19 @@ We provide working examples for integrating and running Zeus:
 You can easily implement custom policies for batch size and power limit optimization and plug it into Zeus.
 
 Refer to [`docs/extend.md`](docs/extend.md) for details.
+
+# Reference
+
+Please consider citing our paper if you find Zeus to be related to your research project.
+
+```bibtex
+@inproceedings{zeus-nsdi23,
+  title={Zeus: Understanding and Optimizing GPU Energy Consumption of DNN Training},
+  author={Jie You and Jae-Won Chung and Mosharaf Chowdhury},
+  booktitle={NSDI},
+  year={2023}
+}
+```
+
+# Contact
+Jae-Won Chung (jwnchung@umich.edu)
