@@ -81,7 +81,7 @@ You can easily implement custom policies for batch size and power limit optimiza
 
 Refer to [Extending Zeus](https://ml.energy/zeus/extend/) for details.
 
-# Citation
+## Citation
 
 `TODO: arxiv bibtex here`
 Please consider citing our paper if you find Zeus to be related to your research project.
@@ -95,5 +95,5 @@ Please consider citing our paper if you find Zeus to be related to your research
 }
 ```
 
-# Contact
+## Contact
 Jae-Won Chung (jwnchung@umich.edu)
