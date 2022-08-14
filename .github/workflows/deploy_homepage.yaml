@@ -18,6 +18,7 @@ jobs:
             zeus
             mkdocs.yml
             Dockerfile
+            .github/workflows/deploy_homepage.yaml
       - uses: actions/setup-python@v2
         if: steps.changed-files.outputs.any_modified == 'true'
         with:
@@ -26,7 +27,7 @@ jobs:
         if: steps.changed-files.outputs.any_modified == 'true'
       - run: mkdocs build
         if: steps.changed-files.outputs.any_modified == 'true'
-      - run: echo "# Zeus Homepage\nGo to https://github.com/SymbioticLab/Zeus for the main repository." > site/README.md
+      - run: echo -e "# Zeus Homepage\nGo to https://github.com/SymbioticLab/Zeus for the main repository." > site/README.md
         if: steps.changed-files.outputs.any_modified == 'true'
       - uses: cpina/github-action-push-to-another-repository@main
         if: steps.changed-files.outputs.any_modified == 'true'
