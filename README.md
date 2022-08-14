@@ -1,2 +1,2 @@
 # Zeus Homepage
-Go to https://github.com/SymbioticLab/Zeus for the main repository.
+Go to https://github.com/SymbioticLab/Zeus for the main Zeus repository.
