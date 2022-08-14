@@ -1,0 +1,23 @@
+/*
+ * Zeus colors:
+ * - Black:   #231F20 / hsla(345, 6%, 13%, 1)
+ * - Orange:  #F4A60B / hsla(40, 91%, 50%, 1)
+ * - Mustard: #F7CE26 / hsla(48, 93%, 56%, 1)
+ * - Yellow:  #F7E96D / hsla(54, 90%, 70%, 1)
+ */
+
+[data-md-color-primary="zeus"] {
+  --md-primary-fg-color:        hsla(48, 93%, 56%, 1);
+  --md-primary-fg-color--light: hsla(48, 93%, 56%, 1);
+  --md-primary-fg-color--dark:  hsla(48, 93%, 56%, 1);
+  --md-primary-bg-color:        hsla(345, 6%, 13%, 1);
+  --md-primary-bg-color--light: hsla(345, 6%, 30%, 1);
+  --md-typeset-mark-color:      hsla(345, 6%, 13%, 1);
+}
+
+[data-md-color-accent="zeus"] {
+  --md-accent-fg-color:              hsla(54, 90%, 70%, 1);
+  --md-accent-fg-color--transparent: hsla(54, 90%, 70%, 0.1);
+  --md-accent-bg-color:              hsla(345, 6%, 13%, 1);
+  --md-accent-bg-color--light:       hsla(345, 6%, 30%, 1);
+}
