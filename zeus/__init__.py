@@ -17,11 +17,11 @@ Zeus is an energy optimization framework for DNN training.
 
 Modules:
 
-- `analyze`: Functions for analyzing log files.
-- `profile`: Tools for profiling energy and time.
-- `job`: Job specification.
-- `run`: Machinery for actually running Zeus.
-- `simulate`: Machinery for trace-driven Zeus.
-- `policy`: Collection of optimization policies.
-- `util`: Utility functions and classes.
+- [`analyze`][zeus.analyze]: Functions for analyzing log files.
+- [`profile`][zeus.profile]: Tools for profiling energy and time.
+- [`job`][zeus.job]: Job specification.
+- [`run`][zeus.run]: Machinery for actually running Zeus.
+- [`simulate`][zeus.simulate]: Machinery for trace-driven Zeus.
+- [`policy`][zeus.policy]: Collection of optimization policies.
+- [`util`][zeus.util]: Utility functions and classes.
 """
