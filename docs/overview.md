@@ -2,6 +2,7 @@
 <h1>Zeus: Understanding and Optimizing<br>GPU Energy Consumption of DNN Training</h1>
 </div>
 
+`TODO: fix link`
 You can read the entire paper here: [https://arxiv.org/abs/2208.xxxx](https://arxiv.org/abs/2208.xxxx)
 
 {==

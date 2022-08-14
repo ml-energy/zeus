@@ -35,5 +35,5 @@ Refer to [Extending Zeus](extend.md) for details.
 ## Citation
 
 ```BibTeX
-TODO: BibTeX here
+TODO: arxiv BibTeX here
 ```
