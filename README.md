@@ -7,9 +7,10 @@
 <h1>An Energy Optimization Framework for DNN Training</h1>
 </div>
 
-[![Docker Hub](https://badgen.net/badge/icon/symbioticlab?icon=docker&label=Docker%20Hub)](https://hub.docker.com/r/symbioticlab/zeus)
-[![Homepage](https://img.shields.io/badge/Website-up-23d175.svg)](https://ml.energy/zeus)
-[![Apache-2.0 License](https://img.shields.io/badge/License-Apache_2.0-gray.svg)](/LICENSE)
+`TODO: arxiv link here`
+[![arXiv](https://img.shields.io/badge/-2208.xxxxx-b31b1b.svg?logo=arxiv)](https://arxiv.org/abs/2208.xxxxx)
+[![Docker Hub](https://img.shields.io/badge/Docker-SymbioticLab%2FZeus-blue.svg?logo=docker)](https://hub.docker.com/r/symbioticlab/zeus)
+[![Apache-2.0 License](https://custom-icon-badges.herokuapp.com/github/license/SymbioticLab/Zeus?logo=law)](/LICENSE)
 
 Zeus automatically optimizes the **energy and time** of training a DNN to a target validation metric by finding the optimal **batch size** and **GPU power limit**.
 
