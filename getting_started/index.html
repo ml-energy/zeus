@@ -927,6 +927,21 @@
 <h2 id="non-recurring-jobs">Non-recurring jobs</h2>
 <p>The GPU power limit can be profiled and optimized quickly for any training job.
 After going through the prerequisites, integrate <a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a> into your training script.</p>
+<p>Integration example:
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">zeus.run</span> <span class="kn">import</span> <span class="n">ZeusDataLoader</span>
+
+<span class="c1"># The one instantiated with max_epochs becomes the train dataloader</span>
+<span class="n">train_loader</span> <span class="o">=</span> <span class="n">ZeusDataLoader</span><span class="p">(</span><span class="n">train_set</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">max_epochs</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<span class="n">eval_loader</span> <span class="o">=</span> <span class="n">ZeusDataLoader</span><span class="p">(</span><span class="n">eval_set</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">epoch_number</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="o">.</span><span class="n">epochs</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="p">:</span>
+        <span class="c1"># Learn from batch</span>
+    <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">eval_loader</span><span class="p">:</span>
+        <span class="c1"># Evaluate on batch</span>
+
+    <span class="n">train_loader</span><span class="o">.</span><span class="n">report_metric</span><span class="p">(</span><span class="n">validation_metric</span><span class="p">)</span>
+</code></pre></div></p>
 <p>The following examples will help:</p>
 <ul>
 <li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100">Integrating Zeus with computer vision</a></li>
@@ -941,8 +956,11 @@ Then, you can use <a class="autorefs autorefs-internal" href="../reference/run/m
 <ul>
 <li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/trace_driven">Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace</a></li>
 </ul>
+<div class="admonition info">
+<p class="admonition-title">Info</p>
 <p>We plan to integrate <a class="autorefs autorefs-internal" href="../reference/run/master/#zeus.run.master.ZeusMaster"><code>ZeusMaster</code></a> with an MLOps platform like <a href="https://www.kubeflow.org/">KubeFlow</a>.
 Feel free to let us know about your preferences, use cases, and expectations.</p>
+</div>
 
               
             </article>
