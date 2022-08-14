@@ -2725,7 +2725,14 @@
 
 
 </h4>
-<div class="highlight"><pre><span></span><code><span class="fm">__init__</span><span class="p">(</span><span class="n">summary_train</span><span class="p">,</span> <span class="n">summary_power</span><span class="p">,</span> <span class="n">batch_size_optimizer</span><span class="p">,</span> <span class="n">power_limit_optimizer</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">123456</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="fm">__init__</span><span class="p">(</span>
+    <span class="n">summary_train</span><span class="p">,</span>
+    <span class="n">summary_power</span><span class="p">,</span>
+    <span class="n">batch_size_optimizer</span><span class="p">,</span>
+    <span class="n">power_limit_optimizer</span><span class="p">,</span>
+    <span class="n">seed</span><span class="o">=</span><span class="mi">123456</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
 </code></pre></div>
 
   <div class="doc doc-contents ">
@@ -3284,7 +3291,9 @@ cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
 
 
 </h4>
-<div class="highlight"><pre><span></span><code><span class="n">simulate_one_alibaba_group</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">group_df</span><span class="p">,</span> <span class="n">beta_knob</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="n">simulate_one_alibaba_group</span><span class="p">(</span>
+    <span class="n">job</span><span class="p">,</span> <span class="n">group_df</span><span class="p">,</span> <span class="n">beta_knob</span><span class="p">,</span> <span class="n">eta_knob</span>
+<span class="p">)</span>
 </code></pre></div>
 
   <div class="doc doc-contents ">
@@ -4246,7 +4255,15 @@ cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
 
 
 </h4>
-<div class="highlight"><pre><span></span><code><span class="n">_run_job</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span> <span class="n">power_limit</span><span class="p">,</span> <span class="n">rng</span><span class="p">,</span> <span class="n">cost_ub</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="n">profile_power</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="n">_run_job</span><span class="p">(</span>
+    <span class="n">job</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">,</span>
+    <span class="n">power_limit</span><span class="p">,</span>
+    <span class="n">rng</span><span class="p">,</span>
+    <span class="n">cost_ub</span><span class="p">,</span>
+    <span class="n">eta_knob</span><span class="p">,</span>
+    <span class="n">profile_power</span><span class="p">,</span>
+<span class="p">)</span>
 </code></pre></div>
 
   <div class="doc doc-contents ">

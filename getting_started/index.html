@@ -889,6 +889,13 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    Prerequisites
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#non-recurring-jobs" class="md-nav__link">
     Non-recurring jobs
   </a>
@@ -920,17 +927,36 @@
 <p>Zeus automatically tunes the <strong>batch size</strong> and <strong>GPU power limit</strong> of a recurring DNN training job.</p>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
-<p>Zeus optimizes the batch size of <strong>recurring</strong> jobs, i.e. training jobs that re-run multiple times over time. However, Zeus can still optimize the GPU power limit even if your jobs does not recur.</p>
+<p>Zeus can optimize the batch size of <strong>recurring</strong> jobs, i.e. training jobs that re-run multiple times over time. However, Zeus can still optimize the GPU power limit even if your jobs does not recur.</p>
 </div>
 <div class="admonition info">
 <p class="admonition-title">Info</p>
-<p>Zeus currently only supports <strong>single GPU training</strong>. Support for single-node data parallel training and distributed data parallel training will be added in the future.</p>
+<p>Zeus currently only supports <strong>single GPU training</strong>. Support for single-node data parallel training and distributed data parallel training will be added soon.</p>
 </div>
+<h2 id="prerequisites">Prerequisites</h2>
+<ol>
+<li><a href="environment/">Set up your environment</a>.</li>
+<li><a href="installing_and_building/">Install and build Zeus components</a>.</li>
+</ol>
 <h2 id="non-recurring-jobs">Non-recurring jobs</h2>
 <p>The GPU power limit can be profiled and optimized quickly for any training job.
-You just need to <a href="environment/">set up your environment</a>, <a href="installing_and_building/">install and build Zeus components</a>, and <a href="integrating/">integrate Zeus into your training script</a>.</p>
+After going through the prerequisites, integrate <a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a> into your training script.</p>
+<p>The following examples will help:</p>
+<ul>
+<li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100">Integrating Zeus with computer vision</a></li>
+<li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/capriccio">Integrating Zeus with NLP</a></li>
+</ul>
 <h2 id="recurring-jobs">Recurring jobs</h2>
-<p>The optimal batch size is explored <em>across</em> multiple job runs using a Multi-Armed Bandit algorithm, so your job should be recurring.</p>
+<p>The optimal batch size is explored <em>across</em> multiple job runs using a Multi-Armed Bandit algorithm.
+First, go through the steps for non-recurring jobs. 
+<a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a> will transparently optimize the GPU power limit for any given batch size.
+Then, you can use <a class="autorefs autorefs-internal" href="../reference/run/master/#zeus.run.master.ZeusMaster"><code>ZeusMaster</code></a> to drive recurring jobs and batch size optimization.</p>
+<p>This example will come in handy:</p>
+<ul>
+<li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/trace_driven">Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace</a></li>
+</ul>
+<p>We plan to integrate <a class="autorefs autorefs-internal" href="../reference/run/master/#zeus.run.master.ZeusMaster"><code>ZeusMaster</code></a> with an MLOps platform like <a href="https://www.kubeflow.org/">KubeFlow</a>.
+Feel free to let us know about your preferences, use cases, and expectations.</p>
 
               
             </article>

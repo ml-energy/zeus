@@ -1819,7 +1819,15 @@ through the constructor.</p>
 
 
 </h4>
-<div class="highlight"><pre><span></span><code><span class="fm">__init__</span><span class="p">(</span><span class="n">batch_size_optimizer</span><span class="p">,</span> <span class="n">log_base</span><span class="p">,</span> <span class="n">monitor_path</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">123456</span><span class="p">,</span> <span class="n">observer_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">profile_warmup_secs</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">profile_measure_secs</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="fm">__init__</span><span class="p">(</span>
+    <span class="n">batch_size_optimizer</span><span class="p">,</span>
+    <span class="n">log_base</span><span class="p">,</span>
+    <span class="n">monitor_path</span><span class="p">,</span>
+    <span class="n">seed</span><span class="o">=</span><span class="mi">123456</span><span class="p">,</span>
+    <span class="n">observer_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">profile_warmup_secs</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">profile_measure_secs</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+<span class="p">)</span>
 </code></pre></div>
 
   <div class="doc doc-contents ">
@@ -2060,7 +2068,9 @@ This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/
 
 
 </h4>
-<div class="highlight"><pre><span></span><code><span class="n">build_logdir</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">num_recurrence</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="n">beta_knob</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="n">build_logdir</span><span class="p">(</span>
+    <span class="n">job</span><span class="p">,</span> <span class="n">num_recurrence</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="n">beta_knob</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span>
+<span class="p">)</span>
 </code></pre></div>
 
   <div class="doc doc-contents ">
@@ -2204,7 +2214,17 @@ already exists.</p></td>
 
 
 </h4>
-<div class="highlight"><pre><span></span><code><span class="n">run_job</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span> <span class="n">learning_rate</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="n">logdir</span><span class="p">,</span> <span class="n">rec_i</span><span class="p">,</span> <span class="n">tries</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="n">cost_ub</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="n">run_job</span><span class="p">(</span>
+    <span class="n">job</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">,</span>
+    <span class="n">learning_rate</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">,</span>
+    <span class="n">logdir</span><span class="p">,</span>
+    <span class="n">rec_i</span><span class="p">,</span>
+    <span class="n">tries</span><span class="p">,</span>
+    <span class="n">eta_knob</span><span class="p">,</span>
+    <span class="n">cost_ub</span><span class="p">,</span>
+<span class="p">)</span>
 </code></pre></div>
 
   <div class="doc doc-contents ">
