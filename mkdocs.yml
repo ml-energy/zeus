@@ -95,6 +95,9 @@ nav:
 
 # Extra stuff
 extra:
+  analytics:
+    provider: google
+    property: G-T3W21TQ7FJ
   social:
     - name: Zeus GitHub repository
       icon: fontawesome/brands/github
