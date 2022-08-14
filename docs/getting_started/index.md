@@ -8,6 +8,7 @@ Zeus automatically tunes the **batch size** and **GPU power limit** of a recurri
 !!! Info
     Zeus currently only supports **single GPU training**. Support for single-node data parallel training and distributed data parallel training will be added in the future.
 
+
 ## Non-recurring jobs
 
 The GPU power limit can be profiled and optimized quickly for any training job.
