@@ -29,25 +29,26 @@ jobs:
           done
       - name: Setup Python
         uses: actions/setup-python@v2
-        if: steps.changed-files.outputs.any_modified == true
+        if: steps.changed-files.outputs.any_modified == 'true'
         with:
           python-version: 3.x
       - name: Install mkdocs-material-insiders
+        if: steps.changed-files.outputs.any_modified == 'true'
         env:
           GH_TOKEN: ${{ secrets.MKDOCS_MATERIAL_INSIDERS_PAT }}
         run: pip install git+https://${GH_TOKEN}@github.com/jaywonchung/mkdocs-material-insiders.git
       - name: Install other homepage dependencies
         run: pip install -r docs/requirements.txt
-        if: steps.changed-files.outputs.any_modified == true
+        if: steps.changed-files.outputs.any_modified == 'true'
       - name: Build homepage
         run: mkdocs build
-        if: steps.changed-files.outputs.any_modified == true
+        if: steps.changed-files.outputs.any_modified == 'true'
       - name: Generate a small README tor ml-energy/zeus
         run: echo -e "# Zeus Homepage\nGo to https://github.com/SymbioticLab/Zeus for the main Zeus repository." > site/README.md
-        if: steps.changed-files.outputs.any_modified == true
+        if: steps.changed-files.outputs.any_modified == 'true'
       - name: Push the built homepage to ml-energy/zeus
         uses: cpina/github-action-push-to-another-repository@v1.5
-        if: steps.changed-files.outputs.any_modified == true
+        if: steps.changed-files.outputs.any_modified == 'true'
         env:
           SSH_DEPLOY_KEY: ${{ secrets.ML_ENERGY_ZEUS_SSH_KEY }}
         with:
