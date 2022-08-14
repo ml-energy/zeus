@@ -89,7 +89,6 @@ nav:
     - getting_started/index.md
     - Environment setup: getting_started/environment.md
     - Installing and building: getting_started/installing_and_building.md
-    - Integrating with Zeus: getting_started/integrating.md
   - Extending Zeus: extend.md
   - Source Code Reference: reference/
 
