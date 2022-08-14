@@ -22,6 +22,11 @@ jobs:
             mkdocs.yml
             Dockerfile
             .github/workflows/deploy_homepage.yaml
+      - name: List all homepage-related files changed
+        run: |
+          for file in ${{ steps.changed-files.outputs.all_modified_files }}; do
+            echo "$file"
+          done
       - name: Setup Python
         uses: actions/setup-python@v2
         if: steps.changed-files.outputs.any_modified == true
