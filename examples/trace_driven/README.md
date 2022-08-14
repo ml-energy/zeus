@@ -12,13 +12,13 @@ Refer to the [`trace`](../../trace/) directory for more information about the tr
 
 ## Simulating the recurrence of one job
 
-With `run_single.py`, you can simulate the optimization trajectory of one recurring job.
+With [`run_single.py`](run_single.py), you can simulate the optimization trajectory of one recurring job.
 
 ### Dependencies
 
-1. Install `zeus` following [`docs/install_and_build.md`](../../docs/install_and_build.md). The power monitor is not needed.
+1. Install `zeus` following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/). The power monitor is not needed.
 
-All dependencies are already installed you're using our Docker image (see [`docs/environment.md`](../../docs/environment.md)).
+All dependencies are already installed you're using our Docker image (see [Environment setup](https://ml.energy/zeus/getting_started/environment/)).
 
 ### Example command
 
@@ -40,15 +40,15 @@ python run_single.py \
 
 ## Simulating jobs based on the Alibaba GPU cluster trace
 
-With `run_alibaba.py`, you can simulate jobs in the [Alibaba GPU cluster trace](https://github.com/alibaba/clusterdata/tree/master/cluster-trace-gpu-v2020).
+With [`run_alibaba.py`](run_alibaba.py), you can simulate jobs in the [Alibaba GPU cluster trace](https://github.com/alibaba/clusterdata/tree/master/cluster-trace-gpu-v2020).
 
 Please refer to our paper for details on how jobs in our train/power traces are mapped to tasks in the Alibaba trace.
 
 ### Dependencies
 
-1. Install `zeus` following [`docs/install_and_build.md`](../../docs/install_and_build.md). The power monitor is not needed.
+1. Install `zeus` following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/). The power monitor is not needed.
 
-All dependencies are already installed you're using our Docker image (see [`docs/environment.md`](../../docs/environment.md)).
+All dependencies are already installed you're using our Docker image (see [Environment setup](https://ml.energy/zeus/getting_started/environment/)).
 
 ### Example command
 
