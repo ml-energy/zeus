@@ -6,12 +6,15 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: github.event.repository.fork == false
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
         with:
           fetch-depth: 2
-      - uses: tj-actions/changed-files@v25
+      - name: Check if any homepage-related files changed
         id: changed-files
+        uses: tj-actions/changed-files@v25
         with:
           files: |
             docs
@@ -19,18 +22,27 @@ jobs:
             mkdocs.yml
             Dockerfile
             .github/workflows/deploy_homepage.yaml
-      - uses: actions/setup-python@v2
-        if: steps.changed-files.outputs.any_modified == 'true'
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        if: steps.changed-files.outputs.any_modified == true
         with:
           python-version: 3.x
-      - run: pip install -r docs/requirements.txt
-        if: steps.changed-files.outputs.any_modified == 'true'
-      - run: mkdocs build
-        if: steps.changed-files.outputs.any_modified == 'true'
-      - run: echo -e "# Zeus Homepage\nGo to https://github.com/SymbioticLab/Zeus for the main repository." > site/README.md
-        if: steps.changed-files.outputs.any_modified == 'true'
-      - uses: cpina/github-action-push-to-another-repository@main
-        if: steps.changed-files.outputs.any_modified == 'true'
+      - name: Install mkdocs-material-insiders
+        env:
+          GH_TOKEN: ${{ secrets.MKDOCS_MATERIAL_INSIDERS_PAT }}
+        run: pip install git+https://${GH_TOKEN}@github.com/jaywonchung/mkdocs-material-insiders.git
+      - name: Install other homepage dependencies
+        run: pip install -r docs/requirements.txt
+        if: steps.changed-files.outputs.any_modified == true
+      - name: Build homepage
+        run: mkdocs build
+        if: steps.changed-files.outputs.any_modified == true
+      - name: Generate a small README tor ml-energy/zeus
+        run: echo -e "# Zeus Homepage\nGo to https://github.com/SymbioticLab/Zeus for the main Zeus repository." > site/README.md
+        if: steps.changed-files.outputs.any_modified == true
+      - name: Push the built homepage to ml-energy/zeus
+        uses: cpina/github-action-push-to-another-repository@v1.5
+        if: steps.changed-files.outputs.any_modified == true
         env:
           SSH_DEPLOY_KEY: ${{ secrets.ML_ENERGY_ZEUS_SSH_KEY }}
         with:
