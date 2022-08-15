@@ -21,6 +21,10 @@
   --md-accent-bg-color--light:       #231F20;
 }
 
+[data-md-color-scheme="default"] .critic-dark {
+  --md-typeset-mark-color: #00000015;
+}
+
 [data-md-color-scheme="slate"] .critic-dark {
-  --md-typeset-mark-color:      #231F20;
+  --md-typeset-mark-color: #231F20;
 }
