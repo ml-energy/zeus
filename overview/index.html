@@ -532,6 +532,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-unified-metric" class="md-nav__link">
+    <span class="md-ellipsis">
+      A unified metric
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#finding-optimal-knobs" class="md-nav__link">
     <span class="md-ellipsis">
       Finding optimal knobs
@@ -1250,6 +1259,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-unified-metric" class="md-nav__link">
+    <span class="md-ellipsis">
+      A unified metric
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#finding-optimal-knobs" class="md-nav__link">
     <span class="md-ellipsis">
       Finding optimal knobs
@@ -1282,17 +1300,18 @@
 <mark class="critic block">
 <h2 id="abstract">Abstract</h2>
 <p>Training <abbr title="Deep Neural Networks">DNNs</abbr> is becoming more and more resource- and energy-intensive every year. Unfortunately, existing works primarily focus on optimizing <abbr title="Deep Neural Network">DNN</abbr> training for faster completion, often without considering the impact on energy efficiency.</p>
-<p>In this paper, we observe that common practices to improve training performance can often lead to inefficient energy usage. More importantly, we demonstrate that there is a tradeoff between energy consumption and performance optimization. To this end, we propose an optimization framework, Zeus, to navigate this tradeoff by automatically finding optimal job- and GPU-level configurations for recurring <abbr title="Deep Neural Network">DNN</abbr> training jobs. Zeus uses an online exploration-exploitation approach in conjunction with just-in-time energy profiling, averting the need for expensive offline measurements, while adapting to data drifts over time. Our evaluation shows that Zeus can improve the energy efficiency of <abbr title="Deep Neural Network">DNN</abbr> training by 15.3%--75.8% for diverse workloads.</p>
+<p>In this paper, we observe that common practices to improve training performance can often lead to inefficient energy usage. More importantly, we demonstrate that there is a tradeoff between energy consumption and performance optimization. To this end, we propose an optimization framework, Zeus, to navigate this tradeoff by automatically finding optimal job- and <abbr title="Graphics Processing Unit">GPU</abbr>-level configurations for recurring <abbr title="Deep Neural Network">DNN</abbr> training jobs. Zeus uses an online exploration-exploitation approach in conjunction with just-in-time energy profiling, averting the need for expensive offline measurements, while adapting to data drifts over time. Our evaluation shows that Zeus can improve the energy efficiency of <abbr title="Deep Neural Network">DNN</abbr> training by 15.3%--75.8% for diverse workloads.</p>
 </mark>
 </div>
-<h2 id="why-care-about-gpu-energy">Why care about GPU energy?</h2>
-<p>In recent years, both academia and industry have seen an increasing adoption of <abbr title="Deep Neural Networks">DNNs</abbr> for intelligent applications, and to support such growth, large clusters of GPUs were created.</p>
-<p>GPUs are power-hungry hardware; it was reported that GPUs consume more than 70% of the power of the entire server when training <abbr title="Deep Neural Networks">DNNs</abbr>.<sup id="fnref:1"><a class="footnote-ref" href="#fn:1">1</a></sup>
-At extreme scales, training the GPT-3 model once consumes 1,287 MWh,<sup id="fnref:2"><a class="footnote-ref" href="#fn:2">2</a></sup> which is enough to supply an average US household for 120 years.<sup id="fnref:3"><a class="footnote-ref" href="#fn:3">3</a></sup></p>
-<p>How can we optimize the GPU energy consumption of <abbr title="Deep Neural Network">DNN</abbr> training?</p>
+<h2 id="why-care-about-gpu-energy">Why care about <abbr title="Graphics Processing Unit">GPU</abbr> energy?</h2>
+<p>In recent years, both academia and industry have seen an increasing adoption of <abbr title="Deep Neural Networks">DNNs</abbr> for intelligent applications.
+Large clusters of <abbr title="Graphics Processing Units">GPUs</abbr> were created to support such growth, and the surge continues.</p>
+<p><abbr title="Graphics Processing Units">GPUs</abbr> are power-hungry hardware; it was reported that <abbr title="Graphics Processing Units">GPUs</abbr> consume more than 70% of the power of the entire server when training <abbr title="Deep Neural Networks">DNNs</abbr>.<sup id="fnref:1"><a class="footnote-ref" href="#fn:1">1</a></sup>
+At extreme scales, training the GPT-3 model just once consumes 1,287 MWh,<sup id="fnref:2"><a class="footnote-ref" href="#fn:2">2</a></sup> which is enough to supply an average US household for 120 years.<sup id="fnref:3"><a class="footnote-ref" href="#fn:3">3</a></sup></p>
+<p>How can we optimize the <abbr title="Graphics Processing Unit">GPU</abbr> energy consumption of <abbr title="Deep Neural Network">DNN</abbr> training?</p>
 <h2 id="opportunity-for-energy-savings">Opportunity for energy savings</h2>
-<p>Then, how much energy saving is possible in the ideal case?</p>
-<p>To see this, we trained<sup id="fnref:4"><a class="footnote-ref" href="#fn:4">4</a></sup> the same <abbr title="Deep Neural Network">DNN</abbr> multiple times using a sweep of possible <strong>batch sizes</strong> and <strong>GPU power limits</strong>.<sup id="fnref:5"><a class="footnote-ref" href="#fn:5">5</a></sup></p>
+<p>Our observation is that common practices to minimize the completion time of <abbr title="Deep Neural Network">DNN</abbr> training can lead to inefficient energy usage.</p>
+<p>To see this, we trained<sup id="fnref:4"><a class="footnote-ref" href="#fn:4">4</a></sup> the same <abbr title="Deep Neural Network">DNN</abbr> multiple times using a sweep of possible <strong>batch sizes</strong> and <strong><abbr title="Graphics Processing Unit">GPU</abbr> power limits</strong>.<sup id="fnref:5"><a class="footnote-ref" href="#fn:5">5</a></sup></p>
 <figure>
   <br>
   <img src="img/eta-potential-all-v100-dark.svg#only-dark" width=600px>
@@ -1301,7 +1320,7 @@ At extreme scales, training the GPT-3 model once consumes 1,287 MWh,<sup id="fnr
 </figure>
 
 <p>The shorter the bar, the less the energy consumed.
-You can see that just tuning one of batch size or power limit leads to energy savings, and when we optimize both at the same time, potential savings can be quite large.</p>
+You can see that just tuning one of batch size or power limit already leads to energy savings, and when we optimize both at the same time, potential savings can be quite large.</p>
 <h2 id="the-trade-off-between-time-and-energy">The trade-off between time and energy</h2>
 <p>The first step of optimizing something would be understanding it.</p>
 <p>The highlight of Zeus is that we discover and characterize the trade-off between <abbr title="Deep Neural Network">DNN</abbr> training time and energy consumption.</p>
@@ -1316,30 +1335,33 @@ You can see that just tuning one of batch size or power limit leads to energy sa
   <br>
   <img src="img/pareto-librispeech-dark.svg#only-dark" width=600px>
   <img src="img/pareto-librispeech-light.svg#only-light" width=600px>
-  <figcaption>The energy-time Pareto front zoomed in.</figcaption>
+  <figcaption>The energy-time Pareto frontier zoomed in.</figcaption>
 </figure>
 </div>
-<p>The results above are from training the DeepSpeech2 model with LibriSpeech on an NVIDIA V100 GPU.
-Notice the yellow Pareto front of efficient (time, energy) pairs, resulting from a set of efficient (batch size, power limit) knobs.</p>
-<p>Different users will have different preferences of how they would like to trade off time and energy.
-For instance, production training jobs will have deadlines; they probably don't want to trade time for energy savings.
-On the other hand, exploratory training jobs have more leeway; it might make sense for them to reduce energy consumption at the cost of longer training time.</p>
+<p>These results are from training the DeepSpeech2 model with LibriSpeech on an NVIDIA V100 <abbr title="Graphics Processing Unit">GPU</abbr>.
+Notice the yellow Pareto front consisted of efficient (time, energy) pairs, resulting from a set of efficient (batch size, power limit) knobs.</p>
+<h2 id="a-unified-metric">A unified metric</h2>
+<p>All points on the energy-time Pareto frontier are efficient, but which one is the best?</p>
+<p>Different users will have different answers, because they have different preferences of how they would like to trade off time and energy.
+For instance, some production training jobs might have tight deadlines; they probably don't want to trade time for energy savings.
+On the other hand, exploratory training jobs may have more leeway; it might make sense for them to reduce energy consumption at the cost of longer training time.</p>
 <p>To allow users to express their trade-off preference, we define a simple cost metric<sup id="fnref:6"><a class="footnote-ref" href="#fn:6">6</a></sup></p>
 <div class="arithmatex">\[
 \textrm{Cost} = \eta \cdot \textrm{Energy} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{Time,}
 \]</div>
-<p>where the user picks the value of <span class="arithmatex">\(\eta\)</span> between 0 and 1.</p>
+<p>where the user picks the value of <span class="arithmatex">\(\eta\)</span> between 0 and 1.
+Smaller <span class="arithmatex">\(\eta\)</span> values will reduce more time, while larger ones will prefer to reduce more energy.</p>
 <h2 id="finding-optimal-knobs">Finding optimal knobs</h2>
-<p>How do we find the (batch size, power limit) knobs that are on the Pareto frontier?</p>
-<p>This is no easy problem because</p>
+<p>Given the user's preference via the value of <span class="arithmatex">\(\eta\)</span>, how do we find the best (batch size, power limit) knob on the Pareto frontier?</p>
+<p>This is no easy problem because:</p>
 <ul>
-<li>GPU power consumption is a black box function of numerous hardware- and workload-dependent factors, and</li>
+<li><abbr title="Graphics Processing Unit">GPU</abbr> power consumption is a black box function of numerous hardware- and workload-dependent factors, and</li>
 <li>the time the <abbr title="Deep Neural Network">DNN</abbr> will take to reach its target validation metric is very difficult to predict.</li>
 </ul>
-<p>Fortunately, <abbr title="Deep Neural Network">DNN</abbr> training jobs often <strong>recur</strong> in production GPU clusters,<sup id="fnref:7"><a class="footnote-ref" href="#fn:7">7</a></sup> allowing us to explore, observe, and optimize <strong>across job recurrences</strong>.</p>
+<p>Fortunately, <abbr title="Deep Neural Network">DNN</abbr> training jobs often <strong>recur</strong> in production <abbr title="Graphics Processing Unit">GPU</abbr> clusters,<sup id="fnref:7"><a class="footnote-ref" href="#fn:7">7</a></sup> allowing us to explore, observe, and optimize <strong>across job recurrences</strong>.</p>
 <p>This results in two main component in Zeus's design:</p>
 <ul>
-<li><strong>A just-in-time online profiler</strong>. Implemented inside <a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a>, this module searches for the optimal power limit. It efficiently profiles the time and energy characteristics of the <abbr title="Deep Neural Network">DNN</abbr> training job in a completely online manner.</li>
+<li><strong>A <abbr title="Just-in-Time">JIT</abbr> energy profiler</strong>. Implemented inside <a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a>, this module searches for the optimal power limit. It efficiently profiles the time and energy characteristics of the <abbr title="Deep Neural Network">DNN</abbr> training job in a completely online manner.</li>
 <li><strong><abbr title="Multi-Armed Bandit">MAB</abbr> with Thompson Sampling</strong>. Implemented inside <a class="autorefs autorefs-internal" href="../reference/run/master/#zeus.run.master.ZeusMaster"><code>ZeusMaster</code></a>, this module searches for the optimal batch size. Thanks to its <abbr title="Multi-Armed Bandit">MAB</abbr> formulation, it is able to intelligently trade off exploration and exploitation across job recurrences.</li>
 </ul>
 <!-- Abbreviation definitions -->
@@ -1359,10 +1381,10 @@ On the other hand, exploratory training jobs have more leeway; it might make sen
 <p>In all cases of training, we train until the <abbr title="Deep Neural Network">DNN</abbr> reaches a specific target validation metric. Thus, when we say time, it's TTA (Time To Accuracy). Likewise for energy, it's ETA (Enerty To Accuracy). Please refer to our paper for the complete workload table.&#160;<a class="footnote-backref" href="#fnref:4" title="Jump back to footnote 4 in the text">&#8617;</a></p>
 </li>
 <li id="fn:5">
-<p>It is possible to cap the maximum power draw of a GPU using <a href="https://developer.nvidia.com/nvidia-management-library-nvml">NVML</a>.&#160;<a class="footnote-backref" href="#fnref:5" title="Jump back to footnote 5 in the text">&#8617;</a></p>
+<p>It is possible to cap the maximum power draw of a <abbr title="Graphics Processing Unit">GPU</abbr> using <a href="https://developer.nvidia.com/nvidia-management-library-nvml">NVML</a>.&#160;<a class="footnote-backref" href="#fnref:5" title="Jump back to footnote 5 in the text">&#8617;</a></p>
 </li>
 <li id="fn:6">
-<p><span class="arithmatex">\(\textrm{MaxPower}\)</span> is the maximum possible power limit of the GPU. It's just a constant number introduced to equalize the units of the left and right terms to Joules.&#160;<a class="footnote-backref" href="#fnref:6" title="Jump back to footnote 6 in the text">&#8617;</a></p>
+<p><span class="arithmatex">\(\textrm{MaxPower}\)</span> is the maximum possible power limit of the <abbr title="Graphics Processing Unit">GPU</abbr>. It's just a constant number introduced to equalize the units of the left and right terms to Joules.&#160;<a class="footnote-backref" href="#fnref:6" title="Jump back to footnote 6 in the text">&#8617;</a></p>
 </li>
 <li id="fn:7">
 <p>Kim Hazelwood, Sarah Bird, David Brooks, Soumith Chintala, Utku Diril, Dmytro Dzhulgakov, Mohamed Fawzy, Bill Jia, Yangqing Jia, Aditya Kalro, et al. Applied machine learning at facebook: A datacenter infrastructure perspective. In 2018 IEEE International Symposium on High Performance Computer Architecture (HPCA), pages 620–629. IEEE, 2018.&#160;<a class="footnote-backref" href="#fnref:7" title="Jump back to footnote 7 in the text">&#8617;</a></p>

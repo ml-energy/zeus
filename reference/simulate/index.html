@@ -2260,8 +2260,8 @@
 <span class="sd">            num_recurrence: How many times the job recurs.</span>
 <span class="sd">            beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.</span>
 <span class="sd">                Set to `np.inf` to disable early stopping.</span>
-<span class="sd">            eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">                cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">            eta_knob: $\eta$ used in the hybrid cost metric.</span>
+<span class="sd">                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.</span>
@@ -2407,8 +2407,8 @@
 <span class="sd">                    job runtime differences.</span>
 <span class="sd">            beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.</span>
 <span class="sd">                Set to `np.inf` to disable early stopping.</span>
-<span class="sd">            eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">                cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">            eta_knob: $\eta$ used in the hybrid cost metric.</span>
+<span class="sd">                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.</span>
@@ -2844,8 +2844,8 @@
 <span class="sd">            rng: Random number generator used to sample one training path.</span>
 <span class="sd">            cost_ub: Cost upper bound. The job is terminated when the next epoch is going</span>
 <span class="sd">                to exceed the cost upper bound.</span>
-<span class="sd">            eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">                cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">            eta_knob: $\eta$ used in the hybrid cost metric.</span>
+<span class="sd">                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 <span class="sd">            profile_power: Whether this run of the job should profile power during the</span>
 <span class="sd">                first epoch.</span>
 
@@ -3270,8 +3270,8 @@ Set to <code>np.inf</code> to disable early stopping.</p></td>
           <td>
                 <code>float</code>
           </td>
-          <td><p>\eta used in the hybrid cost metric.
-cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
+          <td><p><span class="arithmatex">\(\eta\)</span> used in the hybrid cost metric.
+<span class="arithmatex">\(cost = \eta * ETA + (1 - \eta) * MaxPower * TTA\)</span></p></td>
           <td>
               <em>required</em>
           </td>
@@ -3444,8 +3444,8 @@ cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
 <span class="sd">        num_recurrence: How many times the job recurs.</span>
 <span class="sd">        beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.</span>
 <span class="sd">            Set to `np.inf` to disable early stopping.</span>
-<span class="sd">        eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">            cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">        eta_knob: $\eta$ used in the hybrid cost metric.</span>
+<span class="sd">            $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.</span>
@@ -3646,8 +3646,8 @@ Set to <code>np.inf</code> to disable early stopping.</p></td>
           <td>
                 <code>float</code>
           </td>
-          <td><p>\eta used in the hybrid cost metric.
-cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
+          <td><p><span class="arithmatex">\(\eta\)</span> used in the hybrid cost metric.
+<span class="arithmatex">\(cost = \eta * ETA + (1 - \eta) * MaxPower * TTA\)</span></p></td>
           <td>
               <em>required</em>
           </td>
@@ -4128,8 +4128,8 @@ cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
 <span class="sd">                job runtime differences.</span>
 <span class="sd">        beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.</span>
 <span class="sd">            Set to `np.inf` to disable early stopping.</span>
-<span class="sd">        eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">            cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">        eta_knob: $\eta$ used in the hybrid cost metric.</span>
+<span class="sd">            $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.</span>
@@ -4639,8 +4639,8 @@ to exceed the cost upper bound.</p></td>
           <td>
                 <code>float</code>
           </td>
-          <td><p>\eta used in the hybrid cost metric.
-cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
+          <td><p><span class="arithmatex">\(\eta\)</span> used in the hybrid cost metric.
+<span class="arithmatex">\(cost = \eta * ETA + (1 - \eta) * MaxPower * TTA\)</span></p></td>
           <td>
               <em>required</em>
           </td>
@@ -4852,8 +4852,8 @@ first epoch.</p></td>
 <span class="sd">        rng: Random number generator used to sample one training path.</span>
 <span class="sd">        cost_ub: Cost upper bound. The job is terminated when the next epoch is going</span>
 <span class="sd">            to exceed the cost upper bound.</span>
-<span class="sd">        eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">            cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">        eta_knob: $\eta$ used in the hybrid cost metric.</span>
+<span class="sd">            $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 <span class="sd">        profile_power: Whether this run of the job should profile power during the</span>
 <span class="sd">            first epoch.</span>
 

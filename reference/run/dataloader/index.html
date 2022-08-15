@@ -1733,9 +1733,9 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
                            validation metric is reached. Will be cast to float.</li>
 <li><code>ZEUS_LOG_DIR</code>       : Directory to store profiling logs. (Default:<code>"zeus_log"</code>)</li>
 <li><code>ZEUS_JOB_ID</code>        : String to prefix in logs. (Default:<code>"zeus"</code>)</li>
-<li><code>ZEUS_COST_THRESH</code>   : Stop training when the energy-time cost (Equation 2)
-                           will exceed this threshold.  (Default:<code>"inf"</code>)</li>
-<li><code>ZEUS_ETA_KNOB</code>      : Knob to tradeoff between energy and time (Equation 2).
+<li><code>ZEUS_COST_THRESH</code>   : Stop training when the energy-time cost will exceed
+                           this threshold.  (Default:<code>"inf"</code>)</li>
+<li><code>ZEUS_ETA_KNOB</code>      : <span class="arithmatex">\(\eta\)</span> knob to tradeoff between energy and time.
                            Larger values reduce more energy and sacrifice time.
                            (Default:<code>"0.5"</code>)</li>
 <li><code>ZEUS_MONITOR_PATH</code>  : Path to the Zeus power monitor binary.
@@ -2482,9 +2482,9 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 <span class="sd">                               validation metric is reached. Will be cast to float.</span>
 <span class="sd">      - `ZEUS_LOG_DIR`       : Directory to store profiling logs. (Default:` &quot;zeus_log&quot;`)</span>
 <span class="sd">      - `ZEUS_JOB_ID`        : String to prefix in logs. (Default:` &quot;zeus&quot;`)</span>
-<span class="sd">      - `ZEUS_COST_THRESH`   : Stop training when the energy-time cost (Equation 2)</span>
-<span class="sd">                               will exceed this threshold.  (Default:` &quot;inf&quot;`)</span>
-<span class="sd">      - `ZEUS_ETA_KNOB`      : Knob to tradeoff between energy and time (Equation 2).</span>
+<span class="sd">      - `ZEUS_COST_THRESH`   : Stop training when the energy-time cost will exceed</span>
+<span class="sd">                               this threshold.  (Default:` &quot;inf&quot;`)</span>
+<span class="sd">      - `ZEUS_ETA_KNOB`      : $\eta$ knob to tradeoff between energy and time.</span>
 <span class="sd">                               Larger values reduce more energy and sacrifice time.</span>
 <span class="sd">                               (Default:` &quot;0.5&quot;`)</span>
 <span class="sd">      - `ZEUS_MONITOR_PATH`  : Path to the Zeus power monitor binary.</span>

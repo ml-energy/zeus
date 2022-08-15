@@ -1814,8 +1814,8 @@ through the constructor.</p>
 <span class="sd">        Args:</span>
 <span class="sd">            job: Job to run.</span>
 <span class="sd">            num_recurrence: The total number of recurrences.</span>
-<span class="sd">            eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">                cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">            eta_knob: $\eta$ used in the cost metric.</span>
+<span class="sd">                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 <span class="sd">            beta_knob: `beta_knob * min_cost` is the early stopping cost threshold.</span>
 <span class="sd">                Set to `np.inf` to disable early stopping.</span>
 <span class="sd">            exist_ok: Passed to `os.makedirs`. If `False`, will err if the directory</span>
@@ -1851,8 +1851,8 @@ through the constructor.</p>
 <span class="sd">            logdir: Directory to store log files in.</span>
 <span class="sd">            rec_i: Recurrence number of this run of the job.</span>
 <span class="sd">            tries: Retry number of this recurrence of the job.</span>
-<span class="sd">            eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">                cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">            eta_knob: $\eta$ used in the cost metric.</span>
+<span class="sd">                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 <span class="sd">            cost_ub: Cost upper bound. The job is terminated when the next epoch is going</span>
 <span class="sd">                to exceed the cost upper bound.</span>
 
@@ -1955,8 +1955,8 @@ through the constructor.</p>
 <span class="sd">            batch_sizes: List of feasible batch sizes.</span>
 <span class="sd">            beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.</span>
 <span class="sd">                Set to `np.inf` to disable early stopping.</span>
-<span class="sd">            eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">                cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA</span>
+<span class="sd">            eta_knob: $\eta$ used in the cost metric.</span>
+<span class="sd">                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.</span>
@@ -2391,8 +2391,8 @@ This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/
           <td>
                 <code>float</code>
           </td>
-          <td><p>\eta used in the hybrid cost metric.
-cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
+          <td><p><span class="arithmatex">\(\eta\)</span> used in the cost metric.
+<span class="arithmatex">\(cost = \eta * ETA + (1 - \eta) * MaxPower * TTA\)</span></p></td>
           <td>
               <em>required</em>
           </td>
@@ -2463,8 +2463,8 @@ already exists.</p></td>
 <span class="sd">    Args:</span>
 <span class="sd">        job: Job to run.</span>
 <span class="sd">        num_recurrence: The total number of recurrences.</span>
-<span class="sd">        eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">            cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">        eta_knob: $\eta$ used in the cost metric.</span>
+<span class="sd">            $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 <span class="sd">        beta_knob: `beta_knob * min_cost` is the early stopping cost threshold.</span>
 <span class="sd">            Set to `np.inf` to disable early stopping.</span>
 <span class="sd">        exist_ok: Passed to `os.makedirs`. If `False`, will err if the directory</span>
@@ -2595,8 +2595,8 @@ already exists.</p></td>
           <td>
                 <code>float</code>
           </td>
-          <td><p>\eta used in the hybrid cost metric.
-cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</p></td>
+          <td><p><span class="arithmatex">\(\eta\)</span> used in the cost metric.
+<span class="arithmatex">\(cost = \eta * ETA + (1 - \eta) * MaxPower * TTA\)</span></p></td>
           <td>
               <em>required</em>
           </td>
@@ -2765,8 +2765,8 @@ to exceed the cost upper bound.</p></td>
 <span class="sd">        logdir: Directory to store log files in.</span>
 <span class="sd">        rec_i: Recurrence number of this run of the job.</span>
 <span class="sd">        tries: Retry number of this recurrence of the job.</span>
-<span class="sd">        eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">            cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA (Equation 2)</span>
+<span class="sd">        eta_knob: $\eta$ used in the cost metric.</span>
+<span class="sd">            $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 <span class="sd">        cost_ub: Cost upper bound. The job is terminated when the next epoch is going</span>
 <span class="sd">            to exceed the cost upper bound.</span>
 
@@ -2931,8 +2931,8 @@ Set to <code>np.inf</code> to disable early stopping.</p></td>
           <td>
                 <code>float</code>
           </td>
-          <td><p>\eta used in the hybrid cost metric.
-cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA</p></td>
+          <td><p><span class="arithmatex">\(\eta\)</span> used in the cost metric.
+<span class="arithmatex">\(cost = \eta * ETA + (1 - \eta) * MaxPower * TTA\)</span></p></td>
           <td>
               <em>required</em>
           </td>
@@ -3109,8 +3109,8 @@ cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA</p></td>
 <span class="sd">        batch_sizes: List of feasible batch sizes.</span>
 <span class="sd">        beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.</span>
 <span class="sd">            Set to `np.inf` to disable early stopping.</span>
-<span class="sd">        eta_knob: \eta used in the hybrid cost metric.</span>
-<span class="sd">            cost = \eta * ETA + (1 - \eta) * MAXPOWER * TTA</span>
+<span class="sd">        eta_knob: $\eta$ used in the cost metric.</span>
+<span class="sd">            $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.</span>
