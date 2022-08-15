@@ -14,8 +14,7 @@
 
 Zeus automatically optimizes the **energy and time** of training a DNN to a target validation metric by finding the optimal **batch size** and **GPU power limit**.
 
-`TODO: arxiv link here`
-Please refer to our [NSDI '23 publication](/) for details.
+Please refer to our [NSDI '23 publication](https://arxiv.org/abs/2208.06102) for details.
 Checkout [Overview](https://ml.energy/zeus/overview/) for a summary.
 
 Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
@@ -84,17 +83,31 @@ Refer to [Extending Zeus](https://ml.energy/zeus/extend/) for details.
 
 ## Citation
 
-`TODO: arxiv bibtex here`
 Please consider citing our paper if you find Zeus to be related to your research project.
+Zeus was accepted to appear at NSDI '23.
 
 ```bibtex
-@inproceedings{zeus-nsdi23,
-  title={Zeus: Understanding and Optimizing GPU Energy Consumption of DNN Training},
-  author={Jie You and Jae-Won Chung and Mosharaf Chowdhury},
-  booktitle={NSDI},
-  year={2023}
+@article{zeus:arxiv22
+  author        = {Jie You and Jae-Won Chung and Mosharaf Chowdhury},
+  journal       = {CoRR},
+  title         = {Zeus: Understanding and Optimizing GPU Energy Consumption of DNN Training},
+  year          = {2022},
+  month         = {Aug},
+  volume        = {abs/2208.06102},
+  archiveprefix = {arXiv},
+  eprint        = {2208.06102},
+  url           = {https://arxiv.org/abs/2208.06102},
 }
 ```
+
+<!--
+@inproceedings{zeus-nsdi23,
+    title={Zeus: Understanding and Optimizing GPU Energy Consumption of DNN Training},
+    author={Jie You and Jae-Won Chung and Mosharaf Chowdhury},
+    booktitle={NSDI},
+    year={2023}
+}
+-->
 
 ## Contact
 Jae-Won Chung (jwnchung@umich.edu)
