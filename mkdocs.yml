@@ -25,19 +25,11 @@ theme:
     - navigation.tabs.sticky
     - navigation.top
     - navigation.instant
+    - content.tooltips
   palette:
     - scheme: slate
       primary: zeus
       accent: zeus
-      toggle:
-        icon: fontawesome/solid/sun
-        name: Switch to light mode
-    - scheme: default
-      primary: zeus
-      accent: zeus
-      toggle:
-        icon: fontawesome/regular/moon
-        name: Switch to dark mode
 
 
 # MkDocs plugins
@@ -68,23 +60,35 @@ plugins:
 # Extensions
 markdown_extensions:
   - meta
+  - abbr
   - admonition
   - attr_list
+  - footnotes
+  - md_in_html
   - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.snippets
   - pymdownx.details
   - pymdownx.critic
+  - pymdownx.arithmatex:
+      generic: true
 
 # Appearance
 extra_css:
   - assets/css/custom.css
   - assets/css/color.css
 
+# For Mathjax
+extra_javascript:
+  - assets/js/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
 # Page tree
 nav:
   - Home: index.md
-  - Overview: overview.md
+  - Overview: 
+    - overview/index.md
   - Getting Started:
     - getting_started/index.md
     - Environment setup: getting_started/environment.md
