@@ -26,24 +26,33 @@ On top of the `nvidia/cuda:11.3.1-devel-ubuntu20.04` image, the following are pr
 
 The default command would be:
 
-```sh
+``` { .sh .annotate }
 docker run -it \
-    --gpus 1                    `# Mount one GPU` \
-    --cap-add SYS_ADMIN         `# Needed to change the power limit of the GPU` \
-    --shm-size 64G              `# PyTorch DataLoader workers need enough shm` \
+    --gpus 1 \                        # (1)!
+    --cap-add SYS_ADMIN \           # (2)!
+    --shm-size 64G \              # (3)!
     symbioticlab/zeus:latest \
     bash
 ```
+
+1. Mounts one GPU into the Docker container. `nvidia-docker2` provides this option.
+2. `SYS_ADMIN` capability is needed to manage the power configurations of the GPU via NVML.
+3. PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.
 
 If you would like your changes to `zeus/` outside the container to be immediately applied inside the container, mount the repository into the container:
 
-```sh
+``` { .sh .annotate }
 # Working directory is repository root
 docker run -it \
-    --gpus 1                    `# Mount one GPU` \
-    --cap-add SYS_ADMIN         `# Needed to change the power limit of the GPU` \
-    --shm-size 64G              `# PyTorch DataLoader workers need enough shm` \
-    -v $(pwd):/workspace/zeus   `# Mount the repo into the container` \
+    --gpus 1 \                        # (1)!
+    --cap-add SYS_ADMIN \           # (2)!
+    --shm-size 64G \              # (3)!
+    -v $(pwd):/workspace/zeus \ # (4)!
     symbioticlab/zeus:latest \
     bash
 ```
+
+1. Mounts one GPU into the Docker container. `nvidia-docker2` provides this option.
+2. `SYS_ADMIN` capability is needed to manage the power configurations of the GPU via NVML.
+3. PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.
+4. Mounts the repository directory into the Docker container. Since the `zeus` installation inside the container is editable, changes you made outside will apply immediately.
