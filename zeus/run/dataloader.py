@@ -75,9 +75,9 @@ class ZeusDataLoader(DataLoader):
                                validation metric is reached. Will be cast to float.
       - `ZEUS_LOG_DIR`       : Directory to store profiling logs. (Default:` "zeus_log"`)
       - `ZEUS_JOB_ID`        : String to prefix in logs. (Default:` "zeus"`)
-      - `ZEUS_COST_THRESH`   : Stop training when the energy-time cost (Equation 2)
-                               will exceed this threshold.  (Default:` "inf"`)
-      - `ZEUS_ETA_KNOB`      : Knob to tradeoff between energy and time (Equation 2).
+      - `ZEUS_COST_THRESH`   : Stop training when the energy-time cost will exceed
+                               this threshold.  (Default:` "inf"`)
+      - `ZEUS_ETA_KNOB`      : $\eta$ knob to tradeoff between energy and time.
                                Larger values reduce more energy and sacrifice time.
                                (Default:` "0.5"`)
       - `ZEUS_MONITOR_PATH`  : Path to the Zeus power monitor binary.
