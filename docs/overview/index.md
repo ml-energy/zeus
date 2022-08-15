@@ -30,7 +30,7 @@ How can we optimize the GPU energy consumption of DNN training?
 
 Then, how much energy saving is possible in the ideal case?
 
-To see this, we trained the same DNN multiple times using a sweep of possible **batch sizes** and **GPU power limits**.[^5]
+To see this, we trained the same DNN multiple times using a sweep of possible **batch sizes** and **GPU power limits**.[^4]
 
 <figure>
   <br>
@@ -42,26 +42,13 @@ The shorter the bar, the less the energy consumed.
 You can see that just tuning one of batch size or power limit leads to energy savings, and when we optimize both at the same time, potential savings can be quite large.
 
 
-## The trade-off between time and energy
-
-The first step of optimizing something must be understanding it.
-
-
-
-$$
-\mathtt{Cost}
-$$
-
 
 <!-- Abbreviation definitions -->
 *[DNN]: Deep Neural Network
 *[DNNs]: Deep Neural Networks
-*[ETA]: Energy to Accuracy
-*[TTA]: Time to Accuracy
 
 
 [^1]: Dodge, J., Prewitt, T., Combes, R., Odmark, E., Schwartz, R., Strubell, E., Luccioni, A., Smith, N., DeCario, N., & Buchanan, W. (2022). Measuring the Carbon Intensity of AI in Cloud Instances. In 2022 ACM Conference on Fairness, Accountability, and Transparency (pp. 1877–1894). Association for Computing Machinery.
 [^2]: Patterson, D., Gonzalez, J., Le, Q., Liang, C., Munguia, L.M., Rothchild, D., So, D., Texier, M., & Dean, J.. (2021). Carbon Emissions and Large Neural Network Training.
 [^3]: How much electricity does an American home use? https://www.eia.gov/tools/faqs/faq.php?id=97&t=3.
-[^4]: When we say accuracy, we specifically mean the task validation metric because that's what captures how well the DNN generalizes to never-before-seen data. Please refer to our paper for details on all workloads.
-[^5]: It is possible to cap the maximum power draw of a GPU using [NVML](https://developer.nvidia.com/nvidia-management-library-nvml).
+[^4]: It is possible to cap the maximum power draw of a GPU using [NVML](https://developer.nvidia.com/nvidia-management-library-nvml).
