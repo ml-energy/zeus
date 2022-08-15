@@ -16,11 +16,11 @@
 
 [data-md-color-accent="zeus"] {
   --md-accent-fg-color:              #f7e96d;
-  --md-accent-fg-color--transparent: #f7e96d;
-  --md-accent-bg-color:              #f7e96d;
+  --md-accent-fg-color--transparent: #f7e96e30;
+  --md-accent-bg-color:              #231F20;
   --md-accent-bg-color--light:       #231F20;
 }
 
-.critic-dark {
+[data-md-color-scheme="slate"] .critic-dark {
   --md-typeset-mark-color:      #231F20;
 }
