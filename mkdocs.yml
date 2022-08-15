@@ -30,6 +30,15 @@ theme:
     - scheme: slate
       primary: zeus
       accent: zeus
+      toggle:
+        icon: fontawesome/solid/sun
+        name: Switch to light mode
+    - scheme: default
+      primary: zeus
+      accent: zeus
+      toggle:
+        icon: fontawesome/regular/moon
+        name: Switch to dark mode
 
 
 # MkDocs plugins
