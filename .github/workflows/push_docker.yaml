@@ -13,6 +13,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+      - name: Check if any homepage-related files changed
+        id: changed-files
+        uses: tj-actions/changed-files@v25
+        with:
+          files: |
+            docs
+            zeus
+            mkdocs.yml
+            Dockerfile
+            .github/workflows/deploy_homepage.yaml
       - name: Docker Hub login
         uses: docker/login-action@v2
         with:
@@ -27,7 +37,7 @@ jobs:
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           push: true
-          tags: SymbioticLab/Zeus:latest
-          cache-from: type=registry,ref=SymbioticLab/Zeus:buildcache
-          cache-to: type=registry,ref=SymbioticLab/Zeus:buildcache,mode=max
+          tags: symbioticlab/zeus:latest
+          cache-from: type=registry,ref=symbioticlab/zeus:buildcache
+          cache-to: type=registry,ref=symbioticlab/zeus:buildcache,mode=max
 
