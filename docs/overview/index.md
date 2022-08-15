@@ -20,17 +20,18 @@ In this paper, we observe that common practices to improve training performance 
 
 ## Why care about GPU energy?
 
-In recent years, both academia and industry have seen an increasing adoption of DNNs for intelligent applications, and to support such growth, large clusters of GPUs were created.
+In recent years, both academia and industry have seen an increasing adoption of DNNs for intelligent applications.
+Large clusters of GPUs were created to support such growth, and the surge continues.
 
 GPUs are power-hungry hardware; it was reported that GPUs consume more than 70% of the power of the entire server when training DNNs.[^1]
-At extreme scales, training the GPT-3 model once consumes 1,287 MWh,[^2] which is enough to supply an average US household for 120 years.[^3]
+At extreme scales, training the GPT-3 model just once consumes 1,287 MWh,[^2] which is enough to supply an average US household for 120 years.[^3]
 
 How can we optimize the GPU energy consumption of DNN training?
 
 
 ## Opportunity for energy savings
 
-Then, how much energy saving is possible in the ideal case?
+Our observation is that common practices to minimize the completion time of DNN training can lead to inefficient energy usage.
 
 To see this, we trained[^4] the same DNN multiple times using a sweep of possible **batch sizes** and **GPU power limits**.[^5]
 
@@ -42,7 +43,7 @@ To see this, we trained[^4] the same DNN multiple times using a sweep of possibl
 </figure>
 
 The shorter the bar, the less the energy consumed.
-You can see that just tuning one of batch size or power limit leads to energy savings, and when we optimize both at the same time, potential savings can be quite large.
+You can see that just tuning one of batch size or power limit already leads to energy savings, and when we optimize both at the same time, potential savings can be quite large.
 
 
 ## The trade-off between time and energy
@@ -52,6 +53,7 @@ The first step of optimizing something would be understanding it.
 The highlight of Zeus is that we discover and characterize the trade-off between DNN training time and energy consumption.
 
 <div class="grid" markdown>
+
 <figure>
   <br>
   <img src="img/pareto-annotated-librispeech-dark.svg#only-dark" width=600px>
@@ -63,16 +65,22 @@ The highlight of Zeus is that we discover and characterize the trade-off between
   <br>
   <img src="img/pareto-librispeech-dark.svg#only-dark" width=600px>
   <img src="img/pareto-librispeech-light.svg#only-light" width=600px>
-  <figcaption>The energy-time Pareto front zoomed in.</figcaption>
+  <figcaption>The energy-time Pareto frontier zoomed in.</figcaption>
 </figure>
+
 </div>
 
-The results above are from training the DeepSpeech2 model with LibriSpeech on an NVIDIA V100 GPU.
-Notice the yellow Pareto front of efficient (time, energy) pairs, resulting from a set of efficient (batch size, power limit) knobs.
+These results are from training the DeepSpeech2 model with LibriSpeech on an NVIDIA V100 GPU.
+Notice the yellow Pareto front consisted of efficient (time, energy) pairs, resulting from a set of efficient (batch size, power limit) knobs.
 
-Different users will have different preferences of how they would like to trade off time and energy.
-For instance, production training jobs will have deadlines; they probably don't want to trade time for energy savings.
-On the other hand, exploratory training jobs have more leeway; it might make sense for them to reduce energy consumption at the cost of longer training time.
+
+## A unified metric
+
+All points on the energy-time Pareto frontier are efficient, but which one is the best?
+
+Different users will have different answers, because they have different preferences of how they would like to trade off time and energy.
+For instance, some production training jobs might have tight deadlines; they probably don't want to trade time for energy savings.
+On the other hand, exploratory training jobs may have more leeway; it might make sense for them to reduce energy consumption at the cost of longer training time.
 
 To allow users to express their trade-off preference, we define a simple cost metric[^6]
 
@@ -81,13 +89,14 @@ $$
 $$
 
 where the user picks the value of $\eta$ between 0 and 1.
+Smaller $\eta$ values will reduce more time, while larger ones will prefer to reduce more energy.
 
 
 ## Finding optimal knobs
 
-How do we find the (batch size, power limit) knobs that are on the Pareto frontier?
+Given the user's preference via the value of $\eta$, how do we find the best (batch size, power limit) knob on the Pareto frontier?
 
-This is no easy problem because
+This is no easy problem because:
 
 - GPU power consumption is a black box function of numerous hardware- and workload-dependent factors, and
 - the time the DNN will take to reach its target validation metric is very difficult to predict.
@@ -96,13 +105,16 @@ Fortunately, DNN training jobs often **recur** in production GPU clusters,[^7] a
 
 This results in two main component in Zeus's design:
 
-- **A just-in-time online profiler**. Implemented inside [`ZeusDataLoader`][zeus.run.dataloader.ZeusDataLoader], this module searches for the optimal power limit. It efficiently profiles the time and energy characteristics of the DNN training job in a completely online manner.
+- **A JIT energy profiler**. Implemented inside [`ZeusDataLoader`][zeus.run.dataloader.ZeusDataLoader], this module searches for the optimal power limit. It efficiently profiles the time and energy characteristics of the DNN training job in a completely online manner.
 - **MAB with Thompson Sampling**. Implemented inside [`ZeusMaster`][zeus.run.master.ZeusMaster], this module searches for the optimal batch size. Thanks to its MAB formulation, it is able to intelligently trade off exploration and exploitation across job recurrences.
 
 
 <!-- Abbreviation definitions -->
 *[DNN]: Deep Neural Network
 *[DNNs]: Deep Neural Networks
+*[GPU]: Graphics Processing Unit
+*[GPUs]: Graphics Processing Units
+*[JIT]: Just-in-Time
 *[MAB]: Multi-Armed Bandit
 
 
