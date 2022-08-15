@@ -3,15 +3,15 @@
   <defs>
     <style>
       .cls-1 {
-        fill: #f4a60b;
-      }
-
-      .cls-2 {
         fill: #f7e96d;
       }
 
+      .cls-2 {
+        fill: #ebbc00;
+      }
+
       .cls-3 {
-        fill: #f7ce26;
+        fill: #e79613;
       }
 
       .cls-4 {
@@ -34,37 +34,37 @@
         <rect class="cls-4" x="121.41" y="106.38" width="1.7" height="45.81" transform="translate(-21.09 23.87) rotate(-10.27)"/>
         <rect class="cls-4" x="78.96" y="128.44" width="86.6" height="1.7" transform="translate(-46.84 73.88) rotate(-28.46)"/>
         <g>
-          <circle class="cls-2" cx="87.27" cy="184.1" r="5.96"/>
-          <circle class="cls-2" cx="153.51" cy="171.15" r="5.96"/>
-          <circle class="cls-2" cx="47.75" cy="216.82" r="4.1"/>
-          <circle class="cls-2" cx="231.29" cy="151.83" r="11.09"/>
-          <circle class="cls-2" cx="122.26" cy="129.29" r="4.1"/>
-          <circle class="cls-3" cx="126.34" cy="151.83" r="11.09"/>
-          <circle class="cls-3" cx="78.23" cy="220.56" r="5.96"/>
-          <circle class="cls-3" cx="55.14" cy="187.17" r="5.96"/>
-          <circle class="cls-3" cx="124.61" cy="199.4" r="7.8"/>
-          <circle class="cls-3" cx="84.19" cy="149.92" r="7.56"/>
-          <circle class="cls-3" cx="11.09" cy="247.49" r="11.09"/>
-          <circle class="cls-1" cx="33.31" cy="214.6" r="5.96"/>
-          <circle class="cls-1" cx="125.21" cy="177.11" r="4.1"/>
-          <circle class="cls-1" cx="65.2" cy="202.12" r="4.1"/>
-          <circle class="cls-1" cx="172.58" cy="149.92" r="7.8"/>
+          <circle class="cls-1" cx="87.27" cy="184.1" r="5.96"/>
+          <circle class="cls-1" cx="153.51" cy="171.15" r="5.96"/>
+          <circle class="cls-1" cx="47.75" cy="216.82" r="4.1"/>
+          <circle class="cls-1" cx="231.29" cy="151.83" r="11.09"/>
+          <circle class="cls-1" cx="122.26" cy="129.29" r="4.1"/>
+          <circle class="cls-2" cx="126.34" cy="151.83" r="11.09"/>
+          <circle class="cls-2" cx="78.23" cy="220.56" r="5.96"/>
+          <circle class="cls-2" cx="55.14" cy="187.17" r="5.96"/>
+          <circle class="cls-2" cx="124.61" cy="199.4" r="7.8"/>
+          <circle class="cls-2" cx="84.19" cy="149.92" r="7.56"/>
+          <circle class="cls-2" cx="11.09" cy="247.49" r="11.09"/>
+          <circle class="cls-3" cx="33.31" cy="214.6" r="5.96"/>
+          <circle class="cls-3" cx="125.21" cy="177.11" r="4.1"/>
+          <circle class="cls-3" cx="65.2" cy="202.12" r="4.1"/>
+          <circle class="cls-3" cx="172.58" cy="149.92" r="7.8"/>
         </g>
         <g>
-          <circle class="cls-2" cx="211.21" cy="43.98" r="5.96"/>
-          <circle class="cls-2" cx="119.31" cy="81.47" r="4.1"/>
-          <circle class="cls-2" cx="179.32" cy="56.46" r="4.1"/>
-          <circle class="cls-2" cx="71.94" cy="108.66" r="7.8"/>
-          <circle class="cls-3" cx="157.25" cy="74.48" r="5.96"/>
-          <circle class="cls-3" cx="91.01" cy="87.43" r="5.96"/>
-          <circle class="cls-3" cx="196.77" cy="41.76" r="4.1"/>
-          <circle class="cls-3" cx="160.33" cy="108.66" r="7.56"/>
-          <circle class="cls-3" cx="13.23" cy="106.75" r="11.09"/>
-          <circle class="cls-1" cx="118.18" cy="106.75" r="11.09"/>
-          <circle class="cls-1" cx="166.29" cy="38.02" r="5.96"/>
-          <circle class="cls-1" cx="189.38" cy="71.4" r="5.96"/>
-          <circle class="cls-1" cx="119.91" cy="59.18" r="7.8"/>
-          <circle class="cls-1" cx="233.44" cy="11.09" r="11.09"/>
+          <circle class="cls-1" cx="211.21" cy="43.98" r="5.96"/>
+          <circle class="cls-1" cx="119.31" cy="81.47" r="4.1"/>
+          <circle class="cls-1" cx="179.32" cy="56.46" r="4.1"/>
+          <circle class="cls-1" cx="71.94" cy="108.66" r="7.8"/>
+          <circle class="cls-2" cx="157.25" cy="74.48" r="5.96"/>
+          <circle class="cls-2" cx="91.01" cy="87.43" r="5.96"/>
+          <circle class="cls-2" cx="196.77" cy="41.76" r="4.1"/>
+          <circle class="cls-2" cx="160.33" cy="108.66" r="7.56"/>
+          <circle class="cls-2" cx="13.23" cy="106.75" r="11.09"/>
+          <circle class="cls-3" cx="118.18" cy="106.75" r="11.09"/>
+          <circle class="cls-3" cx="166.29" cy="38.02" r="5.96"/>
+          <circle class="cls-3" cx="189.38" cy="71.4" r="5.96"/>
+          <circle class="cls-3" cx="119.91" cy="59.18" r="7.8"/>
+          <circle class="cls-3" cx="233.44" cy="11.09" r="11.09"/>
         </g>
       </g>
       <g>
