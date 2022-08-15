@@ -31,7 +31,7 @@ How can we optimize the GPU energy consumption of DNN training?
 
 ## Opportunity for energy savings
 
-Our observation is that common practices to minimize the completion time of DNN training can lead to inefficient energy usage.
+Our observation is that common practices of training DNNs can lead to inefficient energy usage.
 
 To see this, we trained[^4] the same DNN multiple times using a sweep of possible **batch sizes** and **GPU power limits**.[^5]
 
