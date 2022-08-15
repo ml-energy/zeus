@@ -13,24 +13,37 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      - name: Check if any homepage-related files changed
+      - name: Check if any core files changed
         id: changed-files
         uses: tj-actions/changed-files@v25
         with:
           files: |
-            docs
+            .github/workflows/push_docker.yaml
+            capriccio
+            examples
+            trace
             zeus
-            mkdocs.yml
+            zeus_monitor
+            .dockerignore
             Dockerfile
-            .github/workflows/deploy_homepage.yaml
+            LICENSE
+            setup.py
+      - name: List all modified files
+        run: |
+          for file in ${{ steps.changed-files.outputs.all_modified_files }}; do
+            echo "$file"
+          done
       - name: Docker Hub login
+        if: steps.changed-files.outputs.any_modified == 'true'
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: Setup Docker Buildx
+        if: steps.changed-files.outputs.any_modified == 'true'
         uses: docker/setup-buildx-action@v2
       - name: Build and push to Docker Hub
+        if: steps.changed-files.outputs.any_modified == 'true'
         uses: docker/build-push-action@v3
         with:
           context: ./
