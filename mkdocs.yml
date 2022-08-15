@@ -15,6 +15,7 @@ copyright: Copyright &copy; 2022 Jae-Won Chung
 # Theme configuration
 theme:
   name: material
+  custom_dir: docs/overrides
   logo: assets/img/logo.svg
   favicon: assets/img/favicon.svg
   icon:
