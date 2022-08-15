@@ -12,7 +12,7 @@
     </g>
     <g id="axes_1">
       <g id="patch_2">
-        <path d="M 44.7 102.74268 L 271.8 102.74268 L 271.8 30.836 L 44.7 30.836 z " style="fill-opacity: 0; fill: rgb(255, 255, 255); stroke: rgb(255, 255, 255);"/>
+        <path d="M 44.7 102.74268 L 271.8 102.74268 L 271.8 30.836 L 44.7 30.836 z " style="fill: rgba(255, 255, 255, 0);"/>
       </g>
       <g id="patch_3">
         <path d="M 54.007377 102.74268 L 61.453279 102.74268 L 61.453279 49.139382 L 54.007377 49.139382 z " clip-path="url(#pb488feb850)" style="opacity: 0.99; fill: rgb(231, 150, 19);"/>
@@ -75,7 +75,7 @@
               <path id="m1c7f2232e4" d="M 0 0 L 0 3.5 " style="stroke: #000000; stroke-width: 0.8"/>
             </defs>
             <g>
-              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 65.17623138427734, 102.74268341064453)"/>
+              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 65.17623138427734, 102.74268341064453)"/>
             </g>
           </g>
           <g id="text_1">
@@ -95,7 +95,7 @@
         <g id="xtick_2">
           <g id="line2d_2">
             <g>
-              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 102.4057388305664, 102.74268341064453)"/>
+              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 102.4057388305664, 102.74268341064453)"/>
             </g>
           </g>
           <g id="text_2">
@@ -112,7 +112,7 @@
         <g id="xtick_3">
           <g id="line2d_3">
             <g>
-              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 139.63523864746094, 102.74268341064453)"/>
+              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 139.63523864746094, 102.74268341064453)"/>
             </g>
           </g>
           <g id="text_3">
@@ -129,7 +129,7 @@
         <g id="xtick_4">
           <g id="line2d_4">
             <g>
-              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 176.86476135253906, 102.74268341064453)"/>
+              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 176.86476135253906, 102.74268341064453)"/>
             </g>
           </g>
           <g id="text_4">
@@ -147,7 +147,7 @@
         <g id="xtick_5">
           <g id="line2d_5">
             <g>
-              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 214.09426879882812, 102.74268341064453)"/>
+              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 214.09426879882812, 102.74268341064453)"/>
             </g>
           </g>
           <g id="text_5">
@@ -166,7 +166,7 @@
         <g id="xtick_6">
           <g id="line2d_6">
             <g>
-              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 251.3237762451172, 102.74268341064453)"/>
+              <path d="M 0 0 L 0 3.5 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 251.3237762451172, 102.74268341064453)"/>
             </g>
           </g>
           <g id="text_6">
@@ -185,7 +185,7 @@
               <path id="m4c115ca45a" d="M 0 0 L -3.5 0 " style="stroke: #000000; stroke-width: 0.8"/>
             </defs>
             <g>
-              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 102.74268341064453)"/>
+              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 102.74268341064453)"/>
             </g>
           </g>
           <g id="text_7">
@@ -197,7 +197,7 @@
         <g id="ytick_2">
           <g id="line2d_8">
             <g>
-              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 89.66873931884766)"/>
+              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 89.66873931884766)"/>
             </g>
           </g>
           <g id="text_8">
@@ -209,7 +209,7 @@
         <g id="ytick_3">
           <g id="line2d_9">
             <g>
-              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 76.59479522705078)"/>
+              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 76.59479522705078)"/>
             </g>
           </g>
           <g id="text_9">
@@ -221,7 +221,7 @@
         <g id="ytick_4">
           <g id="line2d_10">
             <g>
-              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 63.52085494995117)"/>
+              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 63.52085494995117)"/>
             </g>
           </g>
           <g id="text_10">
@@ -233,7 +233,7 @@
         <g id="ytick_5">
           <g id="line2d_11">
             <g>
-              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 50.44691467285156)"/>
+              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 50.44691467285156)"/>
             </g>
           </g>
           <g id="text_11">
@@ -245,7 +245,7 @@
         <g id="ytick_6">
           <g id="line2d_12">
             <g>
-              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 37.37297058105469)"/>
+              <path d="M 0 0 L -3.5 0 " style="stroke-width: 0.8; stroke: rgb(35, 31, 32);" transform="matrix(1, 0, 0, 1, 44.70000076293945, 37.37297058105469)"/>
             </g>
           </g>
           <g id="text_12">
@@ -279,26 +279,26 @@
         </g>
       </g>
       <g id="LineCollection_1">
-        <path d="M -1 37.372971 L 274.6 37.372971 " clip-path="url(#pb488feb850)" style="stroke-dasharray: 1.5, 2.475; stroke-dashoffset: 0; stroke-width: 1.5; fill: rgb(35, 31, 32); paint-order: fill; stroke: rgb(35, 31, 32);"/>
+        <path d="M 46.115 37.373 L 275.803 37.373" clip-path="url(#pb488feb850)" style="fill: none; stroke-dasharray: 1.5, 2.475; stroke-dashoffset: 0; stroke: rgb(35, 31, 32);"/>
       </g>
       <g id="patch_21">
-        <path d="M 44.7 102.74268 L 44.7 30.836 " style="stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);"/>
+        <path d="M 44.7 102.74268 L 44.7 30.836 " style="fill: none; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; stroke: rgb(35, 31, 32);"/>
       </g>
       <g id="patch_22">
-        <path d="M 271.8 102.74268 L 271.8 30.836 " style="stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);"/>
+        <path d="M 271.8 102.74268 L 271.8 30.836 " style="fill: none; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; stroke: rgb(35, 31, 32);"/>
       </g>
       <g id="patch_23">
-        <path d="M 44.7 102.74268 L 271.8 102.74268 " style="stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);"/>
+        <path d="M 44.7 102.74268 L 271.8 102.74268 " style="fill: none; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; stroke: rgb(35, 31, 32);"/>
       </g>
       <g id="patch_24">
-        <path d="M 44.7 30.836 L 271.8 30.836 " style="stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; stroke: rgb(35, 31, 32); fill: rgb(35, 31, 32);"/>
+        <path d="M 44.7 30.836 L 271.8 30.836 " style="fill: none; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square; stroke: rgb(35, 31, 32);"/>
       </g>
       <g id="legend_1">
         <g id="patch_25">
-          <path d="M 46.3 27.240666 L 225.00625 27.240666 Q 226.60625 27.240666 226.60625 25.640666 L 226.60625 3.603166 Q 226.60625 2.003166 225.00625 2.003166 L 46.3 2.003166 Q 44.7 2.003166 44.7 3.603166 L 44.7 25.640666 Q 44.7 27.240666 46.3 27.240666 z " style="fill: rgb(255, 255, 255); opacity: 0.8; stroke: rgb(204, 204, 204); stroke-linejoin: miter; fill-opacity: 0;"/>
+          <path d="M 46.3 27.240666 L 225.00625 27.240666 Q 226.60625 27.240666 226.60625 25.640666 L 226.60625 3.603166 Q 226.60625 2.003166 225.00625 2.003166 L 46.3 2.003166 Q 44.7 2.003166 44.7 3.603166 L 44.7 25.640666 Q 44.7 27.240666 46.3 27.240666 z " style="opacity: 0.8; stroke: rgb(204, 204, 204); stroke-linejoin: miter; fill: rgba(255, 255, 255, 0);"/>
         </g>
         <g id="line2d_13">
-          <path d="M 47.9 8.231916 L 63.9 8.231916 " style="stroke-dasharray: 1.5, 2.475; stroke-dashoffset: 0; stroke-width: 1.5; fill: rgb(233, 235, 252); stroke: rgb(35, 31, 32);"/>
+          <path d="M 47.9 8.231916 L 63.9 8.231916 " style="fill: none; stroke-dasharray: 1.5, 2.475; stroke-dashoffset: 0; stroke: rgb(35, 31, 32);"/>
         </g>
         <g id="text_14">
           <path d="M 71.019 11.032 L 71.019 5.344 L 72.698 5.344 Q 73.613 5.344 74.085 5.721 Q 74.558 6.098 74.558 6.833 Q 74.558 7.274 74.318 7.6 Q 74.077 7.926 73.659 8.067 Q 74.155 8.176 74.458 8.555 Q 74.761 8.934 74.761 9.43 Q 74.761 10.184 74.275 10.608 Q 73.788 11.032 72.921 11.032 Z M 71.499 8.298 L 71.499 10.626 L 72.941 10.626 Q 73.558 10.626 73.919 10.311 Q 74.28 9.997 74.28 9.438 Q 74.28 8.911 73.935 8.604 Q 73.589 8.298 72.98 8.298 Z M 71.499 7.895 L 72.812 7.895 Q 73.413 7.883 73.743 7.612 Q 74.073 7.34 74.073 6.821 Q 74.073 6.274 73.732 6.014 Q 73.39 5.755 72.698 5.755 L 71.499 5.755 Z" style="fill: rgb(35, 31, 32); line-height: normal; white-space: pre;"/>
