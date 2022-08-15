@@ -494,15 +494,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#the-trade-off-between-time-and-energy" class="md-nav__link">
-    <span class="md-ellipsis">
-      The trade-off between time and energy
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1203,15 +1194,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#the-trade-off-between-time-and-energy" class="md-nav__link">
-    <span class="md-ellipsis">
-      The trade-off between time and energy
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1245,7 +1227,7 @@ At extreme scales, training the GPT-3 model once consumes 1,287 MWh,<sup id="fnr
 <p>How can we optimize the GPU energy consumption of <abbr title="Deep Neural Network">DNN</abbr> training?</p>
 <h2 id="opportunity-for-energy-savings">Opportunity for energy savings</h2>
 <p>Then, how much energy saving is possible in the ideal case?</p>
-<p>To see this, we trained the same <abbr title="Deep Neural Network">DNN</abbr> multiple times using a sweep of possible <strong>batch sizes</strong> and <strong>GPU power limits</strong>.<sup id="fnref:5"><a class="footnote-ref" href="#fn:5">5</a></sup></p>
+<p>To see this, we trained the same <abbr title="Deep Neural Network">DNN</abbr> multiple times using a sweep of possible <strong>batch sizes</strong> and <strong>GPU power limits</strong>.<sup id="fnref:4"><a class="footnote-ref" href="#fn:4">4</a></sup></p>
 <figure>
   <br>
   <img src="img/eta-potential-all-v100-dark.svg" width=600px>
@@ -1254,11 +1236,6 @@ At extreme scales, training the GPT-3 model once consumes 1,287 MWh,<sup id="fnr
 
 <p>The shorter the bar, the less the energy consumed.
 You can see that just tuning one of batch size or power limit leads to energy savings, and when we optimize both at the same time, potential savings can be quite large.</p>
-<h2 id="the-trade-off-between-time-and-energy">The trade-off between time and energy</h2>
-<p>The first step of optimizing something must be understanding it.</p>
-<div class="arithmatex">\[
-\mathtt{Cost}
-\]</div>
 <!-- Abbreviation definitions -->
 <div class="footnote">
 <hr />
@@ -1273,10 +1250,7 @@ You can see that just tuning one of batch size or power limit leads to energy sa
 <p>How much electricity does an American home use? https://www.eia.gov/tools/faqs/faq.php?id=97&amp;t=3.&#160;<a class="footnote-backref" href="#fnref:3" title="Jump back to footnote 3 in the text">&#8617;</a></p>
 </li>
 <li id="fn:4">
-<p>When we say accuracy, we specifically mean the task validation metric because that's what captures how well the <abbr title="Deep Neural Network">DNN</abbr> generalizes to never-before-seen data. Please refer to our paper for details on all workloads.&#160;<a class="footnote-backref" href="#fnref:4" title="Jump back to footnote 4 in the text">&#8617;</a></p>
-</li>
-<li id="fn:5">
-<p>It is possible to cap the maximum power draw of a GPU using <a href="https://developer.nvidia.com/nvidia-management-library-nvml">NVML</a>.&#160;<a class="footnote-backref" href="#fnref:5" title="Jump back to footnote 5 in the text">&#8617;</a></p>
+<p>It is possible to cap the maximum power draw of a GPU using <a href="https://developer.nvidia.com/nvidia-management-library-nvml">NVML</a>.&#160;<a class="footnote-backref" href="#fnref:4" title="Jump back to footnote 4 in the text">&#8617;</a></p>
 </li>
 </ol>
 </div>
