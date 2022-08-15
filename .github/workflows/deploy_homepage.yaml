@@ -23,6 +23,7 @@ jobs:
             Dockerfile
             .github/workflows/deploy_homepage.yaml
       - name: List all homepage-related files changed
+        if: steps.changed-files.outputs.any_modified == 'true'
         run: |
           for file in ${{ steps.changed-files.outputs.all_modified_files }}; do
             echo "$file"

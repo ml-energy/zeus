@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
       - name: Check if any core files changed
         id: changed-files
         uses: tj-actions/changed-files@v25
@@ -29,6 +31,7 @@ jobs:
             LICENSE
             setup.py
       - name: List all modified files
+        if: steps.changed-files.outputs.any_modified == 'true'
         run: |
           for file in ${{ steps.changed-files.outputs.all_modified_files }}; do
             echo "$file"
