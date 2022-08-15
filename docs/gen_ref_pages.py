@@ -49,5 +49,4 @@ for path in sorted(Path("zeus").rglob("*.py")):
 with mkdocs_gen_files.open("reference/SUMMARY.md", "w") as nav_file:
     nav_list = list(nav.build_literate_nav())
     nav_list[0] = "* [Source Code Reference](index.md)\n"
-    print(nav_list)
     nav_file.writelines(nav_list)
