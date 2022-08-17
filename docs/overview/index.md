@@ -121,5 +121,5 @@ This results in two main component in Zeus's design:
 [^5]: It is possible to cap the maximum power draw of a GPU using [NVML](https://developer.nvidia.com/nvidia-management-library-nvml).
 [^6]: For instance, some production training jobs might have tight deadlines; they probably don't want to trade time for energy savings. On the other hand, exploratory training jobs may have more leeway; it might make sense for them to reduce energy consumption at the cost of longer training time.
 [^7]: $\textrm{MaxPower}$ is the maximum possible power limit of the GPU. It's just a constant number introduced to equalize the units of the left and right terms to Joules.
-[^8]: Since doing this will consume so much time and energy, it may even offset or exceed the energy savings from choosing the optimal knobs!
+[^8]: Since doing this will consume so much time and energy, it may even offset or exceed the energy savings from choosing the optimal knobs if we decide to do it for every future incoming job!
 [^9]: Kim Hazelwood, Sarah Bird, David Brooks, Soumith Chintala, Utku Diril, Dmytro Dzhulgakov, Mohamed Fawzy, Bill Jia, Yangqing Jia, Aditya Kalro, et al. Applied machine learning at facebook: A datacenter infrastructure perspective. In 2018 IEEE International Symposium on High Performance Computer Architecture (HPCA), pages 620–629. IEEE, 2018.
