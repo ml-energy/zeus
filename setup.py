@@ -25,7 +25,6 @@ setup(
         "torch>=1.10.1",
         "numpy",
         "pandas==1.4.2",
-        "seaborn",
         "scikit-learn",
         "pynvml",
     ],
