@@ -18,7 +18,7 @@ setup(
     name="zeus",
     author="Jae-Won Chung",
     author_email="jwnchung@umich.edu",
-    version="1.0.0",
+    version="0.0.1",
     packages=find_packages("."),
     python_requires=">=3.8",
     install_requires=[
@@ -28,4 +28,7 @@ setup(
         "scikit-learn",
         "pynvml",
     ],
+    extras_require={
+        "dev": ["pylint==2.14.5", "black==22.6.0", "pydocstyle==6.1.1"],
+    }
 )
