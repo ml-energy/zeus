@@ -44,7 +44,7 @@ jobs:
       - name: Build homepage
         run: mkdocs build
         if: steps.changed-files.outputs.any_modified == 'true'
-      - name: Generate a small README tor ml-energy/zeus
+      - name: Generate a small README for ml-energy/zeus
         run: echo -e "# Zeus Homepage\nGo to https://github.com/SymbioticLab/Zeus for the main Zeus repository." > site/README.md
         if: steps.changed-files.outputs.any_modified == 'true'
       - name: Push the built homepage to ml-energy/zeus
