@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: 3.9
       - name: Install lint tools
-        run: pip install pylint black pydocstyle
+        run: pip install . pylint black pydocstyle
       - name: Run lint
         run: |
           black --check --exclude examples/cifar100/models zeus capriccio examples
