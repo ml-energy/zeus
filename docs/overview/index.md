@@ -44,6 +44,7 @@ To see this, we trained[^4] the same DNN multiple times using a sweep of possibl
   <figcaption>Potential energy savings on an NVIDIA V100 GPU.</figcaption>
 </figure>
 
+The baseline dotted line uses the default batch size from the model's publication and the default (maximum) GPU power limit.
 It can be seen that choosing the best batch size and power limit can lead to large energy savings.
 
 
@@ -99,10 +100,10 @@ This is no easy problem. We only have the Pareto frontier in the previous plot b
 
 Fortunately, DNN training jobs often **recur** in production GPU clusters,[^9] allowing us to explore, observe, and optimize **across job recurrences**.
 
-This results in two main component in Zeus's design:
+This results in two main components in Zeus:
 
-- **JIT energy profiler** ([`ZeusDataLoader`][zeus.run.dataloader.ZeusDataLoader]). Finds the optimal power limit via online profiling.
-- **MAB + Thompson Sampling** ([`ZeusMaster`][zeus.run.master.ZeusMaster]). Finds the optimal batch size across recurrences.
+- **JIT energy profiler** ([`ZeusDataLoader`][zeus.run.dataloader.ZeusDataLoader]): Finds the optimal power limit via online profiling.
+- **MAB + Thompson Sampling** ([`ZeusMaster`][zeus.run.master.ZeusMaster]): Finds the optimal batch size across recurrences.
 
 
 <!-- Abbreviation definitions -->
