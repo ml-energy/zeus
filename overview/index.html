@@ -1320,7 +1320,8 @@ We argue that <strong>energy</strong> should be considered as the <strong>third 
   <figcaption>Potential energy savings on an NVIDIA V100 GPU.</figcaption>
 </figure>
 
-<p>It can be seen that choosing the best batch size and power limit can lead to large energy savings.</p>
+<p>The baseline dotted line uses the default batch size from the model's publication and the default (maximum) <abbr title="Graphics Processing Unit">GPU</abbr> power limit.
+It can be seen that choosing the best batch size and power limit can lead to large energy savings.</p>
 <h2 id="tradeoff-between-time-energy">Tradeoff between time &amp; energy</h2>
 <p>Is energy reduction free?</p>
 <p>We discover that there is a <strong>tradeoff</strong> between <abbr title="Deep Neural Network">DNN</abbr> training time and energy consumption.</p>
@@ -1353,10 +1354,10 @@ Smaller <span class="arithmatex">\(\eta\)</span> values will reduce more time, w
 <p>Given the user's preference via the value of <span class="arithmatex">\(\eta\)</span>, how do we find the best (batch size, power limit) knob on the Pareto frontier?</p>
 <p>This is no easy problem. We only have the Pareto frontier in the previous plot because we trained all possible combinations of batch size and power limit until completion to characterize the tradeoff.<sup id="fnref:8"><a class="footnote-ref" href="#fn:8">8</a></sup></p>
 <p>Fortunately, <abbr title="Deep Neural Network">DNN</abbr> training jobs often <strong>recur</strong> in production <abbr title="Graphics Processing Unit">GPU</abbr> clusters,<sup id="fnref:9"><a class="footnote-ref" href="#fn:9">9</a></sup> allowing us to explore, observe, and optimize <strong>across job recurrences</strong>.</p>
-<p>This results in two main component in Zeus's design:</p>
+<p>This results in two main components in Zeus:</p>
 <ul>
-<li><strong><abbr title="Just-in-Time">JIT</abbr> energy profiler</strong> (<a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a>). Finds the optimal power limit via online profiling.</li>
-<li><strong><abbr title="Multi-Armed Bandit">MAB</abbr> + Thompson Sampling</strong> (<a class="autorefs autorefs-internal" href="../reference/run/master/#zeus.run.master.ZeusMaster"><code>ZeusMaster</code></a>). Finds the optimal batch size across recurrences.</li>
+<li><strong><abbr title="Just-in-Time">JIT</abbr> energy profiler</strong> (<a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a>): Finds the optimal power limit via online profiling.</li>
+<li><strong><abbr title="Multi-Armed Bandit">MAB</abbr> + Thompson Sampling</strong> (<a class="autorefs autorefs-internal" href="../reference/run/master/#zeus.run.master.ZeusMaster"><code>ZeusMaster</code></a>): Finds the optimal batch size across recurrences.</li>
 </ul>
 <!-- Abbreviation definitions -->
 <div class="footnote">
