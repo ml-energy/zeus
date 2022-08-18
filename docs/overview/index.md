@@ -49,7 +49,7 @@ It can be seen that choosing the best batch size and power limit can lead to lar
 
 ## Tradeoff between time & energy
 
-Is energy savings something we can get for free?
+Is energy reduction free?
 
 We discover that there is a **tradeoff** between DNN training time and energy consumption.
 
