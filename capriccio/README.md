@@ -32,4 +32,4 @@ raw_datasets = datasets.load_dataset("json", data_files=data_path)
 
 For a full example, you can use [`examples/capriccio/train.py`](../examples/capriccio/train.py) to fine-tune a Huggingface pre-trained language model on a slice of Capriccio.
 Parts relevant to using Capriccio are marked with `# CAPRICCIO` in the script.
-With the script, you can also profile power and time consumption using `ProfileDataLoader` or run the Zeus optimizer end-to-end.
+With the script, you can also profile power and time consumption using [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) or run the Zeus optimizer end-to-end.
