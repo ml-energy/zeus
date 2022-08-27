@@ -23,13 +23,11 @@ All dependencies are pre-installed if you're using our Docker image.
 ### Building the power monitor
 
 ```sh
-# Working directory is repository root
-cd monitor
 cmake .
 make
 ```
 
-The resulting power monitor binary is `zeus_monitor/zeus_monitor` (`/workspace/zeus/zeus_monitor/zeus_monitor` inside the Docker container).
+The resulting power monitor binary is `zeus_monitor` (`/workspace/zeus/zeus_monitor/zeus_monitor` inside the Docker container).
 
 ## Zemo (Zeus Monitor) library
 
