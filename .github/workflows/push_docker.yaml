@@ -30,7 +30,7 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: Generate image metadata
-        if: meta
+        id: meta
         uses: docker/metadata-action@v4
         with:
           images: symbioticlab/zeus
