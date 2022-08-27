@@ -15,14 +15,15 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="zeus",
+    name="zeus-ml",
     author="Jae-Won Chung",
     author_email="jwnchung@umich.edu",
-    version="0.0.1",
+    url="https://github.com/SymbioticLab/Zeus",
+    version="0.1.0",
     packages=find_packages("."),
     python_requires=">=3.8",
     install_requires=[
-        "torch>=1.10.1",
+        "torch",
         "numpy",
         "pandas==1.4.2",
         "scikit-learn",
