@@ -16,14 +16,27 @@ from setuptools import setup, find_packages
 
 setup(
     name="zeus-ml",
-    author="Jae-Won Chung",
-    author_email="jwnchung@umich.edu",
-    url="https://github.com/SymbioticLab/Zeus",
+    version="0.1.0",
+    description="An Energy Optimization Framework for DNN Training"
     long_description="# Zeus: An Energy Optimization Framework for DNN Training\n",
     long_description_content_type="text/markdown",
-    version="0.1.0",
+    url="https://github.com/SymbioticLab/Zeus",
+    author="Jae-Won Chung",
+    author_email="jwnchung@umich.edu",
+    license="Apache-2.0",
+    classifiers=[
+        "Environment :: GPU :: NVIDIA CUDA",
+        "License :: OSI Approved :: Apache Software License",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+    ],
+    keywords=["deep-learning", "power", "energy", "mlsys"],
+    project_urls={
+        "Documentation": "https://ml.energy/zeus",
+    },
     packages=find_packages("."),
-    python_requires=">=3.8",
     install_requires=[
         "torch",
         "numpy",
@@ -31,6 +44,7 @@ setup(
         "scikit-learn",
         "pynvml",
     ],
+    python_requires=">=3.8",
     extras_require={
         "dev": ["pylint==2.14.5", "black==22.6.0", "pydocstyle==6.1.1"],
     }
