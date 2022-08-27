@@ -1,9 +1,6 @@
 name: Lint and check format
 
-on:
-  push:
-    branches:
-      - '**'
+on: [push, pull_request]
 
 jobs:
   lint_and_check_format:

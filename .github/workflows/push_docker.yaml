@@ -6,6 +6,17 @@ on:
       - master
     tags:
       - v*
+    paths:
+      - '.github/workflows/push_docker.yaml'
+      - 'capriccio/**'
+      - 'examples/**'
+      - 'trace/**'
+      - 'zeus/**'
+      - 'zeus_monitor/**'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - 'LICENSE'
+      - 'setup.py'
 
 jobs:
   build_and_push:
@@ -13,47 +24,29 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
-      - name: Check if any core files changed
-        id: changed-files
-        uses: tj-actions/changed-files@v25
-        with:
-          files: |
-            .github/workflows/push_docker.yaml
-            capriccio
-            examples
-            trace
-            zeus
-            zeus_monitor
-            .dockerignore
-            Dockerfile
-            LICENSE
-            setup.py
-      - name: List all modified files
-        if: steps.changed-files.outputs.any_modified == 'true'
-        run: |
-          for file in ${{ steps.changed-files.outputs.all_modified_files }}; do
-            echo "$file"
-          done
       - name: Docker Hub login
-        if: steps.changed-files.outputs.any_modified == 'true'
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Generate image metadata
+        if: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: symbioticlab/zeus
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
       - name: Setup Docker Buildx
-        if: steps.changed-files.outputs.any_modified == 'true'
         uses: docker/setup-buildx-action@v2
       - name: Build and push to Docker Hub
-        if: steps.changed-files.outputs.any_modified == 'true'
         uses: docker/build-push-action@v3
         with:
-          context: ./
-          file: ./Dockerfile
+          context: .
+          file: Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           push: true
-          tags: symbioticlab/zeus:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=symbioticlab/zeus:buildcache
           cache-to: type=registry,ref=symbioticlab/zeus:buildcache,mode=max
-

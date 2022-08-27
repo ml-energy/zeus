@@ -1,8 +1,6 @@
-name: Deploy homepage
+name: Check homepage build
 on:
-  push:
-    branches:
-      - master
+  pull_request:
     paths:
       - 'docs/**'
       - 'zeus/**'
@@ -28,17 +26,4 @@ jobs:
       - name: Install other homepage dependencies
         run: pip install -r docs/requirements.txt
       - name: Build homepage
-        run: mkdocs build
-      - name: Generate a small README for ml-energy/zeus
-        run: echo -e "# Zeus Homepage\nGo to https://github.com/SymbioticLab/Zeus for the main Zeus repository." > site/README.md
-      - name: Push the built homepage to ml-energy/zeus
-        uses: cpina/github-action-push-to-another-repository@v1.5
-        env:
-          SSH_DEPLOY_KEY: ${{ secrets.ML_ENERGY_ZEUS_SSH_KEY }}
-        with:
-          source-directory: site
-          destination-github-username: ml-energy
-          destination-repository-name: zeus
-          user-name: Jae-Won Chung
-          user-email: jwnchung@umich.edu
-          target-branch: master
+        run: mkdocs build --verbose --strict
