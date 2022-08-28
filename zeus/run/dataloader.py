@@ -142,6 +142,9 @@ class ZeusDataLoader(DataLoader):
         self.log_prefix = f"\n[ZeusDataLoader({self.split})]"
         if self._is_train:
             if ZeusDataLoader.train_batch_size != 0:
+                # If max_epochs is specified when initializing a eval dataloader, 
+                # it will mistaken itself as a train dataloader.
+                # In this case, raise a ValueError.
                 raise ValueError("Specify max_epochs only to the train dataloader.")
             ZeusDataLoader.train_batch_size = batch_size
 
@@ -181,6 +184,7 @@ class ZeusDataLoader(DataLoader):
         self.power_json = f"{self.logdir}/bs{self.train_batch_size}.power.json"
 
         # Numbers related to the dataloader.
+        # sample_num: the number of batches processed in the current epoch.
         self.epoch_num = 0
         self.sample_num = 0
         self.num_samples = len(self)
@@ -254,7 +258,7 @@ class ZeusDataLoader(DataLoader):
         Training should stop when
 
         - the cost reached the cost threshold, or
-        - the maximum number of epochs was eached, or
+        - the maximum number of epochs was reached, or
         - the target metric was reached.
 
         When done, stores the job results in `train_json`.
@@ -288,6 +292,8 @@ class ZeusDataLoader(DataLoader):
                 f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, cost={cost:.2f}"
             )
 
+            # target_metric_reached is set when the current validation metric is reported to
+            # the train dataloader after the end of each epoch.
             # Stop if the target metric was reached.
             if self.target_metric_reached:
                 self._log(f"Target metric {self.target_metric} was reached! Stopping.")
@@ -522,7 +528,7 @@ class ZeusDataLoader(DataLoader):
             )
             # The same power limit was cut off two times.
             # This means that the epoch ends too quick for the full profile window
-            # to fit in. Currently this is treated as an error.
+            # (warmup_sec + profile_sec) to fit in. Currently this is treated as an error.
             if self.prev_cutoff_pl == self.current_gpu_pl:
                 raise RuntimeError(
                     "Epoch ends too quickly, and even one power limit cannot be profiled"
@@ -542,6 +548,8 @@ class ZeusDataLoader(DataLoader):
         # Compute and save average power.
         # The monitor is still running, so we just integrate from the beginning
         # of this profiling window (of course exclude warmup) up to now.
+        # The power log file only records for the current epoch, 
+        # so we compute an offset.
         avg_power = analyze.avg_power(
             self._power_log_path, start=self.prof_start_time - self.epoch_start_time
         )
@@ -558,10 +566,13 @@ class ZeusDataLoader(DataLoader):
 
         self._log(f"Profile done with power limit {self.current_gpu_pl//1000}W")
 
-        # If we're done with all power limits,, compute the optimal power limit
+        # If we're done with all power limits, compute the optimal power limit
         # and change to that power limit for the rest of the epoch.
         # This will lead to the eval epoch being run with the optimal power limit,
         # and since self.should_profile is still True, tput/power will be profiled.
+        # Profiling the optimal power limit on eval set will help us better predict
+        # the time and energy consumed in the next eval epoch. This helps the prediction
+        # of whether running next epoch will exceed the cost threshold.
         if not self._power_limits_left:
             self._log("This was the last power limit to explore.")
             ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
@@ -639,6 +650,8 @@ class ZeusDataLoader(DataLoader):
             self._start_monitor()
             # If we're not profiling, use the steady state power limit.
             # If we are profiling, the power limit will be set in __next__ with warmup.
+            # Power limit result is already loaded in when initializing the train dataloader,
+            # so we just set the power limit directly.
             if not self._should_profile:
                 self._set_gpu_steady_power_limit()
 
@@ -685,6 +698,7 @@ class ZeusDataLoader(DataLoader):
                 self.train_epoch_energy.append(energy_consumption)
             else:
                 # We just killed the monitor. Integrate the last time_consumption seconds.
+                # We set the `start` to exclude the logs during train time.
                 energy_consumption = analyze.energy(
                     self._power_log_path, start=-time_consumption
                 )

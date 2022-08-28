@@ -82,7 +82,7 @@ class ProfileDataLoader(DataLoader):
             only_scale_time: If True, the whole dataset will be used for training, but
                 the measured epoch latency will still be scaled based on the value of
                 `subset_proportion`. This is useful when you already manually scaled down
-                the size of an existing dataset, but still want to simualte training the
+                the size of an existing dataset, but still want to simulate training the
                 original large dataset.
             eat_batch_size: If True, does not pass the `batch_size` argument to the
                 constructor of DataLoader. You won't usually need this.
@@ -141,10 +141,10 @@ class ProfileDataLoader(DataLoader):
                 for index in range(count):
                     monitor_cmd = [
                         self.monitor_path,
-                        self.log_prefix + f"+gpu{index}.power.csv",
-                        "0",
-                        str(self.monitor_sleep_ms),
-                        str(index),
+                        self.log_prefix + f"+gpu{index}.power.csv",  # Power log file
+                        "0",                                         # Duration
+                        str(self.monitor_sleep_ms),                  # Monitor sleep time (ms)
+                        str(index),                                  # GPU_id
                     ]
                     print(f"Launching Zeus monitor {index}...")
                     ProfileDataLoader.monitor.append(
