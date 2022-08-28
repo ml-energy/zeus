@@ -142,7 +142,7 @@ class ZeusDataLoader(DataLoader):
         self.log_prefix = f"\n[ZeusDataLoader({self.split})]"
         if self._is_train:
             if ZeusDataLoader.train_batch_size != 0:
-                # If max_epochs is specified when initializing a eval dataloader, 
+                # If max_epochs is specified when initializing a eval dataloader,
                 # it will mistaken itself as a train dataloader.
                 # In this case, raise a ValueError.
                 raise ValueError("Specify max_epochs only to the train dataloader.")
@@ -548,7 +548,7 @@ class ZeusDataLoader(DataLoader):
         # Compute and save average power.
         # The monitor is still running, so we just integrate from the beginning
         # of this profiling window (of course exclude warmup) up to now.
-        # The power log file only records for the current epoch, 
+        # The power log file only records for the current epoch,
         # so we compute an offset.
         avg_power = analyze.avg_power(
             self._power_log_path, start=self.prof_start_time - self.epoch_start_time
