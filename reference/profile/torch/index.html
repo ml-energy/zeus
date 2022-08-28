@@ -1582,7 +1582,7 @@ the GPUs that you would like to use.</p>
 <span class="sd">            only_scale_time: If True, the whole dataset will be used for training, but</span>
 <span class="sd">                the measured epoch latency will still be scaled based on the value of</span>
 <span class="sd">                `subset_proportion`. This is useful when you already manually scaled down</span>
-<span class="sd">                the size of an existing dataset, but still want to simualte training the</span>
+<span class="sd">                the size of an existing dataset, but still want to simulate training the</span>
 <span class="sd">                original large dataset.</span>
 <span class="sd">            eat_batch_size: If True, does not pass the `batch_size` argument to the</span>
 <span class="sd">                constructor of DataLoader. You won&#39;t usually need this.</span>
@@ -1641,10 +1641,10 @@ the GPUs that you would like to use.</p>
                 <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">count</span><span class="p">):</span>
                     <span class="n">monitor_cmd</span> <span class="o">=</span> <span class="p">[</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">monitor_path</span><span class="p">,</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">log_prefix</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;+gpu</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">.power.csv&quot;</span><span class="p">,</span>
-                        <span class="s2">&quot;0&quot;</span><span class="p">,</span>
-                        <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">monitor_sleep_ms</span><span class="p">),</span>
-                        <span class="nb">str</span><span class="p">(</span><span class="n">index</span><span class="p">),</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">log_prefix</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;+gpu</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">.power.csv&quot;</span><span class="p">,</span>  <span class="c1"># Power log file</span>
+                        <span class="s2">&quot;0&quot;</span><span class="p">,</span>  <span class="c1"># Duration</span>
+                        <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">monitor_sleep_ms</span><span class="p">),</span>  <span class="c1"># Monitor sleep time (ms)</span>
+                        <span class="nb">str</span><span class="p">(</span><span class="n">index</span><span class="p">),</span>  <span class="c1"># GPU_id</span>
                     <span class="p">]</span>
                     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Launching Zeus monitor </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
                     <span class="n">ProfileDataLoader</span><span class="o">.</span><span class="n">monitor</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
@@ -1786,7 +1786,7 @@ whole datset was used.</p></td>
           <td><p>If True, the whole dataset will be used for training, but
 the measured epoch latency will still be scaled based on the value of
 <code>subset_proportion</code>. This is useful when you already manually scaled down
-the size of an existing dataset, but still want to simualte training the
+the size of an existing dataset, but still want to simulate training the
 original large dataset.</p></td>
           <td>
                 <code>False</code>
@@ -1900,7 +1900,7 @@ constructor of DataLoader. You won't usually need this.</p></td>
 <span class="sd">        only_scale_time: If True, the whole dataset will be used for training, but</span>
 <span class="sd">            the measured epoch latency will still be scaled based on the value of</span>
 <span class="sd">            `subset_proportion`. This is useful when you already manually scaled down</span>
-<span class="sd">            the size of an existing dataset, but still want to simualte training the</span>
+<span class="sd">            the size of an existing dataset, but still want to simulate training the</span>
 <span class="sd">            original large dataset.</span>
 <span class="sd">        eat_batch_size: If True, does not pass the `batch_size` argument to the</span>
 <span class="sd">            constructor of DataLoader. You won&#39;t usually need this.</span>
@@ -2011,10 +2011,10 @@ constructor of DataLoader. You won't usually need this.</p></td>
             <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">count</span><span class="p">):</span>
                 <span class="n">monitor_cmd</span> <span class="o">=</span> <span class="p">[</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">monitor_path</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">log_prefix</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;+gpu</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">.power.csv&quot;</span><span class="p">,</span>
-                    <span class="s2">&quot;0&quot;</span><span class="p">,</span>
-                    <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">monitor_sleep_ms</span><span class="p">),</span>
-                    <span class="nb">str</span><span class="p">(</span><span class="n">index</span><span class="p">),</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">log_prefix</span> <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;+gpu</span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">.power.csv&quot;</span><span class="p">,</span>  <span class="c1"># Power log file</span>
+                    <span class="s2">&quot;0&quot;</span><span class="p">,</span>  <span class="c1"># Duration</span>
+                    <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">monitor_sleep_ms</span><span class="p">),</span>  <span class="c1"># Monitor sleep time (ms)</span>
+                    <span class="nb">str</span><span class="p">(</span><span class="n">index</span><span class="p">),</span>  <span class="c1"># GPU_id</span>
                 <span class="p">]</span>
                 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Launching Zeus monitor </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
                 <span class="n">ProfileDataLoader</span><span class="o">.</span><span class="n">monitor</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>

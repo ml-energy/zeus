@@ -2,127 +2,127 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://ml.energy/zeus/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/extend/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/getting_started/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/getting_started/environment/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/getting_started/installing_and_building/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/overview/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>None</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/analyze/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/job/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/simulate/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/policy/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/policy/interface/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/policy/mab/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/policy/optimizer/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/profile/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/profile/torch/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/run/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/run/dataloader/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/run/master/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/util/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/util/check/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/util/logging/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/util/lr_scaler/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://ml.energy/zeus/reference/util/metric/</loc>
-         <lastmod>2022-08-27</lastmod>
+         <lastmod>2022-08-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
 </urlset>
