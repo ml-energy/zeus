@@ -142,9 +142,9 @@ class ProfileDataLoader(DataLoader):
                     monitor_cmd = [
                         self.monitor_path,
                         self.log_prefix + f"+gpu{index}.power.csv",  # Power log file
-                        "0",                                         # Duration
-                        str(self.monitor_sleep_ms),                  # Monitor sleep time (ms)
-                        str(index),                                  # GPU_id
+                        "0",  # Duration
+                        str(self.monitor_sleep_ms),  # Monitor sleep time (ms)
+                        str(index),  # GPU_id
                     ]
                     print(f"Launching Zeus monitor {index}...")
                     ProfileDataLoader.monitor.append(
