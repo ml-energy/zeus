@@ -15,7 +15,7 @@
 #---------------------------------------------------------------------------------------
 # Define Project-Wide Settings
 #---------------------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.17)
 
 # Define the Project Name and Description
 project(zeus LANGUAGES CXX DESCRIPTION "Zeus: An Energy Optimization Framework for DNN Training")
