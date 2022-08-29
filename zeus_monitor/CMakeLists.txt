@@ -15,7 +15,7 @@
 #---------------------------------------------------------------------------------------
 # Define Project-Wide Settings
 #---------------------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.14)
 
 # Define the Project Name and Description
 project(zeus LANGUAGES CXX DESCRIPTION "Zeus: An Energy Optimization Framework for DNN Training")
@@ -67,3 +67,4 @@ target_include_directories(zeus_monitor PRIVATE
   zemo
   ${CUDAToolkit_INCLUDE_DIRS}
 )
+install(TARGETS zeus_monitor DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
