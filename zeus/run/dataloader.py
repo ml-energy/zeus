@@ -22,6 +22,7 @@ import os
 import signal
 import subprocess
 import time
+import logging
 from functools import cached_property
 from pathlib import Path
 from typing import Generator
@@ -158,7 +159,7 @@ class ZeusDataLoader(DataLoader):
         self.batch_size = batch_size
         self.split = "train" if max_epochs != -1 else "eval"
         self.max_epochs = max_epochs
-        self.log_prefix = f"\n[ZeusDataLoader({self.split})]"
+        self.log_prefix = f"[ZeusDataLoader({self.split})]"
         if self._is_train:
             if ZeusDataLoader.train_batch_size != 0:
                 # If max_epochs is specified when initializing a eval dataloader,
@@ -232,6 +233,14 @@ class ZeusDataLoader(DataLoader):
             f"{self.logdir}/{self.job_id}+bs{self.train_batch_size}.train.json"
         )
         self.power_json = f"{self.logdir}/bs{self.train_batch_size}.power.json"
+
+        # Config logging
+        self.logger = logging.Logger(__name__)
+        self.logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
 
         # Numbers related to the dataloader.
         # sample_num: the number of batches processed in the current epoch.
@@ -564,13 +573,13 @@ class ZeusDataLoader(DataLoader):
         )
         self._set_gpu_power_limit(power_limit)
 
-    def _log(self, message: str) -> None:
+    def _log(self, message: str, level=logging.INFO) -> None:
         """Print out message with prefix.
 
         Args:
             message: The message to log out.
         """
-        print(self.log_prefix, message, flush=True)
+        self.logger.log(level, f"{self.log_prefix} {message}")
 
     @cached_property
     def _is_train(self) -> bool:
@@ -710,7 +719,8 @@ class ZeusDataLoader(DataLoader):
                     )
                 except ValueError:
                     self._log(
-                        "ValueError from analyze.avg_power, please consider increasing self.profile_iter."
+                        "ValueError from analyze.avg_power, please consider increasing self.profile_iter.",
+                        logging.WARNING
                     )
                     raise
                 sum_avg_power += avg_power
