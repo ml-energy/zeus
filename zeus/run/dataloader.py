@@ -238,7 +238,7 @@ class ZeusDataLoader(DataLoader):
         self.logger = logging.Logger(__name__)
         self.logger.setLevel(logging.INFO)
         handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s %(message)s')
+        formatter = logging.Formatter("%(asctime)s %(message)s")
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
 
@@ -579,7 +579,7 @@ class ZeusDataLoader(DataLoader):
         Args:
             message: The message to log out.
         """
-        self.logger.log(level, f"{self.log_prefix} {message}")
+        self.logger.log(level, "%s %s", self.log_prefix, message)
 
     @cached_property
     def _is_train(self) -> bool:
@@ -720,7 +720,7 @@ class ZeusDataLoader(DataLoader):
                 except ValueError:
                     self._log(
                         "ValueError from analyze.avg_power, please consider increasing self.profile_iter.",
-                        logging.WARNING
+                        logging.WARNING,
                     )
                     raise
                 sum_avg_power += avg_power
