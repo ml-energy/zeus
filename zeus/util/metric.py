@@ -17,7 +17,9 @@
 from __future__ import annotations
 
 
-def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int) -> float:
+def zeus_cost(
+    energy: float, time: float, eta_knob: float, max_power: int, num_gpus: int = 1
+) -> float:
     """Compute Zeus's energy-time cost metric.
 
     Trades off ETA and TTA based on the value of `eta_knob`.
@@ -33,4 +35,4 @@ def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int) -> fl
     Returns:
         The cost of the DL training job.
     """
-    return eta_knob * energy + (1 - eta_knob) * max_power * time
+    return eta_knob * energy + (1 - eta_knob) * max_power * num_gpus * time
