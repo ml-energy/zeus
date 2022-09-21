@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
   if (argc > 4) {
     gpu_index = std::atoi(argv[4]);
   }
-
+  // TODO: logging
   std::cout << "Monitor started." << std::endl;
   if (duration == 0) {
     std::cout << "Running indefinitely. ";

@@ -6,7 +6,7 @@ Zeus automatically tunes the **batch size** and **GPU power limit** of a recurri
     Zeus can optimize the batch size of **recurring** jobs, i.e. training jobs that re-run multiple times over time. However, Zeus can still optimize the GPU power limit even if your jobs does not recur.
 
 !!! Info
-    Zeus currently only supports **single GPU training**. Support for single-node data parallel training and distributed data parallel training will be added soon.
+    Zeus currently supports **single GPU training** and **single node data parallel training**. Support for distributed data parallel training will be added soon.
 
 ## Prerequisites
 
@@ -33,6 +33,9 @@ for epoch_number in train_loader.epochs():
     for batch in eval_loader:
         # Evaluate on batch
 
+    # NOTE: If doing multi-processing data parallel training, please make sure
+    # to call `dist.all_reduce()` to reduce the validation metric across all GPUs
+    # before calling `train_loader.report_metric()`.
     train_loader.report_metric(validation_metric)
 ```
 

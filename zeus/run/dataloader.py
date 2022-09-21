@@ -37,12 +37,20 @@ from torch.utils.data.distributed import DistributedSampler
 
 from zeus import analyze
 from zeus.util.check import get_env
-from zeus.util.metric import zeus_cost
+from zeus.util.metric import ZeusCostThresholdExceededException, zeus_cost
 
 # JIT profiling states
 NOT_PROFILING = "NOT_PROFILING"
 WARMING_UP = "WARMING_UP"
 PROFILING = "PROFILING"
+
+# Config logging
+LOG = logging.Logger(__name__)
+LOG.setLevel(logging.INFO)
+LOG_HANDLER = logging.StreamHandler()
+LOG_FORMATTER = logging.Formatter("%(asctime)s %(message)s")
+LOG_HANDLER.setFormatter(LOG_FORMATTER)
+LOG.addHandler(LOG_HANDLER)
 
 
 class ZeusDataLoader(DataLoader):
@@ -65,8 +73,9 @@ class ZeusDataLoader(DataLoader):
             # Learn from batch
         for batch in eval_loader:
             # Evaluate on batch
-        # NOTE: If doing multi-processing distributed training, please make sure
-        # to call `dist.all_reduce()` to reduce the validation metric on all GPUs
+
+        # NOTE: If doing multi-processing data parallel training, please make sure
+        # to call `dist.all_reduce()` to reduce the validation metric across all GPUs
         # before calling `train_loader.report_metric()`.
         train_loader.report_metric(validation_metric)
     ```
@@ -96,8 +105,8 @@ class ZeusDataLoader(DataLoader):
                                in Section 5. (Default:` "True"`)
     """
 
-    # A global power monitor instance.
-    monitor: subprocess.Popen | None = None
+    # A global power monitor instances.
+    monitors: list[subprocess.Popen] = []
 
     # The power limit currently set for the GPU.
     current_gpu_pl: int = 0
@@ -137,6 +146,7 @@ class ZeusDataLoader(DataLoader):
         *args,
         batch_size: int,
         max_epochs: int = -1,
+        distributed: str | None = None,
         **kwargs,
     ) -> None:
         """Initialize the dataloader.
@@ -145,15 +155,23 @@ class ZeusDataLoader(DataLoader):
             batch_size: Batch size to use for training.
             max_epochs: Maximum number of epochs to train. **Specify this parameter only
                 to the train data loader.**
+            distributed: Distributed strategy to use for training. If training with single GPU,
+                this value should be None; if training using data parallel with multi-GPU on
+                a single node, this value should be "dp".
 
         Raises:
-            RuntimeError:
-                - torch.distributed package is not available.
-                - The default process group is not initialized.
-                - The current process is not in the default process group.
-            ValueError:
-                - DistributedSampler passed in self.sampler is inconsistent with
-                  the default process group.
+            RuntimeError: `torch.distributed` package is not available.
+            RuntimeError: The default process group is not initialized. Make sure to call
+                `torch.distributed.init_process_group` to initialize the default process
+                group before doing a multiprocessing distributed training.
+            ValueError: `self.sampler` is not an instance of DistributedSampler. An instance of
+                DistributedSampler will shuffle and distribute data among GPUs, so it is required
+                for data paralle training.
+            ValueError: DistributedSampler passed in self.sampler is inconsistent with the default
+                process group. Currently, we assume that all the GPUs in the node will be used for
+                training. In this case, the DistributedSampler should have
+                `sampler.num_replicas == torch.distributed.get_world_size()`
+                and `sampler.rank == torch.distributed.get_rank()`.
         """
         # Sanity checks.
         self.batch_size = batch_size
@@ -177,15 +195,24 @@ class ZeusDataLoader(DataLoader):
         self.rank = 0
         # Check whether we are doing a distributed training.
         # Pass in world size and rank.
-        # QA: will it be better to let user pass in as an argument? i.e. `ZeusDataLoader(..., distributed=True)``
-        if isinstance(getattr(self, "sampler", None), DistributedSampler):
+
+        self.distributed = distributed
+
+        if self.distributed == "dp":
             # Check if the distributed package is available.
             if not dist.is_available():
                 raise RuntimeError("Requires distributed package to be available.")
-            # Check if the process group is initialized
+            # Check if the process group is initialized.
             if not dist.is_initialized():
                 raise RuntimeError(
-                    "Default process group has not been initialized, please make sure to call init_process_group."
+                    "Default process group has not been initialized,"
+                    " please make sure to call init_process_group."
+                )
+            # Check if `self.sampler` is an instance of DistributedSampler.
+            if not isinstance(getattr(self, "sampler", None), DistributedSampler):
+                raise ValueError(
+                    "Sampler is not an instance of DistributedSampler."
+                    " Data parallel training on multi-GPU requires a DistributedSampler."
                 )
             # Check the consistency between the sampler and process group.
             if (
@@ -193,14 +220,15 @@ class ZeusDataLoader(DataLoader):
                 or self.sampler.rank != dist.get_rank()
             ):
                 raise ValueError(
-                    "Sampler is inconsistent with the default process group."
+                    "DistributedSampler is inconsistent with the default process group."
                 )
             self.world_size = dist.get_world_size()
             self.rank = dist.get_rank()
-            if self.world_size < 0:
-                raise RuntimeError(
-                    "The current process's rank is not in the default process group."
-                )
+
+        if self._is_train and self.rank == 0:
+            self._log(
+                f"Distributed data parallel: {'ON' if self.world_size > 1 else 'OFF'}"
+            )
 
         # Retrieve environment variables from ZeusMaster.
         self.target_metric = get_env("ZEUS_TARGET_METRIC", float)
@@ -233,14 +261,6 @@ class ZeusDataLoader(DataLoader):
             f"{self.logdir}/{self.job_id}+bs{self.train_batch_size}.train.json"
         )
         self.power_json = f"{self.logdir}/bs{self.train_batch_size}.power.json"
-
-        # Config logging
-        self.logger = logging.Logger(__name__)
-        self.logger.setLevel(logging.INFO)
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter("%(asctime)s %(message)s")
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
 
         # Numbers related to the dataloader.
         # sample_num: the number of batches processed in the current epoch.
@@ -315,9 +335,12 @@ class ZeusDataLoader(DataLoader):
 
             def exit_hook():
                 pynvml.nvmlShutdown()
-                if self.monitor is not None:
-                    self.monitor.kill()
-                    print(f"[ZeusDataLoader] Stopped Zeus monitor at GPU_{self.rank}.")
+                if self.monitors:
+                    # Master process kills all the monitors.
+                    if self.rank == 0:
+                        for index, monitor in enumerate(self.monitors):
+                            monitor.kill()
+                            self._log(f"[GPU_{index}] Stopped Zeus monitor.")
 
             atexit.register(exit_hook)
 
@@ -470,26 +493,27 @@ class ZeusDataLoader(DataLoader):
 
                 # Stop if the predicted cost of the next epoch exceeds the cost threshold.
                 if next_cost >= self.cost_thresh:
-                    self._log(
-                        f"Next expected cost exceeds cost threshold {self.cost_thresh:.2f}! Stopping."
-                    )
+                    # Save training results
                     self._save_train_results(
                         energy_consumed, time_consumed, cost, False
                     )
-                    # QA: I think all process should exit in this case. Otherwise, only the master process
-                    #     will exit. Other processes will enter next epoch and start zeus_monitor.
-                    #     But that means other process should record the time/energy-consumed as well.
-                    return
+                    # Raise error
+                    raise ZeusCostThresholdExceededException(
+                        time_consumed,
+                        energy_consumed,
+                        cost,
+                        next_cost,
+                        self.cost_thresh,
+                    )
 
             yield self.epoch_num
 
     def report_metric(self, metric: float, higher_is_better: bool) -> None:
         """Report the validation metric to the train dataloader.
 
-        NOTE:
-            If doing multi-processing distributed training, please make sure
-            to call `dist.all_reduce()` to reduce the validation metric on
-            all GPUs before calling `train_loader.report_metric()`.
+        NOTE: If doing multi-processing data parallel training, please make sure
+        to call `dist.all_reduce()` to reduce the validation metric across all GPUs
+        before calling `train_loader.report_metric()`.
 
         Args:
             metric: The validation metric of the current epoch.
@@ -579,7 +603,7 @@ class ZeusDataLoader(DataLoader):
         Args:
             message: The message to log out.
         """
-        self.logger.log(level, "%s %s", self.log_prefix, message)
+        LOG.log(level, "%s %s", self.log_prefix, message)
 
     @cached_property
     def _is_train(self) -> bool:
@@ -593,22 +617,31 @@ class ZeusDataLoader(DataLoader):
     def _start_monitor(self) -> None:
         """Start the power monitor subprocess."""
         # Sanity checks.
-        assert ZeusDataLoader.monitor is None
+        assert not ZeusDataLoader.monitors
+        # Only the master process starts the monitors.
+        assert self.rank == 0
 
-        # Start monitor. Every process manages its own zeus monitor.
-        ZeusDataLoader.monitor = subprocess.Popen(
-            [self.monitor_path, self._power_log_path(self.rank), "0", "100"],
-        )
+        # Start monitors. Master process starts and records all monitors.
+        for index in range(self.world_size):
+            monitor = subprocess.Popen(
+                [self.monitor_path, self._power_log_path(index), "0", "100"],
+            )
+            ZeusDataLoader.monitors.append(monitor)
 
     def _kill_monitor(self) -> None:
         """Kill the power monitor subprocess."""
         # Sanity checks.
-        assert ZeusDataLoader.monitor is not None
+        assert ZeusDataLoader.monitors
+        # Only the master process kills the monitors.
+        assert self.rank == 0
 
-        # Kill monitor.
-        ZeusDataLoader.monitor.send_signal(signal.SIGINT)
-        ZeusDataLoader.monitor.wait(timeout=1.0)
-        ZeusDataLoader.monitor = None
+        # Kill monitors. Master process kills all monitors.
+        for monitor in ZeusDataLoader.monitors:
+            monitor.send_signal(signal.SIGINT)
+            monitor.wait(timeout=1.0)
+
+        # Cleanup the monitor list
+        ZeusDataLoader.monitors = []
 
     def _start_warmup(self) -> None:
         """Let the GPU run for some time with the poewr limit to profile."""
@@ -663,10 +696,12 @@ class ZeusDataLoader(DataLoader):
                 because the current epoch ended before that.
 
         Raises:
-            RuntimeError: cutoff happens twice for the same power limit value.
-                One epoch is too short for profiling even one power limit.
-            ValueError: ValueError raised by analyze.avg_power, might due to
-                profile window too small.
+            RuntimeError: Cutoff happens twice for the same power limit value. This means
+                that the epoch ends too quick for the full profile window. In this case,
+                user should consider decreasing profile window (warmup_iter + profile_iter).
+            ValueError: ValueError raised by sklearn.metrics.auc in analyze.avg_power,
+                might due to profile window too small. In this case, user should consider
+                increasing profile window.
         """
         # Sanity checks.
         assert self._should_profile, f"end_prof: {self._should_profile=}"
@@ -675,11 +710,11 @@ class ZeusDataLoader(DataLoader):
         self.prof_state = NOT_PROFILING
 
         # Nothing left to do if the window was terminated prematurely.
-        # QA: the cutoff check is only for master process now.
         if cutoff:
             assert self.rank == 0
             self._log(
-                f"Profiling with power limit {self.current_gpu_pl//1000}W cut off!"
+                f"Profiling with power limit {self.current_gpu_pl//1000}W cut off!",
+                level=logging.WARNING,
             )
             # The same power limit was cut off two times.
             # This means that the epoch ends too quick for the full profile window
@@ -764,7 +799,8 @@ class ZeusDataLoader(DataLoader):
         with open(self.power_json, "w") as f:
             json.dump(prof_result, f)
         with open(self.power_json, "r") as f:
-            self._log(f"Power profiling done.\nSaved {self.power_json}: {f.read()}")
+            self._log("Power profiling done.")
+            self._log(f"Saved {self.power_json}: {f.read()}")
 
     def _load_power_results(self) -> None:
         """Load power profiling information into the class from `power_json`."""
@@ -808,7 +844,8 @@ class ZeusDataLoader(DataLoader):
         with open(self.train_json, "w") as f:
             json.dump(train_result, f)
         with open(self.train_json, "r") as f:
-            self._log(f"Training done.\nSaved {self.train_json}: {f.read()}")
+            self._log("Training done.")
+            self._log(f"Saved {self.train_json}: {f.read()}")
 
     # pylint: disable=attribute-defined-outside-init
     def __iter__(self):
@@ -826,16 +863,15 @@ class ZeusDataLoader(DataLoader):
         self.iter = super().__iter__()
 
         # The power limit of the GPU is only changed by the train dataloader.
-        if self._is_train:
+        if self._is_train and self.rank == 0:
             # The train loader always starts the monitor, and the eval loader kills it.
             self._start_monitor()
             # If we're not profiling, use the steady state power limit.
             # If we are profiling, the power limit will be set in __next__ with warmup.
             # Power limit result is already loaded in when initializing the train dataloader,
             # so we just set the power limit directly.
-            if self.rank == 0:
-                if not self._should_profile:
-                    self._set_gpu_steady_power_limit()
+            if not self._should_profile:
+                self._set_gpu_steady_power_limit()
 
         return self
 
@@ -853,7 +889,7 @@ class ZeusDataLoader(DataLoader):
             torch.cuda.synchronize()
 
             # The eval dataloader kills the monitor.
-            if not self._is_train:
+            if not self._is_train and self.rank == 0:
                 self._kill_monitor()
 
             # Compute epoch time and energy consumption.

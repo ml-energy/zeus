@@ -36,3 +36,29 @@ def zeus_cost(
         The cost of the DL training job.
     """
     return eta_knob * energy + (1 - eta_knob) * max_power * num_gpus * time
+
+
+class ZeusCostThresholdExceededException(Exception):
+    """
+    Raised when the predicted cost of the next epoch exceeds the cost threshold.
+    """
+
+    def __init__(
+        self,
+        time_consumed: float,
+        energy_consumed: float,
+        cost: float,
+        next_cost: float,
+        cost_thresh: float,
+    ) -> None:
+        msg = (
+            f"Next expected cost {next_cost:.2f} exceeds cost threshold {cost_thresh:.2f}! "
+            f"Stopping. Saved training results: time={time_consumed:.2f}, "
+            f"energy={energy_consumed:.2f}, cost={cost:.2f}, reached=false"
+        )
+        super().__init__(msg)
+        self.time_consumed = time_consumed
+        self.energy_consumed = energy_consumed
+        self.cost = cost
+        self.next_cost = next_cost
+        self.cost_thresh = cost_thresh

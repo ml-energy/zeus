@@ -1,3 +1,31 @@
+"""
+This script trains imagenet dataset. Currently only support single node.
+    - Enable multiprocessing training with `--multiprocessing-distributed`.
+    - Enable Zeus with `--zeus`.
+
+Commands:
+    - Spawn the processes inside this program (this will use all GPUs on current node):
+        [WARNING: This is NOT recommended. No process management is provided for this launching method. Please consider using the others.]
+        $ python ./main.py [DATA_DIR] --multiprocessing-distributed --zeus [OTHER_OPTIONS]
+    - Use torch.distributed.launch utility:
+        $ python -m torch.distributed.launch --nnodes=1 --nproc_per_node=[NUM_OF_GPUS] --node_rank=0 --master_addr="localhost" --master_port=8888 ./main.py [DATA_DIR] --zeus [OTHER_OPTIONS]
+    - Use torchrun:
+        $ torchrun --nnodes 1 --nproc_per_node [NUM_OF_GPUS] ./main.py [DATA_DIR] --zeus --torchrun [OTHER_OPTIONS]
+    - Use Slurm:
+        - Example script.sh:
+            ```sh
+            #!/bin/bash
+            #SBATCH --partition=gpu
+            #SBATCH --nodes=1                           # number of nodes (single node)
+            #SBATCH --ntasks-per-node=[NUM_OF_GPUS]     # number of tasks per node (1 task per GPU)
+            #SBATCH --gres=gpu:[NUM_OF_GPUS]            # number of GPUs reserved per node (here all the GPUs)
+            #SBATCH --mem=64GB
+            #SBATCH --hint=nomultithreaded
+            ```
+        - On terminal:
+            $ sbatch script.sh
+"""
+
 import argparse
 import os
 import random
@@ -22,6 +50,10 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils.data import Subset
 from zeus.run import ZeusDataLoader
+from torch.distributed.elastic.multiprocessing.errors import (
+    record,
+)  # NOTE: for debugging purpose, will be removed later
+
 
 model_names = sorted(
     name
@@ -180,34 +212,6 @@ best_acc1 = 0
 
 
 def main():
-    """
-    This script trains imagenet dataset. Currently only support single node.
-        - Enable multiprocessing training with `--multiprocessing-distributed`.
-        - Enable Zeus with `--zeus`.
-
-    Commands:
-        - Spawn the processes inside this program (this will use all GPUs on current node):
-            $ python ./main.py [DATA_DIR] --multiprocessing-distributed --zeus [OTHER_OPTIONS]
-        - Use torch.distributed.launch utility:
-            $ python -m torch.distributed.launch --nnodes=1 --nproc_per_node=[NUM_OF_GPUS] --node_rank=0 --master_addr="localhost" --master_port=8888 ./main.py [DATA_DIR] --multiprocessing-distributed --zeus [OTHER_OPTIONS]
-        - Use torchrun:
-            $ torchrun --nnodes 1 --nproc_per_node [NUM_OF_GPUS] ./main.py [DATA_DIR] --multiprocessing-distributed --zeus --torchrun [OTHER_OPTIONS]
-        - Use Slurm:
-            - Example script.sh:
-                ```sh
-                #!/bin/bash
-                #SBATCH --partition=gpu
-                #SBATCH --nodes=1                           # number of nodes (single node)
-                #SBATCH --ntasks-per-node=[NUM_OF_GPUS]     # number of tasks per node (1 task per GPU)
-                #SBATCH --gres=gpu:[NUM_OF_GPUS]            # number of GPUs reserved per node (here all the GPUs)
-                #SBATCH --cpus-per-task=2                   # number of CPUs per task
-                #SBATCH --mem=64GB
-                #SBATCH --hint=nomultithreaded
-                srun python main.py
-                ```
-            - On terminal:
-                $ sbatch script.sh
-    """
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -254,17 +258,21 @@ def main():
             )
         )
 
-    # if args.dist_url == "env://" and args.world_size == -1:
-    #     args.world_size = int(os.environ["WORLD_SIZE"])
-    args.world_size = 1  # NOTE: For single node
-    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
-
-    ngpus_per_node = torch.cuda.device_count()
-
+    # Integrate launching by `torchrun` and `torch.distributed.launch`
+    # by retrieving local rank from environment variable LOCAL_RANK.
     if args.torchrun:
         args.local_rank = int(os.environ["LOCAL_RANK"])
 
-    if args.multiprocessing_distributed and args.local_rank == -1:
+    # if args.dist_url == "env://" and args.world_size == -1:
+    #     args.world_size = int(os.environ["WORLD_SIZE"])
+    args.world_size = 1  # NOTE: For single node
+    args.distributed = (
+        args.world_size > 1 or args.multiprocessing_distributed or args.local_rank >= 0
+    )
+
+    ngpus_per_node = torch.cuda.device_count()
+
+    if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
         args.world_size = ngpus_per_node * args.world_size
@@ -273,13 +281,15 @@ def main():
 
         # If using torch.distributed.launch, we don't need to spawn processes by ourselves
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
-    elif args.multiprocessing_distributed and args.local_rank >= 0:
+    elif args.local_rank >= 0:
+        # Use `torch.distributed.launch` or `turchrun`, simply call main_worker at `local_rank`
         main_worker(args.local_rank, ngpus_per_node, args)
     else:
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
 
+@record
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
     args.gpu = gpu
@@ -440,9 +450,14 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.zeus:
         os.environ["ZEUS_TARGET_METRIC"] = str(args.target_metric)
 
+        zeus_distributed = (
+            "dp" if args.multiprocessing_distributed or args.local_rank >= 0 else None
+        )
+
         train_loader = ZeusDataLoader(
             train_dataset,
             batch_size=args.batch_size,
+            distributed=zeus_distributed,
             max_epochs=args.epochs,
             shuffle=(train_sampler is None),
             num_workers=args.workers,
@@ -453,6 +468,7 @@ def main_worker(gpu, ngpus_per_node, args):
         val_loader = ZeusDataLoader(
             val_dataset,
             batch_size=args.batch_size,
+            distributed=zeus_distributed,
             shuffle=False,
             num_workers=args.workers,
             pin_memory=True,
@@ -611,6 +627,7 @@ def validate(val_loader, model, criterion, args):
     top1 = AverageMeter("Acc@1", ":6.2f", Summary.AVERAGE)
     top5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(
+        # TODO: look into this
         len(val_loader)
         + (
             args.distributed
