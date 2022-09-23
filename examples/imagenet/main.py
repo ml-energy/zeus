@@ -4,14 +4,14 @@ This script trains imagenet dataset. Currently only support single node.
     - Enable Zeus with `--zeus`.
 
 Commands:
-    - Spawn the processes inside this program (this will use all GPUs on current node):
+    - Using `torch.multiprocessing`
         [WARNING: This is NOT recommended. No process management is provided for this launching method. Please consider using the others.]
-        $ python ./main.py [DATA_DIR] --multiprocessing-distributed --zeus [OTHER_OPTIONS]
-    - Use torch.distributed.launch utility:
-        $ python -m torch.distributed.launch --nnodes=1 --nproc_per_node=[NUM_OF_GPUS] --node_rank=0 --master_addr="localhost" --master_port=8888 ./main.py [DATA_DIR] --zeus [OTHER_OPTIONS]
-    - Use torchrun:
-        $ torchrun --nnodes 1 --nproc_per_node [NUM_OF_GPUS] ./main.py [DATA_DIR] --zeus --torchrun [OTHER_OPTIONS]
-    - Use Slurm:
+        $ python train.py [DATA_DIR] --multiprocessing-distributed --zeus [OTHER_OPTIONS]
+    - Using `torch.distributed.launch` utility:
+        $ python -m torch.distributed.launch --nnodes=1 --nproc_per_node=[NUM_OF_GPUS] train.py [DATA_DIR] --zeus [OTHER_OPTIONS]
+    - Using `torchrun`:
+        $ torchrun --nnodes 1 --nproc_per_node [NUM_OF_GPUS] train.py [DATA_DIR] --zeus --torchrun [OTHER_OPTIONS]
+    - Using Slurm:
         - Example script.sh:
             ```sh
             #!/bin/bash
@@ -20,7 +20,6 @@ Commands:
             #SBATCH --ntasks-per-node=[NUM_OF_GPUS]     # number of tasks per node (1 task per GPU)
             #SBATCH --gres=gpu:[NUM_OF_GPUS]            # number of GPUs reserved per node (here all the GPUs)
             #SBATCH --mem=64GB
-            #SBATCH --hint=nomultithreaded
             ```
         - On terminal:
             $ sbatch script.sh
@@ -31,7 +30,7 @@ import os
 import random
 import time
 import warnings
-import socket
+import subprocess
 from enum import Enum
 
 import torch
@@ -49,170 +48,170 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils.data import Subset
+
+# ZEUS
 from zeus.run import ZeusDataLoader
+from zeus.profile.torch import ProfileDataLoader
+
 from torch.distributed.elastic.multiprocessing.errors import (
     record,
 )  # NOTE: for debugging purpose, will be removed later
 
 
-model_names = sorted(
-    name
-    for name in models.__dict__
-    if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
-)
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
 
-parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
-parser.add_argument(
-    "data",
-    metavar="DIR",
-    nargs="?",
-    default="/data/imagenet",
-    help="path to dataset (default: imagenet)",
-)
-parser.add_argument(
-    "-a",
-    "--arch",
-    metavar="ARCH",
-    default="resnet18",
-    choices=model_names,
-    help="model architecture: " + " | ".join(model_names) + " (default: resnet18)",
-)
-parser.add_argument(
-    "-j",
-    "--workers",
-    default=4,
-    type=int,
-    metavar="N",
-    help="number of data loading workers (default: 4)",
-)
-parser.add_argument(
-    "--epochs", default=90, type=int, metavar="N", help="number of total epochs to run"
-)
-parser.add_argument(
-    "--start-epoch",
-    default=0,
-    type=int,
-    metavar="N",
-    help="manual epoch number (useful on restarts)",
-)
-parser.add_argument(
-    "-b",
-    "--batch-size",
-    default=256,
-    type=int,
-    metavar="N",
-    help="mini-batch size (default: 256), this is the total "
-    "batch size of all GPUs on the current node when "
-    "using Data Parallel or Distributed Data Parallel",
-)
-parser.add_argument(
-    "--lr",
-    "--learning-rate",
-    default=0.1,
-    type=float,
-    metavar="LR",
-    help="initial learning rate",
-    dest="lr",
-)
-parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum")
-parser.add_argument(
-    "--wd",
-    "--weight-decay",
-    default=1e-4,
-    type=float,
-    metavar="W",
-    help="weight decay (default: 1e-4)",
-    dest="weight_decay",
-)
-parser.add_argument(
-    "-p",
-    "--print-freq",
-    default=10,
-    type=int,
-    metavar="N",
-    help="print frequency (default: 10)",
-)
-parser.add_argument(
-    "--resume",
-    default="",
-    type=str,
-    metavar="PATH",
-    help="path to latest checkpoint (default: none)",
-)
-parser.add_argument(
-    "-e",
-    "--evaluate",
-    dest="evaluate",
-    action="store_true",
-    help="evaluate model on validation set",
-)
-parser.add_argument(
-    "--pretrained", dest="pretrained", action="store_true", help="use pre-trained model"
-)
-parser.add_argument(
-    "--world-size",
-    default=-1,
-    type=int,
-    help="number of nodes for distributed training",
-)
-parser.add_argument(
-    "--local-rank", default=-1, type=int, help="node rank for distributed training"
-)
-parser.add_argument(
-    "--dist-url",
-    default="env://",
-    type=str,
-    help="url used to set up distributed training",
-)
-parser.add_argument(
-    "--dist-backend", default="nccl", type=str, help="distributed backend"
-)
-parser.add_argument(
-    "--seed", default=None, type=int, help="seed for initializing training. "
-)
-parser.add_argument("--gpu", default=None, type=int, help="GPU id to use.")
-parser.add_argument(
-    "--multiprocessing-distributed",
-    action="store_true",
-    help="Use multi-processing distributed training to launch "
-    "N processes per node, which has N GPUs. This is the "
-    "fastest way to use PyTorch for either single node or "
-    "multi node data parallel training",
-)
-parser.add_argument("--dummy", action="store_true", help="use fake data to benchmark")
-parser.add_argument("--zeus", action="store_true", help="use ZeusDataLoader")
-parser.add_argument(
-    "--target-metric", default=0.7, type=float, help="Stop when target metric achieved"
-)
-parser.add_argument(
-    "--log", default=None, type=str, help="Log file for training and validating results"
-)
-parser.add_argument(
-    "--local_rank",
-    default=-1,
-    type=int,
-    help="local rank, necessary for using the torch.distributed.launch utility",
-)
-parser.add_argument(
-    "--master_addr",
-    default="localhost",
-    type=str,
-    help="address of master node, `localhost` for single-node",
-)
-parser.add_argument(
-    "--master_port",
-    default=random.randint(49152, 65535),
-    type=int,
-    help="port of master node",
-)
-parser.add_argument("--torchrun", action="store_true", help="use torchrun")
+    # List choices of models
+    model_names = sorted(
+        name
+        for name in models.__dict__
+        if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
+    )
 
+    parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
+
+    # ImageNet
+    parser.add_argument(
+        "data",
+        metavar="DIR",
+        nargs="?",
+        default="/data/imagenet",
+        help="path to dataset (default: /data/imagenet)",
+    )
+    parser.add_argument(
+        "-a",
+        "--arch",
+        metavar="ARCH",
+        default="resnet18",
+        choices=model_names,
+        help="model architecture: " + " | ".join(model_names) + " (default: resnet18)",
+    )
+    parser.add_argument(
+        "-j",
+        "--workers",
+        default=4,
+        type=int,
+        metavar="N",
+        help="number of data loading workers (default: 4)",
+    )
+    parser.add_argument(
+        "--epochs", default=90, type=int, metavar="N", help="number of total epochs to run"
+    )
+    parser.add_argument(
+        "--start-epoch",
+        default=0,
+        type=int,
+        metavar="N",
+        help="manual epoch number (useful on restarts)",
+    )
+    parser.add_argument(
+        "-b",
+        "--batch-size",
+        default=256,
+        type=int,
+        metavar="N",
+        help="mini-batch size (default: 256), this is the total "
+        "batch size of all GPUs on the current node when "
+        "using Data Parallel or Distributed Data Parallel",
+    )
+    parser.add_argument(
+        "--lr",
+        "--learning-rate",
+        default=0.1,
+        type=float,
+        metavar="LR",
+        help="initial learning rate",
+        dest="lr",
+    )
+    parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum")
+    parser.add_argument(
+        "--wd",
+        "--weight-decay",
+        default=1e-4,
+        type=float,
+        metavar="W",
+        help="weight decay (default: 1e-4)",
+        dest="weight_decay",
+    )
+    parser.add_argument(
+        "-p",
+        "--print-freq",
+        default=10,
+        type=int,
+        metavar="N",
+        help="print frequency (default: 10)",
+    )
+    parser.add_argument(
+        "-e",
+        "--evaluate",
+        dest="evaluate",
+        action="store_true",
+        help="evaluate model on validation set",
+    )
+    parser.add_argument(
+        "--pretrained", dest="pretrained", action="store_true", help="use pre-trained model"
+    )
+    parser.add_argument(
+        "--dist-url",
+        default="tcp://127.0.0.1:12306",
+        type=str,
+        help="url used to set up distributed training",
+    )
+    parser.add_argument(
+        "--dist-backend", default="nccl", type=str, help="distributed backend"
+    )
+    parser.add_argument(
+        "--seed", default=None, type=int, help="seed for initializing training. "
+    )
+    parser.add_argument("--gpu", default=None, type=int, help="GPU id to use.")
+    parser.add_argument(
+        "--multiprocessing-distributed",
+        action="store_true",
+        help="Use `torch.multiprocessing` to launch N processes on this node, "
+        "which has N GPUs. PLEASE DO NOT use this argument if you are using "
+        "`torchrun` or ``torch.distributed.launch`.",
+    )
+    parser.add_argument("--dummy", action="store_true", help="use fake data to benchmark")
+    
+    # ZEUS
+    parser.add_argument("--zeus", action="store_true", help="Whether to run Zeus.")
+    parser.add_argument("--profile", action="store_true", help="Whether to just profile power.")
+    parser.add_argument(
+        "--target_metric",
+        default=None,
+        type=float,
+        help=(
+            "Stop training when the target metric is reached. This is ignored when running in Zeus mode because"
+            " ZeusDataLoader will receive the target metric via environment variable and stop training by itself."
+        ),
+    )
+
+    # DATA PARALLEL
+    parser.add_argument(
+        "--local_rank",
+        default=-1,
+        type=int,
+        help="Local rank for data parallel training. This is necessary for using the `torch.distributed.launch` utility.",
+    )
+    parser.add_argument("--torchrun", action="store_true", help="Use torchrun. This means we will read local_rank from environment variable set by `torchrun`.")
+
+    args = parser.parse_args()
+
+    # Sanity check
+    # QA: necessary or not?
+    if args.multipocessing_distributed and (args.torchrun or args.local_rank >= 0):
+        raise ValueError(
+            "Can not set --multiprocessing-distributed when using `torch.distributed.launch` or `torchrun`. "
+            "Please refer to the docstring for more info about launching methods."
+        )
+
+    return args
 
 best_acc1 = 0
 
 
 def main():
-    args = parser.parse_args()
+    args = parse_args()
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -232,60 +231,74 @@ def main():
             "disable data parallelism."
         )
 
-    if args.world_size == -1 and "SLURM_NPROCS" in os.environ:
-        args.world_size = int(os.environ["SLURM_NPROCS"])
-        args.rank = int(os.environ["SLURM_PROCID"])
-        jobid = os.environ["SLURM_JOBID"]
-        hostfile = "dist_url." + jobid + ".txt"
-        if args.dist_file is not None:
-            args.dist_url = "file://{}.{}".format(
-                os.path.realpath(args.dist_file), jobid
-            )
-        elif args.rank == 0:
-            ip = socket.gethostbyname(socket.gethostname())
-            port = random.randint(49152, 65535)
-            args.dist_url = "tcp://{}:{}".format(ip, port)
-            with open(hostfile, "w") as f:
-                f.write(args.dist_url)
-        else:
-            while not os.path.exists(hostfile):
-                time.sleep(1)
-            with open(hostfile, "r") as f:
-                args.dist_url = f.read()
-        print(
-            "dist-url:{} at PROCID {} / {}".format(
-                args.dist_url, args.rank, args.world_size
-            )
-        )
+    # Preparation for SLURM
+    if "SLURM_PROCID" in os.environ:
+        # Retrieve local_rank.
+        # NOTE: We only consider Single GPU for now. So `local_rank == rank`.
+        args.local_rank = int(os.environ["SLURM_PROCID"])
 
+        # QA: I find using MASTER_ADDR and MASTER_PORT more clear (to me).
+        #     Let's just tell user they need to set these envs, otherwise,
+        #     we pick a port on the node for them.
+        # Source: https://gist.github.com/andrewssobral/4bf5700ad258b807e7b9d10106e467ea#file-pytorch-distributed-slurm-example-py-L129
+        # jobid = os.environ["SLURM_JOBID"]
+        # hostfile = "dist_url." + jobid + ".txt"
+        # if args.dist_file is not None:
+        #     args.dist_url = "file://{}.{}".format(
+        #         os.path.realpath(args.dist_file), jobid
+        #     )
+        # elif args.rank == 0:
+        #     ip = socket.gethostbyname(socket.gethostname())
+        #     port = random.randint(49152, 65535)
+        #     args.dist_url = "tcp://{}:{}".format(ip, port)
+        #     with open(hostfile, "w") as f:
+        #         f.write(args.dist_url)
+        # else:
+        #     while not os.path.exists(hostfile):
+        #         time.sleep(1)
+        #     with open(hostfile, "r") as f:
+        #         args.dist_url = f.read()
+        # print(
+        #     "dist-url:{} at PROCID {} / {}".format(
+        #         args.dist_url, args.rank, args.world_size
+        #     )
+        # )
+
+        # Source: https://github.com/BIGBALLON/distribuuuu/blob/master/tutorial/mnmc_ddp_slurm.py#L28
+        # Retrieve the node address
+        node_list = os.environ["SLURM_NODELIST"]
+        addr = subprocess.getoutput(f"scontrol show hostname {node_list} | head -n1")
+        # Specify master address and master port
+        if "MASTER_ADDR" not in os.environ:
+            os.environ["MASTER_ADDR"] = addr
+        if "MASTER_PORT" not in os.environ:
+            os.environ["MASTER_PORT"] = "29500"
+
+    # Preparation for torchrun.
     # Integrate launching by `torchrun` and `torch.distributed.launch`
     # by retrieving local rank from environment variable LOCAL_RANK.
     if args.torchrun:
         args.local_rank = int(os.environ["LOCAL_RANK"])
 
-    # if args.dist_url == "env://" and args.world_size == -1:
-    #     args.world_size = int(os.environ["WORLD_SIZE"])
-    args.world_size = 1  # NOTE: For single node
-    args.distributed = (
-        args.world_size > 1 or args.multiprocessing_distributed or args.local_rank >= 0
-    )
+    # Manual specify MASTER_ADDR and MASTER_PORT if using `torch.multiprocessing`.
+    # if args.multiprocessing_distributed:
+    #     os.environ["MASTER_ADDR"] = args.master_addr
+    #     os.environ["MASTER_PORT"] = str(args.master_port)
 
+    args.distributed = args.multiprocessing_distributed or args.local_rank >= 0
     ngpus_per_node = torch.cuda.device_count()
 
     if args.multiprocessing_distributed:
-        # Since we have ngpus_per_node processes per node, the total world_size
-        # needs to be adjusted accordingly
-        args.world_size = ngpus_per_node * args.world_size
-        # Use torch.multiprocessing.spawn to launch distributed processes: the
-        # main_worker process function
-
-        # If using torch.distributed.launch, we don't need to spawn processes by ourselves
+        # Use `torch.multiprocessing.spawn` to launch distributed processes: the
+        # main_worker process function.
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     elif args.local_rank >= 0:
-        # Use `torch.distributed.launch` or `turchrun`, simply call main_worker at `local_rank`
+        # Use `torch.distributed.launch` or `turchrun` or `slurm`.
+        # Simply call `main_worker` at `local_rank`.
         main_worker(args.local_rank, ngpus_per_node, args)
     else:
-        # Simply call main_worker function
+        # Use a specific GPU.
+        # Simply call main_worker function.
         main_worker(args.gpu, ngpus_per_node, args)
 
 
@@ -298,25 +311,19 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Use GPU: {} for training".format(args.gpu))
 
     if args.distributed:
-        # if args.dist_url == "env://" and args.rank == -1:
-        #     args.rank = int(os.environ["RANK"])
-        args.rank = gpu  # NOTE: For single node
-        # if args.multiprocessing_distributed:
-        #     # For multiprocessing distributed training, rank needs to be the
-        #     # global rank among all the processes
-        #     args.rank = args.rank * ngpus_per_node + gpu
-
-        # If we use torch.distributed.launch or torch, we don't need to worry about the env.
-        if args.local_rank == -1:
-            os.environ["MASTER_ADDR"] = args.master_addr
-            os.environ["MASTER_PORT"] = str(args.master_port)
+        if args.multiprocessing_distributed:
+            # Use `torch.multiprocessing`
+            # Spawn N processes, one for each GPU
             dist.init_process_group(
                 backend=args.dist_backend,
                 init_method=args.dist_url,
-                world_size=args.world_size,
-                rank=args.rank,
+                world_size=ngpus_per_node,
+                rank=args.gpu,
             )
         else:
+            # Use `torchrun`, `torch.distributed.launch` or SLURM
+            # `MASTER_ADDR` and `MASTER_PORT` are already set as environment variables,
+            # so no need to pass to `init_process_group``.
             dist.init_process_group(backend=args.dist_backend)
 
     # create model
@@ -326,7 +333,6 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
-
     if not torch.cuda.is_available():
         print("using CPU, this will be slow")
     elif args.distributed:
@@ -342,8 +348,14 @@ def main_worker(gpu, ngpus_per_node, args):
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(
-                model, device_ids=[args.gpu]
+                model, device_ids=[args.gpu], output_device=args.gpu,
             )
+            # QA: a serious bug here!!! "nccl" as backend will make GPU_1 hanging forever!!
+            # https://discuss.pytorch.org/t/dataparallel-and-distributeddataparallel-stuck-at-100-gpu-usage/125490
+            # https://github.com/ultralytics/yolov5/issues/2375
+            # https://github.com/pytorch/pytorch/issues/52916
+            #  - Same here: "gloo" is find, "nccl" got stuck
+            #  - DataParallel on either GPU works
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
@@ -372,29 +384,6 @@ def main_worker(gpu, ngpus_per_node, args):
 
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
-
-    # optionally resume from a checkpoint
-    # if args.resume:
-    #     if os.path.isfile(args.resume):
-    #         print("=> loading checkpoint '{}'".format(args.resume))
-    #         if args.gpu is None:
-    #             checkpoint = torch.load(args.resume)
-    #         else:
-    #             # Map model to be loaded to specified single gpu.
-    #             loc = 'cuda:{}'.format(args.gpu)
-    #             checkpoint = torch.load(args.resume, map_location=loc)
-    #         args.start_epoch = checkpoint['epoch']
-    #         best_acc1 = checkpoint['best_acc1']
-    #         if args.gpu is not None:
-    #             # best_acc1 may be from a checkpoint from a different GPU
-    #             best_acc1 = best_acc1.to(args.gpu)
-    #         model.load_state_dict(checkpoint['state_dict'])
-    #         optimizer.load_state_dict(checkpoint['optimizer'])
-    #         scheduler.load_state_dict(checkpoint['scheduler'])
-    #         print("=> loaded checkpoint '{}' (epoch {})"
-    #               .format(args.resume, checkpoint['epoch']))
-    #     else:
-    #         print("=> no checkpoint found at '{}'".format(args.resume))
 
     cudnn.benchmark = True
 
@@ -447,13 +436,14 @@ def main_worker(gpu, ngpus_per_node, args):
         train_sampler = None
         val_sampler = None
 
+    # ZEUS
+    # Prepare dataloaders.
     if args.zeus:
-        os.environ["ZEUS_TARGET_METRIC"] = str(args.target_metric)
-
-        zeus_distributed = (
-            "dp" if args.multiprocessing_distributed or args.local_rank >= 0 else None
-        )
-
+        # Zeus
+        # Take either of the launching approaches of the data parallel training on
+        # single-node multi-GPU will activate the data parallel ("dp") mode in zeus.
+        os.environ["ZEUS_TARGET_METRIC"] = str(0.7)
+        zeus_distributed = "dp" if args.distributed else None
         train_loader = ZeusDataLoader(
             train_dataset,
             batch_size=args.batch_size,
@@ -464,7 +454,6 @@ def main_worker(gpu, ngpus_per_node, args):
             pin_memory=True,
             sampler=train_sampler,
         )
-
         val_loader = ZeusDataLoader(
             val_dataset,
             batch_size=args.batch_size,
@@ -474,6 +463,7 @@ def main_worker(gpu, ngpus_per_node, args):
             pin_memory=True,
             sampler=val_sampler,
         )
+        # TODO: add profile dataloader?
     else:
         train_loader = DataLoader(
             train_dataset,
@@ -483,7 +473,6 @@ def main_worker(gpu, ngpus_per_node, args):
             pin_memory=True,
             sampler=train_sampler,
         )
-
         val_loader = DataLoader(
             val_dataset,
             batch_size=args.batch_size,
@@ -528,20 +517,9 @@ def main_worker(gpu, ngpus_per_node, args):
                 )
                 break
 
-        # remember best acc@1 and save checkpoint
-        # is_best = acc1 > best_acc1
-        # best_acc1 = max(acc1, best_acc1)
-
-        # if not args.multiprocessing_distributed or (args.multiprocessing_distributed
-        #         and args.rank % ngpus_per_node == 0):
-        #     save_checkpoint({
-        #         'epoch': epoch + 1,
-        #         'arch': args.arch,
-        #         'state_dict': model.state_dict(),
-        #         'best_acc1': best_acc1,
-        #         'optimizer' : optimizer.state_dict(),
-        #         'scheduler' : scheduler.state_dict()
-        #     }, is_best)
+        # remember best acc@1
+        is_best = acc1 > best_acc1
+        best_acc1 = max(acc1, best_acc1)
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -555,7 +533,6 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         len(train_loader),
         [batch_time, data_time, losses, top1, top5],
         prefix="Epoch: [{}]".format(epoch),
-        file=args.log,
     )
 
     # switch to train mode
@@ -627,15 +604,13 @@ def validate(val_loader, model, criterion, args):
     top1 = AverageMeter("Acc@1", ":6.2f", Summary.AVERAGE)
     top5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(
-        # TODO: look into this
         len(val_loader)
         + (
             args.distributed
-            and (len(val_loader.sampler) * args.world_size < len(val_loader.dataset))
+            and (len(val_loader.sampler) < len(val_loader.dataset))
         ),
         [batch_time, losses, top1, top5],
         prefix="Test: ",
-        file=args.log,
     )
 
     # switch to evaluate mode
@@ -647,11 +622,11 @@ def validate(val_loader, model, criterion, args):
         top5.all_reduce()
 
     if args.distributed and (
-        len(val_loader.sampler) * args.world_size < len(val_loader.dataset)
+        len(val_loader.sampler) < len(val_loader.dataset)
     ):
         aux_val_dataset = Subset(
             val_loader.dataset,
-            range(len(val_loader.sampler) * args.world_size, len(val_loader.dataset)),
+            range(len(val_loader.sampler), len(val_loader.dataset)),
         )
         aux_val_loader = torch.utils.data.DataLoader(
             aux_val_dataset,
@@ -665,12 +640,6 @@ def validate(val_loader, model, criterion, args):
     progress.display_summary()
 
     return top1.avg
-
-
-# def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-#     torch.save(state, filename)
-#     if is_best:
-#         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
 class Summary(Enum):
@@ -729,29 +698,20 @@ class AverageMeter(object):
 
 
 class ProgressMeter(object):
-    def __init__(self, num_batches, meters, prefix="", file=None):
+    def __init__(self, num_batches, meters, prefix=""):
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
         self.meters = meters
         self.prefix = prefix
-        self.file = file
 
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        if self.file is None:
-            print("\t".join(entries))
-        else:
-            with open(self.file, "a") as f:
-                f.write("\t".join(entries) + "\n")
+        print("\t".join(entries))
 
     def display_summary(self):
         entries = [" *"]
         entries += [meter.summary() for meter in self.meters]
-        if self.file is None:
-            print(" ".join(entries))
-        else:
-            with open(self.file, "a") as f:
-                f.write(" ".join(entries) + "\n")
+        print(" ".join(entries))
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))

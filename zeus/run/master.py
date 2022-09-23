@@ -54,8 +54,8 @@ class ZeusMaster:
         monitor_path: str,
         seed: int = 123456,
         observer_mode: bool = False,
-        profile_warmup_secs: float = 1.0,
-        profile_measure_secs: float = 4.0,
+        profile_warmup_iters: int = 5,
+        profile_measure_iters: int = 20,
     ) -> None:
         """Initialize the master.
 
@@ -72,9 +72,9 @@ class ZeusMaster:
             observer_mode: When Observer Mode is on, the maximum power limit is
                 always used instead of the optimal power limit. However, internal time and
                 energy accounting will be done as if the cost-optimal power limit is used.
-            profile_warmup_secs: Number of seconds to warm up on a specific power limit.
+            profile_warmup_iters: Number of iterations to warm up on a specific power limit.
                 This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].
-            profile_measure_secs: Number of seconds to measure on a specific power limit.
+            profile_measure_iters: Number of iterations to measure on a specific power limit.
                 This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].
 
         """
@@ -98,8 +98,8 @@ class ZeusMaster:
         self.seed = seed
         self.monitor_path = monitor_path
         self.observer_mode = observer_mode
-        self.profile_warmup_secs = profile_warmup_secs
-        self.profile_measure_secs = profile_measure_secs
+        self.profile_warmup_iters = profile_warmup_iters
+        self.profile_measure_iters = profile_measure_iters
 
         # Query the max power limit of the GPU.
         pynvml.nvmlInit()
@@ -181,7 +181,7 @@ class ZeusMaster:
             ZEUS_ETA_KNOB=str(eta_knob),
             ZEUS_TARGET_METRIC=str(job.target_metric),
             ZEUS_MONITOR_PATH=self.monitor_path,
-            ZEUS_PROFILE_PARAMS=f"{self.profile_warmup_secs},{self.profile_measure_secs}",
+            ZEUS_PROFILE_PARAMS=f"{self.profile_warmup_iters},{self.profile_measure_iters}",
             ZEUS_USE_OPTIMAL_PL=str(not self.observer_mode),
         )
         env = deepcopy(os.environ)
