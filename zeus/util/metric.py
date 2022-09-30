@@ -31,6 +31,7 @@ def zeus_cost(
         time: seconds
         eta_knob: Real number in [0, 1].
         max_power: The maximum power limit of the GPU.
+        num_gpus: The number of GPUs used for data parallel training.
 
     Returns:
         The cost of the DL training job.

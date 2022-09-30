@@ -62,6 +62,26 @@ def parse_args() -> argparse.Namespace:
         "--max_epochs", type=int, default=100, help="Max number of epochs to train"
     )
 
+    # DATA PARALLEL
+    parser.add_argument(
+        "--nproc_per_node",
+        type=str,
+        default="1",
+        help="Number of workers per node; supported values: [auto, cpu, gpu, int]. "
+        "This value will be passed to `torchrun`. If using distributed data "
+        "parallel training, this value should be equal to the number of GPUs "
+        "used for the training.",
+    )
+
+    # IMAGENET
+    parser.add_argument(
+        "--data",
+        metavar="DIR",
+        nargs="?",
+        default="/data/imagenet",
+        help="path to dataset (default: /data/imagenet)",
+    )
+
     return parser.parse_args()
 
 
@@ -96,18 +116,18 @@ def main(args: argparse.Namespace) -> None:
         workdir="/workspace/zeus/examples/imagenet",
         # fmt: off
         command=[
-            "torchrun"
-            "--nnodes", "1"
-            "--nproc_per_node", "2",
+            "torchrun",
+            "--nnodes", "1",
+            "--nproc_per_node", args.nproc_per_node,
             "train.py",
-            "/data/imagenet",
+            args.data,
             "--zeus",
             "--arch", "resnet18",
             "--batch_size", "{batch_size}",
             "--learning_rate", "{learning_rate}",
             "--epochs", "{epochs}",
             "--seed", "{seed}",
-            "--torchrun"
+            "--torchrun",
         ],
         # fmt: on
     )

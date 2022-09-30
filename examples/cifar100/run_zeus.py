@@ -91,7 +91,7 @@ def main(args: argparse.Namespace) -> None:
     #   limit fully fits in one epoch. However, the epoch duration may be so short that
     #   profiling even one power limit may not fully fit in one epoch. In such cases,
     #   ZeusDataLoader raises a RuntimeError, and the profiling window should be narrowed
-    #   by giving smaller values to profile_warmup_secs and profile_measure_secs in the
+    #   by giving smaller values to profile_warmup_iters and profile_measure_iters in the
     #   constructor of ZeusMaster.
     master = ZeusMaster(
         batch_size_optimizer=bso,
@@ -99,8 +99,8 @@ def main(args: argparse.Namespace) -> None:
         seed=args.seed,
         monitor_path="/workspace/zeus/zeus_monitor/zeus_monitor",
         observer_mode=False,
-        profile_warmup_secs=1.0,
-        profile_measure_secs=4.0,
+        profile_warmup_iters=5,
+        profile_measure_iters=20,
     )
 
     # Definition of the CIFAR100 job.

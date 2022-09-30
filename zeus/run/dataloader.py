@@ -74,7 +74,7 @@ class ZeusDataLoader(DataLoader):
         for batch in eval_loader:
             # Evaluate on batch
 
-        # NOTE: If doing multi-processing data parallel training, please make sure
+        # NOTE: If doing distributed data parallel training, please make sure
         # to call `dist.all_reduce()` to reduce the validation metric across all GPUs
         # before calling `train_loader.report_metric()`.
         train_loader.report_metric(validation_metric)
@@ -98,8 +98,8 @@ class ZeusDataLoader(DataLoader):
                                (Default:` "0.5"`)
       - `ZEUS_MONITOR_PATH`  : Path to the Zeus power monitor binary.
                                (Default:` "/workspace/zeus/zeus_monitor/zeus_monitor"`)
-      - `ZEUS_PROFILE_PARAMS`: Warmup and measure seconds for each power limit,
-                               separated by a comma. (Default:` "1.0,4.0"`)
+      - `ZEUS_PROFILE_PARAMS`: Warmup and measure iterations for each power limit,
+                               separated by a comma. (Default:` "5,20"`)
       - `ZEUS_USE_OPTIMAL_PL`: Whether to actually use the optimal power limit found.
                                Setting this to false is the Observer Mode described
                                in Section 5. (Default:` "True"`)
@@ -178,13 +178,6 @@ class ZeusDataLoader(DataLoader):
         self.split = "train" if max_epochs != -1 else "eval"
         self.max_epochs = max_epochs
         self.log_prefix = f"[ZeusDataLoader({self.split})]"
-        if self._is_train:
-            if ZeusDataLoader.train_batch_size != 0:
-                # If max_epochs is specified when initializing a eval dataloader,
-                # it will mistaken itself as a train dataloader.
-                # In this case, raise a ValueError.
-                raise ValueError("Specify max_epochs only to the train dataloader.")
-            ZeusDataLoader.train_batch_size = batch_size
 
         # Initialize the DataLoader.
         super().__init__(*args, batch_size=batch_size, **kwargs)
@@ -229,6 +222,16 @@ class ZeusDataLoader(DataLoader):
             self._log(
                 f"Distributed data parallel: {'ON' if self.world_size > 1 else 'OFF'}"
             )
+
+        if self._is_train:
+            if ZeusDataLoader.train_batch_size != 0:
+                # If max_epochs is specified when initializing a eval dataloader,
+                # it will mistaken itself as a train dataloader.
+                # In this case, raise a ValueError.
+                raise ValueError("Specify max_epochs only to the train dataloader.")
+            # In data parallel training, each GPU is assigned batch_size=batch_size/num_gpus.
+            # So, we scale the train_batch_size for the correspondence with ZeusMaster.
+            ZeusDataLoader.train_batch_size = batch_size * self.world_size
 
         # Retrieve environment variables from ZeusMaster.
         self.target_metric = get_env("ZEUS_TARGET_METRIC", float)
@@ -511,7 +514,7 @@ class ZeusDataLoader(DataLoader):
     def report_metric(self, metric: float, higher_is_better: bool) -> None:
         """Report the validation metric to the train dataloader.
 
-        NOTE: If doing multi-processing data parallel training, please make sure
+        NOTE: If doing distributed data parallel training, please make sure
         to call `dist.all_reduce()` to reduce the validation metric across all GPUs
         before calling `train_loader.report_metric()`.
 

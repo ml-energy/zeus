@@ -33,7 +33,7 @@ for epoch_number in train_loader.epochs():
     for batch in eval_loader:
         # Evaluate on batch
 
-    # NOTE: If doing multi-processing data parallel training, please make sure
+    # NOTE: If doing distributed data parallel training, please make sure
     # to call `dist.all_reduce()` to reduce the validation metric across all GPUs
     # before calling `train_loader.report_metric()`.
     train_loader.report_metric(validation_metric)
@@ -41,7 +41,9 @@ for epoch_number in train_loader.epochs():
 
 The following examples will help:
 
-- [Integrating Zeus with computer vision](https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100){.external}
+- Integrating Zeus with computer vision
+  - [Integrating Zeus with CIFAR100 dataset](https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100){.external}
+  - [Integrating Zeus with ImageNet dataset](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet){.external}
 - [Integrating Zeus with NLP](https://github.com/SymbioticLab/Zeus/tree/master/examples/capriccio){.external}
 
 

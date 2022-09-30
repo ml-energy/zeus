@@ -1,10 +1,11 @@
-# Integrating Zeus with torchvision and CIFAR100
+# Integrating Zeus with torchvision and ImageNet
 
-This example will demonstrate how to integrate Zeus with `torchvision` and the CIFAR100 dataset provided by it.
-We believe that it would be straightforward to extend this example to support other image classification datasets such as CIFAR10 or ImageNet.
+This example will demonstrate how to integrate Zeus with `torchvision` and the ImageNet dataset.
+Also, this example will show how to enable Zeus distributed data parallel training mode with Multi-GPU on a single node. 
 
+[`train.py`](train.py) is adapted from [pytorch's example training code for ImageNet dataset](https://github.com/pytorch/examples/blob/main/imagenet/main.py).
 You can search for `# ZEUS` in [`train.py`](train.py) for noteworthy places that require modification from conventional training scripts.
-
+Parts related to data parallel is marked with `# DATA PARALLEL`.
 
 **Usages**
 
@@ -12,8 +13,7 @@ You can search for `# ZEUS` in [`train.py`](train.py) for noteworthy places that
     - [Running Zeus for a single job](#running-zeus-for-a-single-job)
     - [Running Zeus over multiple recurrences](#running-zeus-over-multiple-recurrences)
 - Extra
-    - [Profiling power and time](#profiling-power-and-time)
-    - [Just training a vision model on CIFAR100](#just-training-a-vision-model-on-cifar100)
+    - [Just training a vision model on ImageNet](#just-training-a-vision-model-on-imagenet)
 
 
 ## Running Zeus for a single job
@@ -23,10 +23,12 @@ While our paper is about optimizing the batch size and power limit over multiple
 ### Dependencies
 
 1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Install python dependencies for this example:
+2. Install python dependencies for this example:
     ```sh
     pip install -r requirements.txt
     ```
+3. Download ILSVRC2012 dataset from http://www.image-net.org/.
+    Then, move and extract the training and validation images to labeled subfolder, using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by pytorch.
 
 ### Example command
 
@@ -45,11 +47,19 @@ export ZEUS_MONITOR_PATH="/workspace/zeus/zeus_monitor/zeus_monitor" # Path to p
 export ZEUS_PROFILE_PARAMS="5,20"              # warmup_iters,profile_iters for each power limit
 export ZEUS_USE_OPTIMAL_PL="True"              # Whether to acutally use the optimal PL found
 
+# Single-GPU
 python train.py \
+    [DATA_DIR] \
+    --zeus
+
+# Multi-GPU Data Parallel
+# NOTE: Please check out [train.py](train.py) for more launching methods.
+torchrun \
+    --nnodes 1 \
+    --nproc_per_node [NUM_OF_GPUS] \
+    train.py [DATA_DIR] \
     --zeus \
-    --arch shufflenetv2 \
-    --epochs 100 \
-    --batch_size 128
+    --torchrun
 ```
 
 
@@ -60,15 +70,20 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
 ### Dependencies
 
 1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Only for those not using our Docker image, install `torchvision` separately:
+2. Only for those not using our Docker image, install `torchvision` separately:
     ```sh
     conda install -c pytorch torchvision==0.11.2
     ```
+3. Download ILSVRC2012 dataset from http://www.image-net.org/.
+    Then, move and extract the training and validation images to labeled subfolder, using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by pytorch.
+
 
 ### Example command
 
 ```sh
 # All arguments shown below are default values.
+
+# Single-GPU
 python run_zeus.py \
     --seed 1 \
     --b_0 1024 \
@@ -78,61 +93,52 @@ python run_zeus.py \
     --eta_knob 0.5 \
     --beta_knob 2.0 \
     --target_metric 0.50 \
-    --max_epochs 100
+    --max_epochs 100 \
+    --data /data/imagenet      # Specify the location of ImageNet dataset
+
+# Multi-GPU Data Parallel
+python run_zeus.py \
+    --seed 1 \
+    --b_0 1024 \
+    --b_min 8 \
+    --b_max 4096 \
+    --num_recurrence 100 \
+    --eta_knob 0.5 \
+    --beta_knob 2.0 \
+    --target_metric 0.50 \
+    --max_epochs 100 \
+    --nproc_per_node gpu \     # Use all available GPUs
+    --data /data/imagenet      # Specify the location of ImageNet dataset
 ```
 
-
-## Profiling power and time
-
-You can use Zeus's [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) to profile the power and time consumption of training.
-
-### Dependencies
-
-1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Only for those not using our Docker image, install `torchvision` separately:
-    ```sh
-    conda install -c pytorch torchvision==0.11.2
-    ```
-
-### Example command
-
-[`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) interfaces with the outside world via environment variables.
-Check out its [class reference](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) for details.
-
-Only `ZEUS_LOG_PREFIX` is required; other environment variables below show their default values when omitted.
-
-```bash
-export ZEUS_LOG_PREFIX="cifar100+shufflenetv2"  # Filename prefix for power and time log files
-export ZEUS_MONITOR_SLEEP_MS="100"              # Milliseconds to sleep after sampling power
-export ZEUS_MONITOR_PATH="/workspace/zeus/zeus_monitor/zeus_monitor"  # Path to power monitor
-
-python train.py \
-    --profile \
-    --arch shufflenetv2 \
-    --epochs 2 \
-    --batch_size 1024
-```
-
-A CSV file of timestamped momentary power draw of the first GPU (index 0) will be written to `cifar100+shufflenetv2+gpu0.power.csv` (the `+gpu0.power.csv` part was added by [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader)).
-At the same time, a CSV file with headers epoch number, split (`train` or `eval`), and time consumption in seconds will be written to `cifar100+shufflenetv2.time.csv` (the `.time.csv` part was added by [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader)).
-
-
-## Just training a vision model on CIFAR100
+## Just training a vision model on ImageNet
 
 [`train.py`](train.py) can also be used as a simple training script, without having to do anything with Zeus.
 
 ### Dependencies
 
-Only for those not using our Docker image, install PyTorch, `torchvision`, and `cudatoolkit` separately:
-```sh
-conda install -c pytorch pytorch==1.10.1 torchvision==0.11.2 cudatoolkit==11.3.1
-```
+1. Only for those not using our Docker image, install PyTorch, `torchvision`, and `cudatoolkit` separately:
+    ```sh
+    conda install -c pytorch pytorch==1.10.1 torchvision==0.11.2 cudatoolkit==11.3.1
+    ```
+2. Download ILSVRC2012 dataset from http://www.image-net.org/.
+    Then, move and extract the training and validation images to labeled subfolder, using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by pytorch.
 
 ### Example command
 
 ```sh
+# Single-GPU
 python train.py \
-    --arch shufflenetv2 \
+    [DATA_DIR] \
     --epochs 100 \
     --batch_size 1024
+
+# Multi-GPU Data Parallel
+torchrun \
+    --nnodes 1 \
+    --nproc_per_node [NUM_OF_GPUS] \
+    train.py [DATA_DIR] \
+    --epochs 100 \
+    --batch_size 1024 \
+    --torchrun
 ```

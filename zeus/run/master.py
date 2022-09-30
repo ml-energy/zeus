@@ -26,6 +26,7 @@ from time import localtime, sleep, strftime
 
 import numpy as np
 import pynvml
+import torch
 
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
@@ -335,7 +336,8 @@ class ZeusMaster:
                 seed += 1
 
                 # Compute the cost of this try.
-                cost = zeus_cost(energy, time, eta_knob, self.max_pl)
+                num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+                cost = zeus_cost(energy, time, eta_knob, self.max_pl, num_gpus)
                 print(f"[Zeus Master] {cost=}")
 
                 # Accumulate the cost to track the total cost of this recurrence.

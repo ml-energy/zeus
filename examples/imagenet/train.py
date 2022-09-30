@@ -1,12 +1,10 @@
 """
-This script trains imagenet dataset. Currently only support single node.
-    - Enable multiprocessing training with `--multiprocessing-distributed`.
+This script trains ImageNet dataset. Currently it only supports single node.
     - Enable Zeus with `--zeus`.
 
-Commands:
+Launching methods of multi-GPU data parallel training:
     - Using `torch.multiprocessing`
-        [WARNING: This is NOT recommended. No process management is provided for this launching method. Please consider using the others.]
-        $ python train.py [DATA_DIR] --multiprocessing-distributed --zeus [OTHER_OPTIONS]
+        $ python train.py [DATA_DIR] --multiprocessing_distributed --zeus [OTHER_OPTIONS]
     - Using `torch.distributed.launch` utility:
         $ python -m torch.distributed.launch --nnodes=1 --nproc_per_node=[NUM_OF_GPUS] train.py [DATA_DIR] --zeus [OTHER_OPTIONS]
     - Using `torchrun`:
@@ -51,11 +49,6 @@ from torch.utils.data import Subset
 
 # ZEUS
 from zeus.run import ZeusDataLoader
-from zeus.profile.torch import ProfileDataLoader
-
-from torch.distributed.elastic.multiprocessing.errors import (
-    record,
-)  # NOTE: for debugging purpose, will be removed later
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,12 +58,14 @@ def parse_args() -> argparse.Namespace:
     model_names = sorted(
         name
         for name in models.__dict__
-        if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
+        if name.islower()
+        and not name.startswith("__")
+        and callable(models.__dict__[name])
     )
 
     parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
 
-    # ImageNet
+    # IMAGENET
     parser.add_argument(
         "data",
         metavar="DIR",
@@ -95,10 +90,14 @@ def parse_args() -> argparse.Namespace:
         help="number of data loading workers (default: 4)",
     )
     parser.add_argument(
-        "--epochs", default=90, type=int, metavar="N", help="number of total epochs to run"
+        "--epochs",
+        default=90,
+        type=int,
+        metavar="N",
+        help="number of total epochs to run",
     )
     parser.add_argument(
-        "--start-epoch",
+        "--start_epoch",
         default=0,
         type=int,
         metavar="N",
@@ -106,7 +105,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "-b",
-        "--batch-size",
+        "--batch_size",
         default=256,
         type=int,
         metavar="N",
@@ -116,17 +115,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lr",
-        "--learning-rate",
+        "--learning_rate",
         default=0.1,
         type=float,
         metavar="LR",
         help="initial learning rate",
         dest="lr",
     )
-    parser.add_argument("--momentum", default=0.9, type=float, metavar="M", help="momentum")
+    parser.add_argument(
+        "--momentum", default=0.9, type=float, metavar="M", help="momentum"
+    )
     parser.add_argument(
         "--wd",
-        "--weight-decay",
+        "--weight_decay",
         default=1e-4,
         type=float,
         metavar="W",
@@ -135,7 +136,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "-p",
-        "--print-freq",
+        "--print_freq",
         default=10,
         type=int,
         metavar="N",
@@ -149,33 +150,40 @@ def parse_args() -> argparse.Namespace:
         help="evaluate model on validation set",
     )
     parser.add_argument(
-        "--pretrained", dest="pretrained", action="store_true", help="use pre-trained model"
+        "--pretrained",
+        dest="pretrained",
+        action="store_true",
+        help="use pre-trained model",
     )
     parser.add_argument(
-        "--dist-url",
+        "--dist_url",
         default="tcp://127.0.0.1:12306",
         type=str,
         help="url used to set up distributed training",
     )
     parser.add_argument(
-        "--dist-backend", default="nccl", type=str, help="distributed backend"
+        "--dist_backend", default="nccl", type=str, help="distributed backend"
     )
     parser.add_argument(
         "--seed", default=None, type=int, help="seed for initializing training. "
     )
     parser.add_argument("--gpu", default=None, type=int, help="GPU id to use.")
     parser.add_argument(
-        "--multiprocessing-distributed",
+        "--multiprocessing_distributed",
         action="store_true",
         help="Use `torch.multiprocessing` to launch N processes on this node, "
         "which has N GPUs. PLEASE DO NOT use this argument if you are using "
         "`torchrun` or ``torch.distributed.launch`.",
     )
-    parser.add_argument("--dummy", action="store_true", help="use fake data to benchmark")
-    
+    parser.add_argument(
+        "--dummy", action="store_true", help="use fake data to benchmark"
+    )
+
     # ZEUS
     parser.add_argument("--zeus", action="store_true", help="Whether to run Zeus.")
-    parser.add_argument("--profile", action="store_true", help="Whether to just profile power.")
+    parser.add_argument(
+        "--profile", action="store_true", help="Whether to just profile power."
+    )
     parser.add_argument(
         "--target_metric",
         default=None,
@@ -193,21 +201,22 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="Local rank for data parallel training. This is necessary for using the `torch.distributed.launch` utility.",
     )
-    parser.add_argument("--torchrun", action="store_true", help="Use torchrun. This means we will read local_rank from environment variable set by `torchrun`.")
+    parser.add_argument(
+        "--torchrun",
+        action="store_true",
+        help="Use torchrun. This means we will read local_rank from environment variable set by `torchrun`.",
+    )
 
     args = parser.parse_args()
 
     # Sanity check
-    # QA: necessary or not?
-    if args.multipocessing_distributed and (args.torchrun or args.local_rank >= 0):
+    if args.multiprocessing_distributed and (args.torchrun or args.local_rank >= 0):
         raise ValueError(
             "Can not set --multiprocessing-distributed when using `torch.distributed.launch` or `torchrun`. "
             "Please refer to the docstring for more info about launching methods."
         )
 
     return args
-
-best_acc1 = 0
 
 
 def main():
@@ -217,13 +226,6 @@ def main():
         random.seed(args.seed)
         torch.manual_seed(args.seed)
         cudnn.deterministic = True
-        warnings.warn(
-            "You have chosen to seed training. "
-            "This will turn on the CUDNN deterministic setting, "
-            "which can slow down your training considerably! "
-            "You may see unexpected behavior when restarting "
-            "from checkpoints."
-        )
 
     if args.gpu is not None:
         warnings.warn(
@@ -231,40 +233,13 @@ def main():
             "disable data parallelism."
         )
 
+    # DATA PARALLEL
     # Preparation for SLURM
     if "SLURM_PROCID" in os.environ:
         # Retrieve local_rank.
         # NOTE: We only consider Single GPU for now. So `local_rank == rank`.
         args.local_rank = int(os.environ["SLURM_PROCID"])
 
-        # QA: I find using MASTER_ADDR and MASTER_PORT more clear (to me).
-        #     Let's just tell user they need to set these envs, otherwise,
-        #     we pick a port on the node for them.
-        # Source: https://gist.github.com/andrewssobral/4bf5700ad258b807e7b9d10106e467ea#file-pytorch-distributed-slurm-example-py-L129
-        # jobid = os.environ["SLURM_JOBID"]
-        # hostfile = "dist_url." + jobid + ".txt"
-        # if args.dist_file is not None:
-        #     args.dist_url = "file://{}.{}".format(
-        #         os.path.realpath(args.dist_file), jobid
-        #     )
-        # elif args.rank == 0:
-        #     ip = socket.gethostbyname(socket.gethostname())
-        #     port = random.randint(49152, 65535)
-        #     args.dist_url = "tcp://{}:{}".format(ip, port)
-        #     with open(hostfile, "w") as f:
-        #         f.write(args.dist_url)
-        # else:
-        #     while not os.path.exists(hostfile):
-        #         time.sleep(1)
-        #     with open(hostfile, "r") as f:
-        #         args.dist_url = f.read()
-        # print(
-        #     "dist-url:{} at PROCID {} / {}".format(
-        #         args.dist_url, args.rank, args.world_size
-        #     )
-        # )
-
-        # Source: https://github.com/BIGBALLON/distribuuuu/blob/master/tutorial/mnmc_ddp_slurm.py#L28
         # Retrieve the node address
         node_list = os.environ["SLURM_NODELIST"]
         addr = subprocess.getoutput(f"scontrol show hostname {node_list} | head -n1")
@@ -279,11 +254,6 @@ def main():
     # by retrieving local rank from environment variable LOCAL_RANK.
     if args.torchrun:
         args.local_rank = int(os.environ["LOCAL_RANK"])
-
-    # Manual specify MASTER_ADDR and MASTER_PORT if using `torch.multiprocessing`.
-    # if args.multiprocessing_distributed:
-    #     os.environ["MASTER_ADDR"] = args.master_addr
-    #     os.environ["MASTER_PORT"] = str(args.master_port)
 
     args.distributed = args.multiprocessing_distributed or args.local_rank >= 0
     ngpus_per_node = torch.cuda.device_count()
@@ -302,14 +272,13 @@ def main():
         main_worker(args.gpu, ngpus_per_node, args)
 
 
-@record
 def main_worker(gpu, ngpus_per_node, args):
-    global best_acc1
     args.gpu = gpu
 
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
 
+    # DATA PARALLEL
     if args.distributed:
         if args.multiprocessing_distributed:
             # Use `torch.multiprocessing`
@@ -336,6 +305,7 @@ def main_worker(gpu, ngpus_per_node, args):
     if not torch.cuda.is_available():
         print("using CPU, this will be slow")
     elif args.distributed:
+        # DATA PARALLEL
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
@@ -348,14 +318,10 @@ def main_worker(gpu, ngpus_per_node, args):
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(
-                model, device_ids=[args.gpu], output_device=args.gpu,
+                model,
+                device_ids=[args.gpu],
+                output_device=args.gpu,
             )
-            # QA: a serious bug here!!! "nccl" as backend will make GPU_1 hanging forever!!
-            # https://discuss.pytorch.org/t/dataparallel-and-distributeddataparallel-stuck-at-100-gpu-usage/125490
-            # https://github.com/ultralytics/yolov5/issues/2375
-            # https://github.com/pytorch/pytorch/issues/52916
-            #  - Same here: "gloo" is find, "nccl" got stuck
-            #  - DataParallel on either GPU works
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
@@ -427,6 +393,7 @@ def main_worker(gpu, ngpus_per_node, args):
             ),
         )
 
+    # DATA PARALLEL
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
         val_sampler = torch.utils.data.distributed.DistributedSampler(
@@ -442,8 +409,10 @@ def main_worker(gpu, ngpus_per_node, args):
         # Zeus
         # Take either of the launching approaches of the data parallel training on
         # single-node multi-GPU will activate the data parallel ("dp") mode in zeus.
-        os.environ["ZEUS_TARGET_METRIC"] = str(0.7)
+
+        # DATA PARALLEL
         zeus_distributed = "dp" if args.distributed else None
+
         train_loader = ZeusDataLoader(
             train_dataset,
             batch_size=args.batch_size,
@@ -463,7 +432,6 @@ def main_worker(gpu, ngpus_per_node, args):
             pin_memory=True,
             sampler=val_sampler,
         )
-        # TODO: add profile dataloader?
     else:
         train_loader = DataLoader(
             train_dataset,
@@ -486,6 +454,7 @@ def main_worker(gpu, ngpus_per_node, args):
         validate(val_loader, model, criterion, args)
         return
 
+    # ZEUS
     if args.zeus:
         assert isinstance(train_loader, ZeusDataLoader)
         epoch_iter = train_loader.epochs()
@@ -493,6 +462,7 @@ def main_worker(gpu, ngpus_per_node, args):
         epoch_iter = range(args.start_epoch, args.epochs)
 
     for epoch in epoch_iter:
+        # DATA PARALLEL
         if args.distributed:
             train_sampler.set_epoch(epoch)
 
@@ -504,6 +474,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         scheduler.step()
 
+        # ZEUS
         if args.zeus:
             assert isinstance(train_loader, ZeusDataLoader)
             # Scale the accuracy and report to `train_loader`.`
@@ -516,10 +487,6 @@ def main_worker(gpu, ngpus_per_node, args):
                     epoch + 1,
                 )
                 break
-
-        # remember best acc@1
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -543,6 +510,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # measure data loading time
         data_time.update(time.time() - end)
 
+        # DATA PARALLEL
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
         if torch.cuda.is_available():
@@ -605,10 +573,7 @@ def validate(val_loader, model, criterion, args):
     top5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(
         len(val_loader)
-        + (
-            args.distributed
-            and (len(val_loader.sampler) < len(val_loader.dataset))
-        ),
+        + (args.distributed and (len(val_loader.sampler) < len(val_loader.dataset))),
         [batch_time, losses, top1, top5],
         prefix="Test: ",
     )
@@ -617,13 +582,13 @@ def validate(val_loader, model, criterion, args):
     model.eval()
 
     run_validate(val_loader)
+
+    # DATA PARALLEL
     if args.distributed:
         top1.all_reduce()
         top5.all_reduce()
 
-    if args.distributed and (
-        len(val_loader.sampler) < len(val_loader.dataset)
-    ):
+    if args.distributed and (len(val_loader.sampler) < len(val_loader.dataset)):
         aux_val_dataset = Subset(
             val_loader.dataset,
             range(len(val_loader.sampler), len(val_loader.dataset)),
@@ -670,6 +635,7 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
+    # DATA PARALLEL
     def all_reduce(self):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         total = torch.tensor([self.sum, self.count], dtype=torch.float32, device=device)

@@ -28,14 +28,14 @@ The default command would be:
 
 ``` { .sh .annotate }
 docker run -it \
-    --gpus 1 \                        # (1)!
+    --gpus all \                      # (1)!
     --cap-add SYS_ADMIN \           # (2)!
     --shm-size 64G \              # (3)!
     symbioticlab/zeus:latest \
     bash
 ```
 
-1. Mounts one GPU into the Docker container. `nvidia-docker2` provides this option.
+1. Mounts all GPUs into the Docker container. `nvidia-docker2` provides this option.
 2. `SYS_ADMIN` capability is needed to manage the power configurations of the GPU via NVML.
 3. PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.
 
@@ -44,7 +44,7 @@ If you would like your changes to `zeus/` outside the container to be immediatel
 ``` { .sh .annotate }
 # Working directory is repository root
 docker run -it \
-    --gpus 1 \                        # (1)!
+    --gpus all \                      # (1)!
     --cap-add SYS_ADMIN \           # (2)!
     --shm-size 64G \              # (3)!
     -v $(pwd):/workspace/zeus \ # (4)!
@@ -52,7 +52,7 @@ docker run -it \
     bash
 ```
 
-1. Mounts one GPU into the Docker container. `nvidia-docker2` provides this option.
+1. Mounts all GPUs into the Docker container. `nvidia-docker2` provides this option.
 2. `SYS_ADMIN` capability is needed to manage the power configurations of the GPU via NVML.
 3. PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.
 4. Mounts the repository directory into the Docker container. Since the `zeus` installation inside the container is editable, changes you made outside will apply immediately.

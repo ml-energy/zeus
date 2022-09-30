@@ -16,13 +16,21 @@
 #include <iostream>
 #include <thread>
 #include <signal.h>
+#include <chrono>
+#include <ctime>
+#include "date.h"
 
 #include "zemo.hpp"
+
+// Add prefix for logging
+std::string prefix() {
+  return date::format("%F %T [ZeusMonitor]", floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
+}
 
 // Catch CTRL-C and stop the monitor early
 void endMonitoring(int signal) {
   stop_nvml_thread();
-  std::cout << "Caught signal " << signal << ", end monitoring." << std::endl;
+  std::cout << prefix() << "Caught signal " << signal << ", end monitoring." << std::endl;
   exit(signal);
 }
 
@@ -41,19 +49,18 @@ int main(int argc, char **argv) {
   if (argc > 4) {
     gpu_index = std::atoi(argv[4]);
   }
-  // TODO: logging
-  std::cout << "Monitor started." << std::endl;
+  std::cout << prefix() << "Monitor started." << std::endl;
   if (duration == 0) {
-    std::cout << "Running indefinitely. ";
+    std::cout << prefix() << "Running indefinitely. ";
   } else {
-    std::cout << "Running for " << duration << "s. ";
+    std::cout << prefix() << "Running for " << duration << "s. ";
   }
   if (sleep_ms == 0) {
-    std::cout << "High-speed polling mode. " << std::endl;
+    std::cout << prefix() << "High-speed polling mode. " << std::endl;
   } else {
-    std::cout << "Sleeping " << sleep_ms << "ms after each poll. " << std::endl;
+    std::cout << prefix() << "Sleeping " << sleep_ms << "ms after each poll. " << std::endl;
   }
-  std::cout << "Logfile path: " << logfilePath << std::endl;
+  std::cout << prefix() << "Logfile path: " << logfilePath << std::endl;
 
   signal(SIGINT, endMonitoring);
 
