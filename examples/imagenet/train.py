@@ -202,6 +202,12 @@ def parse_args() -> argparse.Namespace:
         help="Local rank for data parallel training. This is necessary for using the `torch.distributed.launch` utility.",
     )
     parser.add_argument(
+        "--local_world_size",
+        default=-1,
+        type=int,
+        help="Local world size for data parallel training.",
+    )
+    parser.add_argument(
         "--torchrun",
         action="store_true",
         help="Use torchrun. This means we will read local_rank from environment variable set by `torchrun`.",
@@ -254,6 +260,7 @@ def main():
     # by retrieving local rank from environment variable LOCAL_RANK.
     if args.torchrun:
         args.local_rank = int(os.environ["LOCAL_RANK"])
+        args.local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
 
     args.distributed = args.multiprocessing_distributed or args.local_rank >= 0
     ngpus_per_node = torch.cuda.device_count()
@@ -294,6 +301,11 @@ def main_worker(gpu, ngpus_per_node, args):
             # `MASTER_ADDR` and `MASTER_PORT` are already set as environment variables,
             # so no need to pass to `init_process_group``.
             dist.init_process_group(backend=args.dist_backend)
+
+        if args.local_world_size < 0:
+            args.local_world_size = dist.get_world_size()
+    else:
+        args.local_world_size = 1
 
     # create model
     if args.pretrained:
@@ -573,7 +585,13 @@ def validate(val_loader, model, criterion, args):
     top5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(
         len(val_loader)
-        + (args.distributed and (len(val_loader.sampler) < len(val_loader.dataset))),
+        + (
+            args.distributed
+            and (
+                len(val_loader.sampler) * args.local_world_size
+                < len(val_loader.dataset)
+            )
+        ),
         [batch_time, losses, top1, top5],
         prefix="Test: ",
     )
@@ -588,10 +606,14 @@ def validate(val_loader, model, criterion, args):
         top1.all_reduce()
         top5.all_reduce()
 
-    if args.distributed and (len(val_loader.sampler) < len(val_loader.dataset)):
+    if args.distributed and (
+        len(val_loader.sampler) * args.local_world_size < len(val_loader.dataset)
+    ):
         aux_val_dataset = Subset(
             val_loader.dataset,
-            range(len(val_loader.sampler), len(val_loader.dataset)),
+            range(
+                len(val_loader.sampler) * args.local_world_size, len(val_loader.dataset)
+            ),
         )
         aux_val_loader = torch.utils.data.DataLoader(
             aux_val_dataset,

@@ -449,11 +449,12 @@ class ZeusDataLoader(DataLoader):
             # However, the profiling cost actually exceeding the cost threshold would not
             # happen frequently. It's more like a wrong cost threshold.
             if self._should_profile:
-                if cost >= self.cost_thresh:
-                    self._log(
-                        f"{cost=:.2f} exceeded threshold {self.cost_thresh:.2f} at GPU_{self.rank}, "
-                        "but just continue since we're profiling."
-                    )
+                if self.rank == 0:
+                    if cost >= self.cost_thresh:
+                        self._log(
+                            f"{cost=:.2f} exceeded threshold {self.cost_thresh:.2f} at GPU_{self.rank}, "
+                            "but just continue since we're profiling."
+                        )
                 yield self.epoch_num
                 continue
 
