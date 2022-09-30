@@ -50,13 +50,14 @@ export ZEUS_USE_OPTIMAL_PL="True"              # Whether to acutally use the opt
 # Single-GPU
 python train.py \
     [DATA_DIR] \
+    --gpu 0 \                                  # Specify the GPU id to use
     --zeus
 
 # Multi-GPU Data Parallel
 # NOTE: Please check out [train.py](train.py) for more launching methods.
 torchrun \
     --nnodes 1 \
-    --nproc_per_node [NUM_OF_GPUS] \
+    --nproc_per_node gpu \
     train.py [DATA_DIR] \
     --zeus \
     --torchrun
@@ -82,20 +83,6 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
 
 ```sh
 # All arguments shown below are default values.
-
-# Single-GPU
-python run_zeus.py \
-    --seed 1 \
-    --b_0 1024 \
-    --b_min 8 \
-    --b_max 4096 \
-    --num_recurrence 100 \
-    --eta_knob 0.5 \
-    --beta_knob 2.0 \
-    --target_metric 0.50 \
-    --max_epochs 100 \
-    --data /data/imagenet      # Specify the location of ImageNet dataset
-
 # Multi-GPU Data Parallel
 python run_zeus.py \
     --seed 1 \
@@ -107,7 +94,6 @@ python run_zeus.py \
     --beta_knob 2.0 \
     --target_metric 0.50 \
     --max_epochs 100 \
-    --nproc_per_node gpu \     # Use all available GPUs
     --data /data/imagenet      # Specify the location of ImageNet dataset
 ```
 
@@ -131,12 +117,13 @@ python run_zeus.py \
 python train.py \
     [DATA_DIR] \
     --epochs 100 \
-    --batch_size 1024
+    --batch_size 1024 \
+    --gpu 0                                  # Specify the GPU id to use
 
 # Multi-GPU Data Parallel
 torchrun \
     --nnodes 1 \
-    --nproc_per_node [NUM_OF_GPUS] \
+    --nproc_per_node gpu \
     train.py [DATA_DIR] \
     --epochs 100 \
     --batch_size 1024 \

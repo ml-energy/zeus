@@ -34,7 +34,6 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-
 from zeus import analyze
 from zeus.util.check import get_env
 from zeus.util.metric import ZeusCostThresholdExceededException, zeus_cost
@@ -405,8 +404,7 @@ class ZeusDataLoader(DataLoader):
                     energy_consumed,
                     time_consumed,
                     self.eta_knob,
-                    self.max_pl // 1000,
-                    self.world_size,
+                    self.max_pl // 1000 * self.world_size,
                 )
                 self._log(
                     f"Up to epoch {self.epoch_num}: "
@@ -486,8 +484,7 @@ class ZeusDataLoader(DataLoader):
                     next_energy_consumed,
                     next_time_consumed,
                     self.eta_knob,
-                    self.max_pl // 1000,
-                    self.world_size,
+                    self.max_pl // 1000 * self.world_size,
                 )
                 self._log(
                     f"Expected next epoch: time={next_time_consumed:.2f}, "

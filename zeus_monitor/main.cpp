@@ -24,7 +24,7 @@
 
 // Add prefix for logging
 std::string prefix() {
-  return date::format("%F %T [ZeusMonitor]", floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
+  return date::format("%F %T [ZeusMonitor] ", floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
 }
 
 // Catch CTRL-C and stop the monitor early

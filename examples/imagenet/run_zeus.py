@@ -62,17 +62,6 @@ def parse_args() -> argparse.Namespace:
         "--max_epochs", type=int, default=100, help="Max number of epochs to train"
     )
 
-    # DATA PARALLEL
-    parser.add_argument(
-        "--nproc_per_node",
-        type=str,
-        default="1",
-        help="Number of workers per node; supported values: [auto, cpu, gpu, int]. "
-        "This value will be passed to `torchrun`. If using distributed data "
-        "parallel training, this value should be equal to the number of GPUs "
-        "used for the training.",
-    )
-
     # IMAGENET
     parser.add_argument(
         "--data",
@@ -118,7 +107,7 @@ def main(args: argparse.Namespace) -> None:
         command=[
             "torchrun",
             "--nnodes", "1",
-            "--nproc_per_node", args.nproc_per_node,
+            "--nproc_per_node", "gpu",
             "train.py",
             args.data,
             "--zeus",

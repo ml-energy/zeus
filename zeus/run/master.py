@@ -229,12 +229,6 @@ class ZeusMaster:
                 exitcode = proc.poll()
                 print(f"[run job] Job terminated with exit code {exitcode}.")
 
-            # Terminate if the training script failed.
-            if exitcode != 0:
-                raise RuntimeError(
-                    f"Training script terminated with exit code {exitcode}."
-                )
-
             # `train_json` must exist at this point.
             if not train_json.exists():
                 raise RuntimeError(f"{train_json} does not exist.")
@@ -337,7 +331,7 @@ class ZeusMaster:
 
                 # Compute the cost of this try.
                 num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
-                cost = zeus_cost(energy, time, eta_knob, self.max_pl, num_gpus)
+                cost = zeus_cost(energy, time, eta_knob, self.max_pl * num_gpus)
                 print(f"[Zeus Master] {cost=}")
 
                 # Accumulate the cost to track the total cost of this recurrence.

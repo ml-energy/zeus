@@ -17,9 +17,7 @@
 from __future__ import annotations
 
 
-def zeus_cost(
-    energy: float, time: float, eta_knob: float, max_power: int, num_gpus: int = 1
-) -> float:
+def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int) -> float:
     """Compute Zeus's energy-time cost metric.
 
     Trades off ETA and TTA based on the value of `eta_knob`.
@@ -31,12 +29,11 @@ def zeus_cost(
         time: seconds
         eta_knob: Real number in [0, 1].
         max_power: The maximum power limit of the GPU.
-        num_gpus: The number of GPUs used for data parallel training.
 
     Returns:
         The cost of the DL training job.
     """
-    return eta_knob * energy + (1 - eta_knob) * max_power * num_gpus * time
+    return eta_knob * energy + (1 - eta_knob) * max_power * time
 
 
 class ZeusCostThresholdExceededException(Exception):
