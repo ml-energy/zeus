@@ -12,7 +12,7 @@ hide:
 
 Zeus automatically optimizes the **energy and time** of recurring DNN training jobs by finding the optimal **batch size** and **GPU power limit**.
 
-Please refer to our [NSDI '23 publication](https://arxiv.org/abs/2208.06102){.external} for details.
+Please refer to our [NSDI’23 publication](https://arxiv.org/abs/2208.06102){.external} for details.
 Check out [Overview](overview/index.md) for a summary.
 
 Zeus is part of [The ML.ENERGY Initiative](https://ml.energy){.external}.

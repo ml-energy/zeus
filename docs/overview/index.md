@@ -4,7 +4,7 @@
 
 This page intends to give a high-level overview of *what* Zeus does and *why* you should care.
 
-For details, especially regarding *how*, please refer our [NSDI '23 publication](https://arxiv.org/abs/2208.06102).
+For details, especially regarding *how*, please refer our [NSDI’23 publication](https://arxiv.org/abs/2208.06102).
 
 <div class="critic-dark" markdown>
 {==
