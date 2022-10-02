@@ -3,7 +3,7 @@
 This example will demonstrate how to integrate Zeus with `torchvision` and the ImageNet dataset.
 Also, this example will show how to enable Zeus distributed data parallel training mode with Multi-GPU on a single node. 
 
-[`train.py`](train.py) is adapted from [pytorch's example training code for ImageNet dataset](https://github.com/pytorch/examples/blob/main/imagenet/main.py).
+[`train.py`](train.py) is adapted from [PyTorch's example training code for ImageNet](https://github.com/pytorch/examples/blob/main/imagenet/main.py).
 You can search for `# ZEUS` in [`train.py`](train.py) for noteworthy places that require modification from conventional training scripts.
 Parts related to data parallel is marked with `# DATA PARALLEL`.
 
@@ -27,15 +27,15 @@ While our paper is about optimizing the batch size and power limit over multiple
     ```sh
     pip install -r requirements.txt
     ```
-3. Download ILSVRC2012 dataset from http://www.image-net.org/.
-    Then, move and extract the training and validation images to labeled subfolder, using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by pytorch.
+3. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
+    Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
 
 ### Example command
 
 [`ZeusDataLoader`](https://ml.energy/zeus/reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader) interfaces with the outside world via environment variables.
 Check out its [class reference](https://ml.energy/zeus/reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader) for details.
 
-Only `ZEUS_TARGET_METRIC` is required; other environment variables below show their default values when omitted.
+Only `ZEUS_TARGET_METRIC` is required; other environment variables have default values as shown below.
 
 ```bash
 export ZEUS_TARGET_METRIC="0.50"               # Stop training when target val metric is reached
@@ -75,8 +75,8 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
     ```sh
     conda install -c pytorch torchvision==0.11.2
     ```
-3. Download ILSVRC2012 dataset from http://www.image-net.org/.
-    Then, move and extract the training and validation images to labeled subfolder, using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by pytorch.
+3. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
+    Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
 
 
 ### Example command
@@ -94,7 +94,7 @@ python run_zeus.py \
     --beta_knob 2.0 \
     --target_metric 0.50 \
     --max_epochs 100 \
-    --data /data/imagenet      # Specify the location of ImageNet dataset
+    --data [DATA_DIR]      # Specify the location of ImageNet dataset
 ```
 
 ## Just training a vision model on ImageNet
@@ -107,8 +107,8 @@ python run_zeus.py \
     ```sh
     conda install -c pytorch pytorch==1.10.1 torchvision==0.11.2 cudatoolkit==11.3.1
     ```
-2. Download ILSVRC2012 dataset from http://www.image-net.org/.
-    Then, move and extract the training and validation images to labeled subfolder, using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by pytorch.
+2. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
+    Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
 
 ### Example command
 

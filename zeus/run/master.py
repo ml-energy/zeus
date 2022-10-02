@@ -330,7 +330,7 @@ class ZeusMaster:
                 seed += 1
 
                 # Compute the cost of this try.
-                num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+                num_gpus = torch.cuda.device_count()
                 cost = zeus_cost(energy, time, eta_knob, self.max_pl * num_gpus)
                 print(f"[Zeus Master] {cost=}")
 

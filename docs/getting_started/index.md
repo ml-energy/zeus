@@ -33,7 +33,7 @@ for epoch_number in train_loader.epochs():
     for batch in eval_loader:
         # Evaluate on batch
 
-    # NOTE: If doing distributed data parallel training, please make sure
+    # NOTE: If doing data parallel training, please make sure
     # to call `dist.all_reduce()` to reduce the validation metric across all GPUs
     # before calling `train_loader.report_metric()`.
     train_loader.report_metric(validation_metric)

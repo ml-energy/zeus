@@ -1,5 +1,6 @@
 """
-This script trains ImageNet dataset. Currently it only supports single node.
+This script trains an image classification model from `torchvision` on the ImageNet dataset.
+Currently it only supports single node training.
     - Enable Zeus with `--zeus`.
 
 Launching methods of multi-GPU data parallel training:
@@ -65,7 +66,6 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
 
-    # IMAGENET
     parser.add_argument(
         "data",
         metavar="DIR",
@@ -283,7 +283,7 @@ def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
 
     if args.gpu is not None:
-        print("Use GPU: {} for training".format(args.gpu))
+        print(f"Use GPU {args.gpu} for training")
 
     # DATA PARALLEL
     if args.distributed:
@@ -363,8 +363,6 @@ def main_worker(gpu, ngpus_per_node, args):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 
-    cudnn.benchmark = True
-
     # Data loading code
     if args.dummy:
         print("=> Dummy data is used!")
@@ -418,7 +416,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # ZEUS
     # Prepare dataloaders.
     if args.zeus:
-        # Zeus
+        # ZEUS
         # Take either of the launching approaches of the data parallel training on
         # single-node multi-GPU will activate the data parallel ("dp") mode in zeus.
 

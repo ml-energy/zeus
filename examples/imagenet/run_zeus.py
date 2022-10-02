@@ -101,7 +101,7 @@ def main(args: argparse.Namespace) -> None:
         target_metric=args.target_metric,
         max_epochs=args.max_epochs,
         default_bs=args.b_0,
-        default_lr=0.1,  # Dummy placeholder value.
+        default_lr=args.lr_0,
         workdir="/workspace/zeus/examples/imagenet",
         # fmt: off
         command=[
