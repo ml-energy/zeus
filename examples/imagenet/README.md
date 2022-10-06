@@ -37,7 +37,7 @@ While our paper is about optimizing the batch size and power limit over multiple
         symbioticlab/zeus:latest \
         bash
     ```
-    - Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please use our Docker image and replace the argument following `--gpus` in the above `docker run` command with your preference. For example:
+    - Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please use the `CUDA_VISIBLE_DEVICES` environment variable, or use our Docker image and replace the argument following `--gpus` in the above `docker run` command with your preference. For example:
       - Mount 2 GPUs to the Docker container: `--gpus 2`.
       - Mount specific GPUs to the Docker container: `--gpus '"device=0,1"'`.
 3. Install python dependencies for this example:
@@ -65,7 +65,7 @@ export ZEUS_USE_OPTIMAL_PL="True"              # Whether to acutally use the opt
 # Single-GPU
 python train.py \
     [DATA_DIR] \
-    --gpu 0 \                                  # Specify the GPU id to use
+    --gpu 0             `# Specify the GPU id to use` \
     --zeus
 
 # Multi-GPU Data Parallel

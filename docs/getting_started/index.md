@@ -40,7 +40,7 @@ for epoch_number in train_loader.epochs():
 ```
 
 ### Data parllel with multi-GPU on a single-node
-Zeus only one process per GPU profiling. In data parallel training,
+Zeus supports only one process per GPU profiling. In data parallel training,
 each process has its `local_rank` within the node and will run the
 following code.
 We also specify the important steps for a better comprehension.
@@ -72,8 +72,8 @@ model = torch.nn.parallel.DistributedDataParallel(
     output_device=local_rank,
 )
 
-# Step 3: Create instances of `DistributedSampler` to restrict data loading
-# to a subset of the dataset.
+# Step 3: Create instances of `DistributedSampler` to partition the dataset
+# across the GPUs.
 train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
 eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
 

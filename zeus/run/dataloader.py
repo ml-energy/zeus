@@ -193,13 +193,13 @@ class ZeusDataLoader(DataLoader):
     train_epoch_time: list[float] = []
     # The master process will record ALL GPUs' energy consumption during training.
     # GPU_i's energy records is `train_epoch_energy[i]`.
-    train_epoch_energy: np.ndarray = np.empty(shape=(0), dtype=np.float64)
+    train_epoch_energy: np.ndarray = np.empty(0)
 
     # Eval-time latency profiling result. Maps power limit to epoch latency.
     eval_epoch_time: list[float] = []
     # The master process will record ALL GPUs' energy consumption during evaluation.
     # GPU_i's energy records is `eval_epoch_energy[i]`.
-    eval_epoch_energy: np.ndarray = np.empty(shape=(0), dtype=np.float64)
+    eval_epoch_energy: np.ndarray = np.empty(0)
 
     def __init__(
         self,
@@ -582,8 +582,8 @@ class ZeusDataLoader(DataLoader):
                     # the purpose of multiprocessing management.
                     # When doing data parallel training on multiple processes, ONLY the master
                     # process will predict `next_cost` and do the threshold checking. However,
-                    # once the predicated cost exceeds the threshold, we want to terminate ALL
-                    # the processes. Currently this is achieved by trowning an exception at the
+                    # once the predicted cost exceeds the threshold, we want to terminate ALL
+                    # the processes. Currently this is achieved by throwing an exception at the
                     # master process. The lauching script will terminate all the processes that
                     # are still alive.
                     raise ZeusCostThresholdExceededException(

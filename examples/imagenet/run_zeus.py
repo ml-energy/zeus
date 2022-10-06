@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
         "data",
         metavar="DIR",
         nargs="?",
-        help="path to dataset",
+        help="Path to the ImageNet directory",
     )
 
     # This random seed is used for
