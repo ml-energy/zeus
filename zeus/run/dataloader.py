@@ -78,9 +78,9 @@ class ZeusDataLoader(DataLoader):
         train_loader.report_metric(validation_metric)
     ```
 
-    ## Data parllel with multi-GPU on a single-node
+    ## Data parallel with multi-GPU on a single-node
 
-    Zeus only one process per GPU profiling. In data parallel training,
+    Zeus supports only one process per GPU profiling. In data parallel training,
     each process has its `local_rank` within the node and will run the
     following code. Please refer to [the integration example with ImageNet]
     (https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)
@@ -93,7 +93,7 @@ class ZeusDataLoader(DataLoader):
     from zeus.run import ZeusDataLoader
 
     # Step 1: Initialize the default process group.
-    # NOTE: Make sure to call `init_process_group` before calling the constructor of
+    # Make sure to call `init_process_group` before calling the constructor of
     # `ZeusDataLoader`.
     dist.init_process_group(
         backend=args.dist_backend,
@@ -104,7 +104,7 @@ class ZeusDataLoader(DataLoader):
     model = torchvision.models.resnet18()
     torch.cuda.set_device(local_rank)
     model.cuda(local_rank)
-    # NOTE: Zeus only supports one process per GPU profiling. If you are doing data
+    # Zeus only supports one process per GPU profiling. If you are doing data
     # parallel training, please use `DistributedDataParallel` for model replication
     # and specify the `device_ids` and `output_device` correctly.
     model = torch.nn.parallel.DistributedDataParallel(
@@ -113,13 +113,13 @@ class ZeusDataLoader(DataLoader):
         output_device=local_rank,
     )
 
-    # Step 3: Create instances of `DistributedSampler` to restrict data loading
-    # to a subset of the dataset.
+    # Step 3: Create instances of `DistributedSampler` to partition the dataset
+        # across the GPUs.
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
     eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
 
     # Step 4: Create instances of `ZeusDataLoader`.
-    # NOTE: Pass `"dp"` to `distributed` and samplers in the previous step to
+    # Pass `"dp"` to `distributed` and samplers in the previous step to
     # `sampler`.
     # The one instantiated with `max_epochs` becomes the train dataloader.
     train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100,
@@ -134,7 +134,7 @@ class ZeusDataLoader(DataLoader):
         for batch in eval_loader:
             # Evaluate on batch
 
-        # NOTE: If doing data parallel training, please make sure to call
+        # If doing data parallel training, please make sure to call
         # `torch.distributed.all_reduce()` to reduce the validation metric
         # across all GPUs before calling `train_loader.report_metric()`.
         train_loader.report_metric(validation_metric)
@@ -355,12 +355,22 @@ class ZeusDataLoader(DataLoader):
         # We also avoid using the last batch of one epoch, becasue when `drop_last == True`,
         # the last batch will be smaller. This usually happens with large batch size on
         # small datasets, eg. CIFAR100.
-        if self.warmup_iter + self.profile_iter >= self.num_samples:
+        if self._is_train and self.warmup_iter + self.profile_iter >= self.num_samples:
+            self._log(
+                f"The profile window takes {self.warmup_iter + self.profile_iter}"
+                f" iterations ({self.warmup_iter} for warmup + {self.profile_iter}"
+                f" for profile) and exceeds the number of iterations ({self.num_samples})"
+                f" in one epoch. Scaling the profile window to fit in one epoch..."
+            )
             scaling_factor = (self.num_samples - 1) / (
                 self.warmup_iter + self.profile_iter
             )
             self.warmup_iter = int(self.warmup_iter * scaling_factor)
             self.profile_iter = int(self.profile_iter * scaling_factor)
+            self._log(
+                f"Scaling done! New profile window takes {self.warmup_iter + self.profile_iter}"
+                f" iterations ({self.warmup_iter} for warmup + {self.profile_iter} for profile)."
+            )
 
         # Power profiling windows
         #

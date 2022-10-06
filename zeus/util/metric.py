@@ -43,7 +43,7 @@ class ZeusCostThresholdExceededException(Exception):
     parallel training with multiple processes, because ONLY the master
     process will predict `next_cost` and do the threshold checking. However,
     once the predicted cost exceeds the threshold, we want to terminate ALL
-    the processes. Currently this is achieved by trowning an exception at the
+    the processes. Currently this is achieved by throwing an exception at the
     master process. The lauching script will terminate all the processes that
     are still alive.
 

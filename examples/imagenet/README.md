@@ -29,11 +29,11 @@ While our paper is about optimizing the batch size and power limit over multiple
     ```sh
     # Working directory is repository root
     docker run -it \
-        --gpus all \                             # Specify the number of GPUs to use. When `all` is set, all the GPUs will be used.
+        --gpus all    `# Specify the number of GPUs to use. When 'all' is set, all the GPUs will be used.` \
         --cap-add SYS_ADMIN \
-        --shm-size 64G \
+        --shm-size 64G \              
         -v $(pwd):/workspace/zeus \
-        -v $DATA_DIR:/data/imagenet \            # Mount the dataset to the container 
+        -v $DATA_DIR:/data/imagenet    `# Mount the dataset to the container` \
         symbioticlab/zeus:latest \
         bash
     ```
@@ -65,16 +65,15 @@ export ZEUS_USE_OPTIMAL_PL="True"              # Whether to acutally use the opt
 # Single-GPU
 python train.py \
     [DATA_DIR] \
-    --gpu 0             `# Specify the GPU id to use` \
+    --gpu 0                 `# Specify the GPU id to use` \
     --zeus
 
 # Multi-GPU Data Parallel
-# NOTE: Please check out train.py for more launching methods.
+# Please check out train.py for more launching methods.
 torchrun \
     --nnodes 1 \
-    --nproc_per_node gpu \                    # Number of processes per node, should be equal to the number of GPUs.
-                                              # When setting to `gpu`, it means use all the GPUs available, i.e. 
-                                              # `torch.cuda.device_count()`.
+    --nproc_per_node gpu    `# Number of processes per node, should be equal to the number of GPUs.` \
+                            `# When setting to 'gpu', it means use all the GPUs available, i.e.` \
     train.py [DATA_DIR] \
     --zeus \
     --torchrun
@@ -93,15 +92,15 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
     ```sh
     # Working directory is repository root
     docker run -it \
-        --gpus all \                             # Specify the number of GPUs to use. When `all` is set, all the GPUs will be used.
-        --cap-add SYS_ADMIN \           
+        --gpus all    `# Specify the number of GPUs to use. When 'all' is set, all the GPUs will be used.` \
+        --cap-add SYS_ADMIN \
         --shm-size 64G \              
         -v $(pwd):/workspace/zeus \
-        -v $DATA_DIR:/data/imagenet \            # Mount the dataset to the container 
+        -v $DATA_DIR:/data/imagenet    `# Mount the dataset to the container` \
         symbioticlab/zeus:latest \
         bash
     ```
-    - Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please use our Docker image and replace the argument following `--gpus` in the above `docker run` command with your preference. For example:
+    - Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please use the `CUDA_VISIBLE_DEVICES` environment variable, or use our Docker image and replace the argument following `--gpus` in the above `docker run` command with your preference. For example:
       - Mount 2 GPUs to the Docker container: `--gpus 2`.
       - Mount specific GPUs to the Docker container: `--gpus '"device=0,1"'`.
 3. Only for those not using our Docker image, install `torchvision` separately:
@@ -115,7 +114,7 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
 # All arguments shown below are default values.
 # Multi-GPU Data Parallel
 python run_zeus.py \
-    [DATA_DIR] \                # Specify the location of ImageNet dataset
+    [DATA_DIR]             `# Specify the location of ImageNet dataset` \
     --seed 1 \
     --b_0 256 \
     --lr_0 0.1 \
@@ -149,14 +148,13 @@ python train.py \
     [DATA_DIR] \
     --epochs 100 \
     --batch_size 1024 \
-    --gpu 0                                   # Specify the GPU id to use
+    --gpu 0                 `# Specify the GPU id to use` \
 
 # Multi-GPU Data Parallel
 torchrun \
     --nnodes 1 \
-    --nproc_per_node gpu \                    # Number of processes per node, should be equal to the number of GPUs.
-                                              # When setting to `gpu`, it means use all the GPUs available, i.e. 
-                                              # `torch.cuda.device_count()`.
+    --nproc_per_node gpu    `# Number of processes per node, should be equal to the number of GPUs.` \
+                            `# When setting to 'gpu', it means use all the GPUs available, i.e.` \
     train.py [DATA_DIR] \
     --epochs 100 \
     --batch_size 1024 \

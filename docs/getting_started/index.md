@@ -39,7 +39,7 @@ for epoch_number in train_loader.epochs():
     train_loader.report_metric(validation_metric)
 ```
 
-### Data parllel with multi-GPU on a single-node
+### Data parallel with multi-GPU on a single-node
 Zeus supports only one process per GPU profiling. In data parallel training,
 each process has its `local_rank` within the node and will run the
 following code.
@@ -63,7 +63,7 @@ dist.init_process_group(
 model = torchvision.models.resnet18()
 torch.cuda.set_device(local_rank)
 model.cuda(local_rank)
-# NOTE: Zeus only supports one process per GPU profiling. If you are doing data
+# Zeus only supports one process per GPU profiling. If you are doing data
 # parallel training, please use `DistributedDataParallel` for model replication
 # and specify the `device_ids` and `output_device` correctly.
 model = torch.nn.parallel.DistributedDataParallel(
@@ -78,7 +78,7 @@ train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
 eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
 
 # Step 4: Create instances of `ZeusDataLoader`.
-# NOTE: Pass "dp" to `distributed` and samplers in the previous step to
+# Pass "dp" to `distributed` and samplers in the previous step to
 # `sampler`.
 # The one instantiated with `max_epochs` becomes the train dataloader.
 train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100, 
@@ -93,7 +93,7 @@ for epoch_number in train_loader.epochs():
     for batch in eval_loader:
         # Evaluate on batch
 
-    # NOTE: If doing data parallel training, please make sure to call 
+    # If doing data parallel training, please make sure to call 
     # `torch.distributed.all_reduce()` to reduce the validation metric 
     # across all GPUs before calling `train_loader.report_metric()`.
     train_loader.report_metric(validation_metric)

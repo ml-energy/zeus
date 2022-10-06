@@ -28,8 +28,8 @@ Important notes:
     1. Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please 
        use our Docker image and replace the argument following `--gpus` in the `docker run` command with your preference. 
        For example:
-        - Mounting 2 GPUs to the Docker container: `--gpus 2`.
-        - Mounting specific GPUs to the Docker container: `--gpus '"device=0,1"'`.
+        - Mount 2 GPUs to the Docker container: `--gpus 2`.
+        - Mount specific GPUs to the Docker container: `--gpus '"device=0,1"'`.
        Please see the full instructions in README.md.
     2. Please ensure that the global batch size passed in by `--batch_size` or `-b` is divisible by the number of
        GPUs available. You can check the number of GPUs available by `torch.cuda.device_count()`.
@@ -59,7 +59,7 @@ Simplified example code:
     model = torchvision.models.resnet18()
     torch.cuda.set_device(local_rank)
     model.cuda(local_rank)
-    # NOTE: Zeus only supports one process per GPU profiling. If you are doing data
+    # Zeus only supports one process per GPU profiling. If you are doing data
     # parallel training, please use `DistributedDataParallel` for model replication
     # and specify the `device_ids` and `output_device` correctly.
     model = torch.nn.parallel.DistributedDataParallel(
@@ -68,13 +68,13 @@ Simplified example code:
         output_device=local_rank,
     )
 
-    # Step 3: Create instances of `DistributedSampler` to restrict data loading
-    # to a subset of the dataset.
+    # Step 3: Create instances of `DistributedSampler` to partition the dataset
+	# across the GPUs.    
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
     eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
 
     # Step 4: Create instances of `ZeusDataLoader`.
-    # NOTE: Pass "dp" to `distributed` and samplers in the previous step to
+    # Pass "dp" to `distributed` and samplers in the previous step to
     # `sampler`.
     # The one instantiated with `max_epochs` becomes the train dataloader.
     train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100, 
@@ -89,7 +89,7 @@ Simplified example code:
         for batch in eval_loader:
             # Evaluate on batch
 
-        # NOTE: If doing data parallel training, please make sure to call 
+        # If doing data parallel training, please make sure to call 
         # `torch.distributed.all_reduce()` to reduce the validation metric 
         # across all GPUs before calling `train_loader.report_metric()`.
         train_loader.report_metric(validation_metric)
@@ -147,8 +147,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "data",
         metavar="DIR",
-        nargs="?",
-        help="path to dataset",
+        help="Path to the ImageNet directory",
     )
     parser.add_argument(
         "-a",
@@ -323,7 +322,7 @@ def main():
     # Preparation for SLURM
     if "SLURM_PROCID" in os.environ:
         # Retrieve local_rank.
-        # NOTE: We only consider Single GPU for now. So `local_rank == rank`.
+        # We only consider Single GPU for now. So `local_rank == rank`.
         args.local_rank = int(os.environ["SLURM_PROCID"])
 
         # Retrieve the node address
@@ -345,7 +344,7 @@ def main():
     args.distributed = args.multiprocessing_distributed or args.local_rank >= 0
     ngpus_per_node = torch.cuda.device_count()
 
-    # NOTE: The global batch size passed in by `--batch_size` or `-b` MUST be divisible
+    # The global batch size passed in by `--batch_size` or `-b` MUST be divisible
     # by the number of GPUs available. You can check the number of GPUs available by
     # `torch.cuda.device_count()`.
     if args.batch_size % ngpus_per_node != 0:
@@ -416,7 +415,7 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.gpu is not None:
             torch.cuda.set_device(args.gpu)
             model.cuda(args.gpu)
-            # NOTE: When using a single GPU per process and per
+            # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs of the current node.
             args.batch_size = int(args.batch_size / ngpus_per_node)

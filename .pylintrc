@@ -17,6 +17,7 @@ disable=raw-checker-failed,
         too-many-branches,
         too-many-nested-blocks,
         too-many-statements,
+        too-many-lines,
         consider-using-with,
 
 [FORMAT]

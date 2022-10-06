@@ -17,7 +17,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "data",
         metavar="DIR",
-        nargs="?",
         help="Path to the ImageNet directory",
     )
 
