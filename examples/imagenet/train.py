@@ -19,9 +19,81 @@ Launching methods of multi-GPU data parallel training:
             #SBATCH --ntasks-per-node=[NUM_OF_GPUS]     # number of tasks per node (1 task per GPU)
             #SBATCH --gres=gpu:[NUM_OF_GPUS]            # number of GPUs reserved per node (here all the GPUs)
             #SBATCH --mem=64GB
+            python train.py --zeus
             ```
         - On terminal:
             $ sbatch script.sh
+
+Important notes:
+    1. Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please 
+       use our Docker image and replace the argument following `--gpus` in the `docker run` command with your preference. 
+       For example:
+        - Mounting 2 GPUs to the Docker container: `--gpus 2`.
+        - Mounting specific GPUs to the Docker container: `--gpus '"device=0,1"'`.
+       Please see the full instructions in README.md.
+    2. Please ensure that the global batch size passed in by `--batch_size` or `-b` is divisible by the number of
+       GPUs available. You can check the number of GPUs available by `torch.cuda.device_count()`.
+    3. Please do NOT set `cudnn.benchmark = True`. CuDNN's benchmarking will make the first few iterations very slow
+       and thus, ruin Zeus power profiling. This issue will be fixed soon in a later release of Zeus.
+    4. If `ZeusCostThresholdExceededException` is raised when running Zeus, it means the next predicted cost exceeds
+       the cost threshold, so the training stops. When doing data parallel, we utilize this customized exception to
+       terminate all the processes.
+
+Simplified example code:
+    It is critical to follow the correct steps when writing your own data parallel training script. Thus, we provide a
+    simplified version to specify each steps for a better comprehension.
+
+    ```python
+    import torch
+    import torchvision
+
+    from zeus.run import ZeusDataLoader
+
+    # Step 1: Initialize the default process group.
+    dist.init_process_group(
+        backend=args.dist_backend,
+        init_method=args.dist_url,
+    )
+
+    # Step 2: Create a model and wrap it with `DistributedDataParallel`.
+    model = torchvision.models.resnet18()
+    torch.cuda.set_device(local_rank)
+    model.cuda(local_rank)
+    # NOTE: Zeus only supports one process per GPU profiling. If you are doing data
+    # parallel training, please use `DistributedDataParallel` for model replication
+    # and specify the `device_ids` and `output_device` correctly.
+    model = torch.nn.parallel.DistributedDataParallel(
+        model,
+        device_ids=[local_rank],
+        output_device=local_rank,
+    )
+
+    # Step 3: Create instances of `DistributedSampler` to restrict data loading
+    # to a subset of the dataset.
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
+    eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
+
+    # Step 4: Create instances of `ZeusDataLoader`.
+    # NOTE: Pass "dp" to `distributed` and samplers in the previous step to
+    # `sampler`.
+    # The one instantiated with `max_epochs` becomes the train dataloader.
+    train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100, 
+                                sampler=train_sampler, distributed="dp")
+    eval_loader = ZeusDataLoader(eval_set, batch_size=256, sampler=eval_sampler,
+                                distributed="dp")
+
+    # Step 5: Put your training code here.
+    for epoch_number in train_loader.epochs():
+        for batch in train_loader:
+            # Learn from batch
+        for batch in eval_loader:
+            # Evaluate on batch
+
+        # NOTE: If doing data parallel training, please make sure to call 
+        # `torch.distributed.all_reduce()` to reduce the validation metric 
+        # across all GPUs before calling `train_loader.report_metric()`.
+        train_loader.report_metric(validation_metric)
+    ```
 """
 
 import argparse
@@ -53,7 +125,13 @@ from zeus.run import ZeusDataLoader
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
+    """Parse command line arguments.
+
+    Raises:
+        ValueError: Launching methods arguments are mixed together. Please note that
+            `--multiprocessing-distributed` is dedicated to using `torch.multiprocessing.launch`
+            and `--torchrun` is dedicated to using `torchrun`. See more in the script docstring.
+    """
 
     # List choices of models
     model_names = sorted(
@@ -70,8 +148,7 @@ def parse_args() -> argparse.Namespace:
         "data",
         metavar="DIR",
         nargs="?",
-        default="/data/imagenet",
-        help="path to dataset (default: /data/imagenet)",
+        help="path to dataset",
     )
     parser.add_argument(
         "-a",
@@ -182,9 +259,6 @@ def parse_args() -> argparse.Namespace:
     # ZEUS
     parser.add_argument("--zeus", action="store_true", help="Whether to run Zeus.")
     parser.add_argument(
-        "--profile", action="store_true", help="Whether to just profile power."
-    )
-    parser.add_argument(
         "--target_metric",
         default=None,
         type=float,
@@ -226,6 +300,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main():
+    """Main function that prepares values and spawns/calls the worker function.
+
+    Raises:
+        ValueError: The global batch size passed in by `--batch_size` or `-b`
+            is not divisible by the number of GPUs.
+    """
     args = parse_args()
 
     if args.seed is not None:
@@ -265,6 +345,16 @@ def main():
     args.distributed = args.multiprocessing_distributed or args.local_rank >= 0
     ngpus_per_node = torch.cuda.device_count()
 
+    # NOTE: The global batch size passed in by `--batch_size` or `-b` MUST be divisible
+    # by the number of GPUs available. You can check the number of GPUs available by
+    # `torch.cuda.device_count()`.
+    if args.batch_size % ngpus_per_node != 0:
+        raise ValueError(
+            "The global batch size passed in by `--batch_size` or `-b` MUST"
+            " be divisible by the number of GPUs available. Got"
+            f" global_batch_size={args.batch_size} with {ngpus_per_node} GPUs."
+        )
+
     if args.multiprocessing_distributed:
         # Use `torch.multiprocessing.spawn` to launch distributed processes: the
         # main_worker process function.
@@ -280,12 +370,14 @@ def main():
 
 
 def main_worker(gpu, ngpus_per_node, args):
+    """Worker function that runs on each process."""
     args.gpu = gpu
 
     if args.gpu is not None:
         print(f"Use GPU {args.gpu} for training")
 
     # DATA PARALLEL
+    # Step 1: Initialize the default process group.
     if args.distributed:
         if args.multiprocessing_distributed:
             # Use `torch.multiprocessing`
@@ -307,7 +399,7 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         args.local_world_size = 1
 
-    # create model
+    # Step 2: Create a model and wrap it with `DistributedDataParallel`.
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
         model = models.__dict__[args.arch](pretrained=True)
@@ -404,6 +496,8 @@ def main_worker(gpu, ngpus_per_node, args):
         )
 
     # DATA PARALLEL
+    # Step 3: Create instances of `DistributedSampler` to restrict data loading
+    # to a subset of the dataset.
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
         val_sampler = torch.utils.data.distributed.DistributedSampler(
@@ -414,7 +508,7 @@ def main_worker(gpu, ngpus_per_node, args):
         val_sampler = None
 
     # ZEUS
-    # Prepare dataloaders.
+    # Step 4: Create instances of `ZeusDataLoader`.
     if args.zeus:
         # ZEUS
         # Take either of the launching approaches of the data parallel training on

@@ -14,6 +14,13 @@ def parse_args() -> argparse.Namespace:
     """Parse commandline arguments."""
     parser = argparse.ArgumentParser()
 
+    parser.add_argument(
+        "data",
+        metavar="DIR",
+        nargs="?",
+        help="path to dataset",
+    )
+
     # This random seed is used for
     # 1. Multi-Armed Bandit inside PruningGTSBatchSizeOptimizer, and
     # 2. Providing random seeds for training.
@@ -23,10 +30,8 @@ def parse_args() -> argparse.Namespace:
     # Default batch size and learning rate.
     # The first recurrence uses these parameters, and it must reach the target metric.
     # There is no learning rate because we train the model with Adadelta.
-    parser.add_argument("--b_0", type=int, default=1024, help="Default batch size")
-    parser.add_argument(
-        "--lr_0", type=float, default=4.00e-7, help="Default learning rate"
-    )
+    parser.add_argument("--b_0", type=int, default=256, help="Default batch size")
+    parser.add_argument("--lr_0", type=float, default=0.1, help="Default learning rate")
 
     # The range of batch sizes to consider. The example script generates a list of power-of-two
     # batch sizes, but batch sizes need not be power-of-two for Zeus.
@@ -34,7 +39,7 @@ def parse_args() -> argparse.Namespace:
         "--b_min", type=int, default=8, help="Smallest batch size to consider"
     )
     parser.add_argument(
-        "--b_max", type=int, default=4096, help="Largest batch size to consider"
+        "--b_max", type=int, default=1024, help="Largest batch size to consider"
     )
 
     # The total number of recurrences.
@@ -62,15 +67,6 @@ def parse_args() -> argparse.Namespace:
         "--max_epochs", type=int, default=100, help="Max number of epochs to train"
     )
 
-    # IMAGENET
-    parser.add_argument(
-        "--data",
-        metavar="DIR",
-        nargs="?",
-        default="/data/imagenet",
-        help="path to dataset (default: /data/imagenet)",
-    )
-
     return parser.parse_args()
 
 
@@ -89,6 +85,8 @@ def main(args: argparse.Namespace) -> None:
         seed=args.seed,
         monitor_path="/workspace/zeus/zeus_monitor/zeus_monitor",
         observer_mode=False,
+        profile_warmup_iters=20,
+        profile_measure_iters=80,
     )
 
     # Definition of the CIFAR100 job.

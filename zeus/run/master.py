@@ -55,8 +55,8 @@ class ZeusMaster:
         monitor_path: str,
         seed: int = 123456,
         observer_mode: bool = False,
-        profile_warmup_iters: int = 5,
-        profile_measure_iters: int = 20,
+        profile_warmup_iters: int = 10,
+        profile_measure_iters: int = 40,
     ) -> None:
         """Initialize the master.
 

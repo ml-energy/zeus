@@ -99,8 +99,8 @@ def main(args: argparse.Namespace) -> None:
         seed=args.seed,
         monitor_path="/workspace/zeus/zeus_monitor/zeus_monitor",
         observer_mode=False,
-        profile_warmup_iters=5,
-        profile_measure_iters=20,
+        profile_warmup_iters=10,
+        profile_measure_iters=40,
     )
 
     # Definition of the CIFAR100 job.

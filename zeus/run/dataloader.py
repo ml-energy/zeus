@@ -25,7 +25,7 @@ import time
 import logging
 from functools import cached_property
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Literal
 import numpy as np
 
 import pynvml
@@ -58,7 +58,9 @@ class ZeusDataLoader(DataLoader):
     `ZeusDataLoader` is integrated into the DNN training script, and transparently
     profiles power and time consumption to determine the optimal GPU power limit.
 
-    # Integration example
+    # Integration examples
+
+    ## Single-GPU
 
     ```python
     from zeus.run import ZeusDataLoader
@@ -73,9 +75,68 @@ class ZeusDataLoader(DataLoader):
         for batch in eval_loader:
             # Evaluate on batch
 
-        # NOTE: If doing distributed data parallel training, please make sure
-        # to call `dist.all_reduce()` to reduce the validation metric across all GPUs
-        # before calling `train_loader.report_metric()`.
+        train_loader.report_metric(validation_metric)
+    ```
+
+    ## Data parllel with multi-GPU on a single-node
+
+    Zeus only one process per GPU profiling. In data parallel training,
+    each process has its `local_rank` within the node and will run the
+    following code. Please refer to [the integration example with ImageNet]
+    (https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)
+    for the complete example.
+
+    ```python
+    import torch
+    import torchvision
+
+    from zeus.run import ZeusDataLoader
+
+    # Step 1: Initialize the default process group.
+    # NOTE: Make sure to call `init_process_group` before calling the constructor of
+    # `ZeusDataLoader`.
+    dist.init_process_group(
+        backend=args.dist_backend,
+        init_method=args.dist_url,
+    )
+
+    # Step 2: Create a model and wrap it with `DistributedDataParallel`.
+    model = torchvision.models.resnet18()
+    torch.cuda.set_device(local_rank)
+    model.cuda(local_rank)
+    # NOTE: Zeus only supports one process per GPU profiling. If you are doing data
+    # parallel training, please use `DistributedDataParallel` for model replication
+    # and specify the `device_ids` and `output_device` correctly.
+    model = torch.nn.parallel.DistributedDataParallel(
+        model,
+        device_ids=[local_rank],
+        output_device=local_rank,
+    )
+
+    # Step 3: Create instances of `DistributedSampler` to restrict data loading
+    # to a subset of the dataset.
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
+    eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
+
+    # Step 4: Create instances of `ZeusDataLoader`.
+    # NOTE: Pass `"dp"` to `distributed` and samplers in the previous step to
+    # `sampler`.
+    # The one instantiated with `max_epochs` becomes the train dataloader.
+    train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100,
+                                sampler=train_sampler, distributed="dp")
+    eval_loader = ZeusDataLoader(eval_set, batch_size=256, sampler=eval_sampler,
+                                distributed="dp")
+
+    # Step 5: Put your training code here.
+    for epoch_number in train_loader.epochs():
+        for batch in train_loader:
+            # Learn from batch
+        for batch in eval_loader:
+            # Evaluate on batch
+
+        # NOTE: If doing data parallel training, please make sure to call
+        # `torch.distributed.all_reduce()` to reduce the validation metric
+        # across all GPUs before calling `train_loader.report_metric()`.
         train_loader.report_metric(validation_metric)
     ```
 
@@ -98,7 +159,7 @@ class ZeusDataLoader(DataLoader):
       - `ZEUS_MONITOR_PATH`  : Path to the Zeus power monitor binary.
                                (Default:` "/workspace/zeus/zeus_monitor/zeus_monitor"`)
       - `ZEUS_PROFILE_PARAMS`: Warmup and measure iterations for each power limit,
-                               separated by a comma. (Default:` "5,20"`)
+                               separated by a comma. (Default:` "10,40"`)
       - `ZEUS_USE_OPTIMAL_PL`: Whether to actually use the optimal power limit found.
                                Setting this to false is the Observer Mode described
                                in Section 5. (Default:` "True"`)
@@ -132,20 +193,20 @@ class ZeusDataLoader(DataLoader):
     train_epoch_time: list[float] = []
     # The master process will record ALL GPUs' energy consumption during training.
     # GPU_i's energy records is `train_epoch_energy[i]`.
-    train_epoch_energy: list[list[float]] = []
+    train_epoch_energy: np.ndarray = np.empty(shape=(0), dtype=np.float64)
 
     # Eval-time latency profiling result. Maps power limit to epoch latency.
     eval_epoch_time: list[float] = []
     # The master process will record ALL GPUs' energy consumption during evaluation.
     # GPU_i's energy records is `eval_epoch_energy[i]`.
-    eval_epoch_energy: list[list[float]] = []
+    eval_epoch_energy: np.ndarray = np.empty(shape=(0), dtype=np.float64)
 
     def __init__(
         self,
         *args,
         batch_size: int,
         max_epochs: int = -1,
-        distributed: str | None = None,
+        distributed: Literal["dp"] | None = None,
         **kwargs,
     ) -> None:
         """Initialize the dataloader.
@@ -159,6 +220,7 @@ class ZeusDataLoader(DataLoader):
                 a single node, this value should be `"dp"`.
 
         Raises:
+            ValueError: `max_epochs` is specified when initializing the evaluation dataloader.
             RuntimeError: `torch.distributed` package is not available.
             RuntimeError: The default process group is not initialized. Make sure to call
                 `torch.distributed.init_process_group` to initialize the default process
@@ -171,6 +233,8 @@ class ZeusDataLoader(DataLoader):
                 training. In this case, the DistributedSampler should have
                 `sampler.num_replicas == torch.distributed.get_world_size()`
                 and `sampler.rank == torch.distributed.get_rank()`.
+            TypeError: parameter `distributed` is not correctly specified. Currently, it can only
+                be set as `"dp"` or `None`.
         """
         # Save attributes.
         self.batch_size = batch_size
@@ -214,11 +278,18 @@ class ZeusDataLoader(DataLoader):
             ):
                 raise ValueError(
                     "`DistributedSampler` is inconsistent with the default process group."
+                    f" The default process group has `world_size={dist.get_world_size()}`,"
+                    f" `rank={dist.get_rank()}`."
                 )
             self.world_size = dist.get_world_size()
             self.rank = dist.get_rank()
+        else:
+            if self.distributed is not None:
+                raise TypeError(
+                    '`distributed` currently only accepts `"dp"` or `None`.'
+                )
 
-        if self._is_train and self.rank == 0:
+        if self._is_train:
             self._log(
                 f"Distributed data parallel: {'ON' if self.world_size > 1 else 'OFF'}"
             )
@@ -230,8 +301,10 @@ class ZeusDataLoader(DataLoader):
                 # In this case, raise a ValueError.
                 raise ValueError("Specify max_epochs only to the train dataloader.")
             # In data parallel training, each DataLoader gets `batch_size=global_batch_size/num_gpus`.
-            # So, we scale the train_batch_size for the correspondence with ZeusMaster.
-            ZeusDataLoader.train_batch_size = batch_size * self.world_size
+            # So, we scale the `train_batch_size` for the consistency with ZeusMaster.
+            # NOTE: Zeus assume `global_batch_size == batch_size * num_gpus`. So please ensure that
+            # `global_batch_size` is divisible by `num_gpu` in the training script.
+            ZeusDataLoader.train_batch_size = self.batch_size * self.world_size
 
         # Retrieve environment variables from ZeusMaster.
         self.target_metric = get_env("ZEUS_TARGET_METRIC", float)
@@ -245,7 +318,7 @@ class ZeusDataLoader(DataLoader):
             default="/workspace/zeus/zeus_monitor/zeus_monitor",
         )
         self.warmup_iter, self.profile_iter = map(
-            int, get_env("ZEUS_PROFILE_PARAMS", str, default="5,20").split(",")
+            int, get_env("ZEUS_PROFILE_PARAMS", str, default="10,40").split(",")
         )
         self.use_optimal_pl = get_env("ZEUS_USE_OPTIMAL_PL", bool, default=True)
 
@@ -266,8 +339,8 @@ class ZeusDataLoader(DataLoader):
         self.power_json = f"{self.logdir}/bs{self.train_batch_size}.power.json"
 
         # Numbers related to the dataloader.
-        # sample_num: the number of batches processed in the current epoch.
-        # num_samples: the total number of batches in one epoch
+        # sample_num: the number of iterations processed in the current epoch.
+        # num_samples: the total number of iterations in one epoch.
         self.epoch_num = 0
         self.sample_num = 0
         self.num_samples = len(self)
@@ -275,6 +348,19 @@ class ZeusDataLoader(DataLoader):
         # Pass the length of the eval dataloader for `epochs`.
         if not self._is_train:
             ZeusDataLoader.eval_num_samples = self.num_samples
+
+        # If the number of iterations in one epoch (`num_samples`) is smaller than or equal
+        # to one profile window (`warmup_iters + profile_iters`), we will not be able to
+        # profile for any power limit. So, we scale the profile window to fit in one epoch.
+        # We also avoid using the last batch of one epoch, becasue when `drop_last == True`,
+        # the last batch will be smaller. This usually happens with large batch size on
+        # small datasets, eg. CIFAR100.
+        if self.warmup_iter + self.profile_iter >= self.num_samples:
+            scaling_factor = (self.num_samples - 1) / (
+                self.warmup_iter + self.profile_iter
+            )
+            self.warmup_iter = int(self.warmup_iter * scaling_factor)
+            self.profile_iter = int(self.profile_iter * scaling_factor)
 
         # Power profiling windows
         #
@@ -297,12 +383,19 @@ class ZeusDataLoader(DataLoader):
         self.prof_start_sample = 0
         self.prof_state = NOT_PROFILING
         self.prof_pl_index = 0
-        self.prev_cutoff_pl = -1
 
         # Initialize data structure for storing the energy accounting
         # based on the number of GPUs.
-        ZeusDataLoader.train_epoch_energy = [[] for _ in range(self.world_size)]
-        ZeusDataLoader.eval_epoch_energy = [[] for _ in range(self.world_size)]
+        if self._is_train:
+            # Sanity check
+            assert self.world_size > 0, f"{self.world_size=}"
+            assert self.max_epochs > 0, f"{self.max_epochs=}"
+            ZeusDataLoader.train_epoch_energy = np.zeros(
+                shape=(self.world_size, self.max_epochs), dtype=np.float64
+            )
+            ZeusDataLoader.eval_epoch_energy = np.zeros(
+                shape=(self.world_size, self.max_epochs), dtype=np.float64
+            )
 
         # Initialize NVML and get GPU handle or each GPU at the master process.
         self.gpu_handles = []
@@ -317,7 +410,7 @@ class ZeusDataLoader(DataLoader):
             self.gpu_handles[0]
         )
         self.power_limits = list(range(self.max_pl, min_pl - 25_000, -25_000))
-        if self._is_train and self.rank == 0:
+        if self._is_train:
             self._log(f"Power limit range: {self.power_limits}")
 
         # Check whether profiling is ON or OFF. If OFF, load the power limit
@@ -359,6 +452,10 @@ class ZeusDataLoader(DataLoader):
 
         Yields:
             Epoch indices starting from zero.
+
+        Raises:
+            ZeusCostThresholdExceededException: the predicated cost after next epoch exceeds the cost threshold.
+                When doing data parallel training, this exception is used for ternimating ALL the processes.
         """
         # Sanity check.
         assert self._is_train, "Use epochs() on the train dataloader."
@@ -374,31 +471,15 @@ class ZeusDataLoader(DataLoader):
                     len(self.train_epoch_time) == enum
                 ), f"{len(self.train_epoch_time)=}"
                 assert (
-                    len(self.train_epoch_energy) == self.world_size
-                ), f"{len(self.train_epoch_energy)=}"
-                assert all(
-                    len(self.train_epoch_energy[index]) == enum
-                    for index in range(self.world_size)
-                )
-                assert (
                     len(self.eval_epoch_time) == enum
                 ), f"{len(self.eval_epoch_time)=}"
-                assert (
-                    len(self.eval_epoch_energy) == self.world_size
-                    and self.world_size >= 1
-                ), f"{len(self.eval_epoch_energy)=}"
-                assert all(
-                    len(self.eval_epoch_energy[index]) == enum
-                    for index in range(self.world_size)
-                )
 
                 # Compute time and energy consumption up to now.
                 # Compute time consumption at GPU_0
                 time_consumed = sum(self.train_epoch_time + self.eval_epoch_time)
                 # Compute energy consumption over all the GPUs
                 energy_consumed = (
-                    np.array(self.train_epoch_energy).sum()
-                    + np.array(self.eval_epoch_energy).sum()
+                    self.train_epoch_energy.sum() + self.eval_epoch_energy.sum()
                 )
                 cost = zeus_cost(
                     energy_consumed,
@@ -447,12 +528,11 @@ class ZeusDataLoader(DataLoader):
             # However, the profiling cost actually exceeding the cost threshold would not
             # happen frequently. It's more like a wrong cost threshold.
             if self._should_profile:
-                if self.rank == 0:
-                    if cost >= self.cost_thresh:
-                        self._log(
-                            f"{cost=:.2f} exceeded threshold {self.cost_thresh:.2f} at GPU_{self.rank}, "
-                            "but just continue since we're profiling."
-                        )
+                if cost >= self.cost_thresh:
+                    self._log(
+                        f"{cost=:.2f} exceeded threshold {self.cost_thresh:.2f} at GPU_{self.rank}, "
+                        "but just continue since we're profiling."
+                    )
                 yield self.epoch_num
                 continue
 
@@ -498,7 +578,14 @@ class ZeusDataLoader(DataLoader):
                     self._save_train_results(
                         energy_consumed, time_consumed, cost, False
                     )
-                    # Raise error
+                    # NOTE: We use a customized exception to terminate ALL the processes for
+                    # the purpose of multiprocessing management.
+                    # When doing data parallel training on multiple processes, ONLY the master
+                    # process will predict `next_cost` and do the threshold checking. However,
+                    # once the predicated cost exceeds the threshold, we want to terminate ALL
+                    # the processes. Currently this is achieved by trowning an exception at the
+                    # master process. The lauching script will terminate all the processes that
+                    # are still alive.
                     raise ZeusCostThresholdExceededException(
                         time_consumed,
                         energy_consumed,
@@ -582,8 +669,8 @@ class ZeusDataLoader(DataLoader):
                 pynvml.nvmlDeviceSetPowerManagementLimit(
                     self.gpu_handles[index], power_limit
                 )
+                self._log(f"[GPU_{index}] Set GPU power limit to {power_limit//1000}W.")
             ZeusDataLoader.current_gpu_pl = power_limit
-            self._log(f"Set GPU power limit to {self.current_gpu_pl//1000}W.")
 
     def _set_gpu_steady_power_limit(self) -> None:
         """Set the steady power limit based on self.use_optimal_pl."""
@@ -598,13 +685,25 @@ class ZeusDataLoader(DataLoader):
         )
         self._set_gpu_power_limit(power_limit)
 
-    def _log(self, message: str, level=logging.INFO) -> None:
+    def _log(
+        self, message: str, level: int = logging.INFO, master_only: bool = True
+    ) -> None:
         """Print out message with prefix.
 
         Args:
             message: The message to log out.
+            level: The logging level to use. (Default: `logging.INFO`)
+            master_only: Whether only logged by master process. Usually set to True for the
+                global logging and False for the GPU-specific logging . If set to False,
+                a prefix indicates which GPU this log comes from will be included as well.
+                (Default: `True`)
         """
-        LOG.log(level, "%s %s", self.log_prefix, message)
+        if master_only:
+            if self.rank == 0:
+                LOG.log(level, "%s %s", self.log_prefix, message)
+        else:
+            gpu_log_prefix = f"[GPU_{self.rank}]"
+            LOG.log(level, "%s %s %s", self.log_prefix, gpu_log_prefix, message)
 
     @cached_property
     def _is_train(self) -> bool:
@@ -627,6 +726,7 @@ class ZeusDataLoader(DataLoader):
             monitor = subprocess.Popen(
                 [self.monitor_path, self._power_log_path(index), "0", "100"],
             )
+            self._log(f"[GPU_{index}] Zeus monitor started.")
             ZeusDataLoader.monitors.append(monitor)
 
     def _kill_monitor(self) -> None:
@@ -687,20 +787,12 @@ class ZeusDataLoader(DataLoader):
         # Set profiling state.
         self.prof_state = PROFILING
 
-        if self.rank == 0:
-            self._log(f"Profile started with power limit {self.current_gpu_pl//1000}W")
+        self._log(f"Profile started with power limit {self.current_gpu_pl//1000}W")
 
-    def _end_prof(self, cutoff: bool) -> None:
+    def _end_prof(self) -> None:
         """End profiling power consumption for this power limit.
 
-        Args:
-            cutoff: True if the window was terminated before `profile_sec`
-                because the current epoch ended before that.
-
         Raises:
-            RuntimeError: Cutoff happens twice for the same power limit value. This means
-                that the epoch ends too quick for the full profile window. In this case,
-                user should consider decreasing profile window (warmup_iter + profile_iter).
             ValueError: ValueError raised by sklearn.metrics.auc in analyze.avg_power,
                 might due to profile window too small. In this case, user should consider
                 increasing profile window.
@@ -710,26 +802,6 @@ class ZeusDataLoader(DataLoader):
 
         # Set profiling state.
         self.prof_state = NOT_PROFILING
-
-        # Nothing left to do if the window was terminated prematurely.
-        if cutoff:
-            assert self.rank == 0
-            self._log(
-                f"Profiling with power limit {self.current_gpu_pl//1000}W cut off!",
-                level=logging.WARNING,
-            )
-            # The same power limit was cut off two times.
-            # This means that the epoch ends too quick for the full profile window
-            # (warmup_iter + profile_iter) to fit in. Currently this is treated as an error.
-            if self.prev_cutoff_pl == self.current_gpu_pl:
-                raise RuntimeError(
-                    "Epoch ends too quickly, and even one power limit cannot be profiled"
-                    " within it. Consider decreasing the warmup and/or measure time"
-                    " configuration. If you're using ZeusMaster, you can configure them"
-                    " in ZeusMaster's __init__ function."
-                )
-            self.prev_cutoff_pl = self.current_gpu_pl
-            return
 
         # Call cudaSynchronize to make sure this is the iteration boundary.
         torch.cuda.synchronize()
@@ -757,7 +829,7 @@ class ZeusDataLoader(DataLoader):
                 except ValueError:
                     self._log(
                         "ValueError from analyze.avg_power, please consider increasing self.profile_iter.",
-                        logging.WARNING,
+                        logging.ERROR,
                     )
                     raise
                 sum_avg_power += avg_power
@@ -855,8 +927,7 @@ class ZeusDataLoader(DataLoader):
         # Update counters.
         self.epoch_num += 1
         self.sample_num = 0
-        if self.rank == 0:
-            self._log(f"Epoch {self.epoch_num} begin.")
+        self._log(f"Epoch {self.epoch_num} begin.")
 
         # Start epoch timer.
         self.epoch_start_time = time.monotonic()
@@ -911,9 +982,8 @@ class ZeusDataLoader(DataLoader):
             #                                for eval loader   for eval loader
             #
             if self.rank == 0:
-                # Sanity Check
-                assert len(self.train_epoch_energy) == self.world_size
-
+                # Sanity check
+                assert self.epoch_num >= 1, f"{self.epoch_num=}"
                 # Compute the time/energy consumption for this epoch.
                 time_consumption = time.monotonic() - self.epoch_start_time
                 if self._is_train:
@@ -922,7 +992,9 @@ class ZeusDataLoader(DataLoader):
                     for index in range(self.world_size):
                         # The monitor is still running, and we integrate over the entire log.
                         energy_consumption = analyze.energy(self._power_log_path(index))
-                        self.train_epoch_energy[index].append(energy_consumption)
+                        self.train_epoch_energy[index][
+                            self.epoch_num - 1
+                        ] = energy_consumption
                 else:
                     # We just killed the monitor. Integrate the last time_consumption seconds.
                     self.eval_epoch_time.append(time_consumption)
@@ -933,7 +1005,9 @@ class ZeusDataLoader(DataLoader):
                         energy_consumption = analyze.energy(
                             self._power_log_path(index), start=-time_consumption
                         )
-                        self.eval_epoch_energy[index].append(energy_consumption)
+                        self.eval_epoch_energy[index][
+                            self.epoch_num - 1
+                        ] = energy_consumption
                         sum_energy_consumption += energy_consumption
                     # For the eval dataloader, we want to record the throughput and power
                     # for the current power limit. Since the train dataloader sets the power limit
@@ -957,29 +1031,36 @@ class ZeusDataLoader(DataLoader):
                     f"time={time_consumption:.2f} energy={energy_consumption:.2f}"
                 )
 
-                # Epoch ended in the middle of a profiling window. Reset.
-                if self._is_train and self.prof_state != NOT_PROFILING:
-                    self._end_prof(cutoff=True)
-
             # Re-raise StopIteration.
             raise
 
         # We're in the middle of an epoch. The train loader has power limits left to profile.
         if self._is_train and self._should_profile and self._power_limits_left:
+            # Sanity check
+            if self.prof_state == WARMING_UP:
+                assert self.sample_num - self.warmup_start_sample <= self.warmup_iter, (
+                    f"Warmup iterations {self.sample_num - self.warmup_start_sample}"
+                    f" exceeds `self.warmup_iter` {self.warmup_iter}."
+                )
+            elif self.prof_state == PROFILING:
+                assert self.sample_num - self.prof_start_sample <= self.profile_iter, (
+                    f"Profile iterations {self.sample_num - self.prof_start_sample}"
+                    f" exceeds `self.profile_iter` {self.profile_iter}."
+                )
             # We weren't doing anything. Start warming up.
             if self.prof_state == NOT_PROFILING:
                 self._start_warmup()
             # We're done warming up. Start the actual profiling window.
             elif (
                 self.prof_state == WARMING_UP
-                and self.sample_num - self.warmup_start_sample >= self.warmup_iter
+                and self.sample_num - self.warmup_start_sample == self.warmup_iter
             ):
                 self._start_prof()
             # We're done profiling. Stop the profiling window and gather results.
             elif (
                 self.prof_state == PROFILING
-                and self.sample_num - self.prof_start_sample >= self.profile_iter
+                and self.sample_num - self.prof_start_sample == self.profile_iter
             ):
-                self._end_prof(cutoff=False)
+                self._end_prof()
 
         return data

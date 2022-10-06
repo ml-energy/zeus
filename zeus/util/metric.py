@@ -37,8 +37,23 @@ def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int) -> fl
 
 
 class ZeusCostThresholdExceededException(Exception):
-    """
-    Raised when the predicted cost of the next epoch exceeds the cost threshold.
+    """Raised when the predicted cost of the next epoch exceeds the cost threshold.
+    This exception is used for terminating all the processes when doing data
+    parallel training.
+
+    When doing data parallel training on multiple processes, ONLY the master
+    process will predict `next_cost` and do the threshold checking. However,
+    once the predicated cost exceeds the threshold, we want to terminate ALL
+    the processes. Currently this is achieved by trowning an exception at the
+    master process. The lauching script will terminate all the processes that
+    are still alive.
+
+    Attributes:
+        time_consumed: Time consumed till the current epoch.
+        energy_consumed: Energy consumed till the current epoch.
+        cost: Computed Zeus's energy-time cost metric till the current epoch.
+        next_cost: Predicted Zeus's energy-time cost metric after next epoch.
+        cost_thresh: The cost threshold.
     """
 
     def __init__(
@@ -49,6 +64,7 @@ class ZeusCostThresholdExceededException(Exception):
         next_cost: float,
         cost_thresh: float,
     ) -> None:
+        """Initialize the exception."""
         msg = (
             f"Next expected cost {next_cost:.2f} exceeds cost threshold {cost_thresh:.2f}! "
             f"Stopping. Saved training results: time={time_consumed:.2f}, "

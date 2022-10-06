@@ -17,4 +17,4 @@
 from zeus.util.check import get_env
 from zeus.util.logging import FileAndConsole
 from zeus.util.lr_scaler import LinearScaler, SquareRootScaler
-from zeus.util.metric import zeus_cost
+from zeus.util.metric import zeus_cost, ZeusCostThresholdExceededException
