@@ -1357,8 +1357,7 @@ through the constructor.</p>
 
         <details class="quote">
           <summary>Source code in <code>zeus/run/master.py</code></summary>
-          <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 36</span>
-<span class="normal"> 37</span>
+          <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 37</span>
 <span class="normal"> 38</span>
 <span class="normal"> 39</span>
 <span class="normal"> 40</span>
@@ -1702,11 +1701,7 @@ through the constructor.</p>
 <span class="normal">378</span>
 <span class="normal">379</span>
 <span class="normal">380</span>
-<span class="normal">381</span>
-<span class="normal">382</span>
-<span class="normal">383</span>
-<span class="normal">384</span>
-<span class="normal">385</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusMaster</span><span class="p">:</span>
+<span class="normal">381</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusMaster</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Drives Zeus across multiple recurrences of a job.</span>
 
 <span class="sd">    The main purpose of `ZeusMaster` is to launch training scripts integrated</span>
@@ -1727,8 +1722,8 @@ through the constructor.</p>
         <span class="n">monitor_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">123456</span><span class="p">,</span>
         <span class="n">observer_mode</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-        <span class="n">profile_warmup_secs</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
-        <span class="n">profile_measure_secs</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
+        <span class="n">profile_warmup_iters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="n">profile_measure_iters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">40</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;Initialize the master.</span>
 
@@ -1745,9 +1740,9 @@ through the constructor.</p>
 <span class="sd">            observer_mode: When Observer Mode is on, the maximum power limit is</span>
 <span class="sd">                always used instead of the optimal power limit. However, internal time and</span>
 <span class="sd">                energy accounting will be done as if the cost-optimal power limit is used.</span>
-<span class="sd">            profile_warmup_secs: Number of seconds to warm up on a specific power limit.</span>
+<span class="sd">            profile_warmup_iters: Number of iterations to warm up on a specific power limit.</span>
 <span class="sd">                This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].</span>
-<span class="sd">            profile_measure_secs: Number of seconds to measure on a specific power limit.</span>
+<span class="sd">            profile_measure_iters: Number of iterations to measure on a specific power limit.</span>
 <span class="sd">                This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -1771,8 +1766,8 @@ through the constructor.</p>
         <span class="bp">self</span><span class="o">.</span><span class="n">seed</span> <span class="o">=</span> <span class="n">seed</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">monitor_path</span> <span class="o">=</span> <span class="n">monitor_path</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">observer_mode</span> <span class="o">=</span> <span class="n">observer_mode</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_secs</span> <span class="o">=</span> <span class="n">profile_warmup_secs</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_secs</span> <span class="o">=</span> <span class="n">profile_measure_secs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_iters</span> <span class="o">=</span> <span class="n">profile_warmup_iters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_iters</span> <span class="o">=</span> <span class="n">profile_measure_iters</span>
 
         <span class="c1"># Query the max power limit of the GPU.</span>
         <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlInit</span><span class="p">()</span>
@@ -1854,7 +1849,7 @@ through the constructor.</p>
             <span class="n">ZEUS_ETA_KNOB</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">eta_knob</span><span class="p">),</span>
             <span class="n">ZEUS_TARGET_METRIC</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">target_metric</span><span class="p">),</span>
             <span class="n">ZEUS_MONITOR_PATH</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">monitor_path</span><span class="p">,</span>
-            <span class="n">ZEUS_PROFILE_PARAMS</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_secs</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_secs</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">ZEUS_PROFILE_PARAMS</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_iters</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_iters</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
             <span class="n">ZEUS_USE_OPTIMAL_PL</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">observer_mode</span><span class="p">),</span>
         <span class="p">)</span>
         <span class="n">env</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">)</span>
@@ -1900,12 +1895,6 @@ through the constructor.</p>
                 <span class="c1"># Report exitcode.</span>
                 <span class="n">exitcode</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span>
                 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[run job] Job terminated with exit code </span><span class="si">{</span><span class="n">exitcode</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
-
-            <span class="c1"># Terminate if the training script failed.</span>
-            <span class="k">if</span> <span class="n">exitcode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;Training script terminated with exit code </span><span class="si">{</span><span class="n">exitcode</span><span class="si">}</span><span class="s2">.&quot;</span>
-                <span class="p">)</span>
 
             <span class="c1"># `train_json` must exist at this point.</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">train_json</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
@@ -2008,7 +1997,8 @@ through the constructor.</p>
                 <span class="n">seed</span> <span class="o">+=</span> <span class="mi">1</span>
 
                 <span class="c1"># Compute the cost of this try.</span>
-                <span class="n">cost</span> <span class="o">=</span> <span class="n">zeus_cost</span><span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="n">time</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_pl</span><span class="p">)</span>
+                <span class="n">num_gpus</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">device_count</span><span class="p">()</span>
+                <span class="n">cost</span> <span class="o">=</span> <span class="n">zeus_cost</span><span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="n">time</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_pl</span> <span class="o">*</span> <span class="n">num_gpus</span><span class="p">)</span>
                 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Zeus Master] </span><span class="si">{</span><span class="n">cost</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
 
                 <span class="c1"># Accumulate the cost to track the total cost of this recurrence.</span>
@@ -2086,8 +2076,8 @@ through the constructor.</p>
     <span class="n">monitor_path</span><span class="p">,</span>
     <span class="n">seed</span><span class="o">=</span><span class="mi">123456</span><span class="p">,</span>
     <span class="n">observer_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-    <span class="n">profile_warmup_secs</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
-    <span class="n">profile_measure_secs</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+    <span class="n">profile_warmup_iters</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">profile_measure_iters</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
 <span class="p">)</span>
 </code></pre></div>
 
@@ -2163,25 +2153,25 @@ energy accounting will be done as if the cost-optimal power limit is used.</p></
           </td>
         </tr>
         <tr>
-          <td><code>profile_warmup_secs</code></td>
+          <td><code>profile_warmup_iters</code></td>
           <td>
-                <code>float</code>
+                <code>int</code>
           </td>
-          <td><p>Number of seconds to warm up on a specific power limit.
+          <td><p>Number of iterations to warm up on a specific power limit.
 This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a>.</p></td>
           <td>
-                <code>1.0</code>
+                <code>10</code>
           </td>
         </tr>
         <tr>
-          <td><code>profile_measure_secs</code></td>
+          <td><code>profile_measure_iters</code></td>
           <td>
-                <code>float</code>
+                <code>int</code>
           </td>
-          <td><p>Number of seconds to measure on a specific power limit.
+          <td><p>Number of iterations to measure on a specific power limit.
 This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a>.</p></td>
           <td>
-                <code>4.0</code>
+                <code>40</code>
           </td>
         </tr>
     </tbody>
@@ -2189,8 +2179,7 @@ This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/master.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 50</span>
-<span class="normal"> 51</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 51</span>
 <span class="normal"> 52</span>
 <span class="normal"> 53</span>
 <span class="normal"> 54</span>
@@ -2251,15 +2240,16 @@ This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/
 <span class="normal">109</span>
 <span class="normal">110</span>
 <span class="normal">111</span>
-<span class="normal">112</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+<span class="normal">112</span>
+<span class="normal">113</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">batch_size_optimizer</span><span class="p">:</span> <span class="n">BatchSizeOptimizer</span><span class="p">,</span>
     <span class="n">log_base</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">monitor_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">123456</span><span class="p">,</span>
     <span class="n">observer_mode</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">profile_warmup_secs</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
-    <span class="n">profile_measure_secs</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">4.0</span><span class="p">,</span>
+    <span class="n">profile_warmup_iters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">profile_measure_iters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">40</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Initialize the master.</span>
 
@@ -2276,9 +2266,9 @@ This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/
 <span class="sd">        observer_mode: When Observer Mode is on, the maximum power limit is</span>
 <span class="sd">            always used instead of the optimal power limit. However, internal time and</span>
 <span class="sd">            energy accounting will be done as if the cost-optimal power limit is used.</span>
-<span class="sd">        profile_warmup_secs: Number of seconds to warm up on a specific power limit.</span>
+<span class="sd">        profile_warmup_iters: Number of iterations to warm up on a specific power limit.</span>
 <span class="sd">            This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].</span>
-<span class="sd">        profile_measure_secs: Number of seconds to measure on a specific power limit.</span>
+<span class="sd">        profile_measure_iters: Number of iterations to measure on a specific power limit.</span>
 <span class="sd">            This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -2302,8 +2292,8 @@ This is passed to the <a class="autorefs autorefs-internal" href="../dataloader/
     <span class="bp">self</span><span class="o">.</span><span class="n">seed</span> <span class="o">=</span> <span class="n">seed</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">monitor_path</span> <span class="o">=</span> <span class="n">monitor_path</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">observer_mode</span> <span class="o">=</span> <span class="n">observer_mode</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_secs</span> <span class="o">=</span> <span class="n">profile_warmup_secs</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_secs</span> <span class="o">=</span> <span class="n">profile_measure_secs</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_iters</span> <span class="o">=</span> <span class="n">profile_warmup_iters</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_iters</span> <span class="o">=</span> <span class="n">profile_measure_iters</span>
 
     <span class="c1"># Query the max power limit of the GPU.</span>
     <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlInit</span><span class="p">()</span>
@@ -2407,8 +2397,7 @@ already exists.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/master.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">114</span>
-<span class="normal">115</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">115</span>
 <span class="normal">116</span>
 <span class="normal">117</span>
 <span class="normal">118</span>
@@ -2433,7 +2422,8 @@ already exists.</p></td>
 <span class="normal">137</span>
 <span class="normal">138</span>
 <span class="normal">139</span>
-<span class="normal">140</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">build_logdir</span><span class="p">(</span>
+<span class="normal">140</span>
+<span class="normal">141</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">build_logdir</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">job</span><span class="p">:</span> <span class="n">Job</span><span class="p">,</span>
     <span class="n">num_recurrence</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -2618,8 +2608,7 @@ to exceed the cost upper bound.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/master.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">142</span>
-<span class="normal">143</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">143</span>
 <span class="normal">144</span>
 <span class="normal">145</span>
 <span class="normal">146</span>
@@ -2721,12 +2710,7 @@ to exceed the cost upper bound.</p></td>
 <span class="normal">242</span>
 <span class="normal">243</span>
 <span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">run_job</span><span class="p">(</span>
+<span class="normal">245</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">run_job</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">job</span><span class="p">:</span> <span class="n">Job</span><span class="p">,</span>
     <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -2768,7 +2752,7 @@ to exceed the cost upper bound.</p></td>
         <span class="n">ZEUS_ETA_KNOB</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">eta_knob</span><span class="p">),</span>
         <span class="n">ZEUS_TARGET_METRIC</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">target_metric</span><span class="p">),</span>
         <span class="n">ZEUS_MONITOR_PATH</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">monitor_path</span><span class="p">,</span>
-        <span class="n">ZEUS_PROFILE_PARAMS</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_secs</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_secs</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">ZEUS_PROFILE_PARAMS</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_warmup_iters</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_measure_iters</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
         <span class="n">ZEUS_USE_OPTIMAL_PL</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">observer_mode</span><span class="p">),</span>
     <span class="p">)</span>
     <span class="n">env</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">)</span>
@@ -2814,12 +2798,6 @@ to exceed the cost upper bound.</p></td>
             <span class="c1"># Report exitcode.</span>
             <span class="n">exitcode</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span>
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[run job] Job terminated with exit code </span><span class="si">{</span><span class="n">exitcode</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
-
-        <span class="c1"># Terminate if the training script failed.</span>
-        <span class="k">if</span> <span class="n">exitcode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Training script terminated with exit code </span><span class="si">{</span><span class="n">exitcode</span><span class="si">}</span><span class="s2">.&quot;</span>
-            <span class="p">)</span>
 
         <span class="c1"># `train_json` must exist at this point.</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">train_json</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
@@ -2943,7 +2921,12 @@ Set to <code>np.inf</code> to disable early stopping.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/master.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">252</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
 <span class="normal">253</span>
 <span class="normal">254</span>
 <span class="normal">255</span>
@@ -3072,11 +3055,7 @@ Set to <code>np.inf</code> to disable early stopping.</p></td>
 <span class="normal">378</span>
 <span class="normal">379</span>
 <span class="normal">380</span>
-<span class="normal">381</span>
-<span class="normal">382</span>
-<span class="normal">383</span>
-<span class="normal">384</span>
-<span class="normal">385</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">run</span><span class="p">(</span>
+<span class="normal">381</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">run</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">job</span><span class="p">:</span> <span class="n">Job</span><span class="p">,</span>
     <span class="n">num_recurrence</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -3162,7 +3141,8 @@ Set to <code>np.inf</code> to disable early stopping.</p></td>
             <span class="n">seed</span> <span class="o">+=</span> <span class="mi">1</span>
 
             <span class="c1"># Compute the cost of this try.</span>
-            <span class="n">cost</span> <span class="o">=</span> <span class="n">zeus_cost</span><span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="n">time</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_pl</span><span class="p">)</span>
+            <span class="n">num_gpus</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">device_count</span><span class="p">()</span>
+            <span class="n">cost</span> <span class="o">=</span> <span class="n">zeus_cost</span><span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="n">time</span><span class="p">,</span> <span class="n">eta_knob</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_pl</span> <span class="o">*</span> <span class="n">num_gpus</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Zeus Master] </span><span class="si">{</span><span class="n">cost</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
 
             <span class="c1"># Accumulate the cost to track the total cost of this recurrence.</span>

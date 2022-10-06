@@ -1314,21 +1314,21 @@ On top of the <code>nvidia/cuda:11.3.1-devel-ubuntu20.04</code> image, the follo
 <h3 id="spawn-the-container">Spawn the container</h3>
 <p>The default command would be:</p>
 <div class="annotate highlight"><pre><span></span><code>docker run -it <span class="se">\</span>
-    --gpus <span class="m">1</span> <span class="se">\ </span>                       <span class="c1"># (1)!</span>
+    --gpus all <span class="se">\ </span>                     <span class="c1"># (1)!</span>
     --cap-add SYS_ADMIN <span class="se">\ </span>          <span class="c1"># (2)!</span>
     --shm-size 64G <span class="se">\ </span>             <span class="c1"># (3)!</span>
     symbioticlab/zeus:latest <span class="se">\</span>
     bash
 </code></pre></div>
 <ol>
-<li>Mounts one GPU into the Docker container. <code>nvidia-docker2</code> provides this option.</li>
+<li>Mounts all GPUs into the Docker container. <code>nvidia-docker2</code> provides this option.</li>
 <li><code>SYS_ADMIN</code> capability is needed to manage the power configurations of the GPU via NVML.</li>
 <li>PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.</li>
 </ol>
 <p>If you would like your changes to <code>zeus/</code> outside the container to be immediately applied inside the container, mount the repository into the container:</p>
 <div class="annotate highlight"><pre><span></span><code><span class="c1"># Working directory is repository root</span>
 docker run -it <span class="se">\</span>
-    --gpus <span class="m">1</span> <span class="se">\ </span>                       <span class="c1"># (1)!</span>
+    --gpus all <span class="se">\ </span>                     <span class="c1"># (1)!</span>
     --cap-add SYS_ADMIN <span class="se">\ </span>          <span class="c1"># (2)!</span>
     --shm-size 64G <span class="se">\ </span>             <span class="c1"># (3)!</span>
     -v <span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/workspace/zeus <span class="se">\ </span><span class="c1"># (4)!</span>
@@ -1336,7 +1336,7 @@ docker run -it <span class="se">\</span>
     bash
 </code></pre></div>
 <ol>
-<li>Mounts one GPU into the Docker container. <code>nvidia-docker2</code> provides this option.</li>
+<li>Mounts all GPUs into the Docker container. <code>nvidia-docker2</code> provides this option.</li>
 <li><code>SYS_ADMIN</code> capability is needed to manage the power configurations of the GPU via NVML.</li>
 <li>PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.</li>
 <li>Mounts the repository directory into the Docker container. Since the <code>zeus</code> installation inside the container is editable, changes you made outside will apply immediately.</li>

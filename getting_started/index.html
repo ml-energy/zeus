@@ -1133,6 +1133,30 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Non-recurring jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#single-gpu" class="md-nav__link">
+    <span class="md-ellipsis">
+      Single-GPU
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-parallel-with-multi-gpu-on-a-single-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data parallel with multi-GPU on a single-node
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1167,7 +1191,7 @@
 </div>
 <div class="admonition info">
 <p class="admonition-title">Info</p>
-<p>Zeus currently only supports <strong>single GPU training</strong>. Support for single-node data parallel training and distributed data parallel training will be added soon.</p>
+<p>Zeus currently supports <strong>single GPU training</strong> and <strong>single node data parallel training</strong>. Support for distributed data parallel training will be added soon.</p>
 </div>
 <h2 id="prerequisites">Prerequisites</h2>
 <ol>
@@ -1177,7 +1201,8 @@
 <h2 id="non-recurring-jobs">Non-recurring jobs</h2>
 <p>The GPU power limit can be profiled and optimized quickly for any training job.
 After going through the prerequisites, integrate <a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a> into your training script.</p>
-<p>Integration example:
+<p>Integration example:</p>
+<h3 id="single-gpu">Single-GPU</h3>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">zeus.run</span> <span class="kn">import</span> <span class="n">ZeusDataLoader</span>
 
 <span class="c1"># The one instantiated with max_epochs becomes the train dataloader</span>
@@ -1191,10 +1216,69 @@ After going through the prerequisites, integrate <a class="autorefs autorefs-int
         <span class="c1"># Evaluate on batch</span>
 
     <span class="n">train_loader</span><span class="o">.</span><span class="n">report_metric</span><span class="p">(</span><span class="n">validation_metric</span><span class="p">)</span>
-</code></pre></div></p>
+</code></pre></div>
+<h3 id="data-parallel-with-multi-gpu-on-a-single-node">Data parallel with multi-GPU on a single-node</h3>
+<p>Zeus supports only one process per GPU profiling. In data parallel training,
+each process has its <code>local_rank</code> within the node and will run the
+following code.
+We also specify the important steps for a better comprehension.
+Please refer to <a href="https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py">the integration example with ImageNet</a>
+for the complete example.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torchvision</span>
+
+<span class="kn">from</span> <span class="nn">zeus.run</span> <span class="kn">import</span> <span class="n">ZeusDataLoader</span>
+
+<span class="c1"># Step 1: Initialize the default process group.</span>
+<span class="n">dist</span><span class="o">.</span><span class="n">init_process_group</span><span class="p">(</span>
+    <span class="n">backend</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">dist_backend</span><span class="p">,</span>
+    <span class="n">init_method</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">dist_url</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Step 2: Create a model and wrap it with `DistributedDataParallel`.</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">torchvision</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">resnet18</span><span class="p">()</span>
+<span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">set_device</span><span class="p">(</span><span class="n">local_rank</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">cuda</span><span class="p">(</span><span class="n">local_rank</span><span class="p">)</span>
+<span class="c1"># Zeus only supports one process per GPU profiling. If you are doing data</span>
+<span class="c1"># parallel training, please use `DistributedDataParallel` for model replication</span>
+<span class="c1"># and specify the `device_ids` and `output_device` correctly.</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">DistributedDataParallel</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">,</span>
+    <span class="n">device_ids</span><span class="o">=</span><span class="p">[</span><span class="n">local_rank</span><span class="p">],</span>
+    <span class="n">output_device</span><span class="o">=</span><span class="n">local_rank</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Step 3: Create instances of `DistributedSampler` to partition the dataset</span>
+<span class="c1"># across the GPUs.</span>
+<span class="n">train_sampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">DistributedSampler</span><span class="p">(</span><span class="n">train_set</span><span class="p">)</span>
+<span class="n">eval_sampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">DistributedSampler</span><span class="p">(</span><span class="n">eval_set</span><span class="p">)</span>
+
+<span class="c1"># Step 4: Create instances of `ZeusDataLoader`.</span>
+<span class="c1"># Pass &quot;dp&quot; to `distributed` and samplers in the previous step to</span>
+<span class="c1"># `sampler`.</span>
+<span class="c1"># The one instantiated with `max_epochs` becomes the train dataloader.</span>
+<span class="n">train_loader</span> <span class="o">=</span> <span class="n">ZeusDataLoader</span><span class="p">(</span><span class="n">train_set</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">max_epochs</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> 
+                              <span class="n">sampler</span><span class="o">=</span><span class="n">train_sampler</span><span class="p">,</span> <span class="n">distributed</span><span class="o">=</span><span class="s2">&quot;dp&quot;</span><span class="p">)</span>
+<span class="n">eval_loader</span> <span class="o">=</span> <span class="n">ZeusDataLoader</span><span class="p">(</span><span class="n">eval_set</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">sampler</span><span class="o">=</span><span class="n">eval_sampler</span><span class="p">,</span>
+                             <span class="n">distributed</span><span class="o">=</span><span class="s2">&quot;dp&quot;</span><span class="p">)</span>
+
+<span class="c1"># Step 5: Put your training code here.</span>
+<span class="k">for</span> <span class="n">epoch_number</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="o">.</span><span class="n">epochs</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="p">:</span>
+        <span class="c1"># Learn from batch</span>
+    <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">eval_loader</span><span class="p">:</span>
+        <span class="c1"># Evaluate on batch</span>
+
+    <span class="c1"># If doing data parallel training, please make sure to call </span>
+    <span class="c1"># `torch.distributed.all_reduce()` to reduce the validation metric </span>
+    <span class="c1"># across all GPUs before calling `train_loader.report_metric()`.</span>
+    <span class="n">train_loader</span><span class="o">.</span><span class="n">report_metric</span><span class="p">(</span><span class="n">validation_metric</span><span class="p">)</span>
+</code></pre></div>
 <p>The following examples will help:</p>
 <ul>
-<li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100">Integrating Zeus with computer vision</a></li>
+<li>Integrating Zeus with computer vision</li>
+<li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100">Integrating Zeus with CIFAR100 dataset</a></li>
+<li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet">Integrating Zeus with ImageNet dataset</a></li>
 <li><a class="external" href="https://github.com/SymbioticLab/Zeus/tree/master/examples/capriccio">Integrating Zeus with NLP</a></li>
 </ul>
 <h2 id="recurring-jobs">Recurring jobs</h2>

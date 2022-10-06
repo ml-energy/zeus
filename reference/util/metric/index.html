@@ -1111,6 +1111,30 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#zeus.util.metric.ZeusCostThresholdExceededException" class="md-nav__link">
+    <span class="md-ellipsis">
+      ZeusCostThresholdExceededException
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ZeusCostThresholdExceededException">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.util.metric.ZeusCostThresholdExceededException.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __init__()
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#zeus.util.metric.zeus_cost" class="md-nav__link">
     <span class="md-ellipsis">
       zeus_cost()
@@ -1191,6 +1215,30 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#zeus.util.metric.ZeusCostThresholdExceededException" class="md-nav__link">
+    <span class="md-ellipsis">
+      ZeusCostThresholdExceededException
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ZeusCostThresholdExceededException">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.util.metric.ZeusCostThresholdExceededException.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      __init__()
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#zeus.util.metric.zeus_cost" class="md-nav__link">
     <span class="md-ellipsis">
       zeus_cost()
@@ -1245,6 +1293,244 @@
 
 
 
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="zeus.util.metric.ZeusCostThresholdExceededException" class="doc doc-heading">
+        <span class="doc doc-object-name doc-class-name">ZeusCostThresholdExceededException</span>
+
+
+</h3>
+
+
+  <div class="doc doc-contents ">
+      <p class="doc doc-class-bases">
+        Bases: <code>Exception</code></p>
+
+  
+      <p>Raised when the predicted cost of the next epoch exceeds the cost threshold.</p>
+<p>This exception is used for terminating all the processes when doing data
+parallel training with multiple processes, because ONLY the master
+process will predict <code>next_cost</code> and do the threshold checking. However,
+once the predicted cost exceeds the threshold, we want to terminate ALL
+the processes. Currently this is achieved by throwing an exception at the
+master process. The lauching script will terminate all the processes that
+are still alive.</p>
+
+  <p><strong>Attributes:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>time_consumed</code></td>
+          <td>
+          </td>
+          <td><p>Time consumed till the current epoch.</p></td>
+        </tr>
+        <tr>
+          <td><code>energy_consumed</code></td>
+          <td>
+          </td>
+          <td><p>Energy consumed till the current epoch.</p></td>
+        </tr>
+        <tr>
+          <td><code>cost</code></td>
+          <td>
+          </td>
+          <td><p>Computed Zeus's energy-time cost metric till the current epoch.</p></td>
+        </tr>
+        <tr>
+          <td><code>next_cost</code></td>
+          <td>
+          </td>
+          <td><p>Predicted Zeus's energy-time cost metric after next epoch.</p></td>
+        </tr>
+        <tr>
+          <td><code>cost_thresh</code></td>
+          <td>
+          </td>
+          <td><p>The cost threshold.</p></td>
+        </tr>
+    </tbody>
+  </table>
+
+
+        <details class="quote">
+          <summary>Source code in <code>zeus/util/metric.py</code></summary>
+          <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusCostThresholdExceededException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Raised when the predicted cost of the next epoch exceeds the cost threshold.</span>
+
+<span class="sd">    This exception is used for terminating all the processes when doing data</span>
+<span class="sd">    parallel training with multiple processes, because ONLY the master</span>
+<span class="sd">    process will predict `next_cost` and do the threshold checking. However,</span>
+<span class="sd">    once the predicted cost exceeds the threshold, we want to terminate ALL</span>
+<span class="sd">    the processes. Currently this is achieved by throwing an exception at the</span>
+<span class="sd">    master process. The lauching script will terminate all the processes that</span>
+<span class="sd">    are still alive.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        time_consumed: Time consumed till the current epoch.</span>
+<span class="sd">        energy_consumed: Energy consumed till the current epoch.</span>
+<span class="sd">        cost: Computed Zeus&#39;s energy-time cost metric till the current epoch.</span>
+<span class="sd">        next_cost: Predicted Zeus&#39;s energy-time cost metric after next epoch.</span>
+<span class="sd">        cost_thresh: The cost threshold.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">time_consumed</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">energy_consumed</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">cost</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">next_cost</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">cost_thresh</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Initialize the exception.&quot;&quot;&quot;</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Next expected cost </span><span class="si">{</span><span class="n">next_cost</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> exceeds cost threshold </span><span class="si">{</span><span class="n">cost_thresh</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">! &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Stopping. Saved training results: time=</span><span class="si">{</span><span class="n">time_consumed</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;energy=</span><span class="si">{</span><span class="n">energy_consumed</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, cost=</span><span class="si">{</span><span class="n">cost</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, reached=false&quot;</span>
+        <span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time_consumed</span> <span class="o">=</span> <span class="n">time_consumed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">energy_consumed</span> <span class="o">=</span> <span class="n">energy_consumed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cost</span> <span class="o">=</span> <span class="n">cost</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">next_cost</span> <span class="o">=</span> <span class="n">next_cost</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cost_thresh</span> <span class="o">=</span> <span class="n">cost_thresh</span>
+</code></pre></div></td></tr></table></div>
+        </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h4 id="zeus.util.metric.ZeusCostThresholdExceededException.__init__" class="doc doc-heading">
+        <span class="doc doc-object-name doc-function-name">__init__</span>
+
+
+</h4>
+<div class="highlight"><pre><span></span><code><span class="fm">__init__</span><span class="p">(</span>
+    <span class="n">time_consumed</span><span class="p">,</span>
+    <span class="n">energy_consumed</span><span class="p">,</span>
+    <span class="n">cost</span><span class="p">,</span>
+    <span class="n">next_cost</span><span class="p">,</span>
+    <span class="n">cost_thresh</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+
+      <details class="quote">
+        <summary>Source code in <code>zeus/util/metric.py</code></summary>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">time_consumed</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">energy_consumed</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">cost</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">next_cost</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">cost_thresh</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Initialize the exception.&quot;&quot;&quot;</span>
+    <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Next expected cost </span><span class="si">{</span><span class="n">next_cost</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> exceeds cost threshold </span><span class="si">{</span><span class="n">cost_thresh</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">! &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;Stopping. Saved training results: time=</span><span class="si">{</span><span class="n">time_consumed</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;energy=</span><span class="si">{</span><span class="n">energy_consumed</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, cost=</span><span class="si">{</span><span class="n">cost</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, reached=false&quot;</span>
+    <span class="p">)</span>
+    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">time_consumed</span> <span class="o">=</span> <span class="n">time_consumed</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">energy_consumed</span> <span class="o">=</span> <span class="n">energy_consumed</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">cost</span> <span class="o">=</span> <span class="n">cost</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">next_cost</span> <span class="o">=</span> <span class="n">next_cost</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">cost_thresh</span> <span class="o">=</span> <span class="n">cost_thresh</span>
+</code></pre></div></td></tr></table></div>
+      </details>
+  </div>
+
+</div>
+
+
+
+  </div>
+
+  </div>
+
+</div>
 
 
 <div class="doc doc-object doc-function">
