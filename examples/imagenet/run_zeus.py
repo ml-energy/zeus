@@ -1,18 +1,4 @@
-# Copyright (C) 2022 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Example script for running Zeus on the CIFAR100 dataset."""
+"""Example script for running Zeus on the ImageNet dataset."""
 
 import argparse
 import sys
@@ -28,6 +14,12 @@ def parse_args() -> argparse.Namespace:
     """Parse commandline arguments."""
     parser = argparse.ArgumentParser()
 
+    parser.add_argument(
+        "data",
+        metavar="DIR",
+        help="Path to the ImageNet directory",
+    )
+
     # This random seed is used for
     # 1. Multi-Armed Bandit inside PruningGTSBatchSizeOptimizer, and
     # 2. Providing random seeds for training.
@@ -37,7 +29,8 @@ def parse_args() -> argparse.Namespace:
     # Default batch size and learning rate.
     # The first recurrence uses these parameters, and it must reach the target metric.
     # There is no learning rate because we train the model with Adadelta.
-    parser.add_argument("--b_0", type=int, default=1024, help="Default batch size")
+    parser.add_argument("--b_0", type=int, default=256, help="Default batch size")
+    parser.add_argument("--lr_0", type=float, default=0.1, help="Default learning rate")
 
     # The range of batch sizes to consider. The example script generates a list of power-of-two
     # batch sizes, but batch sizes need not be power-of-two for Zeus.
@@ -45,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         "--b_min", type=int, default=8, help="Smallest batch size to consider"
     )
     parser.add_argument(
-        "--b_max", type=int, default=4096, help="Largest batch size to consider"
+        "--b_max", type=int, default=1024, help="Largest batch size to consider"
     )
 
     # The total number of recurrences.
@@ -77,7 +70,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> None:
-    """Run Zeus on CIFAR100."""
+    """Run Zeus on ImageNet."""
     # Zeus's batch size optimizer.
     # First prunes unpromising batch sizes, and then runs Gaussian Thompson Sampling MAB.
     bso = PruningGTSBatchSizeOptimizer(seed=args.seed, verbose=True)
@@ -85,45 +78,42 @@ def main(args: argparse.Namespace) -> None:
     # The top-level class for running Zeus.
     # - The batch size optimizer is desinged as a pluggable policy.
     # - Paths (log_base and monitor_path) assume our Docker image's directory structure.
-    # - For CIFAR100, one epoch of training may not take even ten seconds (especially for
-    #   small models like squeezenet). ZeusDataLoader automatically handles profiling power
-    #   limits over multiple training epochs such that the profiling window of each power
-    #   limit fully fits in one epoch. However, the epoch duration may be so short that
-    #   profiling even one power limit may not fully fit in one epoch. In such cases,
-    #   ZeusDataLoader raises a RuntimeError, and the profiling window should be narrowed
-    #   by giving smaller values to profile_warmup_iters and profile_measure_iters in the
-    #   constructor of ZeusMaster.
     master = ZeusMaster(
         batch_size_optimizer=bso,
         log_base="/workspace/zeus_logs",
         seed=args.seed,
         monitor_path="/workspace/zeus/zeus_monitor/zeus_monitor",
         observer_mode=False,
-        profile_warmup_iters=10,
-        profile_measure_iters=40,
+        profile_warmup_iters=20,
+        profile_measure_iters=80,
     )
 
     # Definition of the CIFAR100 job.
     # The `Job` class encloses all information needed to run training. The `command` parameter is
     # a command template. Curly-braced parameters are recognized by Zeus and automatically filled.
     job = Job(
-        dataset="cifar100",
-        network="shufflenet",
-        optimizer="adadelta",
+        dataset="imagenet",
+        network="resnet18",
+        optimizer="sgd",
         target_metric=args.target_metric,
         max_epochs=args.max_epochs,
         default_bs=args.b_0,
-        default_lr=0.1,  # Dummy placeholder value.
-        workdir="/workspace/zeus/examples/cifar100",
+        default_lr=args.lr_0,
+        workdir="/workspace/zeus/examples/imagenet",
         # fmt: off
         command=[
-            "python",
+            "torchrun",
+            "--nnodes", "1",
+            "--nproc_per_node", "gpu",
             "train.py",
+            args.data,
             "--zeus",
-            "--arch", "shufflenet",
+            "--arch", "resnet18",
             "--batch_size", "{batch_size}",
+            "--learning_rate", "{learning_rate}",
             "--epochs", "{epochs}",
             "--seed", "{seed}",
+            "--torchrun",
         ],
         # fmt: on
     )

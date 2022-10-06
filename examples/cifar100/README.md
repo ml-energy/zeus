@@ -42,7 +42,7 @@ export ZEUS_JOB_ID="zeus"                      # Used to distinguish recurrences
 export ZEUS_COST_THRESH="inf"                  # Kill training when cost (Equation 2) exceeds this
 export ZEUS_ETA_KNOB="0.5"                     # Knob to tradeoff energy and time (Equation 2)
 export ZEUS_MONITOR_PATH="/workspace/zeus/zeus_monitor/zeus_monitor" # Path to power monitor
-export ZEUS_PROFILE_PARAMS="1.0,4.0"           # warmup_secs,profile_secs for each power limit
+export ZEUS_PROFILE_PARAMS="10,40"              # warmup_iters,profile_iters for each power limit
 export ZEUS_USE_OPTIMAL_PL="True"              # Whether to acutally use the optimal PL found
 
 python train.py \

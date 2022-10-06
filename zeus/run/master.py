@@ -26,6 +26,7 @@ from time import localtime, sleep, strftime
 
 import numpy as np
 import pynvml
+import torch
 
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
@@ -54,8 +55,8 @@ class ZeusMaster:
         monitor_path: str,
         seed: int = 123456,
         observer_mode: bool = False,
-        profile_warmup_secs: float = 1.0,
-        profile_measure_secs: float = 4.0,
+        profile_warmup_iters: int = 10,
+        profile_measure_iters: int = 40,
     ) -> None:
         """Initialize the master.
 
@@ -72,9 +73,9 @@ class ZeusMaster:
             observer_mode: When Observer Mode is on, the maximum power limit is
                 always used instead of the optimal power limit. However, internal time and
                 energy accounting will be done as if the cost-optimal power limit is used.
-            profile_warmup_secs: Number of seconds to warm up on a specific power limit.
+            profile_warmup_iters: Number of iterations to warm up on a specific power limit.
                 This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].
-            profile_measure_secs: Number of seconds to measure on a specific power limit.
+            profile_measure_iters: Number of iterations to measure on a specific power limit.
                 This is passed to the [`ZeusDataLoader`][zeus.run.ZeusDataLoader].
 
         """
@@ -98,8 +99,8 @@ class ZeusMaster:
         self.seed = seed
         self.monitor_path = monitor_path
         self.observer_mode = observer_mode
-        self.profile_warmup_secs = profile_warmup_secs
-        self.profile_measure_secs = profile_measure_secs
+        self.profile_warmup_iters = profile_warmup_iters
+        self.profile_measure_iters = profile_measure_iters
 
         # Query the max power limit of the GPU.
         pynvml.nvmlInit()
@@ -181,7 +182,7 @@ class ZeusMaster:
             ZEUS_ETA_KNOB=str(eta_knob),
             ZEUS_TARGET_METRIC=str(job.target_metric),
             ZEUS_MONITOR_PATH=self.monitor_path,
-            ZEUS_PROFILE_PARAMS=f"{self.profile_warmup_secs},{self.profile_measure_secs}",
+            ZEUS_PROFILE_PARAMS=f"{self.profile_warmup_iters},{self.profile_measure_iters}",
             ZEUS_USE_OPTIMAL_PL=str(not self.observer_mode),
         )
         env = deepcopy(os.environ)
@@ -227,12 +228,6 @@ class ZeusMaster:
                 # Report exitcode.
                 exitcode = proc.poll()
                 print(f"[run job] Job terminated with exit code {exitcode}.")
-
-            # Terminate if the training script failed.
-            if exitcode != 0:
-                raise RuntimeError(
-                    f"Training script terminated with exit code {exitcode}."
-                )
 
             # `train_json` must exist at this point.
             if not train_json.exists():
@@ -335,7 +330,8 @@ class ZeusMaster:
                 seed += 1
 
                 # Compute the cost of this try.
-                cost = zeus_cost(energy, time, eta_knob, self.max_pl)
+                num_gpus = torch.cuda.device_count()
+                cost = zeus_cost(energy, time, eta_knob, self.max_pl * num_gpus)
                 print(f"[Zeus Master] {cost=}")
 
                 # Accumulate the cost to track the total cost of this recurrence.

@@ -96,6 +96,9 @@ def avg_power(
         logfile: Path to the power log file produced by the Zeus monitor.
         start: Start time of the window to consider.
         end: End time of the window to consider.
+
+    Raises:
+        ValueError: From `sklearn.metrics.auc`. May mean that the profile window is too small.
     """
     df = cast(pd.DataFrame, pd.read_csv(logfile, engine="python", skipfooter=1))
     df["Time"] = pd.to_datetime(df["Time"])
