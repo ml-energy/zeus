@@ -225,16 +225,19 @@ class ZeusDataLoader(DataLoader):
             RuntimeError: The default process group is not initialized. Make sure to call
                 `torch.distributed.init_process_group` to initialize the default process
                 group before doing a multiprocessing distributed training.
-            ValueError: `self.sampler` is not an instance of DistributedSampler. An instance of
-                DistributedSampler will shuffle and distribute data among GPUs, so it is required
-                for data paralle training.
-            ValueError: DistributedSampler passed in self.sampler is inconsistent with the default
+            ValueError: `self.sampler` is not an instance of `DistributedSampler`. An instance of
+                `DistributedSampler` will shuffle and distribute data among GPUs, so it is required
+                for data parallel training.
+            ValueError: `DistributedSampler` passed in `self.sampler` is inconsistent with the default
                 process group. Currently, we assume that all the GPUs in the node will be used for
-                training. In this case, the DistributedSampler should have
+                training. In this case, the instance of `DistributedSampler` should have
                 `sampler.num_replicas == torch.distributed.get_world_size()`
                 and `sampler.rank == torch.distributed.get_rank()`.
-            TypeError: parameter `distributed` is not correctly specified. Currently, it can only
+            TypeError: Parameter `distributed` is not correctly specified. Currently, it can only
                 be set as `"dp"` or `None`.
+            RuntimeError: Scaling is triggered when the profile window exceeds the number of iterations
+                in one epoch. But latter is too small, so scaling can not produce a valid profile window.
+                Please consider increasing batch size.
         """
         # Save attributes.
         self.batch_size = batch_size
@@ -367,6 +370,13 @@ class ZeusDataLoader(DataLoader):
             )
             self.warmup_iter = int(self.warmup_iter * scaling_factor)
             self.profile_iter = int(self.profile_iter * scaling_factor)
+            if self.warmup_iter == 0 or self.profile_iter == 0:
+                raise RuntimeError(
+                    f"Number of iterations in one epoch is {self.num_samples} and"
+                    " is too small for applying the scaling. Please consider using"
+                    " a smaller batch size. If you are running `run_zeus.py`, please"
+                    " pass a smaller value to `--b_max`."
+                )
             self._log(
                 f"Scaling done! New profile window takes {self.warmup_iter + self.profile_iter}"
                 f" iterations ({self.warmup_iter} for warmup + {self.profile_iter} for profile)."
