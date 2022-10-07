@@ -98,7 +98,8 @@ def avg_power(
         end: End time of the window to consider.
 
     Raises:
-        ValueError: From `sklearn.metrics.auc`. May mean that the profile window is too small.
+        ValueError: From `sklearn.metrics.auc`, when the duration of the
+            profiling window is too small.
     """
     df = cast(pd.DataFrame, pd.read_csv(logfile, engine="python", skipfooter=1))
     df["Time"] = pd.to_datetime(df["Time"])

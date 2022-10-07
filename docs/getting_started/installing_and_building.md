@@ -5,7 +5,7 @@ This document explains how to install the [`zeus`][zeus] Python package and how 
 !!! Tip
     We encourage users to utilize our Docker image. Please refer to [Environment setup](./environment.md). Quick command:
     ```bash
-    docker run -it --gpus 1 --cap-add SYS_ADMIN --shm-size 64G symbioticlab/zeus:latest bash
+    docker run -it --gpus all --cap-add SYS_ADMIN --shm-size 64G symbioticlab/zeus:latest bash
     ```
 
 
@@ -24,17 +24,25 @@ conda install -c pytorch pytorch==1.10.1 cudatoolkit==11.3.1
 
 ### Install `zeus`
 
-The standard command is:
+To install the latest published version of `zeus`:
 
 ```bash
-# Working directory is repository root
+pip install zeus-ml
+```
+
+If you would like to follow the `HEAD`:
+
+```bash
+git clone https://github.com/SymbioticLab/Zeus.git zeus
+cd zeus
 pip install .
 ```
 
-For those would like to make changes to the source code and run them, we suggest an editable install:
+For those would like to make changes to the source code and run them, we suggest an editable installation:
 
 ```bash
-# Working directory is repository root
+git clone https://github.com/SymbioticLab/Zeus.git zeus
+cd zeus
 pip install -e .
 ```
 

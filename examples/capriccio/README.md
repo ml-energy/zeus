@@ -21,7 +21,7 @@ While our paper is about optimizing the batch size and power limit over multiple
 ### Dependencies
 
 1. Generate Capriccio, following the instructions in [Capriccio's README.md](../../capriccio/).
-1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
+1. If you're not using out [Docker image](https://ml.energy/zeus/getting_started/environment/), install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
 1. Install python dependencies for this example:
     ```sh
     pip install -r requirements.txt
@@ -60,7 +60,7 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
 ### Dependencies
 
 1. Generate Capriccio, following the instructions in [Capriccio's README.md](../../capriccio/).
-1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
+1. If you're not using out [Docker image](https://ml.energy/zeus/getting_started/environment/), install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
 1. Install python dependencies for this example:
     ```sh
     pip install -r requirements.txt
@@ -92,7 +92,7 @@ You can use Zeus's [`ProfileDataLoader`](https://ml.energy/zeus/reference/profil
 ### Dependencies
 
 1. Generate Capriccio, following the instructions in [Capriccio's README.md](../../capriccio/).
-1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
+1. If you're not using out [Docker image](https://ml.energy/zeus/getting_started/environment/), install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
 1. Install python dependencies for this example:
     ```sh
     pip install -r requirements.txt
@@ -129,7 +129,7 @@ At the same time, a CSV file with headers epoch number, split (train or eval), a
 ### Dependencies
 
 1. Generate Capriccio, following the instructions in [Capriccio's README.md](../../capriccio/).
-1. Only for those not using our Docker image, install PyTorch separately:
+1. Only for those not using our [Docker image](https://ml.energy/zeus/getting_started/environment/), install PyTorch separately:
     ```sh
     conda install -c pytorch pytorch==1.10.1
     ```

@@ -97,7 +97,7 @@ class Simulator:
             beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.
                 Set to `np.inf` to disable early stopping.
             eta_knob: $\eta$ used in the hybrid cost metric.
-                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$
+                $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
 
         Returns:
             A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.
@@ -244,7 +244,7 @@ class Simulator:
             beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.
                 Set to `np.inf` to disable early stopping.
             eta_knob: $\eta$ used in the hybrid cost metric.
-                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$
+                $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
 
         Returns:
             A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.
@@ -681,7 +681,7 @@ class Simulator:
             cost_ub: Cost upper bound. The job is terminated when the next epoch is going
                 to exceed the cost upper bound.
             eta_knob: $\eta$ used in the hybrid cost metric.
-                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$
+                $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
             profile_power: Whether this run of the job should profile power during the
                 first epoch.
 

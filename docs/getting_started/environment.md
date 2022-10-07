@@ -39,15 +39,18 @@ docker run -it \
 2. `SYS_ADMIN` capability is needed to manage the power configurations of the GPU via NVML.
 3. PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.
 
-If you would like your changes to `zeus/` outside the container to be immediately applied inside the container, mount the repository into the container:
+Use the `-v` option to mount outside data into the container.
+For instance, if you would like your changes to `zeus/` outside the container to be immediately applied inside the container, mount the repository into the container.
+You can also mount training data into the container.
 
 ``` { .sh .annotate }
 # Working directory is repository root
 docker run -it \
-    --gpus all \                      # (1)!
-    --cap-add SYS_ADMIN \           # (2)!
-    --shm-size 64G \              # (3)!
-    -v $(pwd):/workspace/zeus \ # (4)!
+    --gpus all \                               # (1)!
+    --cap-add SYS_ADMIN \                    # (2)!
+    --shm-size 64G \                       # (3)!
+    -v $(pwd):/workspace/zeus \          # (4)!
+    -v /data/imagenet:/data/imagenet:ro \
     symbioticlab/zeus:latest \
     bash
 ```

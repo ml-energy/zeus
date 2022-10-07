@@ -22,27 +22,15 @@ While our paper is about optimizing the batch size and power limit over multiple
 
 ### Dependencies
 
+All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+You just need to take care of the ImageNet data.
+
 1. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
     Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
-2. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-   - When spawning the container, mount the dataset to the container by specifying `-v $DATA_DIR:/data/imagenet`. The complete command will be:
+1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
+1. Install `torchvision`:
     ```sh
-    # Working directory is repository root
-    docker run -it \
-        --gpus all    `# Specify the number of GPUs to use. When 'all' is set, all the GPUs will be used.` \
-        --cap-add SYS_ADMIN \
-        --shm-size 64G \              
-        -v $(pwd):/workspace/zeus \
-        -v $DATA_DIR:/data/imagenet    `# Mount the dataset to the container` \
-        symbioticlab/zeus:latest \
-        bash
-    ```
-    - Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please use the `CUDA_VISIBLE_DEVICES` environment variable, or use our Docker image and replace the argument following `--gpus` in the above `docker run` command with your preference. For example:
-      - Mount 2 GPUs to the Docker container: `--gpus 2`.
-      - Mount specific GPUs to the Docker container: `--gpus '"device=0,1"'`.
-3. Install python dependencies for this example:
-    ```sh
-    pip install -r requirements.txt
+    conda install -c pytorch torchvision==0.11.2
     ```
 
 ### Example command
@@ -85,25 +73,13 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
 
 ### Dependencies
 
+All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+You just need to take care of the ImageNet data.
+
 1. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
     Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
-2. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-   - When spawning the container, mount the dataset to the container by specifying `-v $DATA_DIR:/data/imagenet`. The complete command will be:
-    ```sh
-    # Working directory is repository root
-    docker run -it \
-        --gpus all    `# Specify the number of GPUs to use. When 'all' is set, all the GPUs will be used.` \
-        --cap-add SYS_ADMIN \
-        --shm-size 64G \              
-        -v $(pwd):/workspace/zeus \
-        -v $DATA_DIR:/data/imagenet    `# Mount the dataset to the container` \
-        symbioticlab/zeus:latest \
-        bash
-    ```
-    - Zeus will always use **ALL** the GPUs available to it. If you want to use specific GPUs on your node, please use the `CUDA_VISIBLE_DEVICES` environment variable, or use our Docker image and replace the argument following `--gpus` in the above `docker run` command with your preference. For example:
-      - Mount 2 GPUs to the Docker container: `--gpus 2`.
-      - Mount specific GPUs to the Docker container: `--gpus '"device=0,1"'`.
-3. Only for those not using our Docker image, install `torchvision` separately:
+1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
+1. Install `torchvision`:
     ```sh
     conda install -c pytorch torchvision==0.11.2
     ```
@@ -133,9 +109,12 @@ python run_zeus.py \
 
 ### Dependencies
 
+All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+You just need to take care of the ImageNet data.
+
 1. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
     Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
-2. Only for those not using our Docker image, install PyTorch, `torchvision`, and `cudatoolkit` separately:
+2. Install PyTorch, `torchvision`, and `cudatoolkit`:
     ```sh
     conda install -c pytorch pytorch==1.10.1 torchvision==0.11.2 cudatoolkit==11.3.1
     ```

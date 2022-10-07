@@ -22,10 +22,12 @@ While our paper is about optimizing the batch size and power limit over multiple
 
 ### Dependencies
 
+All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+
 1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Install python dependencies for this example:
+1. Install `torchvision`:
     ```sh
-    pip install -r requirements.txt
+    conda install -c pytorch torchvision==0.11.2
     ```
 
 ### Example command
@@ -59,8 +61,10 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
 
 ### Dependencies
 
+All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+
 1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Only for those not using our Docker image, install `torchvision` separately:
+1. Install `torchvision`:
     ```sh
     conda install -c pytorch torchvision==0.11.2
     ```
@@ -88,8 +92,10 @@ You can use Zeus's [`ProfileDataLoader`](https://ml.energy/zeus/reference/profil
 
 ### Dependencies
 
+All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+
 1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Only for those not using our Docker image, install `torchvision` separately:
+1. Install `torchvision`:
     ```sh
     conda install -c pytorch torchvision==0.11.2
     ```
@@ -123,10 +129,12 @@ At the same time, a CSV file with headers epoch number, split (`train` or `eval`
 
 ### Dependencies
 
-Only for those not using our Docker image, install PyTorch, `torchvision`, and `cudatoolkit` separately:
-```sh
-conda install -c pytorch pytorch==1.10.1 torchvision==0.11.2 cudatoolkit==11.3.1
-```
+All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+
+1. Install `torchvision`:
+    ```sh
+    conda install -c pytorch torchvision==0.11.2
+    ```
 
 ### Example command
 

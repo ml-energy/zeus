@@ -50,3 +50,6 @@ ADD . /workspace/zeus
 
 # When an outside zeus directory is mounted, have it apply immediately.
 RUN pip install -e zeus
+
+# Build and bake in the Zeus monitor.
+RUN cd /workspace/zeus/zeus_monitor && cmake . && make && cp zeus_monitor /usr/local/bin/ && cd /workspace

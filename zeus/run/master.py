@@ -126,7 +126,7 @@ class ZeusMaster:
             job: Job to run.
             num_recurrence: The total number of recurrences.
             eta_knob: $\eta$ used in the cost metric.
-                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$
+                $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
             beta_knob: `beta_knob * min_cost` is the early stopping cost threshold.
                 Set to `np.inf` to disable early stopping.
             exist_ok: Passed to `os.makedirs`. If `False`, will err if the directory
@@ -163,7 +163,7 @@ class ZeusMaster:
             rec_i: Recurrence number of this run of the job.
             tries: Retry number of this recurrence of the job.
             eta_knob: $\eta$ used in the cost metric.
-                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$
+                $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
             cost_ub: Cost upper bound. The job is terminated when the next epoch is going
                 to exceed the cost upper bound.
 
@@ -261,7 +261,7 @@ class ZeusMaster:
             beta_knob: `beta_knob * min_eta` is the early stopping cost threshold.
                 Set to `np.inf` to disable early stopping.
             eta_knob: $\eta$ used in the cost metric.
-                $cost = \eta * ETA + (1 - \eta) * MaxPower * TTA$
+                $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
 
         Returns:
             A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.

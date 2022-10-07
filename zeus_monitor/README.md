@@ -14,9 +14,10 @@ Usage: ./zeus_monitor LOGFILE DURATION SLEEP_MS [GPU_IDX]
 
 ## Building
 
+The Zeus monitor is pre-built for you if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+
 ### Dependencies
 
-All dependencies are pre-installed if you're using our Docker image.  
 1. CMake >= 3.22
 1. CUDAToolkit, especially NVML (`libnvidia-ml.so`)
 
