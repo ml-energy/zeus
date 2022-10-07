@@ -80,21 +80,27 @@ class ZeusDataLoader(DataLoader):
 
     ## Data parallel with multi-GPU on a single-node
 
-    Zeus supports only one process per GPU profiling. In data parallel training,
-    each process has its `local_rank` within the node and will run the
-    following code. Please refer to [the integration example with ImageNet]
-    (https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)
-    for the complete example.
+    !!! Important
+        Zeus assumes that exactly one process manages one GPU, and hence
+        one instance of [`ZeusDataLoader`][zeus.run.ZeusDataLoader] exists
+        for each GPU.
+
+    Users can integrate Zeus into existing data parallel training scripts
+    with five specific steps, which are noted below in the comments.
+
+    Please refer to
+    [our integration example with ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)
+    for a complete example.
 
     ```python
     import torch
+    import torch.distributed as dist
     import torchvision
 
     from zeus.run import ZeusDataLoader
 
     # Step 1: Initialize the default process group.
-    # Make sure to call `init_process_group` before calling the constructor of
-    # `ZeusDataLoader`.
+    # This should be done before instantiating `ZeusDataLoader`.
     dist.init_process_group(
         backend=args.dist_backend,
         init_method=args.dist_url,
@@ -104,9 +110,9 @@ class ZeusDataLoader(DataLoader):
     model = torchvision.models.resnet18()
     torch.cuda.set_device(local_rank)
     model.cuda(local_rank)
-    # Zeus only supports one process per GPU profiling. If you are doing data
+    # Zeus assumes that exactly one process manages one GPU. If you are doing data
     # parallel training, please use `DistributedDataParallel` for model replication
-    # and specify the `device_ids` and `output_device` correctly.
+    # and specify the `device_ids` and `output_device` as below:
     model = torch.nn.parallel.DistributedDataParallel(
         model,
         device_ids=[local_rank],
@@ -114,30 +120,33 @@ class ZeusDataLoader(DataLoader):
     )
 
     # Step 3: Create instances of `DistributedSampler` to partition the dataset
-        # across the GPUs.
+    # across the GPUs.
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
     eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
 
-    # Step 4: Create instances of `ZeusDataLoader`.
-    # Pass `"dp"` to `distributed` and samplers in the previous step to
-    # `sampler`.
+    # Step 4: Instantiate `ZeusDataLoader`.
+    # `distributed="dp"` tells `ZeusDataLoader` to operate in data parallel mode.
     # The one instantiated with `max_epochs` becomes the train dataloader.
     train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100,
-                                sampler=train_sampler, distributed="dp")
+                                  sampler=train_sampler, distributed="dp")
     eval_loader = ZeusDataLoader(eval_set, batch_size=256, sampler=eval_sampler,
-                                distributed="dp")
+                                 distributed="dp")
 
-    # Step 5: Put your training code here.
+    # Step 5: Training loop.
+    # Use the train dataloader's `epochs` generator to allow Zeus to early-stop
+    # based on the cost. Use `report_metric` to let Zeus know the current
+    # validation metric.
     for epoch_number in train_loader.epochs():
         for batch in train_loader:
             # Learn from batch
         for batch in eval_loader:
             # Evaluate on batch
 
-        # If doing data parallel training, please make sure to call
-        # `torch.distributed.all_reduce()` to reduce the validation metric
-        # across all GPUs before calling `train_loader.report_metric()`.
-        train_loader.report_metric(validation_metric)
+        # Make sure you all-reduce the validation metric across all GPUs,
+        # since Zeus expects the final validation metric.
+        val_metric_tensor = torch.tensor([validation_metric], device="cuda")
+        dist.all_reduce(val_metric_tensor, async_op=False)
+        train_loader.report_metric(val_metric_tensor.item())
     ```
 
     # Environment variables
@@ -474,11 +483,13 @@ class ZeusDataLoader(DataLoader):
             Epoch indices starting from zero.
 
         Raises:
-            ZeusCostThresholdExceededException: the predicated cost after next epoch exceeds the cost threshold.
-                When doing data parallel training, this exception is used for ternimating ALL the processes.
+            ZeusCostThresholdExceededException: the predicted cost after the next
+                epoch exceeds the cost threshold. When doing data parallel training,
+                this exception is used for ternimating all the processes.
         """
         # Sanity check.
-        assert self._is_train, "Use epochs() on the train dataloader."
+        if not self._is_train:
+            raise RuntimeError("Use epochs() on the train dataloader.")
 
         while True:
             # Variables for storing time/energy consumption & cost

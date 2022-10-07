@@ -48,11 +48,11 @@ class ZeusCostThresholdExceededException(Exception):
     are still alive.
 
     Attributes:
-        time_consumed: Time consumed till the current epoch.
-        energy_consumed: Energy consumed till the current epoch.
-        cost: Computed Zeus's energy-time cost metric till the current epoch.
-        next_cost: Predicted Zeus's energy-time cost metric after next epoch.
-        cost_thresh: The cost threshold.
+        time_consumed (float): Time consumed until the current epoch.
+        energy_consumed (float): Energy consumed until the current epoch.
+        cost (float): Computed Zeus's energy-time cost metric until the current epoch.
+        next_cost (float): Predicted Zeus's energy-time cost metric after next epoch.
+        cost_thresh (float): The cost threshold.
     """
 
     def __init__(
