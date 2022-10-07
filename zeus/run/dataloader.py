@@ -127,7 +127,7 @@ class ZeusDataLoader(DataLoader):
     # Step 4: Instantiate `ZeusDataLoader`.
     # `distributed="dp` tells `ZeusDataLoader` to operate in data parallel mode.
     # The one instantiated with `max_epochs` becomes the train dataloader.
-    train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100, 
+    train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100,
                                   sampler=train_sampler, distributed="dp")
     eval_loader = ZeusDataLoader(eval_set, batch_size=256, sampler=eval_sampler,
                                  distributed="dp")
