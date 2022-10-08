@@ -22,7 +22,7 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy){.external}.
 Refer to [Getting Started](getting_started/index.md) for instructions on environment setup, installation, and integration.
 We also provide integration examples:
 
-- Integrating Zeus with computer vision
+- Integrating Zeus with Computer Vision
     - [ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet){.external}
     - [CIFAR100](https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100){.external}
 - [Integrating Zeus with Natural Language Processing and Huggingface](https://github.com/SymbioticLab/Zeus/tree/master/examples/capriccio){.external}
