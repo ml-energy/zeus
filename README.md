@@ -70,8 +70,10 @@ Refer to [Environment setup](https://ml.energy/zeus/getting_started/environment/
 
 We provide working examples for integrating and running Zeus:
 
-- [Integrating Zeus with computer vision](examples/cifar100)
-- [Integrating Zeus with NLP](examples/capriccio)
+- Integrating Zeus with Computer Vision
+    - [ImageNet](examples/imagenet)
+    - [CIFAR100](examples/cifar100)
+- [Integrating Zeus with Natural Language Processing](examples/capriccio)
 - [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](examples/trace_driven)
 
 
