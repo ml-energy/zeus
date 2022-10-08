@@ -23,7 +23,7 @@ While our paper is about optimizing the batch size and power limit over multiple
 ### Dependencies
 
 All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
-You just need to take care of the ImageNet data.
+You just need to download the ImageNet data and mount it to the Docker container with the `-v` option.
 
 1. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
     Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
@@ -74,7 +74,7 @@ This example shows how to integrate [`ZeusDataLoader`](https://ml.energy/zeus/re
 ### Dependencies
 
 All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
-You just need to take care of the ImageNet data.
+You just need to download the ImageNet data and mount it to the Docker container with the `-v` option.
 
 1. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
     Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.
@@ -110,7 +110,7 @@ python run_zeus.py \
 ### Dependencies
 
 All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
-You just need to take care of the ImageNet data.
+You just need to download the ImageNet data and mount it to the Docker container with the `-v` option.
 
 1. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
     Then, extract archives using [this script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh) provided by PyTorch.

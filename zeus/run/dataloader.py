@@ -125,7 +125,7 @@ class ZeusDataLoader(DataLoader):
     eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
 
     # Step 4: Instantiate `ZeusDataLoader`.
-    # `distributed="dp` tells `ZeusDataLoader` to operate in data parallel mode.
+    # `distributed="dp"` tells `ZeusDataLoader` to operate in data parallel mode.
     # The one instantiated with `max_epochs` becomes the train dataloader.
     train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100,
                                   sampler=train_sampler, distributed="dp")
@@ -134,7 +134,7 @@ class ZeusDataLoader(DataLoader):
 
     # Step 5: Training loop.
     # Use the train dataloader's `epochs` generator to allow Zeus to early-stop
-    # based on the training cost. Use `report_metric` to let Zeus know the current
+    # based on the cost. Use `report_metric` to let Zeus know the current
     # validation metric.
     for epoch_number in train_loader.epochs():
         for batch in train_loader:
@@ -483,7 +483,7 @@ class ZeusDataLoader(DataLoader):
             Epoch indices starting from zero.
 
         Raises:
-            ZeusCostThresholdExceededException: the predicated cost after next
+            ZeusCostThresholdExceededException: the predicted cost after the next
                 epoch exceeds the cost threshold. When doing data parallel training,
                 this exception is used for ternimating all the processes.
         """

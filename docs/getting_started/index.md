@@ -86,7 +86,7 @@ train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
 eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
 
 # Step 4: Instantiate `ZeusDataLoader`.
-# `distributed="dp` tells `ZeusDataLoader` to operate in data parallel mode.
+# `distributed="dp"` tells `ZeusDataLoader` to operate in data parallel mode.
 # The one instantiated with `max_epochs` becomes the train dataloader.
 train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100, 
                               sampler=train_sampler, distributed="dp")
