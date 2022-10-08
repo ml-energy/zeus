@@ -23,7 +23,7 @@
     
     
       
-        <title>Environment setup - Zeus Project</title>
+        <title>Environment Setup - Zeus Project</title>
       
     
     
@@ -77,13 +77,13 @@
     
   
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="Zeus Project - Environment setup" />
+  <meta property="og:title" content="Zeus Project - Environment Setup" />
   <meta property="og:description" content="An energy optimization framework for DNN training" />
   <meta property="og:url" content="https://ml.energy/zeus/getting_started/environment/" />
   <meta property="og:image" content="https://ml.energy/zeus/assets/img/og_image.png" />
   <meta property="og:image:type" content="image/png" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Zeus Project - Environment setup" />
+  <meta name="twitter:title" content="Zeus Project - Environment Setup" />
   <meta name="twitter:description" content="An energy optimization framework for DNN training" />
   <meta name="twitter:image" content="https://ml.energy/zeus/assets/img/og_image.png" />
 
@@ -140,7 +140,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Environment setup
+              Environment Setup
             
           </span>
         </div>
@@ -477,7 +477,7 @@
           
   
   <span class="md-ellipsis">
-    Environment setup
+    Environment Setup
     
   </span>
   
@@ -489,7 +489,7 @@
         
   
   <span class="md-ellipsis">
-    Environment setup
+    Environment Setup
     
   </span>
   
@@ -563,7 +563,7 @@
         
   
   <span class="md-ellipsis">
-    Installing and building
+    Installing and Building
     
   </span>
   
@@ -1242,7 +1242,7 @@
 <h1 id="setting-up-the-environment">Setting Up the Environment</h1>
 <p>We encourage users to do everything inside a Docker container spawned with our pre-built Docker image.</p>
 <h2 id="zeus-docker-image">Zeus Docker image</h2>
-<p>We provide a pre-built Docker image in Docker Hub: https://hub.docker.com/r/symbioticlab/zeus.
+<p>We provide a pre-built Docker image in <a class="external" href="https://hub.docker.com/r/symbioticlab/zeus">Docker Hub</a>.
 On top of the <code>nvidia/cuda:11.3.1-devel-ubuntu20.04</code> image, the following are provided:  </p>
 <ol>
 <li>CMake 3.22.0</li>
@@ -1304,6 +1304,9 @@ On top of the <code>nvidia/cuda:11.3.1-devel-ubuntu20.04</code> image, the follo
 
 <span class="c"># When an outside zeus directory is mounted, have it apply immediately.</span>
 <span class="k">RUN</span><span class="w"> </span>pip install -e zeus
+
+<span class="c"># Build and bake in the Zeus monitor.</span>
+<span class="k">RUN</span><span class="w"> </span><span class="nb">cd</span> /workspace/zeus/zeus_monitor <span class="o">&amp;&amp;</span> cmake . <span class="o">&amp;&amp;</span> make <span class="o">&amp;&amp;</span> cp zeus_monitor /usr/local/bin/ <span class="o">&amp;&amp;</span> <span class="nb">cd</span> /workspace
 </code></pre></div>
 </details>
 <h3 id="dependencies">Dependencies</h3>
@@ -1325,13 +1328,16 @@ On top of the <code>nvidia/cuda:11.3.1-devel-ubuntu20.04</code> image, the follo
 <li><code>SYS_ADMIN</code> capability is needed to manage the power configurations of the GPU via NVML.</li>
 <li>PyTorch DataLoader workers need enough shared memory for IPC. If the PyTorch training process dies with a Bus error, consider increasing this even more.</li>
 </ol>
-<p>If you would like your changes to <code>zeus/</code> outside the container to be immediately applied inside the container, mount the repository into the container:</p>
+<p>Use the <code>-v</code> option to mount outside data into the container.
+For instance, if you would like your changes to <code>zeus/</code> outside the container to be immediately applied inside the container, mount the repository into the container.
+You can also mount training data into the container.</p>
 <div class="annotate highlight"><pre><span></span><code><span class="c1"># Working directory is repository root</span>
 docker run -it <span class="se">\</span>
-    --gpus all <span class="se">\ </span>                     <span class="c1"># (1)!</span>
-    --cap-add SYS_ADMIN <span class="se">\ </span>          <span class="c1"># (2)!</span>
-    --shm-size 64G <span class="se">\ </span>             <span class="c1"># (3)!</span>
-    -v <span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/workspace/zeus <span class="se">\ </span><span class="c1"># (4)!</span>
+    --gpus all <span class="se">\ </span>                              <span class="c1"># (1)!</span>
+    --cap-add SYS_ADMIN <span class="se">\ </span>                   <span class="c1"># (2)!</span>
+    --shm-size 64G <span class="se">\ </span>                      <span class="c1"># (3)!</span>
+    -v <span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/workspace/zeus <span class="se">\ </span>         <span class="c1"># (4)!</span>
+    -v /data/imagenet:/data/imagenet:ro <span class="se">\</span>
     symbioticlab/zeus:latest <span class="se">\</span>
     bash
 </code></pre></div>
@@ -1386,13 +1392,13 @@ docker run -it <span class="se">\</span>
       
       
         
-        <a href="../installing_and_building/" class="md-footer__link md-footer__link--next" aria-label="Next: Installing and building" rel="next">
+        <a href="../installing_and_building/" class="md-footer__link md-footer__link--next" aria-label="Next: Installing and Building" rel="next">
           <div class="md-footer__title">
             <div class="md-ellipsis">
               <span class="md-footer__direction">
                 Next
               </span>
-              Installing and building
+              Installing and Building
             </div>
           </div>
           <div class="md-footer__button md-icon">

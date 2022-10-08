@@ -466,7 +466,7 @@
         
   
   <span class="md-ellipsis">
-    Environment setup
+    Environment Setup
     
   </span>
   
@@ -487,7 +487,7 @@
         
   
   <span class="md-ellipsis">
-    Installing and building
+    Installing and Building
     
   </span>
   
@@ -1756,19 +1756,25 @@ profiles power and time consumption to determine the optimal GPU power limit.</p
     <span class="n">train_loader</span><span class="o">.</span><span class="n">report_metric</span><span class="p">(</span><span class="n">validation_metric</span><span class="p">)</span>
 </code></pre></div>
 <h5 id="zeus.run.dataloader.ZeusDataLoader--data-parallel-with-multi-gpu-on-a-single-node">Data parallel with multi-GPU on a single-node</h5>
-<p>Zeus supports only one process per GPU profiling. In data parallel training,
-each process has its <code>local_rank</code> within the node and will run the
-following code. Please refer to [the integration example with ImageNet]
-(https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)
-for the complete example.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Zeus assumes that exactly one process manages one GPU, and hence
+one instance of <a class="autorefs autorefs-internal" href="#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a> exists
+for each GPU.</p>
+</div>
+<p>Users can integrate Zeus into existing data parallel training scripts
+with five specific steps, which are noted below in the comments.</p>
+<p>Please refer to
+<a href="https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py">our integration example with ImageNet</a>
+for a complete example.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.distributed</span> <span class="k">as</span> <span class="nn">dist</span>
 <span class="kn">import</span> <span class="nn">torchvision</span>
 
 <span class="kn">from</span> <span class="nn">zeus.run</span> <span class="kn">import</span> <span class="n">ZeusDataLoader</span>
 
 <span class="c1"># Step 1: Initialize the default process group.</span>
-<span class="c1"># Make sure to call `init_process_group` before calling the constructor of</span>
-<span class="c1"># `ZeusDataLoader`.</span>
+<span class="c1"># This should be done before instantiating `ZeusDataLoader`.</span>
 <span class="n">dist</span><span class="o">.</span><span class="n">init_process_group</span><span class="p">(</span>
     <span class="n">backend</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">dist_backend</span><span class="p">,</span>
     <span class="n">init_method</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">dist_url</span><span class="p">,</span>
@@ -1778,9 +1784,9 @@ for the complete example.</p>
 <span class="n">model</span> <span class="o">=</span> <span class="n">torchvision</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">resnet18</span><span class="p">()</span>
 <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">set_device</span><span class="p">(</span><span class="n">local_rank</span><span class="p">)</span>
 <span class="n">model</span><span class="o">.</span><span class="n">cuda</span><span class="p">(</span><span class="n">local_rank</span><span class="p">)</span>
-<span class="c1"># Zeus only supports one process per GPU profiling. If you are doing data</span>
+<span class="c1"># Zeus assumes that exactly one process manages one GPU. If you are doing data</span>
 <span class="c1"># parallel training, please use `DistributedDataParallel` for model replication</span>
-<span class="c1"># and specify the `device_ids` and `output_device` correctly.</span>
+<span class="c1"># and specify the `device_ids` and `output_device` as below:</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">parallel</span><span class="o">.</span><span class="n">DistributedDataParallel</span><span class="p">(</span>
     <span class="n">model</span><span class="p">,</span>
     <span class="n">device_ids</span><span class="o">=</span><span class="p">[</span><span class="n">local_rank</span><span class="p">],</span>
@@ -1788,30 +1794,33 @@ for the complete example.</p>
 <span class="p">)</span>
 
 <span class="c1"># Step 3: Create instances of `DistributedSampler` to partition the dataset</span>
-    <span class="c1"># across the GPUs.</span>
+<span class="c1"># across the GPUs.</span>
 <span class="n">train_sampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">DistributedSampler</span><span class="p">(</span><span class="n">train_set</span><span class="p">)</span>
 <span class="n">eval_sampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">distributed</span><span class="o">.</span><span class="n">DistributedSampler</span><span class="p">(</span><span class="n">eval_set</span><span class="p">)</span>
 
-<span class="c1"># Step 4: Create instances of `ZeusDataLoader`.</span>
-<span class="c1"># Pass `&quot;dp&quot;` to `distributed` and samplers in the previous step to</span>
-<span class="c1"># `sampler`.</span>
+<span class="c1"># Step 4: Instantiate `ZeusDataLoader`.</span>
+<span class="c1"># `distributed=&quot;dp&quot;` tells `ZeusDataLoader` to operate in data parallel mode.</span>
 <span class="c1"># The one instantiated with `max_epochs` becomes the train dataloader.</span>
 <span class="n">train_loader</span> <span class="o">=</span> <span class="n">ZeusDataLoader</span><span class="p">(</span><span class="n">train_set</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">max_epochs</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
-                            <span class="n">sampler</span><span class="o">=</span><span class="n">train_sampler</span><span class="p">,</span> <span class="n">distributed</span><span class="o">=</span><span class="s2">&quot;dp&quot;</span><span class="p">)</span>
+                              <span class="n">sampler</span><span class="o">=</span><span class="n">train_sampler</span><span class="p">,</span> <span class="n">distributed</span><span class="o">=</span><span class="s2">&quot;dp&quot;</span><span class="p">)</span>
 <span class="n">eval_loader</span> <span class="o">=</span> <span class="n">ZeusDataLoader</span><span class="p">(</span><span class="n">eval_set</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">sampler</span><span class="o">=</span><span class="n">eval_sampler</span><span class="p">,</span>
-                            <span class="n">distributed</span><span class="o">=</span><span class="s2">&quot;dp&quot;</span><span class="p">)</span>
+                             <span class="n">distributed</span><span class="o">=</span><span class="s2">&quot;dp&quot;</span><span class="p">)</span>
 
-<span class="c1"># Step 5: Put your training code here.</span>
+<span class="c1"># Step 5: Training loop.</span>
+<span class="c1"># Use the train dataloader&#39;s `epochs` generator to allow Zeus to early-stop</span>
+<span class="c1"># based on the cost. Use `report_metric` to let Zeus know the current</span>
+<span class="c1"># validation metric.</span>
 <span class="k">for</span> <span class="n">epoch_number</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="o">.</span><span class="n">epochs</span><span class="p">():</span>
     <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="p">:</span>
         <span class="c1"># Learn from batch</span>
     <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">eval_loader</span><span class="p">:</span>
         <span class="c1"># Evaluate on batch</span>
 
-    <span class="c1"># If doing data parallel training, please make sure to call</span>
-    <span class="c1"># `torch.distributed.all_reduce()` to reduce the validation metric</span>
-    <span class="c1"># across all GPUs before calling `train_loader.report_metric()`.</span>
-    <span class="n">train_loader</span><span class="o">.</span><span class="n">report_metric</span><span class="p">(</span><span class="n">validation_metric</span><span class="p">)</span>
+    <span class="c1"># Make sure you all-reduce the validation metric across all GPUs,</span>
+    <span class="c1"># since Zeus expects the final validation metric.</span>
+    <span class="n">val_metric_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="n">validation_metric</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+    <span class="n">dist</span><span class="o">.</span><span class="n">all_reduce</span><span class="p">(</span><span class="n">val_metric_tensor</span><span class="p">,</span> <span class="n">async_op</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">train_loader</span><span class="o">.</span><span class="n">report_metric</span><span class="p">(</span><span class="n">val_metric_tensor</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
 </code></pre></div>
 <h4 id="zeus.run.dataloader.ZeusDataLoader--environment-variables">Environment variables</h4>
 <p><code>ZeusDataLoader</code> interfaces with the outside world via environment variables.
@@ -2871,7 +2880,18 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 <span class="normal">1083</span>
 <span class="normal">1084</span>
 <span class="normal">1085</span>
-<span class="normal">1086</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusDataLoader</span><span class="p">(</span><span class="n">DataLoader</span><span class="p">):</span>
+<span class="normal">1086</span>
+<span class="normal">1087</span>
+<span class="normal">1088</span>
+<span class="normal">1089</span>
+<span class="normal">1090</span>
+<span class="normal">1091</span>
+<span class="normal">1092</span>
+<span class="normal">1093</span>
+<span class="normal">1094</span>
+<span class="normal">1095</span>
+<span class="normal">1096</span>
+<span class="normal">1097</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusDataLoader</span><span class="p">(</span><span class="n">DataLoader</span><span class="p">):</span>
     <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Profiles and optimizes GPU power limit.</span>
 
 <span class="sd">    `ZeusDataLoader` is integrated into the DNN training script, and transparently</span>
@@ -2899,21 +2919,27 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 
 <span class="sd">    ## Data parallel with multi-GPU on a single-node</span>
 
-<span class="sd">    Zeus supports only one process per GPU profiling. In data parallel training,</span>
-<span class="sd">    each process has its `local_rank` within the node and will run the</span>
-<span class="sd">    following code. Please refer to [the integration example with ImageNet]</span>
-<span class="sd">    (https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)</span>
-<span class="sd">    for the complete example.</span>
+<span class="sd">    !!! Important</span>
+<span class="sd">        Zeus assumes that exactly one process manages one GPU, and hence</span>
+<span class="sd">        one instance of [`ZeusDataLoader`][zeus.run.ZeusDataLoader] exists</span>
+<span class="sd">        for each GPU.</span>
+
+<span class="sd">    Users can integrate Zeus into existing data parallel training scripts</span>
+<span class="sd">    with five specific steps, which are noted below in the comments.</span>
+
+<span class="sd">    Please refer to</span>
+<span class="sd">    [our integration example with ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)</span>
+<span class="sd">    for a complete example.</span>
 
 <span class="sd">    ```python</span>
 <span class="sd">    import torch</span>
+<span class="sd">    import torch.distributed as dist</span>
 <span class="sd">    import torchvision</span>
 
 <span class="sd">    from zeus.run import ZeusDataLoader</span>
 
 <span class="sd">    # Step 1: Initialize the default process group.</span>
-<span class="sd">    # Make sure to call `init_process_group` before calling the constructor of</span>
-<span class="sd">    # `ZeusDataLoader`.</span>
+<span class="sd">    # This should be done before instantiating `ZeusDataLoader`.</span>
 <span class="sd">    dist.init_process_group(</span>
 <span class="sd">        backend=args.dist_backend,</span>
 <span class="sd">        init_method=args.dist_url,</span>
@@ -2923,9 +2949,9 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 <span class="sd">    model = torchvision.models.resnet18()</span>
 <span class="sd">    torch.cuda.set_device(local_rank)</span>
 <span class="sd">    model.cuda(local_rank)</span>
-<span class="sd">    # Zeus only supports one process per GPU profiling. If you are doing data</span>
+<span class="sd">    # Zeus assumes that exactly one process manages one GPU. If you are doing data</span>
 <span class="sd">    # parallel training, please use `DistributedDataParallel` for model replication</span>
-<span class="sd">    # and specify the `device_ids` and `output_device` correctly.</span>
+<span class="sd">    # and specify the `device_ids` and `output_device` as below:</span>
 <span class="sd">    model = torch.nn.parallel.DistributedDataParallel(</span>
 <span class="sd">        model,</span>
 <span class="sd">        device_ids=[local_rank],</span>
@@ -2933,30 +2959,33 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 <span class="sd">    )</span>
 
 <span class="sd">    # Step 3: Create instances of `DistributedSampler` to partition the dataset</span>
-<span class="sd">        # across the GPUs.</span>
+<span class="sd">    # across the GPUs.</span>
 <span class="sd">    train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)</span>
 <span class="sd">    eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)</span>
 
-<span class="sd">    # Step 4: Create instances of `ZeusDataLoader`.</span>
-<span class="sd">    # Pass `&quot;dp&quot;` to `distributed` and samplers in the previous step to</span>
-<span class="sd">    # `sampler`.</span>
+<span class="sd">    # Step 4: Instantiate `ZeusDataLoader`.</span>
+<span class="sd">    # `distributed=&quot;dp&quot;` tells `ZeusDataLoader` to operate in data parallel mode.</span>
 <span class="sd">    # The one instantiated with `max_epochs` becomes the train dataloader.</span>
 <span class="sd">    train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100,</span>
-<span class="sd">                                sampler=train_sampler, distributed=&quot;dp&quot;)</span>
+<span class="sd">                                  sampler=train_sampler, distributed=&quot;dp&quot;)</span>
 <span class="sd">    eval_loader = ZeusDataLoader(eval_set, batch_size=256, sampler=eval_sampler,</span>
-<span class="sd">                                distributed=&quot;dp&quot;)</span>
+<span class="sd">                                 distributed=&quot;dp&quot;)</span>
 
-<span class="sd">    # Step 5: Put your training code here.</span>
+<span class="sd">    # Step 5: Training loop.</span>
+<span class="sd">    # Use the train dataloader&#39;s `epochs` generator to allow Zeus to early-stop</span>
+<span class="sd">    # based on the cost. Use `report_metric` to let Zeus know the current</span>
+<span class="sd">    # validation metric.</span>
 <span class="sd">    for epoch_number in train_loader.epochs():</span>
 <span class="sd">        for batch in train_loader:</span>
 <span class="sd">            # Learn from batch</span>
 <span class="sd">        for batch in eval_loader:</span>
 <span class="sd">            # Evaluate on batch</span>
 
-<span class="sd">        # If doing data parallel training, please make sure to call</span>
-<span class="sd">        # `torch.distributed.all_reduce()` to reduce the validation metric</span>
-<span class="sd">        # across all GPUs before calling `train_loader.report_metric()`.</span>
-<span class="sd">        train_loader.report_metric(validation_metric)</span>
+<span class="sd">        # Make sure you all-reduce the validation metric across all GPUs,</span>
+<span class="sd">        # since Zeus expects the final validation metric.</span>
+<span class="sd">        val_metric_tensor = torch.tensor([validation_metric], device=&quot;cuda&quot;)</span>
+<span class="sd">        dist.all_reduce(val_metric_tensor, async_op=False)</span>
+<span class="sd">        train_loader.report_metric(val_metric_tensor.item())</span>
 <span class="sd">    ```</span>
 
 <span class="sd">    # Environment variables</span>
@@ -3293,11 +3322,13 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 <span class="sd">            Epoch indices starting from zero.</span>
 
 <span class="sd">        Raises:</span>
-<span class="sd">            ZeusCostThresholdExceededException: the predicated cost after next epoch exceeds the cost threshold.</span>
-<span class="sd">                When doing data parallel training, this exception is used for ternimating ALL the processes.</span>
+<span class="sd">            ZeusCostThresholdExceededException: the predicted cost after the next</span>
+<span class="sd">                epoch exceeds the cost threshold. When doing data parallel training,</span>
+<span class="sd">                this exception is used for ternimating all the processes.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># Sanity check.</span>
-        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="s2">&quot;Use epochs() on the train dataloader.&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Use epochs() on the train dataloader.&quot;</span><span class="p">)</span>
 
         <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
             <span class="c1"># Variables for storing time/energy consumption &amp; cost</span>
@@ -4053,16 +4084,7 @@ Please consider increasing batch size.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">204</span>
-<span class="normal">205</span>
-<span class="normal">206</span>
-<span class="normal">207</span>
-<span class="normal">208</span>
-<span class="normal">209</span>
-<span class="normal">210</span>
-<span class="normal">211</span>
-<span class="normal">212</span>
-<span class="normal">213</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">213</span>
 <span class="normal">214</span>
 <span class="normal">215</span>
 <span class="normal">216</span>
@@ -4309,7 +4331,16 @@ Please consider increasing batch size.</p></td>
 <span class="normal">457</span>
 <span class="normal">458</span>
 <span class="normal">459</span>
-<span class="normal">460</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="o">*</span><span class="n">args</span><span class="p">,</span>
     <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -4626,24 +4657,16 @@ Please consider increasing batch size.</p></td>
           <td>
                 <code><a class="autorefs autorefs-internal" title="zeus.util.metric.ZeusCostThresholdExceededException" href="../../util/metric/#zeus.util.metric.ZeusCostThresholdExceededException">ZeusCostThresholdExceededException</a></code>
           </td>
-          <td><p>the predicated cost after next epoch exceeds the cost threshold.
-When doing data parallel training, this exception is used for ternimating ALL the processes.</p></td>
+          <td><p>the predicted cost after the next
+epoch exceeds the cost threshold. When doing data parallel training,
+this exception is used for ternimating all the processes.</p></td>
         </tr>
     </tbody>
   </table>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">462</span>
-<span class="normal">463</span>
-<span class="normal">464</span>
-<span class="normal">465</span>
-<span class="normal">466</span>
-<span class="normal">467</span>
-<span class="normal">468</span>
-<span class="normal">469</span>
-<span class="normal">470</span>
-<span class="normal">471</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">471</span>
 <span class="normal">472</span>
 <span class="normal">473</span>
 <span class="normal">474</span>
@@ -4789,7 +4812,18 @@ When doing data parallel training, this exception is used for ternimating ALL th
 <span class="normal">614</span>
 <span class="normal">615</span>
 <span class="normal">616</span>
-<span class="normal">617</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">epochs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Generator</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">epochs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Generator</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]:</span>
     <span class="sd">&quot;&quot;&quot;Yield the current epoch number from 0 until when training should stop.</span>
 
 <span class="sd">    Training should stop when</span>
@@ -4804,11 +4838,13 @@ When doing data parallel training, this exception is used for ternimating ALL th
 <span class="sd">        Epoch indices starting from zero.</span>
 
 <span class="sd">    Raises:</span>
-<span class="sd">        ZeusCostThresholdExceededException: the predicated cost after next epoch exceeds the cost threshold.</span>
-<span class="sd">            When doing data parallel training, this exception is used for ternimating ALL the processes.</span>
+<span class="sd">        ZeusCostThresholdExceededException: the predicted cost after the next</span>
+<span class="sd">            epoch exceeds the cost threshold. When doing data parallel training,</span>
+<span class="sd">            this exception is used for ternimating all the processes.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Sanity check.</span>
-    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="s2">&quot;Use epochs() on the train dataloader.&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Use epochs() on the train dataloader.&quot;</span><span class="p">)</span>
 
     <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
         <span class="c1"># Variables for storing time/energy consumption &amp; cost</span>
@@ -5007,25 +5043,25 @@ and <code>False</code> for error.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">619</span>
-<span class="normal">620</span>
-<span class="normal">621</span>
-<span class="normal">622</span>
-<span class="normal">623</span>
-<span class="normal">624</span>
-<span class="normal">625</span>
-<span class="normal">626</span>
-<span class="normal">627</span>
-<span class="normal">628</span>
-<span class="normal">629</span>
-<span class="normal">630</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">630</span>
 <span class="normal">631</span>
 <span class="normal">632</span>
 <span class="normal">633</span>
 <span class="normal">634</span>
 <span class="normal">635</span>
 <span class="normal">636</span>
-<span class="normal">637</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">report_metric</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">metric</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">higher_is_better</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">report_metric</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">metric</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">higher_is_better</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Report the validation metric to the train dataloader.</span>
 
 <span class="sd">    If doing data parallel training, please make sure</span>
@@ -5072,10 +5108,10 @@ and <code>False</code> for error.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">639</span>
-<span class="normal">640</span>
-<span class="normal">641</span>
-<span class="normal">642</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@property</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">650</span>
+<span class="normal">651</span>
+<span class="normal">652</span>
+<span class="normal">653</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@property</span>
 <span class="k">def</span> <span class="nf">_should_profile</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Whether profiling is not done.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">power_json</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span>
@@ -5107,10 +5143,10 @@ and <code>False</code> for error.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">644</span>
-<span class="normal">645</span>
-<span class="normal">646</span>
-<span class="normal">647</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@property</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@property</span>
 <span class="k">def</span> <span class="nf">_power_limits_left</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Whether there are power limits left to profile.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">power_limits</span><span class="p">)</span>
@@ -5138,18 +5174,7 @@ and <code>False</code> for error.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">649</span>
-<span class="normal">650</span>
-<span class="normal">651</span>
-<span class="normal">652</span>
-<span class="normal">653</span>
-<span class="normal">654</span>
-<span class="normal">655</span>
-<span class="normal">656</span>
-<span class="normal">657</span>
-<span class="normal">658</span>
-<span class="normal">659</span>
-<span class="normal">660</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">660</span>
 <span class="normal">661</span>
 <span class="normal">662</span>
 <span class="normal">663</span>
@@ -5159,7 +5184,18 @@ and <code>False</code> for error.</p></td>
 <span class="normal">667</span>
 <span class="normal">668</span>
 <span class="normal">669</span>
-<span class="normal">670</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_compute_optimal_pl</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="normal">670</span>
+<span class="normal">671</span>
+<span class="normal">672</span>
+<span class="normal">673</span>
+<span class="normal">674</span>
+<span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span>
+<span class="normal">678</span>
+<span class="normal">679</span>
+<span class="normal">680</span>
+<span class="normal">681</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_compute_optimal_pl</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Return the cost-optimal power limit.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
     <span class="k">assert</span> <span class="n">ZeusDataLoader</span><span class="o">.</span><span class="n">train_tput_result</span>
@@ -5231,18 +5267,7 @@ the current GPU power limit.</p>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">672</span>
-<span class="normal">673</span>
-<span class="normal">674</span>
-<span class="normal">675</span>
-<span class="normal">676</span>
-<span class="normal">677</span>
-<span class="normal">678</span>
-<span class="normal">679</span>
-<span class="normal">680</span>
-<span class="normal">681</span>
-<span class="normal">682</span>
-<span class="normal">683</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">683</span>
 <span class="normal">684</span>
 <span class="normal">685</span>
 <span class="normal">686</span>
@@ -5252,7 +5277,18 @@ the current GPU power limit.</p>
 <span class="normal">690</span>
 <span class="normal">691</span>
 <span class="normal">692</span>
-<span class="normal">693</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_set_gpu_power_limit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">power_limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">693</span>
+<span class="normal">694</span>
+<span class="normal">695</span>
+<span class="normal">696</span>
+<span class="normal">697</span>
+<span class="normal">698</span>
+<span class="normal">699</span>
+<span class="normal">700</span>
+<span class="normal">701</span>
+<span class="normal">702</span>
+<span class="normal">703</span>
+<span class="normal">704</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_set_gpu_power_limit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">power_limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Set the GPU&#39;s power limit using NVML.</span>
 
 <span class="sd">    This method only invokes NVML when `power_limit` is not the same as</span>
@@ -5298,18 +5334,18 @@ the current GPU power limit.</p>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">695</span>
-<span class="normal">696</span>
-<span class="normal">697</span>
-<span class="normal">698</span>
-<span class="normal">699</span>
-<span class="normal">700</span>
-<span class="normal">701</span>
-<span class="normal">702</span>
-<span class="normal">703</span>
-<span class="normal">704</span>
-<span class="normal">705</span>
-<span class="normal">706</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_set_gpu_steady_power_limit</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">706</span>
+<span class="normal">707</span>
+<span class="normal">708</span>
+<span class="normal">709</span>
+<span class="normal">710</span>
+<span class="normal">711</span>
+<span class="normal">712</span>
+<span class="normal">713</span>
+<span class="normal">714</span>
+<span class="normal">715</span>
+<span class="normal">716</span>
+<span class="normal">717</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_set_gpu_steady_power_limit</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Set the steady power limit based on self.use_optimal_pl.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity check.</span>
     <span class="c1"># Only set power limit at master process.</span>
@@ -5392,25 +5428,25 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">708</span>
-<span class="normal">709</span>
-<span class="normal">710</span>
-<span class="normal">711</span>
-<span class="normal">712</span>
-<span class="normal">713</span>
-<span class="normal">714</span>
-<span class="normal">715</span>
-<span class="normal">716</span>
-<span class="normal">717</span>
-<span class="normal">718</span>
-<span class="normal">719</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">719</span>
 <span class="normal">720</span>
 <span class="normal">721</span>
 <span class="normal">722</span>
 <span class="normal">723</span>
 <span class="normal">724</span>
 <span class="normal">725</span>
-<span class="normal">726</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_log</span><span class="p">(</span>
+<span class="normal">726</span>
+<span class="normal">727</span>
+<span class="normal">728</span>
+<span class="normal">729</span>
+<span class="normal">730</span>
+<span class="normal">731</span>
+<span class="normal">732</span>
+<span class="normal">733</span>
+<span class="normal">734</span>
+<span class="normal">735</span>
+<span class="normal">736</span>
+<span class="normal">737</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_log</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span> <span class="n">master_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Print out message with prefix.</span>
@@ -5444,8 +5480,8 @@ a prefix indicates which GPU this log comes from will be included as well.
 
   
   <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-cached"><code>cached</code></small>
       <small class="doc doc-label doc-label-property"><code>property</code></small>
+      <small class="doc doc-label doc-label-cached"><code>cached</code></small>
   </span>
 
 </h4>
@@ -5458,10 +5494,10 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">728</span>
-<span class="normal">729</span>
-<span class="normal">730</span>
-<span class="normal">731</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@cached_property</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">739</span>
+<span class="normal">740</span>
+<span class="normal">741</span>
+<span class="normal">742</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@cached_property</span>
 <span class="k">def</span> <span class="nf">_is_train</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Return whether this dataloader is for training.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">split</span> <span class="o">==</span> <span class="s2">&quot;train&quot;</span>
@@ -5489,9 +5525,9 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">733</span>
-<span class="normal">734</span>
-<span class="normal">735</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_power_log_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rank</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">744</span>
+<span class="normal">745</span>
+<span class="normal">746</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_power_log_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rank</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Build the path for the power monitor log file at the GPU with rank.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">logdir</span><span class="si">}</span><span class="s2">/bs</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">train_batch_size</span><span class="si">}</span><span class="s2">+e</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span><span class="si">}</span><span class="s2">+gpu</span><span class="si">{</span><span class="n">rank</span><span class="si">}</span><span class="s2">.power.log&quot;</span>
 </code></pre></div></td></tr></table></div>
@@ -5518,20 +5554,20 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">737</span>
-<span class="normal">738</span>
-<span class="normal">739</span>
-<span class="normal">740</span>
-<span class="normal">741</span>
-<span class="normal">742</span>
-<span class="normal">743</span>
-<span class="normal">744</span>
-<span class="normal">745</span>
-<span class="normal">746</span>
-<span class="normal">747</span>
-<span class="normal">748</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">748</span>
 <span class="normal">749</span>
-<span class="normal">750</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_monitor</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">750</span>
+<span class="normal">751</span>
+<span class="normal">752</span>
+<span class="normal">753</span>
+<span class="normal">754</span>
+<span class="normal">755</span>
+<span class="normal">756</span>
+<span class="normal">757</span>
+<span class="normal">758</span>
+<span class="normal">759</span>
+<span class="normal">760</span>
+<span class="normal">761</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_monitor</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Start the power monitor subprocess.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
     <span class="k">assert</span> <span class="ow">not</span> <span class="n">ZeusDataLoader</span><span class="o">.</span><span class="n">monitors</span>
@@ -5569,21 +5605,21 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">752</span>
-<span class="normal">753</span>
-<span class="normal">754</span>
-<span class="normal">755</span>
-<span class="normal">756</span>
-<span class="normal">757</span>
-<span class="normal">758</span>
-<span class="normal">759</span>
-<span class="normal">760</span>
-<span class="normal">761</span>
-<span class="normal">762</span>
-<span class="normal">763</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">763</span>
 <span class="normal">764</span>
 <span class="normal">765</span>
-<span class="normal">766</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_kill_monitor</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">766</span>
+<span class="normal">767</span>
+<span class="normal">768</span>
+<span class="normal">769</span>
+<span class="normal">770</span>
+<span class="normal">771</span>
+<span class="normal">772</span>
+<span class="normal">773</span>
+<span class="normal">774</span>
+<span class="normal">775</span>
+<span class="normal">776</span>
+<span class="normal">777</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_kill_monitor</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Kill the power monitor subprocess.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
     <span class="k">assert</span> <span class="n">ZeusDataLoader</span><span class="o">.</span><span class="n">monitors</span>
@@ -5622,18 +5658,7 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">768</span>
-<span class="normal">769</span>
-<span class="normal">770</span>
-<span class="normal">771</span>
-<span class="normal">772</span>
-<span class="normal">773</span>
-<span class="normal">774</span>
-<span class="normal">775</span>
-<span class="normal">776</span>
-<span class="normal">777</span>
-<span class="normal">778</span>
-<span class="normal">779</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">779</span>
 <span class="normal">780</span>
 <span class="normal">781</span>
 <span class="normal">782</span>
@@ -5648,7 +5673,18 @@ a prefix indicates which GPU this log comes from will be included as well.
 <span class="normal">791</span>
 <span class="normal">792</span>
 <span class="normal">793</span>
-<span class="normal">794</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_warmup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">794</span>
+<span class="normal">795</span>
+<span class="normal">796</span>
+<span class="normal">797</span>
+<span class="normal">798</span>
+<span class="normal">799</span>
+<span class="normal">800</span>
+<span class="normal">801</span>
+<span class="normal">802</span>
+<span class="normal">803</span>
+<span class="normal">804</span>
+<span class="normal">805</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_warmup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Let the GPU run for some time with the poewr limit to profile.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
     <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="s2">&quot;start_warmup: should_profile=False&quot;</span>
@@ -5699,21 +5735,21 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">796</span>
-<span class="normal">797</span>
-<span class="normal">798</span>
-<span class="normal">799</span>
-<span class="normal">800</span>
-<span class="normal">801</span>
-<span class="normal">802</span>
-<span class="normal">803</span>
-<span class="normal">804</span>
-<span class="normal">805</span>
-<span class="normal">806</span>
-<span class="normal">807</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">807</span>
 <span class="normal">808</span>
 <span class="normal">809</span>
-<span class="normal">810</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">810</span>
+<span class="normal">811</span>
+<span class="normal">812</span>
+<span class="normal">813</span>
+<span class="normal">814</span>
+<span class="normal">815</span>
+<span class="normal">816</span>
+<span class="normal">817</span>
+<span class="normal">818</span>
+<span class="normal">819</span>
+<span class="normal">820</span>
+<span class="normal">821</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Start profiling power consumption for the current power limit.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
     <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="s2">&quot;start_prof: should_profile=False&quot;</span>
@@ -5772,18 +5808,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">812</span>
-<span class="normal">813</span>
-<span class="normal">814</span>
-<span class="normal">815</span>
-<span class="normal">816</span>
-<span class="normal">817</span>
-<span class="normal">818</span>
-<span class="normal">819</span>
-<span class="normal">820</span>
-<span class="normal">821</span>
-<span class="normal">822</span>
-<span class="normal">823</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">823</span>
 <span class="normal">824</span>
 <span class="normal">825</span>
 <span class="normal">826</span>
@@ -5836,7 +5861,18 @@ increasing profile window.</p></td>
 <span class="normal">873</span>
 <span class="normal">874</span>
 <span class="normal">875</span>
-<span class="normal">876</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_end_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">876</span>
+<span class="normal">877</span>
+<span class="normal">878</span>
+<span class="normal">879</span>
+<span class="normal">880</span>
+<span class="normal">881</span>
+<span class="normal">882</span>
+<span class="normal">883</span>
+<span class="normal">884</span>
+<span class="normal">885</span>
+<span class="normal">886</span>
+<span class="normal">887</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_end_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;End profiling power consumption for this power limit.</span>
 
 <span class="sd">    Raises:</span>
@@ -5925,18 +5961,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">878</span>
-<span class="normal">879</span>
-<span class="normal">880</span>
-<span class="normal">881</span>
-<span class="normal">882</span>
-<span class="normal">883</span>
-<span class="normal">884</span>
-<span class="normal">885</span>
-<span class="normal">886</span>
-<span class="normal">887</span>
-<span class="normal">888</span>
-<span class="normal">889</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">889</span>
 <span class="normal">890</span>
 <span class="normal">891</span>
 <span class="normal">892</span>
@@ -5944,7 +5969,18 @@ increasing profile window.</p></td>
 <span class="normal">894</span>
 <span class="normal">895</span>
 <span class="normal">896</span>
-<span class="normal">897</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">897</span>
+<span class="normal">898</span>
+<span class="normal">899</span>
+<span class="normal">900</span>
+<span class="normal">901</span>
+<span class="normal">902</span>
+<span class="normal">903</span>
+<span class="normal">904</span>
+<span class="normal">905</span>
+<span class="normal">906</span>
+<span class="normal">907</span>
+<span class="normal">908</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Write the power profiling results to `power_json`.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity check.</span>
     <span class="c1"># Only save power results at master process.</span>
@@ -5988,18 +6024,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">899</span>
-<span class="normal">900</span>
-<span class="normal">901</span>
-<span class="normal">902</span>
-<span class="normal">903</span>
-<span class="normal">904</span>
-<span class="normal">905</span>
-<span class="normal">906</span>
-<span class="normal">907</span>
-<span class="normal">908</span>
-<span class="normal">909</span>
-<span class="normal">910</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">910</span>
 <span class="normal">911</span>
 <span class="normal">912</span>
 <span class="normal">913</span>
@@ -6010,7 +6035,18 @@ increasing profile window.</p></td>
 <span class="normal">918</span>
 <span class="normal">919</span>
 <span class="normal">920</span>
-<span class="normal">921</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_load_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">921</span>
+<span class="normal">922</span>
+<span class="normal">923</span>
+<span class="normal">924</span>
+<span class="normal">925</span>
+<span class="normal">926</span>
+<span class="normal">927</span>
+<span class="normal">928</span>
+<span class="normal">929</span>
+<span class="normal">930</span>
+<span class="normal">931</span>
+<span class="normal">932</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_load_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Load power profiling information into the class from `power_json`.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity check.</span>
     <span class="c1"># Only load power results at master process.</span>
@@ -6057,18 +6093,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">923</span>
-<span class="normal">924</span>
-<span class="normal">925</span>
-<span class="normal">926</span>
-<span class="normal">927</span>
-<span class="normal">928</span>
-<span class="normal">929</span>
-<span class="normal">930</span>
-<span class="normal">931</span>
-<span class="normal">932</span>
-<span class="normal">933</span>
-<span class="normal">934</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">934</span>
 <span class="normal">935</span>
 <span class="normal">936</span>
 <span class="normal">937</span>
@@ -6076,7 +6101,18 @@ increasing profile window.</p></td>
 <span class="normal">939</span>
 <span class="normal">940</span>
 <span class="normal">941</span>
-<span class="normal">942</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_train_results</span><span class="p">(</span>
+<span class="normal">942</span>
+<span class="normal">943</span>
+<span class="normal">944</span>
+<span class="normal">945</span>
+<span class="normal">946</span>
+<span class="normal">947</span>
+<span class="normal">948</span>
+<span class="normal">949</span>
+<span class="normal">950</span>
+<span class="normal">951</span>
+<span class="normal">952</span>
+<span class="normal">953</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_train_results</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span> <span class="n">energy</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">time_</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">cost</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">reached</span><span class="p">:</span> <span class="nb">bool</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Write the job training results to `train_json`.&quot;&quot;&quot;</span>
@@ -6120,18 +6156,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">945</span>
-<span class="normal">946</span>
-<span class="normal">947</span>
-<span class="normal">948</span>
-<span class="normal">949</span>
-<span class="normal">950</span>
-<span class="normal">951</span>
-<span class="normal">952</span>
-<span class="normal">953</span>
-<span class="normal">954</span>
-<span class="normal">955</span>
-<span class="normal">956</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">956</span>
 <span class="normal">957</span>
 <span class="normal">958</span>
 <span class="normal">959</span>
@@ -6144,7 +6169,18 @@ increasing profile window.</p></td>
 <span class="normal">966</span>
 <span class="normal">967</span>
 <span class="normal">968</span>
-<span class="normal">969</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">969</span>
+<span class="normal">970</span>
+<span class="normal">971</span>
+<span class="normal">972</span>
+<span class="normal">973</span>
+<span class="normal">974</span>
+<span class="normal">975</span>
+<span class="normal">976</span>
+<span class="normal">977</span>
+<span class="normal">978</span>
+<span class="normal">979</span>
+<span class="normal">980</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Signal the beginning of an epoch.&quot;&quot;&quot;</span>
     <span class="c1"># Update counters.</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span> <span class="o">+=</span> <span class="mi">1</span>
@@ -6193,18 +6229,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 971</span>
-<span class="normal"> 972</span>
-<span class="normal"> 973</span>
-<span class="normal"> 974</span>
-<span class="normal"> 975</span>
-<span class="normal"> 976</span>
-<span class="normal"> 977</span>
-<span class="normal"> 978</span>
-<span class="normal"> 979</span>
-<span class="normal"> 980</span>
-<span class="normal"> 981</span>
-<span class="normal"> 982</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 982</span>
 <span class="normal"> 983</span>
 <span class="normal"> 984</span>
 <span class="normal"> 985</span>
@@ -6308,7 +6333,18 @@ increasing profile window.</p></td>
 <span class="normal">1083</span>
 <span class="normal">1084</span>
 <span class="normal">1085</span>
-<span class="normal">1086</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">1086</span>
+<span class="normal">1087</span>
+<span class="normal">1088</span>
+<span class="normal">1089</span>
+<span class="normal">1090</span>
+<span class="normal">1091</span>
+<span class="normal">1092</span>
+<span class="normal">1093</span>
+<span class="normal">1094</span>
+<span class="normal">1095</span>
+<span class="normal">1096</span>
+<span class="normal">1097</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Signal the beginning of an iteration.&quot;&quot;&quot;</span>
     <span class="c1"># Update counters.</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+=</span> <span class="mi">1</span>

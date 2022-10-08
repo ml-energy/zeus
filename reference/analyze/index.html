@@ -466,7 +466,7 @@
         
   
   <span class="md-ellipsis">
-    Environment setup
+    Environment Setup
     
   </span>
   
@@ -487,7 +487,7 @@
         
   
   <span class="md-ellipsis">
-    Installing and building
+    Installing and Building
     
   </span>
   
@@ -1622,7 +1622,8 @@ and effectively the absolute value is subtracted from the end of the window.</p>
           <td>
                 <code>ValueError</code>
           </td>
-          <td><p>From <code>sklearn.metrics.auc</code>. May mean that the profile window is too small.</p></td>
+          <td><p>From <code>sklearn.metrics.auc</code>, when the duration of the
+profiling window is too small.</p></td>
         </tr>
     </tbody>
   </table>
@@ -1660,7 +1661,8 @@ and effectively the absolute value is subtracted from the end of the window.</p>
 <span class="normal">109</span>
 <span class="normal">110</span>
 <span class="normal">111</span>
-<span class="normal">112</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">avg_power</span><span class="p">(</span>
+<span class="normal">112</span>
+<span class="normal">113</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">avg_power</span><span class="p">(</span>
     <span class="n">logfile</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">start</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">end</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1680,7 +1682,8 @@ and effectively the absolute value is subtracted from the end of the window.</p>
 <span class="sd">        end: End time of the window to consider.</span>
 
 <span class="sd">    Raises:</span>
-<span class="sd">        ValueError: From `sklearn.metrics.auc`. May mean that the profile window is too small.</span>
+<span class="sd">        ValueError: From `sklearn.metrics.auc`, when the duration of the</span>
+<span class="sd">            profiling window is too small.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">logfile</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">&quot;python&quot;</span><span class="p">,</span> <span class="n">skipfooter</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
     <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">])</span>
