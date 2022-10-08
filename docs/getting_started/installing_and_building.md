@@ -24,7 +24,7 @@ conda install -c pytorch pytorch==1.10.1 cudatoolkit==11.3.1
 
 ### Install `zeus`
 
-To install the latest published version of `zeus`:
+To install the latest release of `zeus`:
 
 ```bash
 pip install zeus-ml
