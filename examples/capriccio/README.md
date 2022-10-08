@@ -75,7 +75,7 @@ python run_zeus.py \
     --b_0 128 \
     --lr_0 4.00e-7 \
     --b_min 8 \
-    --b_max 256 \
+    --b_max 128 \
     --num_recurrence 38 \
     --eta_knob 0.5 \
     --beta_knob 2.0 \
