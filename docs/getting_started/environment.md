@@ -4,7 +4,7 @@ We encourage users to do everything inside a Docker container spawned with our p
 
 ## Zeus Docker image
 
-We provide a pre-built Docker image in Docker Hub: https://hub.docker.com/r/symbioticlab/zeus.
+We provide a pre-built Docker image in [Docker Hub](https://hub.docker.com/r/symbioticlab/zeus){.external}.
 On top of the `nvidia/cuda:11.3.1-devel-ubuntu20.04` image, the following are provided:  
 
 1. CMake 3.22.0
