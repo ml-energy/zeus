@@ -779,21 +779,18 @@ class ZeusDataLoader(DataLoader):
     def _start_warmup(self) -> None:
         """Let the GPU run for some time with the poewr limit to profile."""
         # Sanity checks.
-        assert self._should_profile, "start_warmup: should_profile=False"
-        assert self.prof_pl_index < len(
-            self.power_limits
-        ), f"start_warmup: {self.prof_pl_index=}"
+        assert self._should_profile, f"start_warmup: {self._should_profile=}"
+        assert self._is_train, f"start_warmup: {self._is_train=}"
+        assert self._power_limits_left, f"start_warmup: {self._power_limits_left=}"
+        assert (
+            self.sample_num + self.warmup_iter + self.profile_iter < self.num_samples
+        ), f"start_warmup: {self.sample_num + self.warmup_iter + self.profile_iter < self.num_samples=}"
 
         # Call cudaSynchronize to make sure this is the iteration boundary.
         torch.cuda.synchronize()
 
         # Change power limit.
         if self.rank == 0:
-            # Sanity check at master process
-            assert self.prof_pl_index < len(
-                self.power_limits
-            ), f"start_warmup: {self.prof_pl_index=}"
-
             power_limit = self.power_limits[self.prof_pl_index]
             self._set_gpu_power_limit(power_limit)
 
@@ -807,7 +804,12 @@ class ZeusDataLoader(DataLoader):
     def _start_prof(self) -> None:
         """Start profiling power consumption for the current power limit."""
         # Sanity checks.
-        assert self._should_profile, "start_prof: should_profile=False"
+        assert self._should_profile, f"start_prof: {self._should_profile=}"
+        assert self._is_train, f"start_prof: {self._is_train=}"
+        assert self._power_limits_left, f"start_prof: {self._power_limits_left=}"
+        assert (
+            self.sample_num + self.profile_iter < self.num_samples
+        ), f"start_prof: {self.sample_num + self.profile_iter < self.num_samples=}"
 
         # Start profile timer.
         self.prof_start_time = time.monotonic()
@@ -830,6 +832,11 @@ class ZeusDataLoader(DataLoader):
         """
         # Sanity checks.
         assert self._should_profile, f"end_prof: {self._should_profile=}"
+        assert self._is_train, f"end_prof: {self._is_train=}"
+        assert self._power_limits_left, f"end_prof: {self._power_limits_left=}"
+        assert (
+            self.sample_num < self.num_samples
+        ), f"end_prof: {self.sample_num < self.num_samples=}"
 
         # Set profiling state.
         self.prof_state = NOT_PROFILING
@@ -955,6 +962,9 @@ class ZeusDataLoader(DataLoader):
     # pylint: disable=attribute-defined-outside-init
     def __iter__(self):
         """Signal the beginning of an epoch."""
+        # Sanity check that there is no incomplete profile window at the beginning of epoch.
+        assert self.prof_state == NOT_PROFILING, f"__iter__: {self.prof_state=}"
+
         # Update counters.
         self.epoch_num += 1
         self.sample_num = 0
@@ -988,8 +998,11 @@ class ZeusDataLoader(DataLoader):
         try:
             data = next(self.iter)
         except StopIteration:
-            # End of this epoch. Make sure all GPU operations are done so that
-            # now is the *actual* end of this epoch.
+            # End of this epoch.
+            # Sanity check that there is no incomplete profile window at the end of epoch.
+            assert self.prof_state == NOT_PROFILING, f"__next__: {self.prof_state=}"
+
+            # Make sure all GPU operations are done so that now is the *actual* end of this epoch.
             torch.cuda.synchronize()
 
             # The eval dataloader kills the monitor.
@@ -1013,8 +1026,8 @@ class ZeusDataLoader(DataLoader):
             #                                for eval loader   for eval loader
             #
             if self.rank == 0:
-                # Sanity check
-                assert self.epoch_num >= 1, f"{self.epoch_num=}"
+                # Sanity check that `epoch_num` is within valid range
+                assert self.epoch_num >= 1, f"__next__: {self.epoch_num=}"
                 # Compute the time/energy consumption for this epoch.
                 time_consumption = time.monotonic() - self.epoch_start_time
                 if self._is_train:
@@ -1078,8 +1091,13 @@ class ZeusDataLoader(DataLoader):
                     f"Profile iterations {self.sample_num - self.prof_start_sample}"
                     f" exceeds `self.profile_iter` {self.profile_iter}."
                 )
-            # We weren't doing anything. Start warming up.
-            if self.prof_state == NOT_PROFILING:
+            # We weren't doing anything. Start warming up if the iterations left in
+            # the current epoch can accommodate at least one profile window.
+            if (
+                self.prof_state == NOT_PROFILING
+                and self.sample_num + self.warmup_iter + self.profile_iter
+                < self.num_samples
+            ):
                 self._start_warmup()
             # We're done warming up. Start the actual profiling window.
             elif (
