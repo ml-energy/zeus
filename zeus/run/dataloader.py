@@ -962,7 +962,9 @@ class ZeusDataLoader(DataLoader):
     # pylint: disable=attribute-defined-outside-init
     def __iter__(self):
         """Signal the beginning of an epoch."""
-        # Sanity check that there is no incomplete profile window at the beginning of epoch.
+        # Sanity check that there is no incomplete profile window at the beginning of epoch,
+        # because we start profiling only if the entire profiling window can fit in the rest of
+        # the training epoch.
         assert self.prof_state == NOT_PROFILING, f"__iter__: {self.prof_state=}"
 
         # Update counters.
