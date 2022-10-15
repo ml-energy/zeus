@@ -2891,7 +2891,27 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 <span class="normal">1094</span>
 <span class="normal">1095</span>
 <span class="normal">1096</span>
-<span class="normal">1097</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusDataLoader</span><span class="p">(</span><span class="n">DataLoader</span><span class="p">):</span>
+<span class="normal">1097</span>
+<span class="normal">1098</span>
+<span class="normal">1099</span>
+<span class="normal">1100</span>
+<span class="normal">1101</span>
+<span class="normal">1102</span>
+<span class="normal">1103</span>
+<span class="normal">1104</span>
+<span class="normal">1105</span>
+<span class="normal">1106</span>
+<span class="normal">1107</span>
+<span class="normal">1108</span>
+<span class="normal">1109</span>
+<span class="normal">1110</span>
+<span class="normal">1111</span>
+<span class="normal">1112</span>
+<span class="normal">1113</span>
+<span class="normal">1114</span>
+<span class="normal">1115</span>
+<span class="normal">1116</span>
+<span class="normal">1117</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusDataLoader</span><span class="p">(</span><span class="n">DataLoader</span><span class="p">):</span>
     <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Profiles and optimizes GPU power limit.</span>
 
 <span class="sd">    `ZeusDataLoader` is integrated into the DNN training script, and transparently</span>
@@ -3236,7 +3256,7 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
         <span class="c1"># |        +----- prof_start (record timestamp)</span>
         <span class="c1"># |        |                      +----- prof_end (compute and save results)</span>
         <span class="c1"># | warmup |        profile       |</span>
-        <span class="c1"># v   sec  v           sec        v</span>
+        <span class="c1"># v  iter  v          iter        v</span>
         <span class="c1"># ================================= =====================</span>
         <span class="c1"># |      power limit = 250W       | | power limit = 225W  ...</span>
         <span class="c1"># ================================= =====================</span>
@@ -3618,21 +3638,23 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
     <span class="k">def</span> <span class="nf">_start_warmup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;Let the GPU run for some time with the poewr limit to profile.&quot;&quot;&quot;</span>
         <span class="c1"># Sanity checks.</span>
-        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="s2">&quot;start_warmup: should_profile=False&quot;</span>
-        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">power_limits</span>
-        <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="c1"># Sanity check that this profile window ends before the end of the current epoch.</span>
+        <span class="k">assert</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span>
+        <span class="p">),</span> <span class="p">(</span>
+            <span class="s2">&quot;start_warmup: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;end_of_this_profile_window </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&lt; end_of_this_epoch </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
 
         <span class="c1"># Call cudaSynchronize to make sure this is the iteration boundary.</span>
         <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">synchronize</span><span class="p">()</span>
 
         <span class="c1"># Change power limit.</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="c1"># Sanity check at master process</span>
-            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">power_limits</span>
-            <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span><span class="si">=}</span><span class="s2">&quot;</span>
-
             <span class="n">power_limit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_limits</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span><span class="p">]</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_set_gpu_power_limit</span><span class="p">(</span><span class="n">power_limit</span><span class="p">)</span>
 
@@ -3646,7 +3668,15 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
     <span class="k">def</span> <span class="nf">_start_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="sd">&quot;&quot;&quot;Start profiling power consumption for the current power limit.&quot;&quot;&quot;</span>
         <span class="c1"># Sanity checks.</span>
-        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="s2">&quot;start_prof: should_profile=False&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="c1"># Sanity check that this profile window ends before the end of the current epoch.</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="p">,</span> <span class="p">(</span>
+            <span class="s2">&quot;start_prof: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;end_of_this_profile_window </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&lt; end_of_this_epoch </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
 
         <span class="c1"># Start profile timer.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">prof_start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
@@ -3669,6 +3699,14 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># Sanity checks.</span>
         <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;end_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;end_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;end_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="si">=}</span><span class="s2">&quot;</span>
+        <span class="c1"># Sanity check that this profile window ends before the end of the current epoch.</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="p">,</span> <span class="p">(</span>
+            <span class="s2">&quot;end_prof: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;end_of_this_profile_window </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&lt; end_of_this_epoch </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
 
         <span class="c1"># Set profiling state.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">=</span> <span class="n">NOT_PROFILING</span>
@@ -3794,6 +3832,11 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
     <span class="c1"># pylint: disable=attribute-defined-outside-init</span>
     <span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Signal the beginning of an epoch.&quot;&quot;&quot;</span>
+        <span class="c1"># Sanity check that there is no incomplete profile window at the beginning of epoch,</span>
+        <span class="c1"># because we start profiling only if the entire profiling window can fit in the rest of</span>
+        <span class="c1"># the training epoch.</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;__iter__: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span><span class="si">=}</span><span class="s2">&quot;</span>
+
         <span class="c1"># Update counters.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">=</span> <span class="mi">0</span>
@@ -3827,8 +3870,11 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
         <span class="k">try</span><span class="p">:</span>
             <span class="n">data</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">iter</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
-            <span class="c1"># End of this epoch. Make sure all GPU operations are done so that</span>
-            <span class="c1"># now is the *actual* end of this epoch.</span>
+            <span class="c1"># End of this epoch.</span>
+            <span class="c1"># Sanity check that there is no incomplete profile window at the end of epoch.</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;__next__: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span><span class="si">=}</span><span class="s2">&quot;</span>
+
+            <span class="c1"># Make sure all GPU operations are done so that now is the *actual* end of this epoch.</span>
             <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">synchronize</span><span class="p">()</span>
 
             <span class="c1"># The eval dataloader kills the monitor.</span>
@@ -3852,8 +3898,8 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
             <span class="c1">#                                for eval loader   for eval loader</span>
             <span class="c1">#</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="c1"># Sanity check</span>
-                <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span><span class="si">=}</span><span class="s2">&quot;</span>
+                <span class="c1"># Sanity check that `epoch_num` is within valid range</span>
+                <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;__next__: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span><span class="si">=}</span><span class="s2">&quot;</span>
                 <span class="c1"># Compute the time/energy consumption for this epoch.</span>
                 <span class="n">time_consumption</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch_start_time</span>
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">:</span>
@@ -3906,19 +3952,13 @@ use <code>ZeusDataLoader</code> as long as it sets appropriate environment varia
 
         <span class="c1"># We&#39;re in the middle of an epoch. The train loader has power limits left to profile.</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">:</span>
-            <span class="c1"># Sanity check</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">WARMING_UP</span><span class="p">:</span>
-                <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_start_sample</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span><span class="p">,</span> <span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;Warmup iterations </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_start_sample</span><span class="si">}</span><span class="s2">&quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot; exceeds `self.warmup_iter` </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span><span class="si">}</span><span class="s2">.&quot;</span>
-                <span class="p">)</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">PROFILING</span><span class="p">:</span>
-                <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_start_sample</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="p">,</span> <span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;Profile iterations </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_start_sample</span><span class="si">}</span><span class="s2">&quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot; exceeds `self.profile_iter` </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="si">}</span><span class="s2">.&quot;</span>
-                <span class="p">)</span>
-            <span class="c1"># We weren&#39;t doing anything. Start warming up.</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span><span class="p">:</span>
+            <span class="c1"># We weren&#39;t doing anything. Start warming up if the iterations left in</span>
+            <span class="c1"># the current epoch can accommodate at least one profile window.</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span>
+                <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span>
+                <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span>
+            <span class="p">):</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_start_warmup</span><span class="p">()</span>
             <span class="c1"># We&#39;re done warming up. Start the actual profiling window.</span>
             <span class="k">elif</span> <span class="p">(</span>
@@ -4527,7 +4567,7 @@ Please consider increasing batch size.</p></td>
     <span class="c1"># |        +----- prof_start (record timestamp)</span>
     <span class="c1"># |        |                      +----- prof_end (compute and save results)</span>
     <span class="c1"># | warmup |        profile       |</span>
-    <span class="c1"># v   sec  v           sec        v</span>
+    <span class="c1"># v  iter  v          iter        v</span>
     <span class="c1"># ================================= =====================</span>
     <span class="c1"># |      power limit = 250W       | | power limit = 225W  ...</span>
     <span class="c1"># ================================= =====================</span>
@@ -5480,8 +5520,8 @@ a prefix indicates which GPU this log comes from will be included as well.
 
   
   <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-property"><code>property</code></small>
       <small class="doc doc-label doc-label-cached"><code>cached</code></small>
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
   </span>
 
 </h4>
@@ -5684,24 +5724,28 @@ a prefix indicates which GPU this log comes from will be included as well.
 <span class="normal">802</span>
 <span class="normal">803</span>
 <span class="normal">804</span>
-<span class="normal">805</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_warmup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">805</span>
+<span class="normal">806</span>
+<span class="normal">807</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_warmup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Let the GPU run for some time with the poewr limit to profile.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
-    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="s2">&quot;start_warmup: should_profile=False&quot;</span>
-    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">power_limits</span>
-    <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="c1"># Sanity check that this profile window ends before the end of the current epoch.</span>
+    <span class="k">assert</span> <span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span>
+    <span class="p">),</span> <span class="p">(</span>
+        <span class="s2">&quot;start_warmup: &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;end_of_this_profile_window </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="si">}</span><span class="s2"> &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;&lt; end_of_this_epoch </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
 
     <span class="c1"># Call cudaSynchronize to make sure this is the iteration boundary.</span>
     <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">synchronize</span><span class="p">()</span>
 
     <span class="c1"># Change power limit.</span>
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="c1"># Sanity check at master process</span>
-        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">power_limits</span>
-        <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;start_warmup: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span><span class="si">=}</span><span class="s2">&quot;</span>
-
         <span class="n">power_limit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_limits</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_pl_index</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_set_gpu_power_limit</span><span class="p">(</span><span class="n">power_limit</span><span class="p">)</span>
 
@@ -5735,9 +5779,7 @@ a prefix indicates which GPU this log comes from will be included as well.
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">807</span>
-<span class="normal">808</span>
-<span class="normal">809</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">809</span>
 <span class="normal">810</span>
 <span class="normal">811</span>
 <span class="normal">812</span>
@@ -5749,10 +5791,28 @@ a prefix indicates which GPU this log comes from will be included as well.
 <span class="normal">818</span>
 <span class="normal">819</span>
 <span class="normal">820</span>
-<span class="normal">821</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">821</span>
+<span class="normal">822</span>
+<span class="normal">823</span>
+<span class="normal">824</span>
+<span class="normal">825</span>
+<span class="normal">826</span>
+<span class="normal">827</span>
+<span class="normal">828</span>
+<span class="normal">829</span>
+<span class="normal">830</span>
+<span class="normal">831</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_start_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Start profiling power consumption for the current power limit.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
-    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="s2">&quot;start_prof: should_profile=False&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;start_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="c1"># Sanity check that this profile window ends before the end of the current epoch.</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="p">,</span> <span class="p">(</span>
+        <span class="s2">&quot;start_prof: &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;end_of_this_profile_window </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="si">}</span><span class="s2"> &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;&lt; end_of_this_epoch </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
 
     <span class="c1"># Start profile timer.</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">prof_start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
@@ -5808,17 +5868,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">823</span>
-<span class="normal">824</span>
-<span class="normal">825</span>
-<span class="normal">826</span>
-<span class="normal">827</span>
-<span class="normal">828</span>
-<span class="normal">829</span>
-<span class="normal">830</span>
-<span class="normal">831</span>
-<span class="normal">832</span>
-<span class="normal">833</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">833</span>
 <span class="normal">834</span>
 <span class="normal">835</span>
 <span class="normal">836</span>
@@ -5872,7 +5922,25 @@ increasing profile window.</p></td>
 <span class="normal">884</span>
 <span class="normal">885</span>
 <span class="normal">886</span>
-<span class="normal">887</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_end_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">887</span>
+<span class="normal">888</span>
+<span class="normal">889</span>
+<span class="normal">890</span>
+<span class="normal">891</span>
+<span class="normal">892</span>
+<span class="normal">893</span>
+<span class="normal">894</span>
+<span class="normal">895</span>
+<span class="normal">896</span>
+<span class="normal">897</span>
+<span class="normal">898</span>
+<span class="normal">899</span>
+<span class="normal">900</span>
+<span class="normal">901</span>
+<span class="normal">902</span>
+<span class="normal">903</span>
+<span class="normal">904</span>
+<span class="normal">905</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_end_prof</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;End profiling power consumption for this power limit.</span>
 
 <span class="sd">    Raises:</span>
@@ -5882,6 +5950,14 @@ increasing profile window.</p></td>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Sanity checks.</span>
     <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;end_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;end_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;end_prof: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="si">=}</span><span class="s2">&quot;</span>
+    <span class="c1"># Sanity check that this profile window ends before the end of the current epoch.</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="p">,</span> <span class="p">(</span>
+        <span class="s2">&quot;end_prof: &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;end_of_this_profile_window </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span><span class="si">}</span><span class="s2"> &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;&lt; end_of_this_epoch </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
 
     <span class="c1"># Set profiling state.</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">=</span> <span class="n">NOT_PROFILING</span>
@@ -5961,26 +6037,26 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">889</span>
-<span class="normal">890</span>
-<span class="normal">891</span>
-<span class="normal">892</span>
-<span class="normal">893</span>
-<span class="normal">894</span>
-<span class="normal">895</span>
-<span class="normal">896</span>
-<span class="normal">897</span>
-<span class="normal">898</span>
-<span class="normal">899</span>
-<span class="normal">900</span>
-<span class="normal">901</span>
-<span class="normal">902</span>
-<span class="normal">903</span>
-<span class="normal">904</span>
-<span class="normal">905</span>
-<span class="normal">906</span>
-<span class="normal">907</span>
-<span class="normal">908</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">907</span>
+<span class="normal">908</span>
+<span class="normal">909</span>
+<span class="normal">910</span>
+<span class="normal">911</span>
+<span class="normal">912</span>
+<span class="normal">913</span>
+<span class="normal">914</span>
+<span class="normal">915</span>
+<span class="normal">916</span>
+<span class="normal">917</span>
+<span class="normal">918</span>
+<span class="normal">919</span>
+<span class="normal">920</span>
+<span class="normal">921</span>
+<span class="normal">922</span>
+<span class="normal">923</span>
+<span class="normal">924</span>
+<span class="normal">925</span>
+<span class="normal">926</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Write the power profiling results to `power_json`.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity check.</span>
     <span class="c1"># Only save power results at master process.</span>
@@ -6024,29 +6100,29 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">910</span>
-<span class="normal">911</span>
-<span class="normal">912</span>
-<span class="normal">913</span>
-<span class="normal">914</span>
-<span class="normal">915</span>
-<span class="normal">916</span>
-<span class="normal">917</span>
-<span class="normal">918</span>
-<span class="normal">919</span>
-<span class="normal">920</span>
-<span class="normal">921</span>
-<span class="normal">922</span>
-<span class="normal">923</span>
-<span class="normal">924</span>
-<span class="normal">925</span>
-<span class="normal">926</span>
-<span class="normal">927</span>
-<span class="normal">928</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">928</span>
 <span class="normal">929</span>
 <span class="normal">930</span>
 <span class="normal">931</span>
-<span class="normal">932</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_load_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal">932</span>
+<span class="normal">933</span>
+<span class="normal">934</span>
+<span class="normal">935</span>
+<span class="normal">936</span>
+<span class="normal">937</span>
+<span class="normal">938</span>
+<span class="normal">939</span>
+<span class="normal">940</span>
+<span class="normal">941</span>
+<span class="normal">942</span>
+<span class="normal">943</span>
+<span class="normal">944</span>
+<span class="normal">945</span>
+<span class="normal">946</span>
+<span class="normal">947</span>
+<span class="normal">948</span>
+<span class="normal">949</span>
+<span class="normal">950</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_load_power_results</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Load power profiling information into the class from `power_json`.&quot;&quot;&quot;</span>
     <span class="c1"># Sanity check.</span>
     <span class="c1"># Only load power results at master process.</span>
@@ -6093,26 +6169,26 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">934</span>
-<span class="normal">935</span>
-<span class="normal">936</span>
-<span class="normal">937</span>
-<span class="normal">938</span>
-<span class="normal">939</span>
-<span class="normal">940</span>
-<span class="normal">941</span>
-<span class="normal">942</span>
-<span class="normal">943</span>
-<span class="normal">944</span>
-<span class="normal">945</span>
-<span class="normal">946</span>
-<span class="normal">947</span>
-<span class="normal">948</span>
-<span class="normal">949</span>
-<span class="normal">950</span>
-<span class="normal">951</span>
-<span class="normal">952</span>
-<span class="normal">953</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_train_results</span><span class="p">(</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">952</span>
+<span class="normal">953</span>
+<span class="normal">954</span>
+<span class="normal">955</span>
+<span class="normal">956</span>
+<span class="normal">957</span>
+<span class="normal">958</span>
+<span class="normal">959</span>
+<span class="normal">960</span>
+<span class="normal">961</span>
+<span class="normal">962</span>
+<span class="normal">963</span>
+<span class="normal">964</span>
+<span class="normal">965</span>
+<span class="normal">966</span>
+<span class="normal">967</span>
+<span class="normal">968</span>
+<span class="normal">969</span>
+<span class="normal">970</span>
+<span class="normal">971</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_save_train_results</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span> <span class="n">energy</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">time_</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">cost</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">reached</span><span class="p">:</span> <span class="nb">bool</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Write the job training results to `train_json`.&quot;&quot;&quot;</span>
@@ -6156,32 +6232,42 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">956</span>
-<span class="normal">957</span>
-<span class="normal">958</span>
-<span class="normal">959</span>
-<span class="normal">960</span>
-<span class="normal">961</span>
-<span class="normal">962</span>
-<span class="normal">963</span>
-<span class="normal">964</span>
-<span class="normal">965</span>
-<span class="normal">966</span>
-<span class="normal">967</span>
-<span class="normal">968</span>
-<span class="normal">969</span>
-<span class="normal">970</span>
-<span class="normal">971</span>
-<span class="normal">972</span>
-<span class="normal">973</span>
-<span class="normal">974</span>
-<span class="normal">975</span>
-<span class="normal">976</span>
-<span class="normal">977</span>
-<span class="normal">978</span>
-<span class="normal">979</span>
-<span class="normal">980</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 974</span>
+<span class="normal"> 975</span>
+<span class="normal"> 976</span>
+<span class="normal"> 977</span>
+<span class="normal"> 978</span>
+<span class="normal"> 979</span>
+<span class="normal"> 980</span>
+<span class="normal"> 981</span>
+<span class="normal"> 982</span>
+<span class="normal"> 983</span>
+<span class="normal"> 984</span>
+<span class="normal"> 985</span>
+<span class="normal"> 986</span>
+<span class="normal"> 987</span>
+<span class="normal"> 988</span>
+<span class="normal"> 989</span>
+<span class="normal"> 990</span>
+<span class="normal"> 991</span>
+<span class="normal"> 992</span>
+<span class="normal"> 993</span>
+<span class="normal"> 994</span>
+<span class="normal"> 995</span>
+<span class="normal"> 996</span>
+<span class="normal"> 997</span>
+<span class="normal"> 998</span>
+<span class="normal"> 999</span>
+<span class="normal">1000</span>
+<span class="normal">1001</span>
+<span class="normal">1002</span>
+<span class="normal">1003</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Signal the beginning of an epoch.&quot;&quot;&quot;</span>
+    <span class="c1"># Sanity check that there is no incomplete profile window at the beginning of epoch,</span>
+    <span class="c1"># because we start profiling only if the entire profiling window can fit in the rest of</span>
+    <span class="c1"># the training epoch.</span>
+    <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;__iter__: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span><span class="si">=}</span><span class="s2">&quot;</span>
+
     <span class="c1"># Update counters.</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span> <span class="o">+=</span> <span class="mi">1</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">=</span> <span class="mi">0</span>
@@ -6229,30 +6315,7 @@ increasing profile window.</p></td>
 
       <details class="quote">
         <summary>Source code in <code>zeus/run/dataloader.py</code></summary>
-        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 982</span>
-<span class="normal"> 983</span>
-<span class="normal"> 984</span>
-<span class="normal"> 985</span>
-<span class="normal"> 986</span>
-<span class="normal"> 987</span>
-<span class="normal"> 988</span>
-<span class="normal"> 989</span>
-<span class="normal"> 990</span>
-<span class="normal"> 991</span>
-<span class="normal"> 992</span>
-<span class="normal"> 993</span>
-<span class="normal"> 994</span>
-<span class="normal"> 995</span>
-<span class="normal"> 996</span>
-<span class="normal"> 997</span>
-<span class="normal"> 998</span>
-<span class="normal"> 999</span>
-<span class="normal">1000</span>
-<span class="normal">1001</span>
-<span class="normal">1002</span>
-<span class="normal">1003</span>
-<span class="normal">1004</span>
-<span class="normal">1005</span>
+        <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1005</span>
 <span class="normal">1006</span>
 <span class="normal">1007</span>
 <span class="normal">1008</span>
@@ -6344,7 +6407,27 @@ increasing profile window.</p></td>
 <span class="normal">1094</span>
 <span class="normal">1095</span>
 <span class="normal">1096</span>
-<span class="normal">1097</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">1097</span>
+<span class="normal">1098</span>
+<span class="normal">1099</span>
+<span class="normal">1100</span>
+<span class="normal">1101</span>
+<span class="normal">1102</span>
+<span class="normal">1103</span>
+<span class="normal">1104</span>
+<span class="normal">1105</span>
+<span class="normal">1106</span>
+<span class="normal">1107</span>
+<span class="normal">1108</span>
+<span class="normal">1109</span>
+<span class="normal">1110</span>
+<span class="normal">1111</span>
+<span class="normal">1112</span>
+<span class="normal">1113</span>
+<span class="normal">1114</span>
+<span class="normal">1115</span>
+<span class="normal">1116</span>
+<span class="normal">1117</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Signal the beginning of an iteration.&quot;&quot;&quot;</span>
     <span class="c1"># Update counters.</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+=</span> <span class="mi">1</span>
@@ -6353,8 +6436,11 @@ increasing profile window.</p></td>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">data</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">iter</span><span class="p">)</span>
     <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
-        <span class="c1"># End of this epoch. Make sure all GPU operations are done so that</span>
-        <span class="c1"># now is the *actual* end of this epoch.</span>
+        <span class="c1"># End of this epoch.</span>
+        <span class="c1"># Sanity check that there is no incomplete profile window at the end of epoch.</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;__next__: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span><span class="si">=}</span><span class="s2">&quot;</span>
+
+        <span class="c1"># Make sure all GPU operations are done so that now is the *actual* end of this epoch.</span>
         <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">synchronize</span><span class="p">()</span>
 
         <span class="c1"># The eval dataloader kills the monitor.</span>
@@ -6378,8 +6464,8 @@ increasing profile window.</p></td>
         <span class="c1">#                                for eval loader   for eval loader</span>
         <span class="c1">#</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="c1"># Sanity check</span>
-            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span><span class="si">=}</span><span class="s2">&quot;</span>
+            <span class="c1"># Sanity check that `epoch_num` is within valid range</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;__next__: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">epoch_num</span><span class="si">=}</span><span class="s2">&quot;</span>
             <span class="c1"># Compute the time/energy consumption for this epoch.</span>
             <span class="n">time_consumption</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch_start_time</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span><span class="p">:</span>
@@ -6432,19 +6518,13 @@ increasing profile window.</p></td>
 
     <span class="c1"># We&#39;re in the middle of an epoch. The train loader has power limits left to profile.</span>
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_train</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_should_profile</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_limits_left</span><span class="p">:</span>
-        <span class="c1"># Sanity check</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">WARMING_UP</span><span class="p">:</span>
-            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_start_sample</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span><span class="p">,</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Warmup iterations </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_start_sample</span><span class="si">}</span><span class="s2">&quot;</span>
-                <span class="sa">f</span><span class="s2">&quot; exceeds `self.warmup_iter` </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span><span class="si">}</span><span class="s2">.&quot;</span>
-            <span class="p">)</span>
-        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">PROFILING</span><span class="p">:</span>
-            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_start_sample</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="p">,</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Profile iterations </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_start_sample</span><span class="si">}</span><span class="s2">&quot;</span>
-                <span class="sa">f</span><span class="s2">&quot; exceeds `self.profile_iter` </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span><span class="si">}</span><span class="s2">.&quot;</span>
-            <span class="p">)</span>
-        <span class="c1"># We weren&#39;t doing anything. Start warming up.</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span><span class="p">:</span>
+        <span class="c1"># We weren&#39;t doing anything. Start warming up if the iterations left in</span>
+        <span class="c1"># the current epoch can accommodate at least one profile window.</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">prof_state</span> <span class="o">==</span> <span class="n">NOT_PROFILING</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">sample_num</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">warmup_iter</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile_iter</span>
+            <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_samples</span>
+        <span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_start_warmup</span><span class="p">()</span>
         <span class="c1"># We&#39;re done warming up. Start the actual profiling window.</span>
         <span class="k">elif</span> <span class="p">(</span>
