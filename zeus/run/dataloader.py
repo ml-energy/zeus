@@ -397,7 +397,7 @@ class ZeusDataLoader(DataLoader):
         # |        +----- prof_start (record timestamp)
         # |        |                      +----- prof_end (compute and save results)
         # | warmup |        profile       |
-        # v   sec  v           sec        v
+        # v  iter  v          iter        v
         # ================================= =====================
         # |      power limit = 250W       | | power limit = 225W  ...
         # ================================= =====================
@@ -782,9 +782,14 @@ class ZeusDataLoader(DataLoader):
         assert self._should_profile, f"start_warmup: {self._should_profile=}"
         assert self._is_train, f"start_warmup: {self._is_train=}"
         assert self._power_limits_left, f"start_warmup: {self._power_limits_left=}"
+        # Sanity check that this profile window ends before the end of the current epoch.
         assert (
             self.sample_num + self.warmup_iter + self.profile_iter < self.num_samples
-        ), f"start_warmup: {self.sample_num + self.warmup_iter + self.profile_iter < self.num_samples=}"
+        ), (
+            "start_warmup: "
+            f"end_of_this_profile_window {self.sample_num + self.warmup_iter + self.profile_iter} "
+            f"< end_of_this_epoch {self.num_samples}"
+        )
 
         # Call cudaSynchronize to make sure this is the iteration boundary.
         torch.cuda.synchronize()
@@ -807,9 +812,12 @@ class ZeusDataLoader(DataLoader):
         assert self._should_profile, f"start_prof: {self._should_profile=}"
         assert self._is_train, f"start_prof: {self._is_train=}"
         assert self._power_limits_left, f"start_prof: {self._power_limits_left=}"
-        assert (
-            self.sample_num + self.profile_iter < self.num_samples
-        ), f"start_prof: {self.sample_num + self.profile_iter < self.num_samples=}"
+        # Sanity check that this profile window ends before the end of the current epoch.
+        assert self.sample_num + self.profile_iter < self.num_samples, (
+            "start_prof: "
+            f"end_of_this_profile_window {self.sample_num + self.profile_iter} "
+            f"< end_of_this_epoch {self.num_samples}"
+        )
 
         # Start profile timer.
         self.prof_start_time = time.monotonic()
@@ -834,9 +842,12 @@ class ZeusDataLoader(DataLoader):
         assert self._should_profile, f"end_prof: {self._should_profile=}"
         assert self._is_train, f"end_prof: {self._is_train=}"
         assert self._power_limits_left, f"end_prof: {self._power_limits_left=}"
-        assert (
-            self.sample_num < self.num_samples
-        ), f"end_prof: {self.sample_num < self.num_samples=}"
+        # Sanity check that this profile window ends before the end of the current epoch.
+        assert self.sample_num < self.num_samples, (
+            "end_prof: "
+            f"end_of_this_profile_window {self.sample_num} "
+            f"< end_of_this_epoch {self.num_samples}"
+        )
 
         # Set profiling state.
         self.prof_state = NOT_PROFILING
@@ -1082,17 +1093,6 @@ class ZeusDataLoader(DataLoader):
 
         # We're in the middle of an epoch. The train loader has power limits left to profile.
         if self._is_train and self._should_profile and self._power_limits_left:
-            # Sanity check
-            if self.prof_state == WARMING_UP:
-                assert self.sample_num - self.warmup_start_sample <= self.warmup_iter, (
-                    f"Warmup iterations {self.sample_num - self.warmup_start_sample}"
-                    f" exceeds `self.warmup_iter` {self.warmup_iter}."
-                )
-            elif self.prof_state == PROFILING:
-                assert self.sample_num - self.prof_start_sample <= self.profile_iter, (
-                    f"Profile iterations {self.sample_num - self.prof_start_sample}"
-                    f" exceeds `self.profile_iter` {self.profile_iter}."
-                )
             # We weren't doing anything. Start warming up if the iterations left in
             # the current epoch can accommodate at least one profile window.
             if (
