@@ -38,6 +38,30 @@ from zeus import analyze
 from zeus.util.check import get_env
 from zeus.util.metric import ZeusCostThresholdExceededException, zeus_cost
 
+from zeus import carbon
+from pprint import pprint
+
+# estimate_ep_time = 30
+# curr_gmt_str, start_time_str, end_time_str = carbon.get_forecast_query_time_range(estimate_ep_time)
+# forecast = carbon.get_forecast(start_time_str, end_time_str, estimate_ep_time)
+# # pprint(forecast)
+# pprint(forecast[0]['forecastData'][0]) # key: 'value'
+# hist_data = carbon.get_history_avg(28*24*60*60)
+# pprint(hist_data) # key: 'carbonIntensity'
+# exit()
+
+'''
+[] 1. cost_func = (future_CI * AvgPower * eta_knob + (1-eta_knob) * MAX_PL * past_avg_CI ) * TTA
+[done] 2. save past_avg_CI in init(), save time (could be the past year or so)
+[] 3. call _compute_optimal_pl() at every epoch (adjust PL, since CI changes)
+
+Bug: self.next_carbon_intensity not initialized in val dataloader. 
+
+Note: 
+- past_avg_CI: The API can only return 1 month (prev) worth of data max. 
+'''
+
+
 # JIT profiling states
 NOT_PROFILING = "NOT_PROFILING"
 WARMING_UP = "WARMING_UP"
@@ -172,6 +196,7 @@ class ZeusDataLoader(DataLoader):
       - `ZEUS_USE_OPTIMAL_PL`: Whether to actually use the optimal power limit found.
                                Setting this to false is the Observer Mode described
                                in Section 5. (Default:` "True"`)
+      - `ZEUS_USE_CARBON`    : Whether to acutally use the carbon-to-accuracy (CTA) instead of ETA
     """
 
     # Global power monitor instances.
@@ -333,6 +358,9 @@ class ZeusDataLoader(DataLoader):
             int, get_env("ZEUS_PROFILE_PARAMS", str, default="10,40").split(",")
         )
         self.use_optimal_pl = get_env("ZEUS_USE_OPTIMAL_PL", bool, default=True)
+
+        self.use_carbon_cta = get_env("ZEUS_USE_CARBON", bool, default=True)
+        self.prev_month_carbon_intensity = carbon.get_history_avg(28*24*60*60)['carbonIntensity']
 
         # Create ZEUS_LOG_DIR if it does not exist.
         os.makedirs(self.logdir, exist_ok=True)
@@ -512,15 +540,32 @@ class ZeusDataLoader(DataLoader):
                 energy_consumed = (
                     self.train_epoch_energy.sum() + self.eval_epoch_energy.sum()
                 )
-                cost = zeus_cost(
-                    energy_consumed,
-                    time_consumed,
-                    self.eta_knob,
-                    self.max_pl // 1000 * self.world_size,
-                )
+
+                ep_carbon_intensity = carbon.get_history_avg(time_consumed)
+                ep_carbon_emission = carbon.compute_carbon_emissions(energy_consumed, ep_carbon_intensity['carbonIntensity'])
+                if self.use_carbon_cta:
+                    # time_nor_coeff = (self.max_pl // 1000) * ep_carbon_intensity['carbonIntensity'] * 2.77778e-7
+                    time_nor_coeff = (self.max_pl // 1000) * self.prev_month_carbon_intensity * 2.77778e-7
+                    cost = zeus_cost(
+                        ep_carbon_emission,
+                        time_consumed,
+                        self.eta_knob,
+                        time_nor_coeff * self.world_size,
+                    )
+                else:
+                    cost = zeus_cost(
+                        energy_consumed,
+                        time_consumed,
+                        self.eta_knob,
+                        self.max_pl // 1000 * self.world_size,
+                    )
+                    # self._log(
+                    #     f"Up to epoch {self.epoch_num}: "
+                    #     f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, cost={cost:.2f}"
+                    # )
                 self._log(
                     f"Up to epoch {self.epoch_num}: "
-                    f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, cost={cost:.2f}"
+                    f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, carbon={ep_carbon_emission:.2f}, cost={cost:.2f}"
                 )
 
             # target_metric_reached is set when the current validation metric is reported to
@@ -533,7 +578,7 @@ class ZeusDataLoader(DataLoader):
                     self._log(
                         f"Target metric {self.target_metric} was reached! Stopping."
                     )
-                    self._save_train_results(energy_consumed, time_consumed, cost, True)
+                    self._save_train_results(energy_consumed, time_consumed, cost, True, ep_carbon_emission)
                 return
 
             # Max epoch is a hard stop.
@@ -545,7 +590,7 @@ class ZeusDataLoader(DataLoader):
                         f"Maximum number of epochs {self.max_epochs} reached. Stopping."
                     )
                     self._save_train_results(
-                        energy_consumed, time_consumed, cost, False
+                        energy_consumed, time_consumed, cost, False, ep_carbon_emission
                     )
                 return
 
@@ -586,22 +631,59 @@ class ZeusDataLoader(DataLoader):
                     next_eval_time * self.eval_power_result[self.optimal_pl]
                 )
                 next_energy = next_train_energy + next_eval_energy
-                self._log(
-                    f"Optimal PL train & eval expected time={next_time:.2f} energy={next_energy:.2f}"
-                )
-                next_time_consumed = time_consumed + next_time
-                next_energy_consumed = energy_consumed + next_energy
-                next_cost = zeus_cost(
-                    next_energy_consumed,
-                    next_time_consumed,
-                    self.eta_knob,
-                    self.max_pl // 1000 * self.world_size,
-                )
-                self._log(
-                    f"Expected next epoch: time={next_time_consumed:.2f}, "
-                    f"energy={next_energy_consumed:.2f}, "
-                    f"cost={next_cost:.2f}"
-                )
+                
+                if self.use_carbon_cta:
+                    next_time_consumed = time_consumed + next_time
+                    next_energy_consumed = energy_consumed + next_energy
+
+                    # get carbon forecast data
+                    curr_gmt_str, start_time_str, end_time_str = carbon.get_forecast_query_time_range(next_time/60)
+                    forecast_carbon_data = carbon.get_forecast(start_time_str, end_time_str, next_time/60)
+                    self.next_carbon_intensity = forecast_carbon_data[0]['forecastData'][0]['value']
+                    next_carbon_emission = carbon.compute_carbon_emissions(next_energy, self.next_carbon_intensity)
+                    self._log(
+                        f"Optimal PL train & eval expected time={next_time:.2f} energy={next_energy:.2f} "
+                        f"carbon={next_carbon_emission:.2f}, "
+                    )
+                    time.sleep(10)
+
+                    # get carbon history data
+                    past_avg_carbon_intensity = carbon.get_history_avg(time_consumed)
+                    past_carbon_emission = carbon.compute_carbon_emissions(energy_consumed, past_avg_carbon_intensity['carbonIntensity'])
+                    next_carbon_emission_consumed = past_carbon_emission + next_carbon_emission
+
+                    next_time_nor_coeff = (self.max_pl // 1000) * self.prev_month_carbon_intensity * 2.77778e-7
+                    
+                    next_cost = zeus_cost(
+                        next_carbon_emission_consumed,
+                        next_time_consumed,
+                        self.eta_knob,
+                        next_time_nor_coeff * self.world_size,
+                    )
+                    self._log(
+                        f"Expected next epoch: time={next_time_consumed:.2f}, "
+                        f"energy={next_energy_consumed:.2f}, "
+                        f"carbon={next_carbon_emission_consumed:.2f}, "
+                        f"cost={next_cost:.2f}"
+                    )
+                else:
+                    self._log(
+                        f"Optimal PL train & eval expected time={next_time:.2f} energy={next_energy:.2f}"
+                    )
+                    next_time_consumed = time_consumed + next_time
+                    next_energy_consumed = energy_consumed + next_energy
+                    next_cost = zeus_cost(
+                        next_energy_consumed,
+                        next_time_consumed,
+                        self.eta_knob,
+                        self.max_pl // 1000 * self.world_size,
+                    )
+                    self._log(
+                        f"Expected next epoch: time={next_time_consumed:.2f}, "
+                        f"energy={next_energy_consumed:.2f}, "
+                        f"cost={next_cost:.2f}"
+                    )
+                time.sleep(10)
 
                 # Stop if the predicted cost of the next epoch exceeds the cost threshold.
                 if next_cost >= self.cost_thresh:
@@ -668,16 +750,29 @@ class ZeusDataLoader(DataLoader):
         # Compute power cost
         tput = ZeusDataLoader.train_tput_result
         power = ZeusDataLoader.train_power_result
-        cost_map = {
-            pl: (
-                self.eta_knob * power[pl]
-                + (1 - self.eta_knob) * self.max_pl * self.world_size
-            )
-            / tput[pl]
-            for pl in self.power_limits
-        }
+
+        if self.use_carbon_cta:
+            time_nor_coeff = self.max_pl * self.prev_month_carbon_intensity * 2.77778e-7
+            cost_map = {
+                pl: (
+                    self.eta_knob * power[pl] * self.next_carbon_intensity
+                    + (1 - self.eta_knob) * time_nor_coeff * self.world_size
+                )
+                / tput[pl]
+                for pl in self.power_limits
+            }
+        else:
+            cost_map = {
+                pl: (
+                    self.eta_knob * power[pl]
+                    + (1 - self.eta_knob) * self.max_pl * self.world_size
+                )
+                / tput[pl]
+                for pl in self.power_limits
+            }
         optimal_pl = min(cost_map.keys(), key=cost_map.get)  # type: ignore
         self._log(f"Cost-optimal power limit is {optimal_pl//1000}W")
+        time.sleep(10)
         return optimal_pl
 
     def _set_gpu_power_limit(self, power_limit: int) -> None:
@@ -950,7 +1045,7 @@ class ZeusDataLoader(DataLoader):
         self._log(f"Loaded {self.power_json}: {power_results}")
 
     def _save_train_results(
-        self, energy: float, time_: float, cost: float, reached: bool
+        self, energy: float, time_: float, cost: float, reached: bool, carbon: float=-1
     ) -> None:
         """Write the job training results to `train_json`."""
         # Sanity check.
@@ -958,6 +1053,7 @@ class ZeusDataLoader(DataLoader):
         assert self.rank == 0
 
         train_result = dict(
+            carbon=carbon,
             energy=energy,
             time=time_,
             cost=cost,  # Not used. Just for reference.
@@ -982,6 +1078,12 @@ class ZeusDataLoader(DataLoader):
         self.epoch_num += 1
         self.sample_num = 0
         self._log(f"Epoch {self.epoch_num} begin.")
+
+        if self.epoch_num > 2:
+            self._log("Updating optimal power limit AGAIN.")
+            ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
+            self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
+            # time.sleep(10)
 
         # Start epoch timer.
         self.epoch_start_time = time.monotonic()
@@ -1083,9 +1185,12 @@ class ZeusDataLoader(DataLoader):
                         # Let us end profiling by writing profile information to `power_json`.
                         if self.optimal_pl != 0:
                             self._save_power_results()
+                avg_carbon_intensity = carbon.get_history_avg(time_consumption)
+                carbon_emission = carbon.compute_carbon_emissions(energy_consumption, avg_carbon_intensity['carbonIntensity'])
                 self._log(
                     f"{self.split} epoch {self.epoch_num} done: "
-                    f"time={time_consumption:.2f} energy={energy_consumption:.2f}"
+                    f"time={time_consumption:.2f} energy={energy_consumption:.2f} "
+                    f"carbon={carbon_emission:.2f}"
                 )
 
             # Re-raise StopIteration.
