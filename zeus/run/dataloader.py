@@ -544,7 +544,6 @@ class ZeusDataLoader(DataLoader):
                 ep_carbon_intensity = carbon.get_history_avg(time_consumed)
                 ep_carbon_emission = carbon.compute_carbon_emissions(energy_consumed, ep_carbon_intensity['carbonIntensity'])
                 if self.use_carbon_cta:
-                    # time_nor_coeff = (self.max_pl // 1000) * ep_carbon_intensity['carbonIntensity'] * 2.77778e-7
                     time_nor_coeff = (self.max_pl // 1000) * self.prev_month_carbon_intensity * 2.77778e-7
                     cost = zeus_cost(
                         ep_carbon_emission,
@@ -641,11 +640,11 @@ class ZeusDataLoader(DataLoader):
                     forecast_carbon_data = carbon.get_forecast(start_time_str, end_time_str, next_time/60)
                     self.next_carbon_intensity = forecast_carbon_data[0]['forecastData'][0]['value']
                     next_carbon_emission = carbon.compute_carbon_emissions(next_energy, self.next_carbon_intensity)
+                    self._log(f"Forecast carbon_intensity={self.next_carbon_intensity:.2f}")
                     self._log(
                         f"Optimal PL train & eval expected time={next_time:.2f} energy={next_energy:.2f} "
                         f"carbon={next_carbon_emission:.2f}, "
                     )
-                    time.sleep(10)
 
                     # get carbon history data
                     past_avg_carbon_intensity = carbon.get_history_avg(time_consumed)
@@ -683,7 +682,7 @@ class ZeusDataLoader(DataLoader):
                         f"energy={next_energy_consumed:.2f}, "
                         f"cost={next_cost:.2f}"
                     )
-                time.sleep(10)
+                # time.sleep(10)
 
                 # Stop if the predicted cost of the next epoch exceeds the cost threshold.
                 if next_cost >= self.cost_thresh:
@@ -772,7 +771,6 @@ class ZeusDataLoader(DataLoader):
             }
         optimal_pl = min(cost_map.keys(), key=cost_map.get)  # type: ignore
         self._log(f"Cost-optimal power limit is {optimal_pl//1000}W")
-        time.sleep(10)
         return optimal_pl
 
     def _set_gpu_power_limit(self, power_limit: int) -> None:
@@ -996,7 +994,11 @@ class ZeusDataLoader(DataLoader):
             # whether running next epoch will exceed the cost threshold.
             if not self._power_limits_left:
                 self._log("This was the last power limit to explore.")
-                ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
+                try:
+                    ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
+                except:
+                    self.next_carbon_intensity = self.prev_month_carbon_intensity
+                    ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
                 self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
 
     def _save_power_results(self) -> None:
@@ -1079,7 +1081,7 @@ class ZeusDataLoader(DataLoader):
         self.sample_num = 0
         self._log(f"Epoch {self.epoch_num} begin.")
 
-        if self.epoch_num > 2:
+        if self.epoch_num > 2 and self._is_train:
             self._log("Updating optimal power limit AGAIN.")
             ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
             self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
