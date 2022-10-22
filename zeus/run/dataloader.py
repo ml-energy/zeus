@@ -235,6 +235,9 @@ class ZeusDataLoader(DataLoader):
     # GPU_i's energy records is `eval_epoch_energy[i]`.
     eval_epoch_energy: np.ndarray = np.empty(0)
 
+    # prev_month_carbon_intensity: float = carbon.get_history_avg(28*24*60*60)['carbonIntensity']
+    # next_carbon_intensity = prev_month_carbon_intensity
+
     def __init__(
         self,
         *args,
@@ -361,6 +364,7 @@ class ZeusDataLoader(DataLoader):
 
         self.use_carbon_cta = get_env("ZEUS_USE_CARBON", bool, default=True)
         self.prev_month_carbon_intensity = carbon.get_history_avg(28*24*60*60)['carbonIntensity']
+        self.next_carbon_intensity = self.prev_month_carbon_intensity
 
         # Create ZEUS_LOG_DIR if it does not exist.
         os.makedirs(self.logdir, exist_ok=True)
@@ -466,7 +470,11 @@ class ZeusDataLoader(DataLoader):
         min_pl, self.max_pl = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(
             self.gpu_handles[0]
         )
+        
         self.power_limits = list(range(self.max_pl, min_pl - 25_000, -25_000))
+        if self.use_optimal_pl:
+            self.power_limits = list(range(self.max_pl, min_pl -5_000, -5_000))
+        
         if self._is_train:
             self._log(f"Power limit range: {self.power_limits}")
 
@@ -751,10 +759,11 @@ class ZeusDataLoader(DataLoader):
         power = ZeusDataLoader.train_power_result
 
         if self.use_carbon_cta:
+            self._log(f"...next_carbon_intensity is {self.next_carbon_intensity:.2f}")
             time_nor_coeff = self.max_pl * self.prev_month_carbon_intensity * 2.77778e-7
             cost_map = {
                 pl: (
-                    self.eta_knob * power[pl] * self.next_carbon_intensity
+                    self.eta_knob * power[pl] * self.next_carbon_intensity * 2.77778e-7
                     + (1 - self.eta_knob) * time_nor_coeff * self.world_size
                 )
                 / tput[pl]
@@ -771,6 +780,9 @@ class ZeusDataLoader(DataLoader):
             }
         optimal_pl = min(cost_map.keys(), key=cost_map.get)  # type: ignore
         self._log(f"Cost-optimal power limit is {optimal_pl//1000}W")
+
+        print(cost_map)
+        # time.sleep(10)
         return optimal_pl
 
     def _set_gpu_power_limit(self, power_limit: int) -> None:
@@ -994,11 +1006,7 @@ class ZeusDataLoader(DataLoader):
             # whether running next epoch will exceed the cost threshold.
             if not self._power_limits_left:
                 self._log("This was the last power limit to explore.")
-                try:
-                    ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
-                except:
-                    self.next_carbon_intensity = self.prev_month_carbon_intensity
-                    ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
+                ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
                 self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
 
     def _save_power_results(self) -> None:
@@ -1081,7 +1089,7 @@ class ZeusDataLoader(DataLoader):
         self.sample_num = 0
         self._log(f"Epoch {self.epoch_num} begin.")
 
-        if self.epoch_num > 2 and self._is_train:
+        if self.epoch_num > 2 and self._is_train and self.use_carbon_cta:
             self._log("Updating optimal power limit AGAIN.")
             ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
             self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
