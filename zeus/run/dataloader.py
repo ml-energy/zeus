@@ -363,8 +363,8 @@ class ZeusDataLoader(DataLoader):
         self.use_optimal_pl = get_env("ZEUS_USE_OPTIMAL_PL", bool, default=True)
 
         self.use_carbon_cta = get_env("ZEUS_USE_CARBON", bool, default=True)
-        self.prev_month_carbon_intensity = carbon.get_history_avg(28*24*60*60)['carbonIntensity']
-        self.next_carbon_intensity = self.prev_month_carbon_intensity
+        self.prev_month_carbon_intensity = 800 #carbon.get_history_avg(28*24*60*60)['carbonIntensity']
+        self.next_carbon_intensity = 700
 
         # Create ZEUS_LOG_DIR if it does not exist.
         os.makedirs(self.logdir, exist_ok=True)
@@ -472,7 +472,7 @@ class ZeusDataLoader(DataLoader):
         )
         
         self.power_limits = list(range(self.max_pl, min_pl - 25_000, -25_000))
-        if self.use_optimal_pl:
+        if self.use_carbon_cta:
             self.power_limits = list(range(self.max_pl, min_pl -5_000, -5_000))
         
         if self._is_train:
@@ -758,12 +758,14 @@ class ZeusDataLoader(DataLoader):
         tput = ZeusDataLoader.train_tput_result
         power = ZeusDataLoader.train_power_result
 
+        self._log("MAX PL: {}".format(self.max_pl))
+
         if self.use_carbon_cta:
             self._log(f"...next_carbon_intensity is {self.next_carbon_intensity:.2f}")
-            time_nor_coeff = self.max_pl * self.prev_month_carbon_intensity * 2.77778e-7
+            time_nor_coeff = self.max_pl / 1000 * self.prev_month_carbon_intensity# * 2.77778e-7
             cost_map = {
                 pl: (
-                    self.eta_knob * power[pl] * self.next_carbon_intensity * 2.77778e-7
+                    self.eta_knob * power[pl] * self.next_carbon_intensity# * 2.77778e-7
                     + (1 - self.eta_knob) * time_nor_coeff * self.world_size
                 )
                 / tput[pl]
@@ -781,8 +783,12 @@ class ZeusDataLoader(DataLoader):
         optimal_pl = min(cost_map.keys(), key=cost_map.get)  # type: ignore
         self._log(f"Cost-optimal power limit is {optimal_pl//1000}W")
 
-        print(cost_map)
-        # time.sleep(10)
+        # print()
+        # print(cost_map)
+        # print()
+        # print("cost std:", np.array(list(cost_map.values())).std())
+        # exit()
+        
         return optimal_pl
 
     def _set_gpu_power_limit(self, power_limit: int) -> None:
@@ -1089,10 +1095,11 @@ class ZeusDataLoader(DataLoader):
         self.sample_num = 0
         self._log(f"Epoch {self.epoch_num} begin.")
 
-        if self.epoch_num > 2 and self._is_train and self.use_carbon_cta:
-            self._log("Updating optimal power limit AGAIN.")
-            ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
-            self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
+        # if self.epoch_num > 2 and self._is_train and self.use_carbon_cta:
+        # if not self._power_limits_left and self._is_train and self.use_carbon_cta:
+        #     self._log("Updating optimal power limit AGAIN.")
+        #     ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
+        #     self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
             # time.sleep(10)
 
         # Start epoch timer.
@@ -1110,6 +1117,9 @@ class ZeusDataLoader(DataLoader):
             # Power limit result is already loaded in when initializing the train dataloader,
             # so we just set the power limit directly.
             if not self._should_profile:
+                if self.use_carbon_cta:
+                    self._log("Updating optimal power limit AGAIN.")
+                    ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
                 self._set_gpu_steady_power_limit()
 
         return self
@@ -1184,7 +1194,10 @@ class ZeusDataLoader(DataLoader):
                     # record the tput/power of the optimal PL. From the following epochs where we
                     # don't profile anything, we directly use these values to compute the time and
                     # energy consumed.
-                    if self._should_profile:
+
+                    # testing
+                    # if self._should_profile:
+                    if self._should_profile or self.use_carbon_cta:
                         self.eval_tput_result[self.current_gpu_pl] = (
                             self.num_samples / time_consumption
                         )
