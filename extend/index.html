@@ -19,7 +19,7 @@
       
       
       <link rel="icon" href="../assets/img/favicon.svg">
-      <meta name="generator" content="mkdocs-1.4.0, mkdocs-material-8.5.0+insiders-4.23.3">
+      <meta name="generator" content="mkdocs-1.4.2, mkdocs-material-8.5.0+insiders-4.23.3">
     
     
       
@@ -1266,7 +1266,7 @@ As in our paper, the batch size optimizer is first invoked to decide which batch
 <p>There are two ways to run Zeus: trace-driven and end-to-end.</p>
 <h3 id="trace-driven-zeus">Trace-driven Zeus</h3>
 <p>The Zeus simulator (<a class="autorefs autorefs-internal" href="../reference/simulate/#zeus.simulate.Simulator"><code>Simulator</code></a>) accepts one <a class="autorefs autorefs-internal" href="../reference/policy/interface/#zeus.policy.interface.BatchSizeOptimizer"><code>BatchSizeOptimizer</code></a> and <a class="autorefs autorefs-internal" href="../reference/policy/interface/#zeus.policy.interface.PowerLimitOptimizer"><code>PowerLimitOptimizer</code></a> in its constructor.
-A full-example can be found in <a href="../examples/trace_driven/"><code>examples/trace_driven</code></a>.</p>
+A full-example can be found in <a href="https://github.com/SymbioticLab/Zeus/tree/master/examples/trace_driven/"><code>examples/trace_driven</code></a>.</p>
 <h3 id="end-to-end-zeus">End-to-end Zeus</h3>
 <p>There are two central components in end-to-end Zeus: <a class="autorefs autorefs-internal" href="../reference/run/master/#zeus.run.master.ZeusMaster"><code>ZeusMaster</code></a> and <a class="autorefs autorefs-internal" href="../reference/run/dataloader/#zeus.run.dataloader.ZeusDataLoader"><code>ZeusDataLoader</code></a>.
 The former takes charge of driving the entire optimization over recurring jobs, and accepts an instance of <a class="autorefs autorefs-internal" href="../reference/policy/interface/#zeus.policy.interface.BatchSizeOptimizer"><code>BatchSizeOptimizer</code></a> in its constructor.
