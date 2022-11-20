@@ -90,7 +90,13 @@ class ZeusMonitorContext:
         # Spawn the Zeus monitor.
         self._power_csv = tempfile.mkstemp(suffix=f"+gpu{self.device_id}.csv")[1]
         self._monitor = subprocess.Popen(
-            args=[zeus_monitor_path, self._power_csv, "0", str(zeus_monitor_sleep_ms), str(self.device_id)],
+            args=[
+                zeus_monitor_path,
+                self._power_csv,
+                "0",
+                str(zeus_monitor_sleep_ms),
+                str(self.device_id),
+            ],
             stdin=subprocess.DEVNULL,
         )
         self._time_origin = time.monotonic()
@@ -116,6 +122,7 @@ class ZeusMonitorContext:
 
     @contextmanager
     def step(self) -> Generator[None, None, None]:
+        """Wrap one training step to mark start and finish times."""
         try:
             self.start_step()
             yield
@@ -124,13 +131,15 @@ class ZeusMonitorContext:
 
     @property
     def is_done(self) -> bool:
-        """Returns whether the specified profiling steps are done."""
+        """Return whether the specified profiling steps are done."""
         return self._current_step >= self.skip_steps + self.profile_steps
 
     @property
     def energy(self) -> float:
-        """Returns the total energy consumption of `profile_steps` steps."""
-        return compute_energy(self._power_csv, start=self._profile_start_time, end=self._profile_end_time)
+        """Return the total energy consumption of `profile_steps` steps."""
+        return compute_energy(
+            self._power_csv, start=self._profile_start_time, end=self._profile_end_time
+        )
 
     @property
     def time(self) -> float:
