@@ -23,5 +23,6 @@ Modules:
 - [`run`][zeus.run]: Machinery for actually running Zeus.
 - [`simulate`][zeus.simulate]: Machinery for trace-driven Zeus.
 - [`policy`][zeus.policy]: Collection of optimization policies.
+- [`monitor`][zeus.monitor]: Helpers for using the Zeus monitor inside training scripts.
 - [`util`][zeus.util]: Utility functions and classes.
 """
