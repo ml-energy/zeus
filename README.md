@@ -30,7 +30,7 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 │   ├── simulate.py      #    - Tools for trace-driven simulation
 │   ├── util/            #    - Utility functions and classes
 │   ├── analyze.py       #    - Analysis functions for power logs
-│   ├── monitor.py       #    - Helpers for using the Zeus monitor inside training scripts
+│   ├── monitor.py       #    - Class for profiling energy inside training scripts
 │   └── job.py           #    - Class for job specification
 │
 ├── zeus_monitor/        # 🔌 GPU power monitor
