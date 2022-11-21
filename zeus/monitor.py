@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import time
 import atexit
+import signal
 import tempfile
 import subprocess
 from typing import Generator
@@ -100,7 +101,14 @@ class ZeusMonitorContext:
             stdin=subprocess.DEVNULL,
         )
         self._time_origin = time.monotonic()
-        atexit.register(self._monitor.kill)
+
+        # Make sure the monitor is eventually stopped.
+        def exit_hook():
+            self._monitor.send_signal(signal.SIGINT)
+            time.sleep(2.0)
+            self._monitor.kill()
+
+        atexit.register(exit_hook)
 
         # Set internal profiling states.
         self._current_step = 0
