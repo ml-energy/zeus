@@ -56,9 +56,9 @@ int main(int argc, char **argv) {
     std::cout << prefix() << "Running for " << duration << "s. ";
   }
   if (sleep_ms == 0) {
-    std::cout << prefix() << "High-speed polling mode. " << std::endl;
+    std::cout << "High-speed polling mode. " << std::endl;
   } else {
-    std::cout << prefix() << "Sleeping " << sleep_ms << "ms after each poll. " << std::endl;
+    std::cout << "Sleeping " << sleep_ms << "ms after each poll. " << std::endl;
   }
   std::cout << prefix() << "Logfile path: " << logfilePath << std::endl;
 
