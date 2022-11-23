@@ -73,6 +73,7 @@ class ZeusMonitorContext:
         device_id: int = 0,
         zeus_monitor_path: str = "zeus_monitor",
         zeus_monitor_sleep_ms: int = 0,
+        zeus_monitor_log_dir: str | None = None,
     ) -> None:
         """Create a Zeus monitor context.
 
@@ -82,6 +83,8 @@ class ZeusMonitorContext:
             device_id: CUDA device ID to run the monitor for.
             zeus_monitor_path: `argv[0]` to use when spawning the Zeus monitor.
             zeus_monitor_sleep_ms: How long the Zeus monitor should sleep after sampling power.
+            zeus_monitor_log_dir: The directory to put the monitor log file. A temporary file is
+                used if not specified.
         """
         # Save arguments.
         self.skip_steps = skip_steps
@@ -89,7 +92,12 @@ class ZeusMonitorContext:
         self.device_id = device_id
 
         # Spawn the Zeus monitor.
-        self._power_csv = tempfile.mkstemp(suffix=f"+gpu{self.device_id}.csv")[1]
+        if zeus_monitor_log_dir:
+            self._power_csv = f"{zeus_monitor_log_dir}/{self.device_id}.power.csv"
+        else:
+            self._power_csv = tempfile.mkstemp(
+                suffix=f"+gpu{self.device_id}.power.csv"
+            )[1]
         self._monitor = subprocess.Popen(
             args=[
                 zeus_monitor_path,
