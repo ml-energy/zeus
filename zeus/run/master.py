@@ -240,7 +240,7 @@ class ZeusMaster:
 
         # Casting
         if not isinstance(stats["reached"], bool):
-            stats["reached"] = stats["reaached"].lower() == "true"
+            stats["reached"] = stats["reached"].lower() == "true"
 
         return float(stats["energy"]), float(stats["time"]), stats["reached"]
 
