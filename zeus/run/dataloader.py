@@ -755,7 +755,13 @@ class ZeusDataLoader(DataLoader):
         # Start monitors. Master process starts and records all monitors.
         for index in range(self.world_size):
             monitor = subprocess.Popen(
-                [self.monitor_path, self._power_log_path(index), "0", "100", index],
+                [
+                    self.monitor_path,
+                    self._power_log_path(index),
+                    "0",
+                    "100",
+                    str(index),
+                ],
             )
             self._log(f"[GPU_{index}] Zeus monitor started.")
             ZeusDataLoader.monitors.append(monitor)
