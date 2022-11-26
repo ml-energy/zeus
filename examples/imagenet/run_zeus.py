@@ -88,7 +88,7 @@ def main(args: argparse.Namespace) -> None:
         profile_measure_iters=80,
     )
 
-    # Definition of the CIFAR100 job.
+    # Definition of the ImageNet job.
     # The `Job` class encloses all information needed to run training. The `command` parameter is
     # a command template. Curly-braced parameters are recognized by Zeus and automatically filled.
     job = Job(
@@ -125,7 +125,7 @@ def main(args: argparse.Namespace) -> None:
 
     # Create a designated log directory inside `args.log_base` just for this run of Zeus.
     # Six types of outputs are generated.
-    # 1. Power monitor ouptut (`bs{batch_size}+e{epoch_num}.power.log`):
+    # 1. Power monitor ouptut (`bs{batch_size}+e{epoch_num}+gpu{device_id}.power.log`):
     #      Raw output of the Zeus power monitor.
     # 2. Profiling results (`bs{batch_size}.power.json`):
     #      Train-time average power consumption and throughput for each power limit,
