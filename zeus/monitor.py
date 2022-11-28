@@ -93,7 +93,7 @@ class ZeusMonitorContext:
 
         # Spawn the Zeus monitor.
         if zeus_monitor_log_dir:
-            self._power_csv = f"{zeus_monitor_log_dir}/{self.device_id}.power.csv"
+            self._power_csv = f"{zeus_monitor_log_dir}/gpu{self.device_id}.power.csv"
         else:
             self._power_csv = tempfile.mkstemp(
                 suffix=f"+gpu{self.device_id}.power.csv"
