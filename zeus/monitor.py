@@ -175,7 +175,7 @@ class ZeusMonitorContext:
     def total_energy(self) -> float:
         """Return the total energy consumption of `profile_steps` steps."""
         try:
-            return self._metric_cache["energy"]
+            return self._metric_cache["total_energy"]
         except KeyError:
             metric = sum(
                 compute_energy(self._power_csv, start=start, end=end)
