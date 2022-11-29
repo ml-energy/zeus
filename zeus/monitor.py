@@ -24,6 +24,8 @@ import subprocess
 from typing import Generator
 from contextlib import contextmanager
 
+import torch
+
 from zeus.analyze import energy as compute_energy
 
 
@@ -35,8 +37,10 @@ class ZeusMonitorContext:
 
     You can check whether profiling is done (i.e., `skip_steps + profile_steps` passed)
     through [`is_done`][zeus.monitor.ZeusMonitorContext.is_done] and query results through
-    [`energy`][zeus.monitor.ZeusMonitorContext.energy] and
-    [`time`][zeus.monitor.ZeusMonitorContext.time].
+    [`total_energy`][zeus.monitor.ZeusMonitorContext.total_energy],
+    [`avg_energy`][zeus.monitor.ZeusMonitorContext.avg_energy],
+    [`total_time`][zeus.monitor.ZeusMonitorContext.total_time], and
+    [`avg_time`][zeus.monitor.ZeusMonitorContext.avg_time].
 
     ## Integration example
 
@@ -60,7 +64,7 @@ class ZeusMonitorContext:
         if zeus_ctx.is_done:
             print(
                 f"{zeus_ctx.profile_steps} training steps "
-                f"consumed {zeus_ctx.energy} Joules in {zeus_ctx.time} seconds."
+                f"consumed {zeus_ctx.total_energy} Joules in {zeus_ctx.total_time} seconds."
             )
             zeus_ctx.reset()
     ```
@@ -119,22 +123,35 @@ class ZeusMonitorContext:
         atexit.register(exit_hook)
 
         # Set internal profiling states.
-        self._current_step = 0
-        self._profile_start_time = 0.0
-        self._profile_end_time = 0.0
+        self._started_steps = 0
+        self._finished_steps = 0
+        self._profile_start_times: list[float] = []
+        self._profile_end_times = []
+        self._metric_cache = {}
 
     def start_step(self) -> None:
         """Mark the beginning of one step."""
+        torch.cuda.synchronize()
         current_time = time.monotonic()
-        self._current_step += 1
-        if self._current_step == self.skip_steps + 1:
-            self._profile_start_time = current_time - self._time_origin
+        self._started_steps += 1
+        if (
+            self.skip_steps
+            < self._started_steps
+            <= self.skip_steps + self.profile_steps
+        ):
+            self._profile_start_times.append(current_time - self._time_origin)
 
     def finish_step(self) -> None:
         """Mark the end of one step."""
+        torch.cuda.synchronize()
         current_time = time.monotonic()
-        if self._current_step == self.skip_steps + self.profile_steps:
-            self._profile_end_time = current_time - self._time_origin
+        self._finished_steps += 1
+        if (
+            self.skip_steps
+            < self._finished_steps
+            <= self.skip_steps + self.profile_steps
+        ):
+            self._profile_end_times.append(current_time - self._time_origin)
 
     @contextmanager
     def step(self) -> Generator[None, None, None]:
@@ -148,22 +165,66 @@ class ZeusMonitorContext:
     @property
     def is_done(self) -> bool:
         """Return whether the specified profiling steps are done."""
-        return self._current_step >= self.skip_steps + self.profile_steps
+        if self._started_steps != self._finished_steps:
+            raise RuntimeError(
+                "`is_done` should be called outside of the code range marked as a 'step'."
+            )
+        return self._finished_steps >= self.skip_steps + self.profile_steps
 
     @property
-    def energy(self) -> float:
+    def total_energy(self) -> float:
         """Return the total energy consumption of `profile_steps` steps."""
-        return compute_energy(
-            self._power_csv, start=self._profile_start_time, end=self._profile_end_time
-        )
+        try:
+            return self._metric_cache["energy"]
+        except KeyError:
+            metric = sum(
+                compute_energy(self._power_csv, start=start, end=end)
+                for start, end in zip(
+                    self._profile_start_times, self._profile_end_times
+                )
+            )
+            self._metric_cache["total_energy"] = metric
+            return metric
 
     @property
-    def time(self) -> float:
+    def avg_energy(self) -> float:
+        """Return the average energy consumption over `profiler_steps` steps."""
+        try:
+            return self._metric_cache["avg_energy"]
+        except KeyError:
+            metric = self.total_energy / self.profile_steps
+            self._metric_cache["avg_energy"] = metric
+            return metric
+
+    @property
+    def total_time(self) -> float:
         """Return the total time consumption of `profile_steps` steps."""
-        return self._profile_end_time - self._profile_start_time
+        try:
+            return self._metric_cache["total_time"]
+        except KeyError:
+            metric = sum(
+                end - start
+                for start, end in zip(
+                    self._profile_start_times, self._profile_end_times
+                )
+            )
+            self._metric_cache["total_time"] = metric
+            return metric
+
+    @property
+    def avg_time(self) -> float:
+        """Return the average time consumption over `profiler_steps` steps."""
+        try:
+            return self._metric_cache["avg_time"]
+        except KeyError:
+            metric = self.total_time / self.profile_steps
+            self._metric_cache["avg_time"] = metric
+            return metric
 
     def reset(self) -> None:
         """Reset internal profile states."""
-        self._current_step = 0
-        self._profile_start_time = 0.0
-        self._profile_end_time = 0.0
+        self._started_steps = 0
+        self._finished_steps = 0
+        self._profile_start_times = []
+        self._profile_end_times = []
+        self._metric_cache = {}
