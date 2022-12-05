@@ -123,34 +123,34 @@ class ZeusMonitorContext:
         atexit.register(exit_hook)
 
         # Set internal profiling states.
-        self._started_steps = 0
-        self._finished_steps = 0
+        self._started_steps: int = 0
+        self._finished_steps: int = 0
         self._profile_start_times: list[float] = []
         self._profile_end_times: list[float] = []
         self._metric_cache: dict[str, float] = {}
 
     def start_step(self) -> None:
         """Mark the beginning of one step."""
-        torch.cuda.synchronize()
-        current_time = time.monotonic()
         self._started_steps += 1
         if (
             self.skip_steps
             < self._started_steps
             <= self.skip_steps + self.profile_steps
         ):
+            torch.cuda.synchronize()
+            current_time = time.monotonic()
             self._profile_start_times.append(current_time - self._time_origin)
 
     def finish_step(self) -> None:
         """Mark the end of one step."""
-        torch.cuda.synchronize()
-        current_time = time.monotonic()
         self._finished_steps += 1
         if (
             self.skip_steps
             < self._finished_steps
             <= self.skip_steps + self.profile_steps
         ):
+            torch.cuda.synchronize()
+            current_time = time.monotonic()
             self._profile_end_times.append(current_time - self._time_origin)
 
     @contextmanager
@@ -174,6 +174,8 @@ class ZeusMonitorContext:
     @property
     def total_energy(self) -> float:
         """Return the total energy consumption of `profile_steps` steps."""
+        if not self.is_done:
+            raise RuntimeError("Metrics are accessible only after profiling is done.")
         try:
             return self._metric_cache["total_energy"]
         except KeyError:
@@ -189,6 +191,8 @@ class ZeusMonitorContext:
     @property
     def avg_energy(self) -> float:
         """Return the average energy consumption over `profiler_steps` steps."""
+        if not self.is_done:
+            raise RuntimeError("Metrics are accessible only after profiling is done.")
         try:
             return self._metric_cache["avg_energy"]
         except KeyError:
@@ -199,6 +203,8 @@ class ZeusMonitorContext:
     @property
     def total_time(self) -> float:
         """Return the total time consumption of `profile_steps` steps."""
+        if not self.is_done:
+            raise RuntimeError("Metrics are accessible only after profiling is done.")
         try:
             return self._metric_cache["total_time"]
         except KeyError:
@@ -214,6 +220,8 @@ class ZeusMonitorContext:
     @property
     def avg_time(self) -> float:
         """Return the average time consumption over `profiler_steps` steps."""
+        if not self.is_done:
+            raise RuntimeError("Metrics are accessible only after profiling is done.")
         try:
             return self._metric_cache["avg_time"]
         except KeyError:
