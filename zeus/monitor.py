@@ -126,8 +126,8 @@ class ZeusMonitorContext:
         self._started_steps = 0
         self._finished_steps = 0
         self._profile_start_times: list[float] = []
-        self._profile_end_times = []
-        self._metric_cache = {}
+        self._profile_end_times: list[float] = []
+        self._metric_cache: dict[str, float] = {}
 
     def start_step(self) -> None:
         """Mark the beginning of one step."""
