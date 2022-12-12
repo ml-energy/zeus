@@ -43,6 +43,7 @@ setup(
         "pandas==1.4.2",
         "scikit-learn",
         "pynvml",
+        "requests",
     ],
     python_requires=">=3.8",
     extras_require={

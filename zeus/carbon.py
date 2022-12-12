@@ -1,13 +1,8 @@
 """Carbon Emissions API."""
 
-import time
-import math
-import json
-import requests
-import pandas as pd
-from pprint import pprint
-from dateutil.relativedelta import relativedelta
 from datetime import timedelta, datetime, timezone
+import math
+import requests
 
 
 def round_up_time(time_obj: datetime, query_limit_min: int = 5) -> datetime:
@@ -32,11 +27,10 @@ def time_to_str(time_obj) -> str:
     Args:
     time_obj: datetime object
     """
-    # current GMT Time == current utc time
-    # gmt = datetime.now(timezone.utc)
-    return "{}-{}-{}T{:02}:{:02}:00Z".format(
-        time_obj.year, time_obj.month, time_obj.day, time_obj.hour, time_obj.minute
-    )
+    # return "{}-{}-{}T{:02}:{:02}:00Z".format(
+    #     time_obj.year, time_obj.month, time_obj.day, time_obj.hour, time_obj.minute
+    # )
+    return f"{time_obj.year}-{time_obj.month}-{time_obj.day}T{time_obj.hour:02}:{time_obj.minute:02}:00Z"
 
 
 def get_forecast(start_time: str, end_time: str, window_size: int) -> dict:
@@ -49,8 +43,7 @@ def get_forecast(start_time: str, end_time: str, window_size: int) -> dict:
     window_size: window size of the query in minutes
     """
     window_size = int(window_size)
-    if window_size < 5:
-        window_size = 5
+    window_size = max(window_size, 5)
     headers = {
         "accept": "application/json",
     }
@@ -65,6 +58,7 @@ def get_forecast(start_time: str, end_time: str, window_size: int) -> dict:
         "https://carbon-aware-api.azurewebsites.net/emissions/forecasts/current",
         params=params,
         headers=headers,
+        timeout=10,
     )
     return response.json()
 
@@ -76,8 +70,7 @@ def get_forecast_query_time_range(estimate_ep_time_min: int = 5) -> tuple:
     Args:
     estimate_ep_time_min: estimated episode time in minutes
     """
-    if estimate_ep_time_min < 5:
-        estimate_ep_time_min = 5
+    estimate_ep_time_min = max(estimate_ep_time_min, 5)
     gmt_now = datetime.now(timezone.utc)
     curr_gmt_str = time_to_str(gmt_now)
     start_time_obj = round_up_time(gmt_now)
@@ -95,8 +88,7 @@ def get_history_avg(ep_time: int = 30 * 60) -> dict:
     Args:
     ep_time: estimated episode time in seconds
     """
-    if ep_time < 60:
-        ep_time = 60
+    ep_time = max(ep_time, 60)
     gmt_now = datetime.now(timezone.utc)
     curr_gmt_str = time_to_str(gmt_now)
     prev_time_obj = gmt_now - timedelta(seconds=ep_time)
@@ -114,6 +106,7 @@ def get_history_avg(ep_time: int = 30 * 60) -> dict:
         "https://carbon-aware-api.azurewebsites.net/emissions/average-carbon-intensity",
         params=params,
         headers=headers,
+        timeout=10,
     )
     return response.json()
 
@@ -132,20 +125,19 @@ def compute_carbon_emissions(
 
 
 # testing
-if __name__ == "__main__":
-    estimate_ep_time = 30
+# if __name__ == "__main__":
+#     estimate_ep_time = 30
+#     data = []
+#     while True:
+#         curr_gmt_str, start_time_str, end_time_str = get_forecast_query_time_range(
+#             estimate_ep_time
+#         )
+#         forecast = get_forecast(start_time_str, end_time_str, estimate_ep_time)
+#         data.append(forecast[0]["forecastData"][0])
+#         pprint(forecast[0]["forecastData"][0])
+#         print()
+#         df = pd.DataFrame(data)
+#         df.to_csv("carbon.csv", index=False)
 
-    data = []
-    while True:
-        curr_gmt_str, start_time_str, end_time_str = get_forecast_query_time_range(
-            estimate_ep_time
-        )
-        forecast = get_forecast(start_time_str, end_time_str, estimate_ep_time)
-        data.append(forecast[0]["forecastData"][0])
-        pprint(forecast[0]["forecastData"][0])
-        print()
-        df = pd.DataFrame(data)
-        df.to_csv("carbon.csv", index=False)
-
-        print("sleeping...zzz")
-        time.sleep(30 * 60)
+#         print("sleeping...zzz")
+#         time.sleep(30 * 60)

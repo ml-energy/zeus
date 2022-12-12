@@ -35,23 +35,9 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from zeus import analyze
+from zeus import carbon as carbon_client
 from zeus.util.check import get_env
 from zeus.util.metric import ZeusCostThresholdExceededException, zeus_cost
-
-from zeus import carbon
-from pprint import pprint
-
-
-"""
-[] 1. cost_func = (future_CI * AvgPower * eta_knob + (1-eta_knob) * MAX_PL * past_avg_CI ) * TTA
-[done] 2. save past_avg_CI in init(), save time (could be the past year or so)
-[] 3. call _compute_optimal_pl() at every epoch (adjust PL, since CI changes)
-
-Bug: self.next_carbon_intensity not initialized in val dataloader. 
-
-Note: 
-- past_avg_CI: The API can only return 1 month (prev) worth of data max. 
-"""
 
 
 # JIT profiling states
@@ -538,8 +524,8 @@ class ZeusDataLoader(DataLoader):
                     self.train_epoch_energy.sum() + self.eval_epoch_energy.sum()
                 )
 
-                ep_carbon_intensity = carbon.get_history_avg(time_consumed)
-                ep_carbon_emission = carbon.compute_carbon_emissions(
+                ep_carbon_intensity = carbon_client.get_history_avg(time_consumed)
+                ep_carbon_emission = carbon_client.compute_carbon_emissions(
                     energy_consumed, ep_carbon_intensity["carbonIntensity"]
                 )
                 if self.use_carbon_cta:
@@ -567,7 +553,8 @@ class ZeusDataLoader(DataLoader):
                     # )
                 self._log(
                     f"Up to epoch {self.epoch_num}: "
-                    f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, carbon={ep_carbon_emission:.2f}, cost={cost:.2f}"
+                    f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, \
+                        carbon={ep_carbon_emission:.2f}, cost={cost:.2f}"
                 )
 
             # target_metric_reached is set when the current validation metric is reported to
@@ -642,17 +629,17 @@ class ZeusDataLoader(DataLoader):
 
                     # get carbon forecast data
                     (
-                        curr_gmt_str,
+                        _,
                         start_time_str,
                         end_time_str,
-                    ) = carbon.get_forecast_query_time_range(next_time / 60)
-                    forecast_carbon_data = carbon.get_forecast(
+                    ) = carbon_client.get_forecast_query_time_range(next_time / 60)
+                    forecast_carbon_data = carbon_client.get_forecast(
                         start_time_str, end_time_str, next_time / 60
                     )
                     self.next_carbon_intensity = forecast_carbon_data[0][
                         "forecastData"
                     ][0]["value"]
-                    next_carbon_emission = carbon.compute_carbon_emissions(
+                    next_carbon_emission = carbon_client.compute_carbon_emissions(
                         next_energy, self.next_carbon_intensity
                     )
                     self._log(
@@ -664,8 +651,10 @@ class ZeusDataLoader(DataLoader):
                     )
 
                     # get carbon history data
-                    past_avg_carbon_intensity = carbon.get_history_avg(time_consumed)
-                    past_carbon_emission = carbon.compute_carbon_emissions(
+                    past_avg_carbon_intensity = carbon_client.get_history_avg(
+                        time_consumed
+                    )
+                    past_carbon_emission = carbon_client.compute_carbon_emissions(
                         energy_consumed, past_avg_carbon_intensity["carbonIntensity"]
                     )
                     next_carbon_emission_consumed = (
@@ -775,7 +764,8 @@ class ZeusDataLoader(DataLoader):
         tput = ZeusDataLoader.train_tput_result
         power = ZeusDataLoader.train_power_result
 
-        self._log("MAX PL: {}".format(self.max_pl))
+        # self._log("MAX PL: {}".format(self.max_pl))
+        self._log("MAX PL: f{self.max_pl}")
 
         if self.use_carbon_cta:
             self._log(f"...next_carbon_intensity is {self.next_carbon_intensity:.2f}")
@@ -1228,8 +1218,8 @@ class ZeusDataLoader(DataLoader):
                         # Let us end profiling by writing profile information to `power_json`.
                         if self.optimal_pl != 0:
                             self._save_power_results()
-                avg_carbon_intensity = carbon.get_history_avg(time_consumption)
-                carbon_emission = carbon.compute_carbon_emissions(
+                avg_carbon_intensity = carbon_client.get_history_avg(time_consumption)
+                carbon_emission = carbon_client.compute_carbon_emissions(
                     energy_consumption, avg_carbon_intensity["carbonIntensity"]
                 )
                 self._log(
