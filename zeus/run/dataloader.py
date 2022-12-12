@@ -337,9 +337,10 @@ class ZeusDataLoader(DataLoader):
         )
         self.use_optimal_pl = get_env("ZEUS_USE_OPTIMAL_PL", bool, default=True)
 
-        # Retrieve environment variables. Setting MAX carbon.
+        # Retrieve environment variables. Setting MAX carbon, initializing next carbon intensity.
         self.use_carbon_cta = get_env("ZEUS_USE_CARBON", bool, default=True)
         self.prev_month_carbon_intensity = 800
+        self.next_carbon_intensity = 700
 
         # Create ZEUS_LOG_DIR if it does not exist.
         os.makedirs(self.logdir, exist_ok=True)
