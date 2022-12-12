@@ -337,9 +337,9 @@ class ZeusDataLoader(DataLoader):
         )
         self.use_optimal_pl = get_env("ZEUS_USE_OPTIMAL_PL", bool, default=True)
 
+        # Retrieve environment variables. Setting MAX carbon.
         self.use_carbon_cta = get_env("ZEUS_USE_CARBON", bool, default=True)
         self.prev_month_carbon_intensity = 800
-        self.next_carbon_intensity = 700
 
         # Create ZEUS_LOG_DIR if it does not exist.
         os.makedirs(self.logdir, exist_ok=True)
@@ -524,6 +524,7 @@ class ZeusDataLoader(DataLoader):
                     self.train_epoch_energy.sum() + self.eval_epoch_energy.sum()
                 )
 
+                # Compute real carbon cost
                 ep_carbon_intensity = carbon_client.get_history_avg(time_consumed)
                 ep_carbon_emission = carbon_client.compute_carbon_emissions(
                     energy_consumed, ep_carbon_intensity["carbonIntensity"]
@@ -547,10 +548,7 @@ class ZeusDataLoader(DataLoader):
                         self.eta_knob,
                         self.max_pl // 1000 * self.world_size,
                     )
-                    # self._log(
-                    #     f"Up to epoch {self.epoch_num}: "
-                    #     f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, cost={cost:.2f}"
-                    # )
+
                 self._log(
                     f"Up to epoch {self.epoch_num}: "
                     f"time={time_consumed:.2f}, energy={energy_consumed:.2f}, \
@@ -696,7 +694,6 @@ class ZeusDataLoader(DataLoader):
                         f"energy={next_energy_consumed:.2f}, "
                         f"cost={next_cost:.2f}"
                     )
-                # time.sleep(10)
 
                 # Stop if the predicted cost of the next epoch exceeds the cost threshold.
                 if next_cost >= self.cost_thresh:
@@ -764,19 +761,15 @@ class ZeusDataLoader(DataLoader):
         tput = ZeusDataLoader.train_tput_result
         power = ZeusDataLoader.train_power_result
 
-        # self._log("MAX PL: {}".format(self.max_pl))
-        self._log("MAX PL: f{self.max_pl}")
+        self._log(f"MAX PL: {self.max_pl}")
 
+        # log forecast carbon intensity
         if self.use_carbon_cta:
-            self._log(f"...next_carbon_intensity is {self.next_carbon_intensity:.2f}")
-            time_nor_coeff = (
-                self.max_pl / 1000 * self.prev_month_carbon_intensity
-            )  # * 2.77778e-7
+            self._log(f"=> next_carbon_intensity is {self.next_carbon_intensity:.2f}")
+            time_nor_coeff = self.max_pl / 1000 * self.prev_month_carbon_intensity
             cost_map = {
                 pl: (
-                    self.eta_knob
-                    * power[pl]
-                    * self.next_carbon_intensity  # * 2.77778e-7
+                    self.eta_knob * power[pl] * self.next_carbon_intensity
                     + (1 - self.eta_knob) * time_nor_coeff * self.world_size
                 )
                 / tput[pl]
@@ -1105,13 +1098,6 @@ class ZeusDataLoader(DataLoader):
         self.sample_num = 0
         self._log(f"Epoch {self.epoch_num} begin.")
 
-        # if self.epoch_num > 2 and self._is_train and self.use_carbon_cta:
-        # if not self._power_limits_left and self._is_train and self.use_carbon_cta:
-        #     self._log("Updating optimal power limit AGAIN.")
-        #     ZeusDataLoader.optimal_pl = self._compute_optimal_pl()
-        #     self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
-        # time.sleep(10)
-
         # Start epoch timer.
         self.epoch_start_time = time.monotonic()
 
@@ -1205,8 +1191,6 @@ class ZeusDataLoader(DataLoader):
                     # don't profile anything, we directly use these values to compute the time and
                     # energy consumed.
 
-                    # testing
-                    # if self._should_profile:
                     if self._should_profile or self.use_carbon_cta:
                         self.eval_tput_result[self.current_gpu_pl] = (
                             self.num_samples / time_consumption

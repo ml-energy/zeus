@@ -27,9 +27,6 @@ def time_to_str(time_obj) -> str:
     Args:
     time_obj: datetime object
     """
-    # return "{}-{}-{}T{:02}:{:02}:00Z".format(
-    #     time_obj.year, time_obj.month, time_obj.day, time_obj.hour, time_obj.minute
-    # )
     return f"{time_obj.year}-{time_obj.month}-{time_obj.day}T{time_obj.hour:02}:{time_obj.minute:02}:00Z"
 
 
@@ -122,22 +119,3 @@ def compute_carbon_emissions(
     carbon_intensity: carbon intensity in g/kWh
     """
     return power_consumption * carbon_intensity * 2.77778e-7
-
-
-# testing
-# if __name__ == "__main__":
-#     estimate_ep_time = 30
-#     data = []
-#     while True:
-#         curr_gmt_str, start_time_str, end_time_str = get_forecast_query_time_range(
-#             estimate_ep_time
-#         )
-#         forecast = get_forecast(start_time_str, end_time_str, estimate_ep_time)
-#         data.append(forecast[0]["forecastData"][0])
-#         pprint(forecast[0]["forecastData"][0])
-#         print()
-#         df = pd.DataFrame(data)
-#         df.to_csv("carbon.csv", index=False)
-
-#         print("sleeping...zzz")
-#         time.sleep(30 * 60)
