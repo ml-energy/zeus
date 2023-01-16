@@ -8,7 +8,7 @@
 </div>
 
 [![arXiv](https://custom-icon-badges.herokuapp.com/badge/ID-2208.06102-b31b1b.svg?logo=arxiv-white&logoWidth=35)](https://arxiv.org/abs/2208.06102)
-[![Docker Hub](https://img.shields.io/badge/Docker-SymbioticLab%2FZeus-blue.svg?logo=docker&logoColor=white)](https://hub.docker.com/r/symbioticlab/zeus)
+[![Docker Hub](https://badgen.net/docker/pulls/symbioticlab/zeus?icon=docker&label=Docker%20pulls)](https://hub.docker.com/r/symbioticlab/zeus)
 [![Homepage build](https://github.com/SymbioticLab/Zeus/actions/workflows/deploy_homepage.yaml/badge.svg)](https://github.com/SymbioticLab/Zeus/actions/workflows/deploy_homepage.yaml)
 [![Apache-2.0 License](https://custom-icon-badges.herokuapp.com/github/license/SymbioticLab/Zeus?logo=law)](/LICENSE)
 
