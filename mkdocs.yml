@@ -27,6 +27,7 @@ theme:
     - navigation.top
     - navigation.instant
     - content.tooltips
+    - announce.dismiss
   palette:
     - scheme: slate
       primary: zeus
@@ -82,6 +83,9 @@ markdown_extensions:
   - pymdownx.critic
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
 
 # Appearance
 extra_css:

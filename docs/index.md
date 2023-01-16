@@ -10,6 +10,11 @@ hide:
 <h1>An Energy Optimization Framework for DNN Training</h1>
 </div>
 
+!!! Success "Join the Zeus Slack workspace!"
+    Zeus exceeded 50k+ pulls on [Docker Hub](https://hub.docker.com/r/symbioticlab/zeus)!
+    The Zeus team is always happy to chat with Zeus users and help out.
+    Reach out to us in the [Zeus Slack workspace](https://join.slack.com/t/zeus-ml/shared_invite/zt-1najba5mb-WExy7zoNTyaZZfTlUWoLLg).
+
 Zeus automatically optimizes the **energy and time** of recurring DNN training jobs by finding the optimal **batch size** and **GPU power limit**.
 
 Please refer to our [NSDI’23 publication](https://arxiv.org/abs/2208.06102){.external} for details.
