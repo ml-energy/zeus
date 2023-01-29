@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Helpers for profiling energy and time inside training script."""
+"""Helpers for profiling energy and time inside a training script."""
 
 from __future__ import annotations
 
@@ -26,15 +26,15 @@ from typing import List, Union, Tuple
 import pynvml
 
 from zeus import analyze
-from zeus.util.logging import LOG
+from zeus.util.logging import LOG  # TODO: Refactor to per-module logger.
 
 
 class ZeusProfilingService:
-    """Profiling the energy and time inside training script.
+    """Profiles and energy and time inside a training script.
 
-    Push a profile to start profiling and pop a profile to get the profiling result
-    of the *last* pushed profiling window. Multiple profiling windows are stored
-    in a stack and conform to *First-In-First-Out*.
+    Push a profiling window to start profiling and pop to get the profiling result
+    of the *last* pushed profiling window. Multiple nested profiling windows are
+    supported using a stack.
 
     ## Integrated Example
     ```python
@@ -117,7 +117,7 @@ class ZeusProfilingService:
         Args:
             gpu_idx: The index of GPU.
         """
-        return f"{self.power_log_prefix}+gpu{gpu_idx}.power.log"
+        return f"{self.power_log_prefix}+gpu{gpu_idx}.power.csv"
 
     def _start_monitors(self) -> None:
         """Spawn monitor processes for power polling for GPUs with older architecture."""
@@ -152,8 +152,8 @@ class ZeusProfilingService:
 
     def push_window(self) -> None:
         """Push one profiling window to the stack."""
-        prof_start_time: float = time.monotonic()
         prof_start_energy: List[float] = [0 for _ in range(len(self.gpu_handles))]
+        prof_start_time: float = time.monotonic()
         for gpu_idx, handle in enumerate(self.gpu_handles):
             if self.is_newer_arch[gpu_idx]:
                 # Query NVML energy method for the energy consumed until
@@ -171,7 +171,7 @@ class ZeusProfilingService:
         Returns:
             A tuple `(time_consumed, list_of_energy_consumed_per_gpu)`.
         """
-        if len(self.prof_start_info) == 0:
+        if not self.prof_start_info:
             raise RuntimeError(
                 "No profiling window exists. Consider calling `push_window` first."
             )

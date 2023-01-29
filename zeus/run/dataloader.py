@@ -742,7 +742,7 @@ class ZeusDataLoader(DataLoader):
     @property
     def _get_prof_service(self) -> ZeusProfilingService:
         """Return the `ZeusProfilingService` instance."""
-        assert ZeusDataLoader.prof_service is not None, f"{self.prof_service=}"
+        assert ZeusDataLoader.prof_service is not None, "ZeusDataLoader.prof_service was not instantiated"
         return ZeusDataLoader.prof_service
 
     def _prof_window_push(self) -> None:
