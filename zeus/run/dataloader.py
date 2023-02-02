@@ -217,10 +217,10 @@ class ZeusDataLoader(DataLoader):
         Args:
             batch_size: Batch size to use for training.
             max_epochs: Maximum number of epochs to train. **Specify this parameter only
-                to the train data loader.**
+                to the train data loader.** (Default: `-1`)
             distributed: Distributed strategy to use for training. If training with single GPU,
                 this value should be `None`; if training using data parallel with multi-GPU on
-                a single node, this value should be `"dp"`.
+                a single node, this value should be `"dp"`. (Default: `None`)
 
         Raises:
             ValueError: `max_epochs` is specified when initializing the evaluation dataloader.

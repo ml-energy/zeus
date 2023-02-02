@@ -52,7 +52,8 @@ class ZeusProfilingService:
     training(x, y)
 
     # Pop a profile window and get the profiling result
-    time_consumed, energy_consumed = prof_service.pop_window()
+    prof_result = prof_service.pop_window()
+    time_consumed, energy_consumed = prof_result.time, prof_result.energy
 
     print(f"Training takes {time_consumed} seconds.")
     for gpu_idx, energy_consumed_per_gpu in energy_consumed:
@@ -71,16 +72,12 @@ class ZeusProfilingService:
         """Instantiate the profiling service. Check the chip architecture and decide our profiling method.
 
         Args:
-            gpu_handles: Indices of all the devices that will be used for training. If None, all the GPUs
-                available will be used.
-            monitor_path: The path to zeus monitor executable.
-            power_log_prefix: The prefix of power logging file.
-
-        Raises:
-            ValueError: Profiling on GPUs with architecture older than Nvidia Volta requires
-                zeus monitor for power profiling. Raises when either `monitor_path` or
-                `power_log_prefix` is not provided.
-            RuntimeError:
+            gpu_indices: Indices of all the devices that will be used for training. If None, all the GPUs
+                available will be used. (Default: `None`)
+            monitor_path: The path to zeus monitor executable. (Default: `"zeus_monitor"`)
+            monitor_log_dir: The directory where monitor logging files will be saved. If `None`, a
+                temporary directory will be created. (Default: `None`)
+            monitor_log_prefix: The prefix of monitor logging files for power polling. (Default: `""`)
         """
         # Initialize NVML.
         pynvml.nvmlInit()
@@ -122,13 +119,15 @@ class ZeusProfilingService:
 
         atexit.register(exit_hook)
 
-    def _monitor_log_path(self, gpu_idx: int) -> None:
+    def _monitor_log_path(self, gpu_index: int) -> None:
         """Return the path of power log file for one gpu.
 
         Args:
-            gpu_idx: The index of GPU.
+            gpu_index: The index of GPU.
         """
-        return f"{self.monitor_log_dir}/{self.monitor_log_prefix}gpu{gpu_idx}.power.csv"
+        return (
+            f"{self.monitor_log_dir}/{self.monitor_log_prefix}gpu{gpu_index}.power.csv"
+        )
 
     def _start_monitors(self) -> None:
         """Spawn monitor processes for power polling for GPUs with older architecture.
@@ -257,7 +256,7 @@ class ZeusProfilingService:
 
         Args:
             message: The message to log out.
-            gpu_idx: The index of GPU for GPU-level logging. Should be `None`
+            gpu_index: The index of GPU for GPU-level logging. Should be `None`
                 when logging global information. (Default: `None`)
             level: The logging level to use. (Default: `logging.INFO`)
         """
