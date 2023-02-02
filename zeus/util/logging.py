@@ -15,16 +15,7 @@
 """Utilities for logging."""
 
 import sys
-import logging
 from pathlib import Path
-
-
-LOG = logging.getLogger(__name__)
-LOG.setLevel(logging.INFO)
-LOG_HANDLER = logging.StreamHandler()
-LOG_FORMATTER = logging.Formatter("%(asctime)s %(message)s")
-LOG_HANDLER.setFormatter(LOG_FORMATTER)
-LOG.addHandler(LOG_HANDLER)
 
 
 class FileAndConsole:

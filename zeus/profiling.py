@@ -16,17 +16,22 @@
 
 from __future__ import annotations
 
+import os
 import time
 import subprocess
 import signal
 import atexit
 import logging
-from typing import List, Union, Tuple
+import tempfile
+from dataclasses import dataclass
 
 import pynvml
+import torch
 
 from zeus import analyze
-from zeus.util.logging import LOG  # TODO: Refactor to per-module logger.
+
+
+LOG = logging.getLogger(__name__)
 
 
 class ZeusProfilingService:
@@ -58,14 +63,16 @@ class ZeusProfilingService:
 
     def __init__(
         self,
-        gpu_handles: List[pynvml.c_nvmlDevice_t],
-        monitor_path: str | None = None,
-        power_log_prefix: str | None = None,
+        gpu_indices: list[int] | None = None,
+        monitor_path: str = "zeus_monitor",
+        monitor_log_dir: str | None = None,
+        monitor_log_prefix: str = "",
     ) -> None:
         """Instantiate the profiling service. Check the chip architecture and decide our profiling method.
 
         Args:
-            gpu_handles: Handles of all the devices.
+            gpu_handles: Indices of all the devices that will be used for training. If None, all the GPUs
+                available will be used.
             monitor_path: The path to zeus monitor executable.
             power_log_prefix: The prefix of power logging file.
 
@@ -73,142 +80,178 @@ class ZeusProfilingService:
             ValueError: Profiling on GPUs with architecture older than Nvidia Volta requires
                 zeus monitor for power profiling. Raises when either `monitor_path` or
                 `power_log_prefix` is not provided.
+            RuntimeError:
         """
-        self.gpu_handles: List[pynvml.c_nvmlDevice_t] = gpu_handles
-        self.is_newer_arch: List[bool] = [False for _ in range(len(gpu_handles))]
+        # Initialize NVML.
+        pynvml.nvmlInit()
 
-        # Check the chip architecture of all the gpus
-        for gpu_idx, handle in enumerate(self.gpu_handles):
-            arch = pynvml.nvmlDeviceGetArchitecture(handle)
-            self._log(f"Architecture: {NVML_DEVICE_ARCH_MAPPING[arch]}", gpu_idx)
-            if arch >= pynvml.NVML_DEVICE_ARCH_VOLTA:
-                self.is_newer_arch[gpu_idx] = True
-            else:
-                if monitor_path is None or power_log_prefix is None:
-                    raise ValueError(
-                        "`monitor_path` and `power_log_prefix` must be provided if "
-                        "you are using chip architecture before Nvidia Volta."
-                    )
-
+        # Save attributes.
+        self.gpu_indices = gpu_indices
         self.monitor_path = monitor_path
-        self.power_log_prefix = power_log_prefix
+        self.monitor_log_dir = monitor_log_dir
+        self.monitor_log_prefix = monitor_log_prefix
+
+        # If `gpu_indices` is None, use all the GPUs available.
+        if self.gpu_indices is None:
+            self.gpu_indices = list(range(pynvml.nvmlDeviceGetCount()))
+
+        # Save all the GPU handles.
+        self.gpu_handles: list[pynvml.c_nvmlDevice_t] = []
+        for gpu_index in self.gpu_indices:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+            # Set persistence mode.
+            pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
+            self.gpu_handles.append(handle)
 
         # A stack that maintains the information at the start point of uncompleted profiling windows.
-        # Each element in the stack is a tuple `(prof_start_time, prof_start_energy)` where
-        # `prof_start_energy` is a list that stores energy consumed when the window starts at each GPUs
-        # with newer architecture.
-        self.prof_start_info: List[Tuple[float, List[float]]] = []
+        # Each element in the stack is an object of `ProfilingStartInfo` dataclass where the following
+        # information is stored for one profiling window:
+        #     1) Time elapsed at the start of this profiling window.
+        #     2) Energy consumed at each GPUs with newer architecture at the start of this profiling window.
+        self.prof_start_info: list[ProfilingStartInfo] = []
 
-        # Start monitors to polling power for the GPUs with older architecture
-        self.monitors: List[Union[subprocess.Popen, None]] = [
-            None for _ in range(len(gpu_handles))
-        ]
+        # Start monitors to polling power for the GPUs with older architecture.
+        self.monitors: dict[int, subprocess.Popen] = {}
         self._start_monitors()
 
-        # Kill the monitors when the training script exits
+        # Shutdown NVML and kill the monitors when the training script exits.
         def exit_hook():
+            # Shutdown NVML.
+            pynvml.nvmlShutdown()
             self._stop_monitors()
 
         atexit.register(exit_hook)
 
-    def _power_log_path(self, gpu_idx: int) -> None:
+    def _monitor_log_path(self, gpu_idx: int) -> None:
         """Return the path of power log file for one gpu.
 
         Args:
             gpu_idx: The index of GPU.
         """
-        return f"{self.power_log_prefix}+gpu{gpu_idx}.power.csv"
+        return f"{self.monitor_log_dir}/{self.monitor_log_prefix}gpu{gpu_idx}.power.csv"
 
     def _start_monitors(self) -> None:
-        """Spawn monitor processes for power polling for GPUs with older architecture."""
-        for gpu_idx in range(len(self.gpu_handles)):
-            if not self.is_newer_arch[gpu_idx]:
+        """Spawn monitor processes for power polling for GPUs with older architecture.
+
+        Raises:
+            RuntimeError: `self.monitor_path` is not executable when there exists GPUs with
+                older architecture and monitors should be spawned for power polling.
+        """
+        for gpu_index, gpu_handle in zip(self.gpu_indices, self.gpu_handles):
+            # Check the chip architecture.
+            arch = pynvml.nvmlDeviceGetArchitecture(gpu_handle)
+            # Spawn monitor process when GPU has older architecture.
+            if arch < pynvml.NVML_DEVICE_ARCH_VOLTA:
+                # Check whether the monitor path is good.
+                if not os.access(self.monitor_path, os.X_OK):
+                    raise RuntimeError(f"'{self.monitor_path}' is not executable")
+                if self.monitor_log_dir:
+                    # Create `monitor_log_dir` if it does not exist.
+                    os.makedirs(self.monitor_log_dir, exist_ok=True)
+                else:
+                    # Create a temporary directory.
+                    self.monitor_log_dir = tempfile.mkdtemp()
                 monitor = subprocess.Popen(
                     [
                         self.monitor_path,
-                        self._power_log_path(gpu_idx),
+                        self._monitor_log_path(gpu_index),
                         "0",
                         "100",
-                        str(gpu_idx),
+                        str(gpu_index),
                     ],
                 )
-                self.monitors[gpu_idx] = monitor
-                self._log(f"[GPU_{gpu_idx}] Zeus monitor started.", gpu_idx)
+                # Save the mapping from `gpu_index` to monitor.
+                self.monitors[gpu_index] = monitor
+                self._log("Zeus monitor started.", gpu_index)
 
     def _stop_monitors(self) -> None:
         """Kill the power monitor subprocess."""
-        for gpu_idx in range(len(self.gpu_handles)):
-            if not self.is_newer_arch[gpu_idx]:
-                # Sanity check that monitor exists for GPU with older architecture
-                assert (
-                    self.monitors[gpu_idx] is not None
-                ), f"monitor is not spawned for GPU_{gpu_idx}"
-                self.monitors[gpu_idx].send_signal(signal.SIGINT)
-        for gpu_idx in range(len(self.gpu_handles)):
-            if not self.is_newer_arch[gpu_idx]:
-                self.monitors[gpu_idx].wait(timeout=1.0)
-                self.monitors[gpu_idx].kill()
-                self._log(f"[GPU_{gpu_idx}] Zeus monitor stopped.", gpu_idx)
+        for _, monitor in self.monitors.items():
+            monitor.send_signal(signal.SIGINT)
+        for gpu_index, monitor in self.monitors.items():
+            monitor.wait(timeout=1.0)
+            monitor.kill()
+            self._log("Zeus monitor stopped.", gpu_index)
 
     def push_window(self) -> None:
         """Push one profiling window to the stack."""
-        prof_start_energy: List[float] = [0 for _ in range(len(self.gpu_handles))]
+        # Call cudaSynchronize to make sure this is the iteration boundary.
+        for gpu_index in self.gpu_indices:
+            torch.cuda.synchronize(gpu_index)
+
+        # Get the information at the start of profiling window.
+        prof_start_energy: dict[int, float] = {}
+        # Freeze the start time profiling window
         prof_start_time: float = time.monotonic()
-        for gpu_idx, handle in enumerate(self.gpu_handles):
-            if self.is_newer_arch[gpu_idx]:
-                # Query NVML energy method for the energy consumed until
-                # the start of profiling window.
-                prof_start_energy[gpu_idx] = self._millijoules_to_joules(
-                    pynvml.nvmlDeviceGetTotalEnergyConsumption(handle)
+        for gpu_index, gpu_handle in zip(self.gpu_indices, self.gpu_handles):
+            # If no monitor exists for this GPU, we need to save its energy consumed at the start of profiling window.
+            if gpu_index not in self.monitors:
+                # Query NVML energy method for the energy consumed until the start of profiling window.
+                prof_start_energy[gpu_index] = (
+                    pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
                 )
 
-        # Push the profiling start information to the stack
-        self.prof_start_info.append((prof_start_time, prof_start_energy))
+        # Push the profiling start information to the stack.
+        self.prof_start_info.append(
+            ProfilingStartInfo(prof_start_time, prof_start_energy)
+        )
+        self._log("Profiling window pushed.")
 
-    def pop_window(self) -> Tuple[float, List[float]]:
+    def pop_window(self) -> ProfilingResult:
         """Pop one profiling window out of the stack, returns the time consumption and energy consumption for each GPU.
 
         Returns:
-            A tuple `(time_consumed, list_of_energy_consumed_per_gpu)`.
+            An object of `ProflilingResult` that contains time and energy consumption data.
+
+        Raises:
+            RuntimeError: The stack that stores profiling windows is empty. Users should always call `push_window()`
+                before `pop_window()` to make sure the profiling window is set up correctly.
         """
+        # Call cudaSynchronize to make sure this is the iteration boundary.
+        for gpu_index in self.gpu_indices:
+            torch.cuda.synchronize(gpu_index)
+
+        # Get the time at the end of the profiling window.
+        prof_end_time: float = time.monotonic()
+
+        # Check whether there is a profiling window in the stack.
         if not self.prof_start_info:
             raise RuntimeError(
                 "No profiling window exists. Consider calling `push_window` first."
             )
-        prof_start_time, prof_start_energy = self.prof_start_info.pop()
-        prof_end_time = time.monotonic()
-        time_consumed = prof_end_time - prof_start_time
-        energy_consumed: List[float] = [0 for _ in range(len(self.gpu_handles))]
-        for gpu_idx, handle in enumerate(self.gpu_handles):
-            if self.is_newer_arch[gpu_idx]:
-                prof_end_energy = self._millijoules_to_joules(
-                    pynvml.nvmlDeviceGetTotalEnergyConsumption(handle)
-                )
-                energy_consumed[gpu_idx] = prof_end_energy - prof_start_energy[gpu_idx]
-            else:
-                energy_consumed[gpu_idx] = analyze.energy(
-                    self._power_log_path(gpu_idx), prof_start_time, prof_end_time
-                )
 
-        prof_result = (
-            time_consumed,
-            [energy_consumed[gpu_idx] for gpu_idx in range(len(self.gpu_handles))],
+        # Pop out the info at the start of the profiling window, compute the time and energy
+        # consumption for this profiling window.
+        prof_start_info = self.prof_start_info.pop()
+        prof_start_time, prof_start_energy = (
+            prof_start_info.time,
+            prof_start_info.energy,
         )
-        return prof_result
+        time_consumed = prof_end_time - prof_start_time
+        energy_consumed: list[float] = []
+        for gpu_index, gpu_handle in zip(self.gpu_indices, self.gpu_handles):
+            if gpu_index in self.monitors:
+                # For GPUs with older architectures, compute the energy consumption from the power polling data.
+                energy_consumed.append(
+                    analyze.energy(
+                        self._monitor_log_path(gpu_index),
+                        prof_start_time,
+                        prof_end_time,
+                    )
+                )
+            else:
+                # For GPUs with newer architectures, compute the energy consumption as the difference
+                # at the start and end of the profiling window.
+                prof_end_energy = (
+                    pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
+                )
+                energy_consumed.append(prof_end_energy - prof_start_energy[gpu_index])
 
-    def _millijoules_to_joules(self, millijoules: int) -> float:
-        """Convert millijoules to joules.
-
-        Args:
-            millijoules: Energy in millijoules
-
-        Returns:
-            Energy in joules.
-        """
-        return millijoules / 1000.0
+        self._log("Profiling window popped.")
+        return ProfilingResult(time_consumed, energy_consumed)
 
     def _log(
-        self, message: str, gpu_idx: int | None = None, level: int = logging.INFO
+        self, message: str, gpu_index: int | None = None, level: int = logging.INFO
     ) -> None:
         """Print out message with prefix.
 
@@ -219,21 +262,43 @@ class ZeusProfilingService:
             level: The logging level to use. (Default: `logging.INFO`)
         """
         log_prefix = "[ZeusProfilingService]"
-        if gpu_idx is not None:
+        if gpu_index is not None:
             # GPU-level logging
-            gpu_log_prefix = f"[GPU_{gpu_idx}]"
+            gpu_log_prefix = f"[GPU_{gpu_index}]"
             LOG.log(level, "%s %s %s", log_prefix, gpu_log_prefix, message)
         else:
             # Global logging
-            LOG.log(level, "%s %s", log_prefix, message)
+            global_log_prefix = (
+                f"[GPU_{','.join([str(gpu_index) for gpu_index in self.gpu_indices])}]"
+            )
+            LOG.log(level, "%s %s %s", log_prefix, global_log_prefix, message)
 
 
-NVML_DEVICE_ARCH_MAPPING = {
-    pynvml.NVML_DEVICE_ARCH_KEPLER: "KEPLER",
-    pynvml.NVML_DEVICE_ARCH_MAXWELL: "MAXWELL",
-    pynvml.NVML_DEVICE_ARCH_PASCAL: "PASCAL",
-    pynvml.NVML_DEVICE_ARCH_VOLTA: "VOLTA",
-    pynvml.NVML_DEVICE_ARCH_TURING: "TURING",
-    pynvml.NVML_DEVICE_ARCH_AMPERE: "AMPERE",
-    pynvml.NVML_DEVICE_ARCH_UNKNOWN: "UNKNOWN",
-}
+@dataclass
+class ProfilingResult:
+    """
+    Dataclass for the profiling result.
+
+    Args:
+        time: Time elapsed (in seconds) within the profiling window.
+        energy: A list of energy consumption (in Joules) within the profiling window for each GPU.
+    """
+
+    time: float
+    energy: list[float]
+
+
+@dataclass
+class ProfilingStartInfo:
+    """
+    Dataclass for the information at the start of the profiling window.
+
+    Args:
+        time: The value of monotonic clock (in seconds) at the start of the profiling window.
+        energy: A dictionary that maps GPU index to the total energy consumed (in Joules) for
+            each GPU since the driver was last reloaded. Note that this dictionary only stores
+            info for the GPUs with newer architecture (Volta or later).
+    """
+
+    time: float
+    energy: dict[int, float]

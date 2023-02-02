@@ -27,7 +27,7 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 ├── zeus/                # ⚡ Zeus Python package
 │   ├── run/             #    - Tools for running Zeus on real training jobs
 │   ├── policy/          #    - Optimization policies and extension interfaces
-│   ├── profile/         #    - Tools for profiling energy and time
+│   ├── profile/         #    - Tools for profiling energy and time [Will be deprecated]
 │   ├── simulate.py      #    - Tools for trace-driven simulation
 │   ├── util/            #    - Utility functions and classes
 │   ├── analyze.py       #    - Analysis functions for power logs
