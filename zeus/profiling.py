@@ -141,13 +141,15 @@ class ZeusProfilingService:
         """
         return (
             f"{self.monitor_log_dir}/{self.monitor_log_prefix}+gpu{gpu_index}.power.csv"
+            if self.monitor_log_prefix
+            else f"{self.monitor_log_dir}/gpu{gpu_index}.power.csv"
         )
 
     def _start_monitors(self) -> None:
         """Spawn monitor processes for power polling for GPUs with older architecture.
 
         Raises:
-            `RuntimeError`: `self.monitor_path` is not executable when there exists GPUs with
+            `ValueError`: `self.monitor_path` is not executable when there exists GPUs with
                 older architecture and monitors should be spawned for power polling.
         """
         arch_are_old = [

@@ -736,7 +736,7 @@ class ZeusDataLoader(DataLoader):
     @property
     def _monitor_log_prefix(self) -> str:
         """Build the prefix for the power monitor log file."""
-        return f"bs{self.train_batch_size}+e{self.epoch_num}+"
+        return f"bs{self.train_batch_size}+e{self.epoch_num}"
 
     @property
     def _prof_service(self) -> ZeusProfilingService:
