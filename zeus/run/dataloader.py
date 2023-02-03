@@ -396,6 +396,9 @@ class ZeusDataLoader(DataLoader):
         # =======================================================
         # |                         Epoch 1                       ...
         # =======================================================
+        # ^
+        # |
+        # +------- Time/energy accounting for the entire training job (`_prof_window_push`)
         #
         # Initialize variables for profiling
         self.warmup_start_sample = 0
