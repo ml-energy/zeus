@@ -9,4 +9,4 @@ else
 fi
 
 pydocstyle --match-dir='!examples/cifar100/models' zeus capriccio examples
-pylint zeus
+pylint -j 0 zeus
