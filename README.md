@@ -96,7 +96,20 @@ Please consider citing our NSDI’23 paper if you find Zeus to be related to you
     booktitle = {USENIX NSDI},
     year      = {2023}
 }
+
+@article{chase:arxiv23,
+    author        = {Yang, Zhenning and Meng, Luoxi and Chung, Jae-Won and Chowdhury, Mosharaf},
+    journal       = {CoRR},
+    title         = {Chasing Low-Carbon Electricity for Practical and Sustainable {DNN} Training},
+    year          = {2023},
+    month         = {Mar},
+    volume        = {abs/2303.02508},
+    archiveprefix = {arXiv},
+    eprint        = {2303.02508},
+    url           = {https://arxiv.org/abs/2303.02508},
+}
 ```
 
 ## Contact
 Jae-Won Chung (jwnchung@umich.edu)
+Zhenning Yang (znyang@umich.edu)
