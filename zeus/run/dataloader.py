@@ -345,13 +345,17 @@ class ZeusDataLoader(DataLoader):
 
         self.use_carbon_cta = get_env("ZEUS_USE_CARBON", bool, default=True)
         self.carbon_monitor_only = get_env("CARBON_MONITOR_ONLY", bool, default=False)
-        if self.carbon_monitor_only: 
+        if self.carbon_monitor_only:
             print("\n<<< carbon_monitor_only is True >>>\n")
         if self.use_carbon_cta:
-            self.carbon_client = carbon.carbon_monitor(start_step=self.carbon_start_step)
+            self.carbon_client = carbon.CarbonMonitor(
+                start_step=self.carbon_start_step
+            )
             self.ep_energy_log = {}
-            with open('carbon_log/carbon-aware.log', 'w') as log_file:
-                log_file.write('epoch,step_counter,optimal_pl,step_energy,step_carbon_ems,ep_total_energy\n')
+            with open("carbon_log/carbon-aware.log", "w") as log_file:
+                log_file.write(
+                    "epoch,step_counter,optimal_pl,step_energy,step_carbon_ems,ep_total_energy\n"
+                )
 
         # Create ZEUS_LOG_DIR if it does not exist.
         os.makedirs(self.logdir, exist_ok=True)
@@ -1037,22 +1041,33 @@ class ZeusDataLoader(DataLoader):
         # Update counters.
         self.sample_num += 1
         # print(self.num_samples, self.sample_num)
-        if self._is_train and self.use_carbon_cta and (self.carbon_begin or (time.monotonic()-self.carbon_start_time>=self.carbon_interval) or self.sample_num>self.num_samples):
+        if (
+            self._is_train
+            and self.use_carbon_cta
+            and (
+                self.carbon_begin
+                or (time.monotonic() - self.carbon_start_time >= self.carbon_interval)
+                or self.sample_num > self.num_samples
+            )
+        ):
             # get energy
             # try:
             if self.carbon_begin:
                 time.sleep(3)
                 self.carbon_begin = False
             total_ep_energy_consumption = analyze.energy(self._power_log_path(0))
-            if (self.epoch_num not in list(self.ep_energy_log.keys())):
+            if self.epoch_num not in list(self.ep_energy_log.keys()):
                 energy_consumption = total_ep_energy_consumption
                 self.ep_energy_log[self.epoch_num] = [energy_consumption]
             else:
-                energy_consumption = total_ep_energy_consumption - self.ep_energy_log[self.epoch_num][-1]
+                energy_consumption = (
+                    total_ep_energy_consumption - self.ep_energy_log[self.epoch_num][-1]
+                )
                 self.ep_energy_log[self.epoch_num].append(total_ep_energy_consumption)
 
-            total_energy =  0
-            for k, v in self.ep_energy_log.items(): total_energy += v[-1]
+            total_energy = 0
+            for k, v in self.ep_energy_log.items():
+                total_energy += v[-1]
             # time.sleep(5)
             # print(self.ep_energy_log)
             # get carbon hist
@@ -1060,7 +1075,9 @@ class ZeusDataLoader(DataLoader):
             carbon_hist = self.carbon_client.get_hist()
 
             # get carbon emission
-            carbon_emission = carbon.compute_carbon_emissions(energy_consumption, carbon_hist)
+            carbon_emission = carbon.compute_carbon_emissions(
+                energy_consumption, carbon_hist
+            )
 
             if not self.carbon_monitor_only:
                 # get forecast carbon
@@ -1070,7 +1087,9 @@ class ZeusDataLoader(DataLoader):
                 # select new power limit and adjust
                 tput = ZeusDataLoader.train_tput_result
                 power = ZeusDataLoader.train_power_result
-                optimal_pl, cost_map = carbon.carbon_cost(power, tput, self.power_limits, next_carbon, eta_knob=self.eta_knob)
+                optimal_pl, cost_map = carbon.carbon_cost(
+                    power, tput, self.power_limits, next_carbon, eta_knob=self.eta_knob
+                )
                 ZeusDataLoader.optimal_pl = optimal_pl
                 # print("Current optimal_pl:", optimal_pl)
                 # print("self.current_gpu_pl", self.current_gpu_pl)
@@ -1078,10 +1097,18 @@ class ZeusDataLoader(DataLoader):
                 self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
 
             # log cintains both train and eval, sum up the energy consumption at the end of each epoch = total energy consumption
-            with open('carbon_log/carbon-aware.log', 'a') as log_file:
+            with open("carbon_log/carbon-aware.log", "a") as log_file:
                 # log_file.write('ep,step_counter,optimal_pl,step_energy,step_carbon_ems,total_ep_energy,total_energy\n')
-                log_file.write('{},{},{},{},{},{}\n'.format(self.epoch_num, self.carbon_client.step_counter ,self.optimal_pl, energy_consumption, 
-                                                    carbon_emission, total_ep_energy_consumption))
+                log_file.write(
+                    "{},{},{},{},{},{}\n".format(
+                        self.epoch_num,
+                        self.carbon_client.step_counter,
+                        self.optimal_pl,
+                        energy_consumption,
+                        carbon_emission,
+                        total_ep_energy_consumption,
+                    )
+                )
 
             # update step
             self.carbon_client.update_steps(1)
