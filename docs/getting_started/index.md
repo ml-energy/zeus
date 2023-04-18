@@ -8,6 +8,11 @@ Zeus automatically tunes the **batch size** and **GPU power limit** of a recurri
 !!! Info
     Zeus currently supports **single GPU training** and **single node data parallel training**. Support for distributed data parallel training will be added soon.
 
+## How it works
+
+Zeus in action, integrated with Stable Diffusion fine-tuning:
+<iframe width="560" height="315" src="https://www.youtube.com/embed/MzlF5XNRSJY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+
 ## Prerequisites
 
 1. [Set up your environment](environment.md).
