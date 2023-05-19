@@ -1,0 +1,49 @@
+apiVersion: "kubeflow.org/v1"
+kind: PyTorchJob
+metadata:
+  name: cifar100
+  namespace: kubeflow
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+            - name: pytorch
+              image: symbioticlab/zeus:latest
+              imagePullPolicy: Always
+              command:
+                - "python"
+                - "/workspace/zeus/examples/cifar100/train.py"
+                - "--zeus"
+                - "--arch"
+                - "shufflenetv2"
+                - "--epochs"
+                - "100"
+                - "--batch_size"
+                - "128"
+              env:
+                - name: ZEUS_TARGET_METRIC
+                  value: "0.50"
+                - name: ZEUS_LOG_DIR
+                  value: "zeus_log"
+                - name: ZEUS_JOB_ID
+                  value: "zeus"
+                - name: ZEUS_COST_THRESH
+                  value: "inf"
+                - name: ZEUS_ETA_KNOB
+                  value: "0.5"
+                - name: ZEUS_MONITOR_PATH
+                  value: "/workspace/zeus/zeus_monitor/zeus_monitor"
+                - name: ZEUS_PROFILE_PARAMS
+                  value: "10,40"
+                - name: ZEUS_USE_OPTIMAL_PL
+                  value: "True"
+              securityContext:
+                capabilities:
+                  add: ["SYS_ADMIN"]
+              resources:
+                limits:
+                  nvidia.com/gpu: 1 # requesting 1 GPU
