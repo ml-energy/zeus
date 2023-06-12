@@ -15,6 +15,7 @@
 """Utilities for logging."""
 
 import sys
+import logging
 from pathlib import Path
 
 
@@ -23,7 +24,7 @@ class FileAndConsole:
 
     def __init__(self, filepath: Path) -> None:
         """Initialize the object."""
-        self.file = open(filepath, "w")
+        self.file = open(filepath, "w")  # ruff: noqa: SIM115
         self.stdout = sys.stdout
 
     def write(self, message):
@@ -37,3 +38,16 @@ class FileAndConsole:
         """Flush both log file and stdout."""
         self.file.flush()
         self.stdout.flush()
+
+
+def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+    """Get a logger with the given name with some formatting configs."""
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(name)s](%(filename)s:%(lineno)d) %(message)s"
+    )
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger

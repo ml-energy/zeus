@@ -29,6 +29,7 @@ from zeus.policy import BatchSizeOptimizer, PowerLimitOptimizer
 from zeus.util import zeus_cost
 
 
+# ruff: noqa: PLR0912, PLR0915
 class Simulator:
     """Simulates job execution optimized by Zeus."""
 

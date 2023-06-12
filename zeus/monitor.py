@@ -12,227 +12,285 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Helpers for using the Zeus monitor inside training scripts for energy profiling."""
+"""Measure the GPU time and energy consumption of a block of code."""
 
 from __future__ import annotations
 
+import os
 import time
-import atexit
+import shutil
 import signal
+import atexit
+import logging
 import tempfile
 import subprocess
-from typing import Generator
-from contextlib import contextmanager
+from functools import cached_property, lru_cache
+from dataclasses import dataclass
 
-import torch
+import pynvml
 
-from zeus.analyze import energy as compute_energy
+from zeus import analyze
+from zeus.util.framework import cuda_sync
+from zeus.util.logging import get_logger
 
 
-class ZeusMonitorContext:
-    """Monitors the energy and time consumption inside a training loop.
+@dataclass
+class Measurement:
+    """Measurement result of one window.
 
-    Skip the first `skip_steps` steps and profile for the next `profile_steps`. Does
-    nothing after that, before you call [`reset`][zeus.monitor.ZeusMonitorContext.reset].
+    Attributes:
+        time: Time elapsed (in seconds) during the measurement window.
+        energy: Maps GPU indices to the energy consumed (in Joules) during the
+            measurement window.
+    """
 
-    You can check whether profiling is done (i.e., `skip_steps + profile_steps` passed)
-    through [`is_done`][zeus.monitor.ZeusMonitorContext.is_done] and query results through
-    [`total_energy`][zeus.monitor.ZeusMonitorContext.total_energy],
-    [`avg_energy`][zeus.monitor.ZeusMonitorContext.avg_energy],
-    [`total_time`][zeus.monitor.ZeusMonitorContext.total_time], and
-    [`avg_time`][zeus.monitor.ZeusMonitorContext.avg_time].
+    time: float
+    energy: dict[int, float]
 
-    ## Integration example
+    @cached_property
+    def total_energy(self) -> float:
+        """Total energy consumed (in Joules) during the measurement window."""
+        return sum(self.energy.values())
+
+
+class ZeusMonitor:
+    """Measure the GPU energy and time consumption of a block of code.
+
+    Works for multi-GPU, heterogeneous GPU types, and any DL framework.
+
+    You can mark the beginning and end of a measurement window, during which the GPU
+    energy and time consumed will be recorded. Multiple concurrent measurement windows
+    are supported.
+
+    ## Integrated Example
 
     ```python
-    zeus_ctx = zeus.monitor.ZeusMonitorContext(skip_steps=10, profile_steps=10)
+    from zeus.monitor import ZeusMontior
 
-    for step, (x, y) in enumerate(train_dataloader):
-        print(f"Training step {step}.")
+    # Time/Energy measurements for four GPUs will begin and end at the same time.
+    gpu_indices = [0, 1, 2, 3]
+    monitor = ZeusMonitor(gpu_indices)
 
-        # Wrap the code range of one training step.
-        # zeus_ctx will ignore the first 10 steps and measure the next 10 steps.
-        with zeus_ctx.step():
-            training_step(x, y)
+    # Mark the beginning of a measurement window. You can use any string
+    # as the window name, but make sure it's unique.
+    monitor.begin_window("entire_training")
 
-        # An alternative way if you don't want to use context managers.
-        zeus_ctx.start_step()
-        training_step(x, y)
-        zeus_ctx.finish_step()
+    # Actual work
+    training(x, y)
 
-        # Check if 20 steps passed and query results.
-        if zeus_ctx.is_done:
-            print(
-                f"{zeus_ctx.profile_steps} training steps "
-                f"consumed {zeus_ctx.total_energy} Joules in {zeus_ctx.total_time} seconds."
-            )
-            zeus_ctx.reset()
+    # Mark the end of a measurement window and retrieve the measurment result.
+    result = monitor.end_window("entire_training")
+
+    # Print the measurement result.
+    time_consumed, energy_consumed = prof_result.time, prof_result.energy
+    print(f"Training took {time_consumed} seconds.")
+    for gpu_idx, gpu_energy in zip(gpu_indices, energy_consumed):
+        print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
     ```
     """
 
     def __init__(
         self,
-        skip_steps: int = 10,
-        profile_steps: int = 10,
-        device_id: int = 0,
-        zeus_monitor_path: str = "zeus_monitor",
-        zeus_monitor_sleep_ms: int = 0,
-        zeus_monitor_log_dir: str | None = None,
+        gpu_indices: list[int] | None = None,
+        monitor_exec: str = "zeus_monitor",
     ) -> None:
-        """Create a Zeus monitor context.
+        """Instantiate the monitor.
+
+        For Volta or newer GPUs, energy consumption is measured very cheaply with the
+        `nvmlDeviceGetTotalEnergyConsumption` API. Otherwise, the energy API is not
+        supported. Thus, the Zeus monitor binary is used to poll `nvmlDeviceGetPowerUsage`
+        and write to a temporary CSV file, which is then integrated over time to compute
+        energy consumption.
 
         Args:
-            skip_steps: The number of steps to skip when profiling energy consumption.
-            profile_steps: The number of steps to profile and average over for energy consumption.
-            device_id: CUDA device ID to run the monitor for.
-            zeus_monitor_path: `argv[0]` to use when spawning the Zeus monitor.
-            zeus_monitor_sleep_ms: How long the Zeus monitor should sleep after sampling power.
-            zeus_monitor_log_dir: The directory to put the monitor log file. A temporary file is
-                used if not specified.
+            gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurement
+                will begin and end at the same time for these GPUs (i.e., synchronized).
+                If None, all the GPUs available will be used (while respecting the
+                `CUDA_VISIBLE_DEVICES` environment variable). (Default: `None`)
+            monitor_exec: Zeus monitor executable. (Default: `"zeus_monitor"`)
         """
-        # Save arguments.
-        self.skip_steps = skip_steps
-        self.profile_steps = profile_steps
-        self.device_id = device_id
+        # Initialize NVML.
+        pynvml.nvmlInit()
 
-        # Spawn the Zeus monitor.
-        if zeus_monitor_log_dir:
-            self._power_csv = f"{zeus_monitor_log_dir}/gpu{self.device_id}.power.csv"
-        else:
-            self._power_csv = tempfile.mkstemp(
-                suffix=f"+gpu{self.device_id}.power.csv"
-            )[1]
-        self._monitor = subprocess.Popen(
-            args=[
-                zeus_monitor_path,
-                self._power_csv,
-                "0",
-                str(zeus_monitor_sleep_ms),
-                str(self.device_id),
-            ],
-            stdin=subprocess.DEVNULL,
-        )
-        self._time_origin = time.monotonic()
+        # Initialize logger.
+        self.logger = get_logger(type(self).__name__)
 
-        # Make sure the monitor is eventually stopped.
+        # If `gpu_indices` is None, use all the GPUs available.
+        if gpu_indices is None:
+            # NVML is not aware of the `CUDA_VISIBLE_DEVICES` environment variable,
+            # so we need to manually check whether it's set.
+            cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+            if cuda_visible_devices is not None:
+                gpu_indices = [int(idx) for idx in cuda_visible_devices.split(",")]
+            else:
+                gpu_indices = list(range(pynvml.nvmlDeviceGetCount()))
+
+        # Save all the GPU handles.
+        self.gpu_handles: dict[int, pynvml.c_nvmlDevice_t] = {}
+        for gpu_index in gpu_indices:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+            self.gpu_handles[gpu_index] = handle
+
+        # A dictionary that maps the string keys of active measurement windows to
+        # the state of the measurement window. Each element in the dictionary is a tuple of:
+        #     1) Time elapsed at the beginning of this window.
+        #     2) Total energy consumed by each >= Volta GPU at the beginning of this window.
+        self.measurement_states: dict[str, tuple[float, dict[int, float]]] = {}
+
+        # Shutdown NVML and kill the monitors when the training script exits.
+        # The exit hook is a no-op when no monitors are running, so we can register it
+        # before starting any monitors.
         def exit_hook():
-            self._monitor.send_signal(signal.SIGINT)
-            time.sleep(2.0)
-            self._monitor.kill()
+            # Shutdown NVML.
+            pynvml.nvmlShutdown()
+            self._stop_monitors()
 
         atexit.register(exit_hook)
 
-        # Set internal profiling states.
-        self._started_steps: int = 0
-        self._finished_steps: int = 0
-        self._profile_start_times: list[float] = []
-        self._profile_end_times: list[float] = []
-        self._metric_cache: dict[str, float] = {}
+        # Start monitors that poll power for older architecture GPUs.
+        self.monitors: dict[int, subprocess.Popen] = {}
+        self._start_monitors(monitor_exec)
 
-    def start_step(self) -> None:
-        """Mark the beginning of one step."""
-        self._started_steps += 1
-        if (
-            self.skip_steps
-            < self._started_steps
-            <= self.skip_steps + self.profile_steps
-        ):
-            torch.cuda.synchronize()
-            current_time = time.monotonic()
-            self._profile_start_times.append(current_time - self._time_origin)
+    @lru_cache
+    def _monitor_log_path(self, gpu_index: int) -> str:
+        """Get the path of the monitor log file for the given GPU index."""
+        return os.path.join(self.monitor_log_dir, f"gpu{gpu_index}.power.csv")
 
-    def finish_step(self) -> None:
-        """Mark the end of one step."""
-        self._finished_steps += 1
-        if (
-            self.skip_steps
-            < self._finished_steps
-            <= self.skip_steps + self.profile_steps
-        ):
-            torch.cuda.synchronize()
-            current_time = time.monotonic()
-            self._profile_end_times.append(current_time - self._time_origin)
+    def _start_monitors(self, monitor_exec: str) -> None:
+        """Spawn monitor processes for power polling for GPUs with older architecture.
 
-    @contextmanager
-    def step(self) -> Generator[None, None, None]:
-        """Wrap one training step to mark start and finish times."""
-        try:
-            self.start_step()
-            yield
-        finally:
-            self.finish_step()
+        Raises:
+            `ValueError`: If `monitor_path` is not executable when there exists GPUs with
+                older architecture and monitors should be spawned for power polling.
+        """
+        old_arch_flags = [
+            not self._is_new_arch(gpu_index) for gpu_index in self.gpu_handles
+        ]
+        # At least one GPU has an old architecture and we need to spawn the Zeus monitor
+        # for that GPU.
+        if any(old_arch_flags):
+            # Check whether the monitor path is good.
+            if not shutil.which(monitor_exec):
+                raise ValueError(f"'{monitor_exec}' is not executable")
+            # Create a temporary directory.
+            self.monitor_log_dir = tempfile.mkdtemp()
 
-    @property
-    def is_done(self) -> bool:
-        """Return whether the specified profiling steps are done."""
-        if self._started_steps != self._finished_steps:
-            raise RuntimeError(
-                "`is_done` should be called outside of the code range marked as a 'step'."
-            )
-        return self._finished_steps >= self.skip_steps + self.profile_steps
+        # Capture the time when we started the monitors.
+        self.monitor_start_time = time.monotonic()
 
-    @property
-    def total_energy(self) -> float:
-        """Return the total energy consumption of `profile_steps` steps."""
-        if not self.is_done:
-            raise RuntimeError("Metrics are accessible only after profiling is done.")
-        try:
-            return self._metric_cache["total_energy"]
-        except KeyError:
-            metric = sum(
-                compute_energy(self._power_csv, start=start, end=end)
-                for start, end in zip(
-                    self._profile_start_times, self._profile_end_times
+        # Spawn monitor process when GPU has older architecture.
+        for gpu_index, arch_is_old in zip(self.gpu_handles, old_arch_flags):
+            if arch_is_old:
+                log_path = self._monitor_log_path(gpu_index)
+                # 10 Hz (100 ms sleep) polling should be enough.
+                monitor = subprocess.Popen(
+                    [monitor_exec, log_path, "0", "100", str(gpu_index)],
                 )
-            )
-            self._metric_cache["total_energy"] = metric
-            return metric
+                # Save the mapping from `gpu_index` to monitor.
+                self.monitors[gpu_index] = monitor
+                self._log("Zeus monitor started.", gpu_index)
 
-    @property
-    def avg_energy(self) -> float:
-        """Return the average energy consumption over `profiler_steps` steps."""
-        if not self.is_done:
-            raise RuntimeError("Metrics are accessible only after profiling is done.")
-        try:
-            return self._metric_cache["avg_energy"]
-        except KeyError:
-            metric = self.total_energy / self.profile_steps
-            self._metric_cache["avg_energy"] = metric
-            return metric
+    def _stop_monitors(self) -> None:
+        """Kill the power monitor subprocess."""
+        for monitor in self.monitors.values():
+            monitor.send_signal(signal.SIGINT)
+        for gpu_index, monitor in self.monitors.items():
+            monitor.wait(timeout=1.0)
+            monitor.kill()
+            self._log("Zeus monitor stopped.", gpu_index)
 
-    @property
-    def total_time(self) -> float:
-        """Return the total time consumption of `profile_steps` steps."""
-        if not self.is_done:
-            raise RuntimeError("Metrics are accessible only after profiling is done.")
-        try:
-            return self._metric_cache["total_time"]
-        except KeyError:
-            metric = sum(
-                end - start
-                for start, end in zip(
-                    self._profile_start_times, self._profile_end_times
+    @lru_cache
+    def _is_new_arch(self, gpu: int) -> bool:
+        """Check whether the given GPU is Volta or newer."""
+        gpu_handle = self.gpu_handles[gpu]
+        return (
+            pynvml.nvmlDeviceGetArchitecture(gpu_handle)
+            >= pynvml.NVML_DEVICE_ARCH_VOLTA
+        )
+
+    def begin_window(self, key: str, sync_cuda: bool = True) -> None:
+        """Begin a new measurement window.
+
+        Args:
+            key: Unique name of the measurement window.
+            sync_cuda: Whether to synchronize CUDA before starting the measurement window.
+        """
+        # Make sure the key is unique.
+        if key in self.measurement_states:
+            raise ValueError(f"Measurement window '{key}' already exists")
+
+        # Call cudaSynchronize to make sure we freeze at the right time.
+        if sync_cuda:
+            for gpu_index in self.gpu_handles:
+                cuda_sync(gpu_index)
+
+        # Freeze the start time of the profiling window.
+        timestamp: float = time.monotonic()
+        energy_state: dict[int, float] = {}
+        for gpu_index, gpu_handle in self.gpu_handles.items():
+            # Query energy directly if the GPU has newer architecture.
+            # Otherwise, the Zeus power monitor is running in the background to
+            # collect power consumption, so we just need to read the log file later.
+            if self._is_new_arch(gpu_index):
+                energy_state[gpu_index] = (
+                    pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
                 )
-            )
-            self._metric_cache["total_time"] = metric
-            return metric
 
-    @property
-    def avg_time(self) -> float:
-        """Return the average time consumption over `profiler_steps` steps."""
-        if not self.is_done:
-            raise RuntimeError("Metrics are accessible only after profiling is done.")
+        # Add measurement state to dictionary.
+        self.measurement_states[key] = (timestamp, energy_state)
+        self._log(f"Measurement window '{key}' started.")
+
+    def end_window(self, key: str, sync_cuda: bool = True) -> Measurement:
+        """End a measurement window and return the time and energy consumption.
+
+        Args:
+            key: Name of an active measurement window.
+            sync_cuda: Whether to synchronize CUDA before ending the measurement window.
+                (default: `True`)
+        """
+        # Retrieve the start time and energy consumption of this window.
         try:
-            return self._metric_cache["avg_time"]
+            start_time, start_energy = self.measurement_states.pop(key)
         except KeyError:
-            metric = self.total_time / self.profile_steps
-            self._metric_cache["avg_time"] = metric
-            return metric
+            raise ValueError(f"Measurement window '{key}' does not exist") from None
 
-    def reset(self) -> None:
-        """Reset internal profile states."""
-        self._started_steps = 0
-        self._finished_steps = 0
-        self._profile_start_times = []
-        self._profile_end_times = []
-        self._metric_cache = {}
+        # Call cudaSynchronize to make sure we freeze at the right time.
+        if sync_cuda:
+            for gpu_index in self.gpu_handles:
+                cuda_sync(gpu_index)
+
+        end_time: float = time.monotonic()
+        time_consumption: float = end_time - start_time
+        energy_consumption: dict[int, float] = {}
+        for gpu_index, gpu_handle in self.gpu_handles.items():
+            # Query energy directly if the GPU has newer architecture.
+            if self._is_new_arch(gpu_index):
+                end_energy = (
+                    pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
+                )
+                energy_consumption[gpu_index] = end_energy - start_energy[gpu_index]
+            # Otherwise, read the log file to compute energy consumption.
+            else:
+                energy_consumption[gpu_index] = analyze.energy(
+                    self._monitor_log_path(gpu_index),
+                    start_time - self.monitor_start_time,
+                    end_time - self.monitor_start_time,
+                )
+
+        self._log(f"Measurement window '{key}' ended.")
+        return Measurement(time_consumption, energy_consumption)
+
+    def _log(
+        self, message: str, gpu_index: int | None = None, level: int = logging.INFO
+    ) -> None:
+        """Print out message with prefix.
+
+        Args:
+            message: The message to log out.
+            gpu_index: The index of GPU for GPU-level logging. Should be `None`
+                when logging global information. (Default: `None`)
+            level: The logging level to use. (Default: `logging.INFO`)
+        """
+        if gpu_index is not None:
+            message = f"[GPU {gpu_index}] {message}"
+        self.logger.log(level, message)

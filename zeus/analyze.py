@@ -44,6 +44,7 @@ class HistoryEntry:
     time: float
 
 
+# ruff: noqa: PLR2004
 def energy(
     logfile: Path | str,
     start: float | None = None,

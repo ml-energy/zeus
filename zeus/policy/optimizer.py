@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Implementations for various optimization policies.
+"""Implementations of various optimization policies.
 
 [`JITPowerLimitOptimizer`][zeus.policy.optimizer.JITPowerLimitOptimizer] and
 [`PruningGTSBatchSizeOptimizer`][zeus.policy.optimizer.PruningGTSBatchSizeOptimizer]
@@ -22,7 +21,6 @@ are the implementations used in Zeus's publication.
 
 from __future__ import annotations
 
-import unittest
 from collections import defaultdict
 from typing import Generator
 
@@ -36,6 +34,7 @@ from zeus.policy.mab import GaussianTS
 class GTSBatchSizeOptimizer(BatchSizeOptimizer):
     """One Gaussian Thompson Sampling MAB for each job."""
 
+    # ruff: noqa: D417
     def __init__(
         self,
         learn_reward_precision: bool,
@@ -138,10 +137,9 @@ class GTSBatchSizeOptimizer(BatchSizeOptimizer):
             #       because sampling from an infinite precision Gaussian distribution
             #       always returns the mean (the observation), and it will hamper
             #       exploration in the early stage.
-            if variance == 0.0:
-                precision = np.inf
-            else:
-                precision = np.reciprocal(variance)
+            precision = (
+                np.inf if variance == 0.0 else np.reciprocal(variance)
+            )  # ruff: noqa: PLR2004
             mab = self.mabs[job]
             mab.arm_reward_prec[batch_size] = precision
             mab.fit_arm(batch_size, arm_rewards, reset=True)
@@ -266,108 +264,6 @@ class PruningExploreManager:
         """
         none = self.gen.send((batch_size, cost, reached))
         assert none is None, "Call order may have been wrong."
-
-
-class TestPruningExploreManager(unittest.TestCase):
-    """Unit test class for pruning exploration."""
-
-    batch_sizes: list[int] = [8, 16, 32, 64, 128, 256]
-
-    def run_exploration(
-        self,
-        manager: PruningExploreManager,
-        exploration: list[tuple[int, float, bool]],
-        result: list[int],
-    ) -> None:
-        """Drive the pruning explore manager and check results."""
-        for bs, cost, reached in exploration:
-            self.assertEqual(manager.next_batch_size(), bs)
-            manager.report_batch_size_result(bs, cost, reached)
-        with self.assertRaises(StopIteration) as raised:
-            manager.next_batch_size()
-        self.assertEqual(raised.exception.value, result)
-
-    def test_normal(self):
-        """Test a typical case."""
-        manager = PruningExploreManager(self.batch_sizes, 128)
-        exploration = [
-            (128, 10.0, True),
-            (64, 9.0, True),
-            (32, 8.0, True),
-            (16, 12.0, True),
-            (8, 21.0, False),
-            (256, 15.0, True),
-            (32, 8.0, True),
-            (16, 12.0, False),
-            (64, 9.0, True),
-            (128, 10.0, True),
-            (256, 17.0, False),
-        ]
-        result = [32, 64, 128]
-        self.run_exploration(manager, exploration, result)
-
-    def test_default_is_largest(self):
-        """Test the case when the default batch size is the largest one."""
-        manager = PruningExploreManager(self.batch_sizes, 256)
-        exploration = [
-            (256, 7.0, True),
-            (128, 8.0, True),
-            (64, 9.0, True),
-            (32, 13.0, True),
-            (16, 22.0, False),
-            (256, 8.0, True),
-            (128, 8.5, True),
-            (64, 9.0, True),
-            (32, 12.0, True),
-        ]
-        result = [32, 64, 128, 256]
-        self.run_exploration(manager, exploration, result)
-
-    def test_default_is_smallest(self):
-        """Test the case when the default batch size is the smallest one."""
-        manager = PruningExploreManager(self.batch_sizes, 8)
-        exploration = [
-            (8, 10.0, True),
-            (16, 17.0, True),
-            (32, 20.0, True),
-            (64, 25.0, False),
-            (8, 10.0, True),
-            (16, 21.0, False),
-        ]
-        result = [8]
-        self.run_exploration(manager, exploration, result)
-
-    def test_all_converge(self):
-        """Test the case when every batch size converges."""
-        manager = PruningExploreManager(self.batch_sizes, 64)
-        exploration = [
-            (64, 10.0, True),
-            (32, 8.0, True),
-            (16, 12.0, True),
-            (8, 15.0, True),
-            (128, 12.0, True),
-            (256, 13.0, True),
-            (32, 7.0, True),
-            (16, 10.0, True),
-            (8, 15.0, True),
-            (64, 10.0, True),
-            (128, 12.0, True),
-            (256, 13.0, True),
-        ]
-        result = self.batch_sizes
-        self.run_exploration(manager, exploration, result)
-
-    def test_every_bs_is_bs(self):
-        """Test the case when every batch size other than the default fail to converge."""
-        manager = PruningExploreManager(self.batch_sizes, 64)
-        exploration = [
-            (64, 10.0, True),
-            (32, 22.0, False),
-            (128, 25.0, False),
-            (64, 9.0, True),
-        ]
-        result = [64]
-        self.run_exploration(manager, exploration, result)
 
 
 class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
@@ -591,7 +487,3 @@ class JITPowerLimitOptimizer(PowerLimitOptimizer):
         if prev_best_cost is None or prev_best_cost > cost:
             self.best_pl[job][batch_size] = power_limit
             self.best_cost[job][batch_size] = cost
-
-
-if __name__ == "__main__":
-    unittest.main()

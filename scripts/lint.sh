@@ -8,5 +8,4 @@ else
   black --check --exclude examples/cifar100/models zeus capriccio examples
 fi
 
-pydocstyle --match-dir='!examples/cifar100/models' zeus capriccio examples
-pylint -j 0 zeus
+ruff zeus

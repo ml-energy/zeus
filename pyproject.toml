@@ -1,0 +1,29 @@
+# Ruff
+[tool.ruff]
+select = [
+  "E",   # pycodestyle error
+  "F",   # pyflakes
+  "D",   # pydocstyle
+  "PL",  # pylint
+  "N",   # pep8-naming
+  "B",   # flake8-bugbear (detects likely bugs)
+  "G",   # flake8-logging-format (complains about logging)
+  "SIM", # flake8-simplify (suggests code simplifications)
+  "RUF", # Ruff-introduced misc rules
+]
+ignore = [
+  "PLW0603",  # Global statement
+  "B019",     # Usage of functools.lru_cache
+  "PLR0913",  # Too many function arguments
+  "B905",     # zip strict argument
+]
+line-length = 120
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.ruff.per-file-ignores]
+"**/__init__.py" = ["F401", "F403"]
+
+[tool.pytest.ini_options]
+addopts = "--numprocesses auto"

@@ -11,7 +11,6 @@ Parts relevant to using Capriccio are also marked with `# CAPRICCIO`.
     - [Running Zeus for a single job](#running-zeus-for-a-single-job)
     - [Running Zeus over multiple recurrences](#running-zeus-over-multiple-recurrences)
 - Extra
-    - [Profiling power and time](#profiling-power-and-time)
     - [Fine-tuning a Huggingface language model on one slice](#fine-tuning-a-huggingface-language-model-on-one-slice)
 
 ## Running Zeus for a single job
@@ -83,43 +82,6 @@ python run_zeus.py \
     --max_epochs 10 \
     --window_size 10
 ```
-
-
-## Profiling power and time
-
-You can use Zeus's [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) to profile the power and time consumption of training.
-
-### Dependencies
-
-1. Generate Capriccio, following the instructions in [Capriccio's README.md](../../capriccio/).
-1. If you're not using our [Docker image](https://ml.energy/zeus/getting_started/environment/), install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Install python dependencies for this example:
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-### Example command
-
-[`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) interfaces with the outside world via environment variables.
-Check out its [class reference](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) for details.
-
-Only `ZEUS_LOG_PREFIX` is required; other environment variables below show their default values when omitted.
-
-```bash
-export ZEUS_LOG_PREFIX="capriccio"              # Filename prefix for power and time log files
-export ZEUS_MONITOR_SLEEP_MS="100"              # Milliseconds to sleep after sampling power
-export ZEUS_MONITOR_PATH="/workspace/zeus/zeus_monitor/zeus_monitor"  # Path to power monitor
-
-python train.py \
-    --profile \
-    --data_dir ../../capriccio/data \
-    --slice_number 9 \
-    --model_name_or_path bert-base-uncased \
-    --batch_size 128
-```
-
-A CSV file of timestamped momentary power draw of the first GPU (index 0) will be written to `capriccio+gpu0.power.csv`.
-At the same time, a CSV file with headers epoch number, split (train or eval), and time consumption in seconds will be written to `capriccio.time.csv`.
 
 
 ## Fine-tuning a Huggingface language model on one slice

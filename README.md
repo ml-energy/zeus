@@ -27,12 +27,10 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 ├── zeus/                # ⚡ Zeus Python package
 │   ├── run/             #    - Tools for running Zeus on real training jobs
 │   ├── policy/          #    - Optimization policies and extension interfaces
-│   ├── profile/         #    - Tools for profiling energy and time [Will be deprecated]
-│   ├── simulate.py      #    - Tools for trace-driven simulation
 │   ├── util/            #    - Utility functions and classes
+│   ├── simulate.py      #    - Tools for trace-driven simulation
+│   ├── monitor.py       #    - `ZeusMonitor`: Measure GPU time and energy of any code block
 │   ├── analyze.py       #    - Analysis functions for power logs
-│   ├── monitor.py       #    - Class for profiling energy inside training scripts
-│   ├── profiling.py     #    - Class for profiling energy for an arbitrary profilng window inside training scripts
 │   └── job.py           #    - Class for job specification
 │
 ├── zeus_monitor/        # 🔌 GPU power monitor
@@ -41,6 +39,7 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 │
 ├── examples/            # 🛠️ Examples of integrating Zeus
 │   ├── capriccio/       #    - Integrating with Huggingface and Capriccio
+│   ├── imagenet/        #    - Integrating with torchvision and ImageNet
 │   ├── cifar100/        #    - Integrating with torchvision and CIFAR100
 │   └── trace_driven/    #    - Using the Zeus trace-driven simulator
 │

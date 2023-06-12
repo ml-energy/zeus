@@ -86,6 +86,7 @@ class GaussianTS:
         Args:
             decisions: A list of arms chosen.
             rewards: A list of rewards that resulted from choosing the arms in `decisions`.
+            reset: Whether to reset all arms.
         """
         decisions_arr = np.array(decisions)
         rewards_arr = np.array(rewards)
@@ -169,6 +170,9 @@ class GaussianTS:
             mean = self.arm_param_mean[arm]
             prec = self.arm_param_prec[arm]
             if prec == self.prior_prec:
-                warnings.warn(f"predict_expectations called when arm '{arm}' is cold.")
+                warnings.warn(
+                    f"predict_expectations called when arm '{arm}' is cold.",
+                    stacklevel=1,
+                )
             expectations[arm] = self.rng.normal(mean, np.sqrt(np.reciprocal(prec)))
         return expectations

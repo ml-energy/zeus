@@ -19,6 +19,35 @@ Zeus in action, integrated with Stable Diffusion fine-tuning:
 2. [Install and build Zeus components](installing_and_building.md).
 
 
+## Just measuring time and energy
+
+You can use the [`ZeusMonitor`][zeus.monitor.ZeusMonitor] to simply measure the GPU time and energy consumption of arbitrary Python code blocks.
+
+```python
+from zeus.monitor import ZeusMonitor
+
+# All GPUs are measured simultaneously if `gpu_indices` is not given.
+monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
+
+for epoch in range(100):
+    monitor.begin_window("epoch")
+
+    measurements = []
+    for x, y in train_loader:
+        monitor.begin_window("step")
+        train_one_step(x, y)
+        result = monitor.end_window("step")
+        measurements.append(result)
+
+    eres = monitor.end_window("epoch")
+    print(f"Epoch {epoch} consumed {eres.time} s and {eres.total_energy} J.")
+
+    avg_time = sum(map(lambda m: m.time, measurements)) / len(measurements)
+    avg_energy = sum(map(lambda m: m.total_energy, measurements)) / len(measurements)
+    print(f"One step took {avg_time} s and {avg_energy} J on average.")
+```
+
+
 ## Non-recurring jobs
 
 The GPU power limit can be profiled and optimized quickly for any training job.

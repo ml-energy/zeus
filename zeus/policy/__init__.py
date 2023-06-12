@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Optimization policies for Zeus.
+"""Optimization policies for Zeus.
 
 [`PowerLimitOptimizer`][zeus.policy.interface.PowerLimitOptimizer] and
 [`BatchSizeOptimizer`][zeus.policy.interface.BatchSizeOptimizer] are

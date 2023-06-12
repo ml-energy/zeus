@@ -24,7 +24,6 @@ from torchvision import datasets, transforms
 
 # ZEUS
 from zeus.run import ZeusDataLoader
-from zeus.profile.torch import ProfileDataLoader
 
 from models import all_models, get_model
 
@@ -54,9 +53,6 @@ def parse_args() -> argparse.Namespace:
     runtime_mode = parser.add_mutually_exclusive_group()
     runtime_mode.add_argument(
         "--zeus", action="store_true", help="Whether to run Zeus."
-    )
-    runtime_mode.add_argument(
-        "--profile", action="store_true", help="Whether to just profile power."
     )
 
     return parser.parse_args()
@@ -119,21 +115,6 @@ def main(args: argparse.Namespace) -> None:
         )
         val_loader = ZeusDataLoader(
             val_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-            num_workers=args.num_workers,
-        )
-    elif args.profile:
-        train_loader = ProfileDataLoader(
-            train_dataset,
-            split="train",
-            batch_size=args.batch_size,
-            shuffle=True,
-            num_workers=args.num_workers,
-        )
-        val_loader = ProfileDataLoader(
-            val_dataset,
-            split="eval",
             batch_size=args.batch_size,
             shuffle=False,
             num_workers=args.num_workers,

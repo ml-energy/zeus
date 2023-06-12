@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Zeus is an energy optimization framework for DNN training.
+"""Zeus is an energy optimization framework for DNN training.
 
 Modules:
 

@@ -1,4 +1,5 @@
 name: Check homepage build
+
 on:
   pull_request:
     paths:
@@ -7,6 +8,11 @@ on:
       - 'mkdocs.yml'
       - 'Dockerfile'
       - '.github/workflows/deploy_homepage.yaml'
+
+# Jobs initiated by previous pushes get cancelled by a new push.
+concurrency:
+  group: ${{ github.ref }}-check-homepage-build
+  cancel-in-progress: true
 
 jobs:
   deploy:

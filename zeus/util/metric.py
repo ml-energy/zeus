@@ -36,7 +36,7 @@ def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int) -> fl
     return eta_knob * energy + (1 - eta_knob) * max_power * time
 
 
-class ZeusCostThresholdExceededException(Exception):
+class ZeusCostThresholdExceededError(Exception):
     """Raised when the predicted cost of the next epoch exceeds the cost threshold.
 
     This exception is used for terminating all the processes when doing data

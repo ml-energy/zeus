@@ -12,7 +12,6 @@ You can search for `# ZEUS` in [`train.py`](train.py) for noteworthy places that
     - [Running Zeus for a single job](#running-zeus-for-a-single-job)
     - [Running Zeus over multiple recurrences](#running-zeus-over-multiple-recurrences)
 - Extra
-    - [Profiling power and time](#profiling-power-and-time)
     - [Just training a vision model on CIFAR100](#just-training-a-vision-model-on-cifar100)
 
 
@@ -84,43 +83,6 @@ python run_zeus.py \
     --target_metric 0.50 \
     --max_epochs 100
 ```
-
-
-## Profiling power and time
-
-You can use Zeus's [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) to profile the power and time consumption of training.
-
-### Dependencies
-
-All packages are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
-
-1. Install `zeus` and build the power monitor, following [Installing and Building](https://ml.energy/zeus/getting_started/installing_and_building/).
-1. Install `torchvision`:
-    ```sh
-    conda install -c pytorch torchvision==0.11.2
-    ```
-
-### Example command
-
-[`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) interfaces with the outside world via environment variables.
-Check out its [class reference](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader) for details.
-
-Only `ZEUS_LOG_PREFIX` is required; other environment variables below show their default values when omitted.
-
-```bash
-export ZEUS_LOG_PREFIX="cifar100+shufflenetv2"  # Filename prefix for power and time log files
-export ZEUS_MONITOR_SLEEP_MS="100"              # Milliseconds to sleep after sampling power
-export ZEUS_MONITOR_PATH="/workspace/zeus/zeus_monitor/zeus_monitor"  # Path to power monitor
-
-python train.py \
-    --profile \
-    --arch shufflenetv2 \
-    --epochs 2 \
-    --batch_size 1024
-```
-
-A CSV file of timestamped momentary power draw of the first GPU (index 0) will be written to `cifar100+shufflenetv2+gpu0.power.csv` (the `+gpu0.power.csv` part was added by [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader)).
-At the same time, a CSV file with headers epoch number, split (`train` or `eval`), and time consumption in seconds will be written to `cifar100+shufflenetv2.time.csv` (the `.time.csv` part was added by [`ProfileDataLoader`](https://ml.energy/zeus/reference/profile/torch/#zeus.profile.torch.ProfileDataLoader)).
 
 
 ## Just training a vision model on CIFAR100

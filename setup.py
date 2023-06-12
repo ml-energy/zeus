@@ -14,6 +14,12 @@
 
 from setuptools import setup, find_packages
 
+extras_require={
+    "lint": ["ruff", "black==22.6.0"],
+    "test": ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"],
+}
+extras_require["dev"] = extras_require["lint"] + extras_require["test"]
+
 setup(
     name="zeus-ml",
     version="0.3.0",
@@ -38,14 +44,11 @@ setup(
     },
     packages=find_packages("."),
     install_requires=[
-        "torch",
         "numpy",
         "pandas==1.4.2",
         "scikit-learn",
         "pynvml",
     ],
     python_requires=">=3.8",
-    extras_require={
-        "dev": ["pylint==2.14.5", "black==22.6.0", "pydocstyle==6.1.1"],
-    }
+    extras_require=extras_require,
 )

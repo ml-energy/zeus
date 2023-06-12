@@ -37,7 +37,6 @@ from transformers import (
 )
 
 # ZEUS
-from zeus.profile.torch import ProfileDataLoader
 from zeus.run import ZeusDataLoader
 
 logger = logging.getLogger(__name__)
@@ -70,9 +69,6 @@ def parse_args() -> argparse.Namespace:
     runtime_mode = parser.add_mutually_exclusive_group()
     runtime_mode.add_argument(
         "--zeus", action="store_true", help="Whether to run Zeus."
-    )
-    runtime_mode.add_argument(
-        "--profile", action="store_true", help="Whether to just profile power."
     )
 
     parser.add_argument(
@@ -262,20 +258,6 @@ def main() -> None:
         )
         eval_dataloader = ZeusDataLoader(
             eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
-        )
-    elif args.profile:
-        train_dataloader = ProfileDataLoader(
-            train_dataset,
-            batch_size=args.batch_size,
-            split="train",
-            shuffle=True,
-            collate_fn=data_collator,
-        )
-        eval_dataloader = ProfileDataLoader(
-            eval_dataset,
-            batch_size=args.batch_size,
-            split="eval",
-            collate_fn=data_collator,
         )
     else:
         train_dataloader = DataLoader(
