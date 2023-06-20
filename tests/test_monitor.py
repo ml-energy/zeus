@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import typing
 import itertools
+from itertools import chain, product, combinations, combinations_with_replacement
 from unittest.mock import call
 
 import pynvml
@@ -27,6 +28,7 @@ if typing.TYPE_CHECKING:
     from unittest.mock import MagicMock
     from pytest_mock import MockerFixture
 
+MAX_NUM_GPUS = 4
 ARCHS = [
     pynvml.NVML_DEVICE_ARCH_PASCAL,
     pynvml.NVML_DEVICE_ARCH_VOLTA,
@@ -47,31 +49,47 @@ def pynvml_mock(mocker: MockerFixture):
     return mock
 
 
-@pytest.fixture(params=sum([list(itertools.product(ARCHS, repeat=i)) for i in [1, 2, 4]], []))
-def mock_gpus(request, pynvml_mock: MagicMock) -> tuple[int]:
+@pytest.fixture(
+    params=list(chain(
+        *[product(combinations(range(MAX_NUM_GPUS), r=i), product(ARCHS, repeat=i)) for i in range(1, MAX_NUM_GPUS + 1)],
+        list(map(lambda x: (None, x), combinations_with_replacement(ARCHS, r=MAX_NUM_GPUS)))
+    )),
+)
+def mock_gpus(request, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
     """Mock `pynvml` so that it looks like there are GPUs with the given archs.
 
-    This fixture automatically generates different combinations of GPUs with
-    the given architectures (ARCH)using itertools.product.
+    This fixture automatically generates (1) all combinations of possible GPU indices
+    (e.g., (0,), (1, 3), (0, 2, 3)) and takes assigns all possible combinations of
+    GPU architectures (e.g., (PASCAL,), (VOLTA, VOLTA), (AMPERE, PASCAL, VOLTA)), and
+    (2) all combinations of selecting four GPU architectures with replacement and
+    matches it with `None` for the GPU indices (e.g., (None, (PASCAL, PASCAL, VOLTA, AMPERE))).
+    The latter case is to test the initialization of `ZeusMonitor` without any input
+    argument.
+
+    Thus `request.param` has type `tuple[tuple[int], tuple[int]]` where the former
+    is GPU indices and the latter is GPU architectures.
     """
-    archs = request.param
-    count = len(archs)
+    indices, archs = request.param
+    effective_indices = indices or range(MAX_NUM_GPUS)
+    assert len(archs) == len(effective_indices)
 
-    index_to_handle = {i: f"handle{i}" for i in range(count)}
-    handle_to_arch = {f"handle{i}": arch for i, arch in enumerate(archs)}
+    index_to_handle = {i: f"handle{i}" for i in effective_indices}
+    handle_to_arch = {f"handle{i}": arch for i, arch in zip(effective_indices, archs)}
 
-    pynvml_mock.nvmlDeviceGetCount.return_value = count
+    pynvml_mock.nvmlDeviceGetCount.return_value = len(archs)
     pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: index_to_handle[index]
     pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
 
-    return archs
+    return indices, archs
 
 
 def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
     """Test the `ZeusMonitor` class."""
-    num_gpus = len(mock_gpus)
-    old_arch_flags = [arch < pynvml.NVML_DEVICE_ARCH_VOLTA for arch in mock_gpus]
-    num_old_archs = sum(old_arch_flags)
+    gpu_indices, gpu_archs = mock_gpus
+    effective_gpu_indices = gpu_indices or range(MAX_NUM_GPUS)
+    num_gpus = len(gpu_archs)
+    old_arch_flags = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(effective_gpu_indices, gpu_archs)}
+    num_old_archs = sum(old_arch_flags.values())
 
     mkdtemp_mock = mocker.patch("zeus.monitor.tempfile.mkdtemp", return_value="mock_log_dir")
     which_mock = mocker.patch("zeus.monitor.shutil.which", return_value="zeus_monitor")
@@ -83,7 +101,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
 
     energy_counters = {
         f"handle{i}": itertools.count(start=1000, step=3)
-        for i in range(num_gpus) if not old_arch_flags[i]
+        for i in effective_gpu_indices if not old_arch_flags[i]
     }
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counters[handle])
     energy_mock = mocker.patch("zeus.monitor.analyze.energy")
@@ -91,7 +109,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
     ########################################
     # Test ZeusMonitor initialization.
     ########################################
-    monitor = ZeusMonitor()
+    monitor = ZeusMonitor(gpu_indices=gpu_indices)
 
     if num_old_archs > 0:
         assert mkdtemp_mock.call_count == 1
@@ -104,7 +122,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
 
     # Zeus monitors should only have been spawned for GPUs with old architectures.
     assert popen_mock.call_count == num_old_archs
-    assert list(monitor.monitors.keys()) == [i for i in range(num_gpus) if old_arch_flags[i]]
+    assert list(monitor.monitors.keys()) == [i for i in effective_gpu_indices if old_arch_flags[i]]
 
     # Start time would be 4, as specified in the counter constructor.
     assert monitor.monitor_start_time == 4
@@ -125,10 +143,10 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
             # `begin_time` is actually one tick ahead from the perspective of the
             # energy counters, so we subtract 5 instead of 4.
             i: pytest.approx((1000 + 3 * (begin_time - 5)) / 1000.0)
-            for i in range(num_gpus) if not old_arch_flags[i]
+            for i in effective_gpu_indices if not old_arch_flags[i]
         }
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
-            call(f"handle{i}") for i in range(num_gpus) if not old_arch_flags[i]
+            call(f"handle{i}") for i in effective_gpu_indices if not old_arch_flags[i]
         ])
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
 
@@ -146,14 +164,14 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
         assert elapsed_time == measurement.time
         energy_mock.assert_has_calls([
             call(f"mock_log_dir/gpu{i}.power.csv", begin_time - 4, begin_time + elapsed_time - 4)
-            for i in range(num_gpus) if old_arch_flags[i]
+            for i in effective_gpu_indices if old_arch_flags[i]
         ])
         energy_mock.reset_mock()
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
-            call(f"handle{i}") for i in range(num_gpus) if not old_arch_flags[i]
+            call(f"handle{i}") for i in effective_gpu_indices if not old_arch_flags[i]
         ])
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
-        for i in range(num_gpus):
+        for i in effective_gpu_indices:
             if not old_arch_flags[i]:
                 # The energy counter increments with step size 3.
                 assert measurement.energy[i] == pytest.approx(elapsed_time * 3 / 1000.0)
@@ -183,6 +201,13 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
     measurement = monitor.end_window("window2", sync_cuda=False)
     assert_measurement("window2", measurement, begin_time=10, elapsed_time=4)
 
+    # Calling `end_window` again with the same name should raise an error.
+    with pytest.raises(ValueError, match="does not exist"):
+        monitor.end_window("window2", sync_cuda=False)
+
+    # Calling `end_window` with a name that doesn't exist should raise an error.
+    with pytest.raises(ValueError, match="does not exist"):
+        monitor.end_window("window3", sync_cuda=False)
 
     # Overlapping windows.
     monitor.begin_window("window3", sync_cuda=False)
