@@ -22,7 +22,7 @@ import os
 import logging
 from functools import cached_property
 from pathlib import Path
-from typing import Generator, Literal
+from typing import Generator, Literal, ClassVar
 import numpy as np
 
 import pynvml
@@ -166,40 +166,40 @@ class ZeusDataLoader(DataLoader):
     """
 
     # The power limit currently set for the GPU.
-    current_gpu_pl: int = 0
+    current_gpu_pl: ClassVar[int] = 0
 
     # Train batch size to be accessed by the eval dataloader.
-    train_batch_size: int = 0
+    train_batch_size: ClassVar[int] = 0
 
     # Length of the eval dataloader. `epochs` in the train dataloader needs this.
-    eval_num_samples: int = 0
+    eval_num_samples: ClassVar[int] = 0
 
     # Train-time power profiling result. Maps power limit to avg_power & throughput.
-    train_power_result: dict[int, float] = {}
-    train_tput_result: dict[int, float] = {}
+    train_power_result: ClassVar[dict[int, float]] = {}
+    train_tput_result: ClassVar[dict[int, float]] = {}
 
     # Eval-time power profiling result. Maps power limit to avg_power & throughput.
-    eval_power_result: dict[int, float] = {}
-    eval_tput_result: dict[int, float] = {}
+    eval_power_result: ClassVar[dict[int, float]] = {}
+    eval_tput_result: ClassVar[dict[int, float]] = {}
 
     # Cost-optimal power limit. Set by the train dataloader after the last power limit
     # was explored.
-    optimal_pl: int = 0
+    optimal_pl: ClassVar[int] = 0
 
     # Train epoch measurements for time/energy accounting.
-    train_epoch_time: list[float] = []
+    train_epoch_time: ClassVar[list[float]] = []
     # The master process will record ALL GPUs' energy consumption during training.
     # GPU_i's energy records is `train_epoch_energy[i]`.
-    train_epoch_energy: np.ndarray = np.empty(0)
+    train_epoch_energy: ClassVar[np.ndarray] = np.empty(0)
 
     # Eval-time latency profiling result. Maps power limit to epoch latency.
-    eval_epoch_time: list[float] = []
+    eval_epoch_time: ClassVar[list[float]] = []
     # The master process will record ALL GPUs' energy consumption during evaluation.
     # GPU_i's energy records is `eval_epoch_energy[i]`.
-    eval_epoch_energy: np.ndarray = np.empty(0)
+    eval_epoch_energy: ClassVar[np.ndarray] = np.empty(0)
 
     # Zeus monitor instance
-    zeus_monitor: ZeusMonitor | None = None
+    zeus_monitor: ClassVar[ZeusMonitor | None] = None
 
     # ruff: noqa: PLR0912, PLR0915
     def __init__(
