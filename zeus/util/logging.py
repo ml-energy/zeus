@@ -43,6 +43,7 @@ class FileAndConsole:
 def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     """Get a logger with the given name with some formatting configs."""
     logger = logging.getLogger(name)
+    logger.propagate = False
     logger.setLevel(level)
     formatter = logging.Formatter(
         "[%(asctime)s] [%(name)s](%(filename)s:%(lineno)d) %(message)s"

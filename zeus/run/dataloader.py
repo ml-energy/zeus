@@ -34,16 +34,13 @@ from torch.utils.data.distributed import DistributedSampler
 from zeus.monitor import ZeusMonitor, Measurement
 from zeus.util.check import get_env
 from zeus.util.metric import ZeusCostThresholdExceededError, zeus_cost
+from zeus.util.logging import get_logger
 
 
 # JIT profiling states
 NOT_PROFILING = "NOT_PROFILING"
 WARMING_UP = "WARMING_UP"
 PROFILING = "PROFILING"
-
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-logger = logging.getLogger(__name__)
 
 
 class ZeusDataLoader(DataLoader):
@@ -250,6 +247,7 @@ class ZeusDataLoader(DataLoader):
         self.split = "train" if max_epochs != -1 else "eval"
         self.max_epochs = max_epochs
         self.log_prefix = f"[ZeusDataLoader({self.split})]"
+        self.logger = get_logger(self.log_prefix)
 
         # Initialize the DataLoader.
         super().__init__(*args, batch_size=batch_size, **kwargs)
@@ -723,10 +721,10 @@ class ZeusDataLoader(DataLoader):
         """
         if master_only:
             if self.rank == 0:
-                logger.log(level, "%s %s", self.log_prefix, message)
+                self.logger.log(level, "%s", message)
         else:
             gpu_log_prefix = f"[GPU_{self.rank}]"
-            logger.log(level, "%s %s %s", self.log_prefix, gpu_log_prefix, message)
+            self.logger.log(level, "%s %s", gpu_log_prefix, message)
 
     @cached_property
     def _is_train(self) -> bool:
