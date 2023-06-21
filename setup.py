@@ -22,7 +22,7 @@ extras_require["dev"] = extras_require["lint"] + extras_require["test"]
 
 setup(
     name="zeus-ml",
-    version="0.3.0",
+    version="0.4.0",
     description="An Energy Optimization Framework for DNN Training",
     long_description="# Zeus: An Energy Optimization Framework for DNN Training\n",
     long_description_content_type="text/markdown",
