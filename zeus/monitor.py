@@ -132,11 +132,11 @@ class ZeusMonitor:
         else:
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
             self.log_file = open(log_file, "w")  # ruff: noqa: SIM115
+            self.logger.info("Writing measurement logs to %s.", log_file)
             self.log_file.write(
                 f"start_time,window_name,elapsed_time,{','.join(map(lambda i: f'gpu{i}_energy', gpu_indices))}\n",
             )
             self.log_file.flush()
-            self.logger.info("Logging to %s.", log_file)
 
         # Save all the GPU handles.
         self.gpu_handles: dict[int, pynvml.c_nvmlDevice_t] = {}
@@ -229,6 +229,7 @@ class ZeusMonitor:
         Args:
             key: Unique name of the measurement window.
             sync_cuda: Whether to synchronize CUDA before starting the measurement window.
+                (Default: `True`)
         """
         # Make sure the key is unique.
         if key in self.measurement_states:
