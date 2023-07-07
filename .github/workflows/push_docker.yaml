@@ -77,7 +77,7 @@ jobs:
       - build
     steps:
       - name: Download digests
-        users: action/download-artifacts@v3
+        uses: action/download-artifacts@v3
         with:
           name: digests
           path: /tmp/digests
