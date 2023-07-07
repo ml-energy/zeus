@@ -25,7 +25,7 @@ RUN apt-get update -qq \
 
 # Install Miniconda3 23.3.1
 ENV PATH="/root/.local/miniconda3/bin:$PATH"
-ARG TARGETARCH=amd64
+ARG TARGETARCH
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
       export CONDA_INSTALLER_PATH="Miniconda3-py39_23.3.1-0-Linux-x86_64.sh"; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
