@@ -38,8 +38,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     && mkdir /root/.conda \
     && bash "$CONDA_INSTALLER_PATH" -b -p /root/.local/miniconda3 \
     && rm -f "$CONDA_INSTALLER_PATH" \
-    && ln -sf /root/.local/miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh \
-    && unset CONDA_INSTALLER_PATH
+    && ln -sf /root/.local/miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 # Install PyTorch and CUDA Toolkit
 RUN pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118

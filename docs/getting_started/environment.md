@@ -17,7 +17,7 @@ On top of the `nvidia/cuda:11.8.0-devel-ubuntu22.04` image, the following are ad
     ```
 
 !!! Tip
-    If you want to build our Docker image locally, you should specify `TARGETARCH` to be one of `amd64` or `arm64`:
+    If you want to build our Docker image locally, you should specify `TARGETARCH` to be one of `amd64` or `arm64` based on your environment's architecture:
     ```sh
     docker build -t symbioticlab/zeus:master --build-arg TARGETARCH=amd64 .
     ```
