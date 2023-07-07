@@ -42,7 +42,8 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     && unset CONDA_INSTALLER_PATH
 
 # Install PyTorch and CUDA Toolkit
-RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+RUN conda install pytorch=2.0.1 torchvision pytorch-cuda=11.8 -c pytorch -c nvidia
 
 # Place stuff under /workspace
 WORKDIR /workspace
