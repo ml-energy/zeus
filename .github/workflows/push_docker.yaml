@@ -31,6 +31,10 @@ jobs:
           - linux/amd64
           - linux/arm64
     steps:
+      - name: Free up disk
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Generate image metadata
