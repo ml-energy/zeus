@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import typing
 import itertools
-from itertools import chain, product, combinations, combinations_with_replacement
 from unittest.mock import call
+from itertools import chain, product, combinations, combinations_with_replacement
 
 import pynvml
 import pytest
@@ -25,6 +25,7 @@ import pytest
 from zeus.monitor import Measurement, ZeusMonitor
 
 if typing.TYPE_CHECKING:
+    from pathlib import Path
     from unittest.mock import MagicMock
     from pytest_mock import MockerFixture
 
@@ -83,7 +84,7 @@ def mock_gpus(request, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
     return indices, archs
 
 
-def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
+def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     """Test the `ZeusMonitor` class."""
     gpu_indices, gpu_archs = mock_gpus
     effective_gpu_indices = gpu_indices or range(MAX_NUM_GPUS)
@@ -106,10 +107,12 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counters[handle])
     energy_mock = mocker.patch("zeus.monitor.analyze.energy")
 
+    log_file = tmp_path / "log.csv"
+
     ########################################
     # Test ZeusMonitor initialization.
     ########################################
-    monitor = ZeusMonitor(gpu_indices=gpu_indices)
+    monitor = ZeusMonitor(gpu_indices=gpu_indices, log_file=log_file)
 
     if num_old_archs > 0:
         assert mkdtemp_mock.call_count == 1
@@ -179,7 +182,6 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
 
     # Serial non-overlapping windows.
     monitor.begin_window("window1", sync_cuda=False)
-    # assert monitor.measurement_states["window1"] == (5, {i: pytest.approx(1000 / 1000.0) for i in range(num_gpus) if not old_arch_flags[i]})
     assert_window_begin("window1", 5)
 
     tick()
@@ -245,3 +247,39 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture):
 
     measurement = monitor.end_window("window5", sync_cuda=False)
     assert_measurement("window5", measurement, begin_time=25, elapsed_time=8)
+
+    ########################################
+    # Test content of `log_file`.
+    ########################################
+    with open(log_file, "r") as f:
+        lines = f.readlines()
+
+    # The first line should be the header.
+    header = "start_time,window_name,elapsed_time"
+    for gpu_index in effective_gpu_indices:
+        header += f",gpu{gpu_index}_energy"
+    header += "\n"
+    assert lines[0] == header
+
+    # The rest of the lines should be the measurements, one line per window.
+    def assert_log_file_row(row: str, name: str, begin_time: int, elapsed_time: int):
+        """Assert that a row in the log file is correct.
+
+        Args:
+            row: The row to check.
+            name: The name of the measurement window.
+            begin_time: The time at which the window began.
+            elapsed_time: The time elapsed when the window ended.
+        """
+        assert row.startswith(f"{begin_time},{name},{elapsed_time}")
+        pieces = row.split(",")
+        for i, gpu_index in enumerate(effective_gpu_indices):
+            if not old_arch_flags[gpu_index]:
+                assert float(pieces[3 + i]) == pytest.approx(elapsed_time * 3 / 1000.0)
+
+    assert_log_file_row(lines[1], "window1", 5, 2)
+    assert_log_file_row(lines[2], "window2", 10, 4)
+    assert_log_file_row(lines[3], "window3", 15, 5)
+    assert_log_file_row(lines[4], "window4", 17, 7)
+    assert_log_file_row(lines[5], "window6", 26, 3)
+    assert_log_file_row(lines[6], "window5", 25, 8)

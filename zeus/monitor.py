@@ -24,14 +24,15 @@ import atexit
 import logging
 import tempfile
 import subprocess
-from functools import cached_property, lru_cache
+from pathlib import Path
 from dataclasses import dataclass
+from functools import cached_property, lru_cache
 
 import pynvml
 
 from zeus import analyze
-from zeus.util.framework import cuda_sync
 from zeus.util.logging import get_logger
+from zeus.util.framework import cuda_sync
 
 
 @dataclass
@@ -93,6 +94,7 @@ class ZeusMonitor:
         self,
         gpu_indices: list[int] | None = None,
         monitor_exec: str = "zeus_monitor",
+        log_file: str | Path | None = None,
     ) -> None:
         """Instantiate the monitor.
 
@@ -108,12 +110,10 @@ class ZeusMonitor:
                 If None, all the GPUs available will be used (while respecting the
                 `CUDA_VISIBLE_DEVICES` environment variable). (Default: `None`)
             monitor_exec: Zeus monitor executable. (Default: `"zeus_monitor"`)
+            log_file: Path to the log CSV file. If `None`, logging will be disabled.
         """
         # Initialize NVML.
         pynvml.nvmlInit()
-
-        # Initialize logger.
-        self.logger = get_logger(type(self).__name__)
 
         # If `gpu_indices` is None, use all the GPUs available.
         if gpu_indices is None:
@@ -124,6 +124,19 @@ class ZeusMonitor:
                 gpu_indices = [int(idx) for idx in cuda_visible_devices.split(",")]
             else:
                 gpu_indices = list(range(pynvml.nvmlDeviceGetCount()))
+
+        # Initialize loggers.
+        self.logger = get_logger(type(self).__name__)
+        if log_file is None:
+            self.log_file = None
+        else:
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            self.log_file = open(log_file, "w")  # ruff: noqa: SIM115
+            self.log_file.write(
+                f"start_time,window_name,elapsed_time,{','.join(map(lambda i: f'gpu{i}_energy', gpu_indices))}\n",
+            )
+            self.log_file.flush()
+            self.logger.info("Logging to %s.", log_file)
 
         # Save all the GPU handles.
         self.gpu_handles: dict[int, pynvml.c_nvmlDevice_t] = {}
@@ -144,6 +157,8 @@ class ZeusMonitor:
             # Shutdown NVML.
             pynvml.nvmlShutdown()
             self._stop_monitors()
+            if self.log_file is not None:
+                self.log_file.close()
 
         atexit.register(exit_hook)
 
@@ -278,6 +293,16 @@ class ZeusMonitor:
                 )
 
         self._log(f"Measurement window '{key}' ended.")
+
+        # Add to log file.
+        if self.log_file is not None:
+            self.log_file.write(
+                f"{start_time},{key},{time_consumption},"
+                + ",".join(map(str, energy_consumption.values()))
+                + "\n"
+            )
+            self.log_file.flush()
+
         return Measurement(time_consumption, energy_consumption)
 
     def _log(
