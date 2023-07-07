@@ -5,10 +5,9 @@ We encourage users to do everything inside a Docker container spawned with our p
 ## Zeus Docker image
 
 We provide a pre-built Docker image in [Docker Hub](https://hub.docker.com/r/symbioticlab/zeus){.external}.
-On top of the `nvidia/cuda:11.3.1-devel-ubuntu20.04` image, the following are provided:  
+On top of the `nvidia/cuda:11.8.0-devel-ubuntu22.04` image, the following are added:
 
-1. CMake 3.22.0
-1. Miniconda3 4.12.0, PyTorch 1.10.1, torchvision 0.11.2, cudatoolkit 11.3.1
+1. Miniconda3 23.3.1, PyTorch 2.0.1, torchvision 0.15.2
 1. A copy of the Zeus repo in `/workspace/zeus`.
 1. An editable install of the `zeus` package in `/workspace/zeus/zeus`. Users can override the copy of the repo by mounting the edited repo into the container. See instructions below.
 
@@ -16,6 +15,13 @@ On top of the `nvidia/cuda:11.3.1-devel-ubuntu20.04` image, the following are pr
     ```Dockerfile title="Dockerfile"
     --8<-- "Dockerfile"
     ```
+
+!!! Tip
+    If you want to build our Docker image locally, you should specify `TARGETARCH` to be one of `amd64` or `arm64`:
+    ```sh
+    docker build -t symbioticlab/zeus:master --build-arg TARGETARCH=amd64 .
+    ```
+
 
 ### Dependencies
 
