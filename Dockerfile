@@ -12,35 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM nvidia/cuda:11.3.1-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
 # Basic installs
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ='America/Detroit'
 RUN apt-get update -qq \
     && apt-get -y --no-install-recommends install \
-       build-essential software-properties-common wget git tar rsync \
+       build-essential software-properties-common wget git tar rsync cmake \
     && apt-get clean all \
     && rm -r /var/lib/apt/lists/*
 
-# Install cmake 3.22.0
-RUN wget https://github.com/Kitware/CMake/releases/download/v3.22.0/cmake-3.22.0-linux-x86_64.tar.gz \
-    && tar xzf cmake-* \
-    && rsync -a cmake-*/bin /usr/local \
-    && rsync -a cmake-*/share /usr/local \
-    && rm -r cmake-*
-
-# Install Miniconda3 4.12.0
+# Install Miniconda3 23.3.1
 ENV PATH="/root/.local/miniconda3/bin:$PATH"
-RUN mkdir -p /root/.local \
-    && wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.12.0-Linux-x86_64.sh \
+ARG TARGETARCH=amd64
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+      export CONDA_INSTALLER_PATH="Miniconda3-py39_23.3.1-0-Linux-x86_64.sh"; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      export CONDA_INSTALLER_PATH="Miniconda3-py39_23.3.1-0-Linux-aarch64.sh"; \
+    else \
+      echo "Unsupported architecture ${TARGETARCH}" && exit 1; \
+    fi \
+    && mkdir -p /root/.local \
+    && wget "https://repo.anaconda.com/miniconda/$CONDA_INSTALLER_PATH" \
     && mkdir /root/.conda \
-    && bash Miniconda3-py39_4.12.0-Linux-x86_64.sh -b -p /root/.local/miniconda3 \
-    && rm -f Miniconda3-py39_4.12.0-Linux-x86_64.sh \
-    && ln -sf /root/.local/miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh
+    && bash "$CONDA_INSTALLER_PATH" -b -p /root/.local/miniconda3 \
+    && rm -f "$CONDA_INSTALLER_PATH" \
+    && ln -sf /root/.local/miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh \
+    && unset CONDA_INSTALLER_PATH
 
 # Install PyTorch and CUDA Toolkit
-RUN conda install -y -c pytorch pytorch==1.10.1 torchvision==0.11.2 cudatoolkit==11.3.1
+# RUN conda install -y -c pytorch pytorch==1.10.1 torchvision==0.11.2 cudatoolkit==11.3.1
+RUN pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
 
 # Place stuff under /workspace
 WORKDIR /workspace
