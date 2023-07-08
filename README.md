@@ -85,14 +85,13 @@ You can easily implement custom policies for batch size and power limit optimiza
 
 Refer to [Extending Zeus](https://ml.energy/zeus/extend/) for details.
 
+
 ## Carbon-Aware Zeus
 
 The use of GPUs for training DNNs results in high carbon emissions and energy consumption. Building on top of Zeus, we introduce *Chase* -- a carbon-aware solution. *Chase* dynamically controls the energy consumption of GPUs; adapts to shifts in carbon intensity during DNN training, reducing carbon footprint with minimal compromises on training performance. To proactively adapt to shifting carbon intensity, a lightweight machine learning algorithm is used to forecast the carbon intensity of the upcoming time frame. For more details on Chase, please refer to our [paper](https://www.usenix.org/conference/nsdi23/presentation/you) and the [chase branch](https://github.com/SymbioticLab/Zeus/tree/chase). 
 
 
 ## Citation
-
-Please consider citing our NSDI’23 paper if you find Zeus to be related to your research project.
 
 ```bibtex
 @inproceedings{zeus-nsdi23,
