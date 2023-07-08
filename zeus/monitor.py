@@ -130,7 +130,8 @@ class ZeusMonitor:
         if log_file is None:
             self.log_file = None
         else:
-            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            if dir := os.path.dirname(log_file):
+                os.makedirs(dir, exist_ok=True)
             self.log_file = open(log_file, "w")  # ruff: noqa: SIM115
             self.logger.info("Writing measurement logs to %s.", log_file)
             self.log_file.write(
