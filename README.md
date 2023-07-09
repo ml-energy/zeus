@@ -97,16 +97,12 @@ Please consider citing our NSDI’23 paper if you find Zeus to be related to you
     year      = {2023}
 }
 
-@article{chase:arxiv23,
-    author        = {Yang, Zhenning and Meng, Luoxi and Chung, Jae-Won and Chowdhury, Mosharaf},
-    journal       = {CoRR},
-    title         = {Chasing Low-Carbon Electricity for Practical and Sustainable {DNN} Training},
-    year          = {2023},
-    month         = {Mar},
-    volume        = {abs/2303.02508},
-    archiveprefix = {arXiv},
-    eprint        = {2303.02508},
-    url           = {https://arxiv.org/abs/2303.02508},
+@inproceedings{yang2023chasing,
+  title={Chasing Low-Carbon Electricity for Practical and Sustainable DNN Training},
+  author={Yang, Zhenning and Meng, Luoxi and Chung, Jae-Won and Chowdhury, Mosharaf},
+  booktitle={ICLR 2023 Workshop on Tackling Climate Change with Machine Learning},
+  url={https://www.climatechange.ai/papers/iclr2023/29},
+  year={2023}
 }
 ```
 

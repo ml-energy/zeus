@@ -3,15 +3,15 @@
 import numpy as np
 import pandas as pd
 
-from sklearn.neighbors import KNeighborsRegressor
+# from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
-from sklearn.linear_model import LinearRegression
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import (
-    GradientBoostingRegressor,
-    AdaBoostRegressor,
-    RandomForestRegressor,
-)
+# from sklearn.linear_model import LinearRegression
+# from sklearn.tree import DecisionTreeRegressor
+# from sklearn.ensemble import (
+#     GradientBoostingRegressor,
+#     AdaBoostRegressor,
+#     RandomForestRegressor,
+# )
 
 
 class CarbonMonitor:
@@ -43,7 +43,7 @@ class CarbonMonitor:
         X_test, y_test = X.values[start_step:], Y.values.flatten()[start_step:]
 
         # train
-        model = LinearRegression()
+        model = SVR(kernel="rbf", C=100, gamma=0.0001)
         model.fit(X_train, y_train)
         self.model = model
 
