@@ -348,9 +348,7 @@ class ZeusDataLoader(DataLoader):
         if self.carbon_monitor_only:
             print("\n<<< carbon_monitor_only is True >>>\n")
         if self.use_carbon_cta:
-            self.carbon_client = carbon.CarbonMonitor(
-                start_step=self.carbon_start_step
-            )
+            self.carbon_client = carbon.CarbonMonitor(start_step=self.carbon_start_step)
             self.ep_energy_log = {}
             with open("carbon_log/carbon-aware.log", "w") as log_file:
                 log_file.write(
@@ -944,6 +942,7 @@ class ZeusDataLoader(DataLoader):
         # Only save power results at master process.
         assert self.rank == 0
 
+        # pylint: disable=use-dict-literal
         prof_result = dict(
             job_id=self.job_id,  # Not used. Just for the purpose of record.
             train_power=self.train_power_result,
@@ -952,6 +951,8 @@ class ZeusDataLoader(DataLoader):
             eval_throughput=self.eval_tput_result,
             optimal_pl=self.optimal_pl,
         )
+        # pylint: enable=use-dict-literal
+
         # NOTE: Write-then-move needed if we're handling concurrent jobs.
         with open(self.power_json, "w") as f:
             json.dump(prof_result, f)
@@ -991,6 +992,7 @@ class ZeusDataLoader(DataLoader):
         # Only load power results at master process.
         assert self.rank == 0
 
+        # pylint: disable=use-dict-literal
         train_result = dict(
             energy=energy,
             time=time_,
@@ -998,6 +1000,8 @@ class ZeusDataLoader(DataLoader):
             num_epochs=self.epoch_num,  # Not used. Just for reference.
             reached=reached,
         )
+        # pylint: enable=use-dict-literal
+
         with open(self.train_json, "w") as f:
             json.dump(train_result, f)
         with open(self.train_json, "r") as f:
@@ -1056,6 +1060,8 @@ class ZeusDataLoader(DataLoader):
                 time.sleep(3)
                 self.carbon_begin = False
             total_ep_energy_consumption = analyze.energy(self._power_log_path(0))
+
+            # pylint: disable=consider-iterating-dictionary
             if self.epoch_num not in list(self.ep_energy_log.keys()):
                 energy_consumption = total_ep_energy_consumption
                 self.ep_energy_log[self.epoch_num] = [energy_consumption]
@@ -1064,10 +1070,14 @@ class ZeusDataLoader(DataLoader):
                     total_ep_energy_consumption - self.ep_energy_log[self.epoch_num][-1]
                 )
                 self.ep_energy_log[self.epoch_num].append(total_ep_energy_consumption)
+            # pylint: enable=consider-iterating-dictionary
 
             total_energy = 0
-            for k, v in self.ep_energy_log.items():
-                total_energy += v[-1]
+            # pylint: disable=unused-variable
+            for k, val in self.ep_energy_log.items():
+                total_energy += val[-1]
+            # pylint: enable=unused-variable
+
             # time.sleep(5)
             # print(self.ep_energy_log)
             # get carbon hist
@@ -1087,18 +1097,28 @@ class ZeusDataLoader(DataLoader):
                 # select new power limit and adjust
                 tput = ZeusDataLoader.train_tput_result
                 power = ZeusDataLoader.train_power_result
+
+                # pylint: disable=unused-variable
+                # pylint: disable=unbalanced-tuple-unpacking
                 optimal_pl, cost_map = carbon.carbon_cost(
                     power, tput, self.power_limits, next_carbon, eta_knob=self.eta_knob
                 )
+                # pylint: enable=unbalanced-tuple-unpacking
+                # pylint: enable=unused-variable
+
                 ZeusDataLoader.optimal_pl = optimal_pl
                 # print("Current optimal_pl:", optimal_pl)
                 # print("self.current_gpu_pl", self.current_gpu_pl)
                 # time.sleep(3)
                 self._set_gpu_power_limit(ZeusDataLoader.optimal_pl)
 
-            # log cintains both train and eval, sum up the energy consumption at the end of each epoch = total energy consumption
+            # log cintains both train and eval,
+            # sum up the energy consumption at the end of each epoch = total energy consumption
             with open("carbon_log/carbon-aware.log", "a") as log_file:
-                # log_file.write('ep,step_counter,optimal_pl,step_energy,step_carbon_ems,total_ep_energy,total_energy\n')
+                # log_file.write('ep,step_counter,optimal_pl,step_energy,step_carbon_ems, \
+                # total_ep_energy,total_energy\n')
+
+                # pylint: disable=consider-using-f-string
                 log_file.write(
                     "{},{},{},{},{},{}\n".format(
                         self.epoch_num,
@@ -1109,6 +1129,7 @@ class ZeusDataLoader(DataLoader):
                         total_ep_energy_consumption,
                     )
                 )
+                # pylint: enable=consider-using-f-string
 
             # update step
             self.carbon_client.update_steps(1)

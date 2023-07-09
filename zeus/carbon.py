@@ -5,6 +5,7 @@ import pandas as pd
 
 # from sklearn.neighbors import KNeighborsRegressor
 from sklearn.svm import SVR
+
 # from sklearn.linear_model import LinearRegression
 # from sklearn.tree import DecisionTreeRegressor
 # from sklearn.ensemble import (
@@ -17,7 +18,7 @@ from sklearn.svm import SVR
 class CarbonMonitor:
     """Walk through the carbon trace and predict the carbon intensity."""
 
-    def __init__(self, interval_min: int=30, start_step: int=48) -> None:
+    def __init__(self, interval_min: int = 30, start_step: int = 48) -> None:
         """Initialize the carbon_monitor."""
         self.df = pd.read_csv("/workspace/zeus/trace/carbon_hist.csv")
         self.total_steps_day = (24 * 60) / interval_min
@@ -34,17 +35,17 @@ class CarbonMonitor:
             2 * np.pi * self.df.time_enc / self.total_steps_day
         )
         self.df["prev"] = get_prev(self.df["hist"].values, 1)
-        X = self.df[["sin_time", "cos_time", "prev"]]
-        Y = self.df[["hist"]]
-        X_train, y_train = (
-            X.values[start_step - 48 : start_step],
-            Y.values.flatten()[start_step - 48 : start_step],
+        x_inputs = self.df[["sin_time", "cos_time", "prev"]]
+        y_outputs = self.df[["hist"]]
+        x_train, y_train = (
+            x_inputs.values[start_step - 48 : start_step],
+            y_outputs.values.flatten()[start_step - 48 : start_step],
         )
-        X_test, y_test = X.values[start_step:], Y.values.flatten()[start_step:]
+        # X_test, y_test = x_inputs.values[start_step:], y_outputs.values.flatten()[start_step:]
 
         # train
         model = SVR(kernel="rbf", C=100, gamma=0.0001)
-        model.fit(X_train, y_train)
+        model.fit(x_train, y_train)
         self.model = model
 
     def update_steps(self, steps) -> None:
@@ -60,11 +61,11 @@ class CarbonMonitor:
 
     def get_forecast(self) -> float:
         """Return the carbon intensity at the next step."""
-        t = self.step_counter
+        curr_time_step = self.step_counter
         input_ = [
-            self.df.iloc[t]["sin_time"],
-            self.df.iloc[t]["cos_time"],
-            self.df.iloc[t]["prev"],
+            self.df.iloc[curr_time_step]["sin_time"],
+            self.df.iloc[curr_time_step]["cos_time"],
+            self.df.iloc[curr_time_step]["prev"],
         ]
         return self.model.predict([input_])[0]
 
@@ -114,15 +115,15 @@ def get_prev(hist_list, shift, up=True):
     return prev_fea
 
 
-def recursive_forecasting(model, X_test, y_test):
+def recursive_forecasting(model, x_test):
     """Recursive forecasting."""
-    steps = len(X_test) - 1
-    if len(X_test[0]) > 3:
-        forecast = [X_test[0][2:]]  # first 2 are time, the rest are carbon
+    steps = len(x_test) - 1
+    if len(x_test[0]) > 3:
+        forecast = [x_test[0][2:]]  # first 2 are time, the rest are carbon
     else:
-        forecast = [X_test[0][-1]]
+        forecast = [x_test[0][-1]]
     for i in range(steps):
-        next_time_sin, next_time_cos = X_test[i][0], X_test[i][1]
+        next_time_sin, next_time_cos = x_test[i][0], x_test[i][1]
         last_val = forecast[-1]
         model_input = [next_time_sin, next_time_cos]
         model_input = np.append(model_input, last_val)
@@ -130,50 +131,50 @@ def recursive_forecasting(model, X_test, y_test):
         # print(model_input[2:])
         # print(pred_one)
         # print()
-        if len(X_test[0]) > 3:
+        if len(x_test[0]) > 3:
             forecast.append(np.append(last_val[1:], pred_one))
         else:
             forecast.append(pred_one)
-    if len(X_test[0]) > 3:
+    if len(x_test[0]) > 3:
         forecast = np.array(forecast)
         return forecast[:, 0]
     return forecast
 
 
-def recur_hist_forecasting(model, X_test, y_test, skip_step=1):
+def recur_hist_forecasting(model, x_test, skip_step=1):
     """Recursive forecasting with history."""
     if skip_step == -1:
-        return recursive_forecasting(model, X_test, y_test)
-    steps = len(X_test) - 1
-    if len(X_test[0]) > 3:
-        forecast = [X_test[0][2:]]
+        return recursive_forecasting(model, x_test)
+    steps = len(x_test) - 1
+    if len(x_test[0]) > 3:
+        forecast = [x_test[0][2:]]
     else:
-        forecast = [X_test[0][-1]]
+        forecast = [x_test[0][-1]]
 
     for i in range(steps):
-        next_time_sin, next_time_cos = X_test[i][0], X_test[i][1]
+        next_time_sin, next_time_cos = x_test[i][0], x_test[i][1]
         last_val = forecast[-1]
 
         if skip_step == "random" and np.random.randint(0, 2) and i != 0:
-            if len(X_test[0]) > 3:
-                last_val = X_test[i][2:]
+            if len(x_test[0]) > 3:
+                last_val = x_test[i][2:]
             else:
-                last_val = X_test[i][-1]
-        elif type(skip_step) == int and i % skip_step == 0 and i != 0:
-            if len(X_test[0]) > 3:
-                last_val = X_test[i][2:]
+                last_val = x_test[i][-1]
+        elif isinstance(skip_step) == int and i % skip_step == 0 and i != 0:
+            if len(x_test[0]) > 3:
+                last_val = x_test[i][2:]
             else:
-                last_val = X_test[i][-1]
+                last_val = x_test[i][-1]
 
         model_input = [next_time_sin, next_time_cos]
         model_input = np.append(model_input, last_val)
         pred_one = model.predict([model_input])[0]
-        if len(X_test[0]) > 3:
+        if len(x_test[0]) > 3:
             forecast.append(np.append(last_val[1:], pred_one))
         else:
             forecast.append(pred_one)
 
-    if len(X_test[0]) > 3:
+    if len(x_test[0]) > 3:
         forecast = np.array(forecast)
         return forecast[:, 0]
     return forecast

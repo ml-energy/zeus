@@ -175,6 +175,8 @@ class ZeusMaster:
 
         # Set environment variables
         job_id = f"rec{rec_i:02d}+try{tries:02d}"
+
+        # pylint: disable=use-dict-literal
         zeus_env = dict(
             ZEUS_LOG_DIR=logdir,
             ZEUS_JOB_ID=job_id,
@@ -185,6 +187,8 @@ class ZeusMaster:
             ZEUS_PROFILE_PARAMS=f"{self.profile_warmup_iters},{self.profile_measure_iters}",
             ZEUS_USE_OPTIMAL_PL=str(not self.observer_mode),
         )
+        # pylint: enable=use-dict-literal
+
         env = deepcopy(os.environ)
         env.update(zeus_env)
 
