@@ -96,7 +96,7 @@ Please consider citing our NSDI’23 paper if you find Zeus to be related to you
     booktitle = {USENIX NSDI},
     year      = {2023}
 }
-
+ 
 @inproceedings{yang2023chasing,
     title     = {Chasing Low-Carbon Electricity for Practical and Sustainable DNN Training},
     author    = {Yang, Zhenning and Meng, Luoxi and Chung, Jae-Won and Chowdhury, Mosharaf},
