@@ -23,8 +23,8 @@ extras_require["dev"] = extras_require["lint"] + extras_require["test"] + extras
 
 setup(
     name="zeus-ml",
-    version="0.4.0",
-    description="An Energy Optimization Framework for DNN Training",
+    version="0.5.0",
+    description="A framework for deep learning energy measurement and optimization.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/SymbioticLab/Zeus",
@@ -39,7 +39,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
     ],
-    keywords=["deep-learning", "power", "energy", "mlsys"],
+    keywords=["deep-learning", "power", "energy", "sustainability", "mlsys"],
     project_urls={
         "Documentation": "https://ml.energy/zeus",
     },
