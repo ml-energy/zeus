@@ -7,7 +7,7 @@ hide:
 <div align="center">
 <img src="assets/img/logo_dark.svg#only-dark" width="60%" alt="Zeus logo" style="margin-bottom: 1em">
 <img src="assets/img/logo_light.svg#only-light" width="60%" alt="Zeus logo" style="margin-bottom: 1em">
-<h1>A Framework for Deep Learning Energy Measurement and Optimization</h1>
+<h1>Deep Learning Energy Measurement and Optimization</h1>
 </div>
 
 !!! Success "Join the Zeus Slack workspace!"
@@ -16,7 +16,7 @@ hide:
     Reach out to us in the [Zeus Slack workspace](https://join.slack.com/t/zeus-ml/shared_invite/zt-1najba5mb-WExy7zoNTyaZZfTlUWoLLg).
 
 ---
-**Latest News** ⚡ 
+**Project News** ⚡ 
 
 - \[2023/07\] [`ZeusMonitor`][zeus.monitor.ZeusMonitor] was used to profile GPU time and energy consumption for the [ML.ENERGY leaderboard](https://ml.energy/leaderboard).
 - \[2023/03\] [Chase](https://symbioticlab.org/publications/files/chase:ccai23/chase-ccai23.pdf), an automatic carbon optimization framework for DNN training, will appear at ICLR'23 workshop.
