@@ -37,6 +37,9 @@ class ReplayZeusMonitor(ZeusMonitor):
     and will replay time and energy measurements just like how the real monitor
     experienced them. Note that in the case of concurrent ongoing measurement windows,
     the log rows file should record windows in the order of `end_window` calls.
+
+    Attributes:
+        gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor.
     """
 
     def __init__(
@@ -45,6 +48,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         monitor_exec: str = "zeus_monitor",
         log_file: str | Path | None = None,
         ignore_sync_cuda: bool = False,
+        match_window_name: bool = True,
     ) -> None:
         """Initialize the replay monitor.
 
@@ -54,10 +58,12 @@ class ReplayZeusMonitor(ZeusMonitor):
         Args:
             gpu_indices: Indices of all the CUDA devices to monitor. This should be consistent
                 with the indices used in the log file. If `None`, GPU indices will be inferred
-                from the log file header.
+                from the log file header. Does not respect `CUDA_VISIBLE_DEVICES`.
+                (Default: `None`)
             monitor_exec: Zeus monitor executable. Not used. (Default: `"zeus_monitor"`)
             log_file: Path to the log CSV file to replay events from. `None` is not allowed.
             ignore_sync_cuda: Whether to ignore `sync_cuda` calls. (Default: `False`)
+            match_window_name: Whether to make sure window names match. (Default: `True`)
         """
         if log_file is None:
             raise ValueError("`log_file` cannot be `None` for `ReplayZeusMonitor`.")
@@ -65,6 +71,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         self.monitor_exec = monitor_exec
         self.log_file = open(log_file)  # ruff: noqa: SIM115
         self.ignore_sync_cuda = ignore_sync_cuda
+        self.match_window_name = match_window_name
 
         # Infer GPU indices from the log file if not provided.
         header = self.log_file.readline()
@@ -72,10 +79,12 @@ class ReplayZeusMonitor(ZeusMonitor):
             gpu_indices = [
                 int(gpu.split("_")[0][3:]) for gpu in header.split(",")[3:] if gpu
             ]
-        self.gpu_indices = gpu_indices
+        self.nvml_gpu_indices = self.gpu_indices = gpu_indices
 
         self.logger = get_logger(type(self).__name__)
-        self.logger.info("Replaying from %s with GPU indices %s", log_file, gpu_indices)
+        self.logger.info(
+            "Replaying from '%s' with GPU indices %s", log_file, gpu_indices
+        )
 
         # Keep track of ongoing measurement windows.
         self.ongoing_windows = []
@@ -101,7 +110,9 @@ class ReplayZeusMonitor(ZeusMonitor):
 
         self.logger.info("Measurement window '%s' started.", key)
 
-    def end_window(self, key: str, sync_cuda: bool = True) -> Measurement:
+    def end_window(
+        self, key: str, sync_cuda: bool = True, cancel: bool = False
+    ) -> Measurement:
         """End an ongoing window.
 
         This method pops the key from a list of ongoing measurement windows and
@@ -113,6 +124,8 @@ class ReplayZeusMonitor(ZeusMonitor):
             key: Name of the measurement window.
             sync_cuda: Whether to synchronize CUDA before ending the measurement window.
                 (Default: `True`)
+            cancel: Whether to cancel the measurement window. This will not consume a
+                line from the log file. (Default: `False`)
         """
         try:
             self.ongoing_windows.remove(key)
@@ -123,12 +136,18 @@ class ReplayZeusMonitor(ZeusMonitor):
             for gpu_index in self.gpu_indices:
                 cuda_sync(gpu_index)
 
+        if cancel:
+            self.logger.info("Measurement window '%s' cancelled.", key)
+            return Measurement(
+                time=0.0, energy={gpu_index: 0.0 for gpu_index in self.gpu_indices}
+            )
+
         # Read the next line from the log file.
         line = self.log_file.readline()
         if not line:
             raise RuntimeError("No more lines in the log file.")
         _, window_name, *nums = line.split(",")
-        if window_name != key:
+        if self.match_window_name and window_name != key:
             raise RuntimeError(f"Was expecting {window_name}, not {key}.")
         if len(nums) != len(self.gpu_indices) + 1:
             raise RuntimeError(

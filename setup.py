@@ -17,14 +17,15 @@ from setuptools import setup, find_packages
 extras_require={
     "lint": ["ruff", "black==22.6.0"],
     "test": ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"],
+    "torch": ["torch==2.0.1"],
 }
-extras_require["dev"] = extras_require["lint"] + extras_require["test"]
+extras_require["dev"] = extras_require["lint"] + extras_require["test"] + extras_require["torch"]
 
 setup(
     name="zeus-ml",
     version="0.4.0",
     description="An Energy Optimization Framework for DNN Training",
-    long_description="# Zeus: An Energy Optimization Framework for DNN Training\n",
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/SymbioticLab/Zeus",
     author="Jae-Won Chung",
@@ -45,7 +46,7 @@ setup(
     packages=find_packages("."),
     install_requires=[
         "numpy",
-        "pandas==1.4.2",
+        "pandas",
         "scikit-learn",
         "pynvml",
     ],

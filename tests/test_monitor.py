@@ -14,10 +14,10 @@
 
 from __future__ import annotations
 
-import typing
 import itertools
 from unittest.mock import call
-from itertools import chain, product, combinations, combinations_with_replacement
+from itertools import product, combinations
+from typing import Generator, TYPE_CHECKING, Sequence
 
 import pynvml
 import pytest
@@ -25,12 +25,12 @@ import pytest
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.util.testing import ReplayZeusMonitor
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from pathlib import Path
     from unittest.mock import MagicMock
     from pytest_mock import MockerFixture
 
-MAX_NUM_GPUS = 4
+NUM_GPUS = 4
 ARCHS = [
     pynvml.NVML_DEVICE_ARCH_PASCAL,
     pynvml.NVML_DEVICE_ARCH_VOLTA,
@@ -51,13 +51,44 @@ def pynvml_mock(mocker: MockerFixture):
     return mock
 
 
-@pytest.fixture(
-    params=list(chain(
-        *[product(combinations(range(MAX_NUM_GPUS), r=i), product(ARCHS, repeat=i)) for i in range(1, MAX_NUM_GPUS + 1)],
-        list(map(lambda x: (None, x), combinations_with_replacement(ARCHS, r=MAX_NUM_GPUS)))
-    )),
-)
-def mock_gpus(request, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
+def gpu_cases():
+    """Generates all the cases for different GPU indices and architectures.
+
+    We start with `NUM_GPUS` GPUs. We then consider all possible combinations of
+    `CUDA_VISIBLE_DEVICES`, which limits the set of GPUs visible to PyTorch and
+    creates a mapping between the indices visible to PyTorch and the indices visible
+    to NVML. We then consider all possible combinations of `gpu_indices`, which
+    creates a mapping between the indices visible to PyTorch and the indices visible
+    to `ZeusMonitor`. Finally, with only the GPUs that were left after filtering
+    with `CUDA_VISIBLE_DEVICES` and `gpu_monitor`, we assign all possible combinations
+    GPU architectures to `gpu_archs`.
+    """
+    def nonempty_subsequences(indices: Sequence[int]) -> Generator[list[int], None, None]:
+        """Returns all non-empty subsets of `indices`."""
+        for length in range(1, len(indices) + 1):
+            yield from map(list, combinations(indices, r=length))
+
+    # `CUDA_VISIBLE_DEVICES` is given.
+    for cuda_visible_devices in nonempty_subsequences(range(NUM_GPUS)):  # NVML index
+        # `gpu_indices` is not `None`.
+        for gpu_indices in nonempty_subsequences(range(len(cuda_visible_devices))):  # PyTorch index
+            for gpu_archs in product(ARCHS, repeat=len(gpu_indices)):
+                yield cuda_visible_devices, gpu_indices, list(gpu_archs)
+        # `gpu_indices` is `None` (use all GPUs visible to PyTorch).
+        for gpu_archs in product(ARCHS, repeat=len(cuda_visible_devices)):
+            yield cuda_visible_devices, None, list(gpu_archs)
+    # `CUDA_VISIBLE_DEVICES` is not given (use all GPUs in the system).
+    # `gpu_indices` is not `None`.
+    for gpu_indices in nonempty_subsequences(range(NUM_GPUS)):  # PyTorch index
+        for gpu_archs in product(ARCHS, repeat=len(gpu_indices)):
+            yield None, gpu_indices, list(gpu_archs)
+    # `gpu_indices` is `None` (use all GPUs visible to PyTorch).
+    for gpu_archs in product(ARCHS, repeat=NUM_GPUS):
+        yield None, None, list(gpu_archs)
+
+
+@pytest.fixture(params=gpu_cases())
+def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
     """Mock `pynvml` so that it looks like there are GPUs with the given archs.
 
     This fixture automatically generates (1) all combinations of possible GPU indices
@@ -71,27 +102,56 @@ def mock_gpus(request, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
     Thus `request.param` has type `tuple[tuple[int], tuple[int]]` where the former
     is GPU indices and the latter is GPU architectures.
     """
-    indices, archs = request.param
-    effective_indices = indices or range(MAX_NUM_GPUS)
-    assert len(archs) == len(effective_indices)
+    cuda_visible_devices, gpu_indices, archs = request.param
 
-    index_to_handle = {i: f"handle{i}" for i in effective_indices}
-    handle_to_arch = {f"handle{i}": arch for i, arch in zip(effective_indices, archs)}
+    def mock_pynvml(nvml_indices: list[int], archs: list[int]) -> None:
+        assert len(nvml_indices) == len(archs)
+        index_to_handle = {i: f"handle{i}" for i in nvml_indices}
+        handle_to_arch = {f"handle{i}": arch for i, arch in zip(nvml_indices, archs)}
+        pynvml_mock.nvmlDeviceGetCount.return_value = NUM_GPUS
+        pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: index_to_handle[index]
+        pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
 
-    pynvml_mock.nvmlDeviceGetCount.return_value = len(archs)
-    pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: index_to_handle[index]
-    pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
+    if cuda_visible_devices is None:  # All GPUs are visible to PyTorch.
+        # When `CUDA_VISIBLE_DEVICES` is not given, NVML indices and PyTorch indices conincide.
+        if gpu_indices is None:
+            mock_pynvml(list(range(NUM_GPUS)), archs)
+        else:
+            mock_pynvml(gpu_indices, archs)
 
-    return indices, archs
+    else:  # `CUDA_VISIBLE_DEVICES` is given, limiting the set of visible GPUs to PyTorch.
+        mocker.patch.dict("os.environ", {"CUDA_VISIBLE_DEVICES": ",".join(map(str, cuda_visible_devices))})
+        # Valid NVML indices are determined by `cuda_visible_devices` and `gpu_indices`.
+        if gpu_indices is None:
+            mock_pynvml(cuda_visible_devices, archs)
+        else:
+            # We need to translate `gpu_indices` to NVML indices.
+            mock_pynvml([cuda_visible_devices[idx] for idx in gpu_indices], archs)
+
+    return request.param
 
 
 def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     """Test the `ZeusMonitor` class."""
-    gpu_indices, gpu_archs = mock_gpus
-    effective_gpu_indices = gpu_indices or list(range(MAX_NUM_GPUS))
+    cuda_visible_devices, gpu_indices, gpu_archs = mock_gpus
+    if cuda_visible_devices is None:
+        if gpu_indices is None:
+            nvml_gpu_indices = torch_gpu_indices = list(range(NUM_GPUS))
+        else:
+            nvml_gpu_indices = torch_gpu_indices = gpu_indices
+    else:
+        if gpu_indices is None:
+            nvml_gpu_indices = cuda_visible_devices
+            torch_gpu_indices = list(range(len(cuda_visible_devices)))
+        else:
+            nvml_gpu_indices = [cuda_visible_devices[idx] for idx in gpu_indices]
+            torch_gpu_indices = gpu_indices
+    assert len(nvml_gpu_indices) == len(torch_gpu_indices) == len(gpu_archs)
+
     num_gpus = len(gpu_archs)
-    old_arch_flags = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(effective_gpu_indices, gpu_archs)}
-    num_old_archs = sum(old_arch_flags.values())
+    is_old_nvml = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(nvml_gpu_indices, gpu_archs)}
+    is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
+    num_old_archs = sum(is_old_nvml.values())
 
     mkdtemp_mock = mocker.patch("zeus.monitor.tempfile.mkdtemp", return_value="mock_log_dir")
     which_mock = mocker.patch("zeus.monitor.shutil.which", return_value="zeus_monitor")
@@ -103,7 +163,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     energy_counters = {
         f"handle{i}": itertools.count(start=1000, step=3)
-        for i in effective_gpu_indices if not old_arch_flags[i]
+        for i in nvml_gpu_indices if not is_old_nvml[i]
     }
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counters[handle])
     energy_mock = mocker.patch("zeus.monitor.analyze.energy")
@@ -117,23 +177,33 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     if num_old_archs > 0:
         assert mkdtemp_mock.call_count == 1
-        assert monitor.monitor_log_dir == "mock_log_dir"
         assert which_mock.call_count == 1
     else:
         assert mkdtemp_mock.call_count == 0
-        assert not hasattr(monitor, "monitor_log_dir")
         assert which_mock.call_count == 0
 
-    # Zeus monitors should only have been spawned for GPUs with old architectures.
+    # Zeus monitors should only have been spawned for GPUs with old architectures using NVML indices.
     assert popen_mock.call_count == num_old_archs
-    assert list(monitor.monitors.keys()) == [i for i in effective_gpu_indices if old_arch_flags[i]]
+    calls = []
+    for nvml_gpu_index, torch_gpu_index in zip(nvml_gpu_indices, torch_gpu_indices):
+        if is_old_nvml[nvml_gpu_index]:
+            calls.append(call([
+                "zeus_monitor",
+                monitor._monitor_log_path(torch_gpu_index),
+                "0",
+                "100",
+                str(nvml_gpu_index),
+            ]))
+    if calls:
+        popen_mock.assert_has_calls(calls)
+    assert list(monitor.monitors.keys()) == [i for i in torch_gpu_indices if is_old_torch[i]]
 
     # Start time would be 4, as specified in the counter constructor.
     assert monitor.monitor_start_time == 4
 
     # Check GPU index parsing from the log file.
     replay_monitor = ReplayZeusMonitor(gpu_indices=None, log_file=log_file)
-    assert replay_monitor.gpu_indices == list(effective_gpu_indices)
+    assert replay_monitor.gpu_indices == list(torch_gpu_indices)
 
     ########################################
     # Test measurement windows.
@@ -151,10 +221,10 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
             # `begin_time` is actually one tick ahead from the perspective of the
             # energy counters, so we subtract 5 instead of 4.
             i: pytest.approx((1000 + 3 * (begin_time - 5)) / 1000.0)
-            for i in effective_gpu_indices if not old_arch_flags[i]
+            for i in torch_gpu_indices if not is_old_torch[i]
         }
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
-            call(f"handle{i}") for i in effective_gpu_indices if not old_arch_flags[i]
+            call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]
         ])
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
 
@@ -177,8 +247,8 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         assert name not in monitor.measurement_states
         assert num_gpus == len(measurement.energy)
         assert elapsed_time == measurement.time
-        for i in effective_gpu_indices:
-            if not old_arch_flags[i]:
+        for i in torch_gpu_indices:
+            if not is_old_torch[i]:
                 # The energy counter increments with step size 3.
                 assert measurement.energy[i] == pytest.approx(elapsed_time * 3 / 1000.0)
 
@@ -187,11 +257,11 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
         energy_mock.assert_has_calls([
             call(f"mock_log_dir/gpu{i}.power.csv", begin_time - 4, begin_time + elapsed_time - 4)
-            for i in effective_gpu_indices if old_arch_flags[i]
+            for i in torch_gpu_indices if is_old_torch[i]
         ])
         energy_mock.reset_mock()
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
-            call(f"handle{i}") for i in effective_gpu_indices if not old_arch_flags[i]
+            call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]
         ])
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
 
@@ -272,7 +342,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     # The first line should be the header.
     header = "start_time,window_name,elapsed_time"
-    for gpu_index in effective_gpu_indices:
+    for gpu_index in torch_gpu_indices:
         header += f",gpu{gpu_index}_energy"
     header += "\n"
     assert lines[0] == header
@@ -289,8 +359,8 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         """
         assert row.startswith(f"{begin_time},{name},{elapsed_time}")
         pieces = row.split(",")
-        for i, gpu_index in enumerate(effective_gpu_indices):
-            if not old_arch_flags[gpu_index]:
+        for i, gpu_index in enumerate(torch_gpu_indices):
+            if not is_old_torch[gpu_index]:
                 assert float(pieces[3 + i]) == pytest.approx(elapsed_time * 3 / 1000.0)
 
     assert_log_file_row(lines[1], "window1", 5, 2)
@@ -305,7 +375,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     ########################################
     # Currently the testing infrastructure does not support old GPU architectures that
     # require the Zeus monitor binary. So we skip this test if any of the GPUs are old.
-    if any(old_arch_flags.values()):
+    if any(is_old_nvml.values()):
         return
 
     replay_monitor.begin_window("window1", sync_cuda=False)

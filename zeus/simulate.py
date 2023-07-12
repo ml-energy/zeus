@@ -794,7 +794,7 @@ class Simulator:
 
         # Compute the epoch cost of each power limit (Equation 7).
         max_pl = df.power_limit.max().item()
-        df = df.groupby(["power_limit"], as_index=False).mean()
+        df = df.groupby(["power_limit"], as_index=False).mean(numeric_only=True)
         df["epoch_cost"] = (
             eta_knob * df["average_power"] + (1 - eta_knob) * max_pl
         ) * df["time_per_epoch"]

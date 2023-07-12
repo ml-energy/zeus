@@ -16,6 +16,7 @@ ignore = [
   "B019",     # Usage of functools.lru_cache
   "PLR0913",  # Too many function arguments
   "B905",     # zip strict argument
+  "PLR0915",  # Too many statements
 ]
 line-length = 120
 

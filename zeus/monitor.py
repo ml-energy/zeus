@@ -57,13 +57,13 @@ class Measurement:
 class ZeusMonitor:
     """Measure the GPU energy and time consumption of a block of code.
 
-    Works for multi-GPU, heterogeneous GPU types, and any DL framework.
+    Works for multi-GPU and heterogeneous GPU types. Aware of `CUDA_VISIBLE_DEVICES`.
 
     You can mark the beginning and end of a measurement window, during which the GPU
     energy and time consumed will be recorded. Multiple concurrent measurement windows
     are supported.
 
-    ## Integrated Example
+    ## Integration Example
 
     ```python
     from zeus.monitor import ZeusMontior
@@ -88,6 +88,12 @@ class ZeusMonitor:
     for gpu_idx, gpu_energy in zip(gpu_indices, energy_consumed):
         print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
     ```
+
+    Attributes:
+        gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from the
+            DL framework's perspective after applying `CUDA_VISIBLE_DEVICES`.
+        nvml_gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from
+            NVML/system's perspective.
     """
 
     def __init__(
@@ -99,31 +105,52 @@ class ZeusMonitor:
         """Instantiate the monitor.
 
         For Volta or newer GPUs, energy consumption is measured very cheaply with the
-        `nvmlDeviceGetTotalEnergyConsumption` API. Otherwise, the energy API is not
-        supported. Thus, the Zeus monitor binary is used to poll `nvmlDeviceGetPowerUsage`
+        `nvmlDeviceGetTotalEnergyConsumption` API. The API is not supported on older
+        architectures, so the `zeus_monitor` binary is used to poll `nvmlDeviceGetPowerUsage`
         and write to a temporary CSV file, which is then integrated over time to compute
         energy consumption.
 
         Args:
-            gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurement
+            gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurements
                 will begin and end at the same time for these GPUs (i.e., synchronized).
-                If None, all the GPUs available will be used (while respecting the
-                `CUDA_VISIBLE_DEVICES` environment variable). (Default: `None`)
+                If None, all the GPUs available will be used. `CUDA_VISIBLE_DEVICES`
+                is respected if set, e.g., GPU index `1` passed into `gpu_indices` when
+                `CUDA_VISIBLE_DEVICES=2,3` will be interpreted as CUDA device `3`.
+                `CUDA_VISIBLE_DEVICES`s formatted with comma-separated indices are supported.
+                (Default: `None`)
             monitor_exec: Zeus monitor executable. (Default: `"zeus_monitor"`)
             log_file: Path to the log CSV file. If `None`, logging will be disabled.
         """
         # Initialize NVML.
         pynvml.nvmlInit()
 
-        # If `gpu_indices` is None, use all the GPUs available.
+        # Sanity check.
+        if gpu_indices is not None and not gpu_indices:
+            raise ValueError("`gpu_indices` must be None or non-empty.")
+
+        # Find the NVML GPU indices visible to PyTorch, respecting `CUDA_VISIBLE_DEVICES`.
+        if (cuda_visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
+            nvml_visible_indices = [int(idx) for idx in cuda_visible_device.split(",")]
+        else:
+            nvml_visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
+
+        # NVML GPU indices and PyTorch GPU indices should be different.
+        # We always use PyTorch GPU indices when communicating with the outside world,
+        # but when dealing with NVML, we use the NVML GPU indices.
         if gpu_indices is None:
-            # NVML is not aware of the `CUDA_VISIBLE_DEVICES` environment variable,
-            # so we need to manually check whether it's set.
-            cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
-            if cuda_visible_devices is not None:
-                gpu_indices = [int(idx) for idx in cuda_visible_devices.split(",")]
-            else:
-                gpu_indices = list(range(pynvml.nvmlDeviceGetCount()))
+            nvml_gpu_indices = nvml_visible_indices
+            torch_gpu_indices = list(range(len(nvml_visible_indices)))
+        else:
+            nvml_gpu_indices = [nvml_visible_indices[idx] for idx in gpu_indices]
+            torch_gpu_indices = gpu_indices
+        self.gpu_indices = torch_gpu_indices
+        self.nvml_gpu_indices = nvml_gpu_indices
+
+        # Save all the NVML GPU handles. These should be called with system-level GPU indices.
+        self.gpu_handles: dict[int, pynvml.c_nvmlDevice_t] = {}
+        for nvml_gpu_index, torch_gpu_index in zip(nvml_gpu_indices, torch_gpu_indices):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(nvml_gpu_index)
+            self.gpu_handles[torch_gpu_index] = handle
 
         # Initialize loggers.
         self.logger = get_logger(type(self).__name__)
@@ -135,15 +162,11 @@ class ZeusMonitor:
             self.log_file = open(log_file, "w")  # ruff: noqa: SIM115
             self.logger.info("Writing measurement logs to %s.", log_file)
             self.log_file.write(
-                f"start_time,window_name,elapsed_time,{','.join(map(lambda i: f'gpu{i}_energy', gpu_indices))}\n",
+                f"start_time,window_name,elapsed_time,{','.join(map(lambda i: f'gpu{i}_energy', self.gpu_indices))}\n",
             )
             self.log_file.flush()
 
-        # Save all the GPU handles.
-        self.gpu_handles: dict[int, pynvml.c_nvmlDevice_t] = {}
-        for gpu_index in gpu_indices:
-            handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
-            self.gpu_handles[gpu_index] = handle
+        self.logger.info("Monitoring GPU %s.", self.gpu_indices)
 
         # A dictionary that maps the string keys of active measurement windows to
         # the state of the measurement window. Each element in the dictionary is a tuple of:
@@ -191,20 +214,27 @@ class ZeusMonitor:
             # Create a temporary directory.
             self.monitor_log_dir = tempfile.mkdtemp()
 
-        # Capture the time when we started the monitors.
-        self.monitor_start_time = time.monotonic()
-
         # Spawn monitor process when GPU has older architecture.
-        for gpu_index, arch_is_old in zip(self.gpu_handles, old_arch_flags):
+        # The monitor should be spawned with NVML GPU indices.
+        # However, we still use the PyTorch GPU indices to construct the log path because
+        # `end_window` accesses the power log path with PyTorch GPU indices.
+        for torch_gpu_index, nvml_gpu_index, arch_is_old in zip(
+            self.gpu_indices,
+            self.nvml_gpu_indices,
+            old_arch_flags,
+        ):
             if arch_is_old:
-                log_path = self._monitor_log_path(gpu_index)
+                log_path = self._monitor_log_path(torch_gpu_index)
                 # 10 Hz (100 ms sleep) polling should be enough.
                 monitor = subprocess.Popen(
-                    [monitor_exec, log_path, "0", "100", str(gpu_index)],
+                    [monitor_exec, log_path, "0", "100", str(nvml_gpu_index)],
                 )
                 # Save the mapping from `gpu_index` to monitor.
-                self.monitors[gpu_index] = monitor
-                self._log("Zeus monitor started.", gpu_index)
+                self.monitors[torch_gpu_index] = monitor
+                self._log("Zeus monitor started.", nvml_gpu_index)
+
+        # Capture the time when we started the monitors.
+        self.monitor_start_time = time.monotonic()
 
     def _stop_monitors(self) -> None:
         """Kill the power monitor subprocess."""
@@ -257,13 +287,19 @@ class ZeusMonitor:
         self.measurement_states[key] = (timestamp, energy_state)
         self._log(f"Measurement window '{key}' started.")
 
-    def end_window(self, key: str, sync_cuda: bool = True) -> Measurement:
+    def end_window(
+        self, key: str, sync_cuda: bool = True, cancel: bool = False
+    ) -> Measurement:
         """End a measurement window and return the time and energy consumption.
 
         Args:
             key: Name of an active measurement window.
             sync_cuda: Whether to synchronize CUDA before ending the measurement window.
                 (default: `True`)
+            cancel: Whether to cancel the measurement window. If `True`, the measurement
+                window is assumed to be cancelled and discarded. Thus, an empty Measurement
+                object will be returned and the measurement window will not be recorded in
+                the log file either. `sync_cuda` is still respected.
         """
         # Retrieve the start time and energy consumption of this window.
         try:
@@ -275,6 +311,11 @@ class ZeusMonitor:
         if sync_cuda:
             for gpu_index in self.gpu_handles:
                 cuda_sync(gpu_index)
+
+        # If the measurement window is cancelled, return an empty Measurement object.
+        if cancel:
+            self._log(f"Measurement window '{key}' cancelled.")
+            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_handles})
 
         end_time: float = time.monotonic()
         time_consumption: float = end_time - start_time

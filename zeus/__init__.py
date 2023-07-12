@@ -12,15 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Zeus is an energy optimization framework for DNN training.
+"""Zeus is a framework for deep learning energy measurement and optimization.
 
 Modules:
 
+- [`run`][zeus.run]: Machinery for actually running Zeus.
+- [`monitor`][zeus.monitor]: Class for profiling energy inside training scripts.
+- [`optimizer`][zeus.optimizer]: A collection of optimizers for various knobs.
+- [`callback`][zeus.callback]: Callback definition.
+- [`controller`][zeus.controller]: A collection of controllers that influence training flow.
 - [`analyze`][zeus.analyze]: Functions for analyzing log files.
 - [`job`][zeus.job]: Job specification.
-- [`run`][zeus.run]: Machinery for actually running Zeus.
 - [`simulate`][zeus.simulate]: Machinery for trace-driven Zeus.
 - [`policy`][zeus.policy]: Collection of optimization policies.
-- [`monitor`][zeus.monitor]: Class for profiling energy inside training scripts.
 - [`util`][zeus.util]: Utility functions and classes.
 """

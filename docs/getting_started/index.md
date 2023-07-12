@@ -50,107 +50,35 @@ for epoch in range(100):
 
 ## Non-recurring jobs
 
-The GPU power limit can be profiled and optimized quickly for any training job.
-After going through the prerequisites, integrate [`ZeusDataLoader`][zeus.run.ZeusDataLoader] into your training script.
-
-Integration example:
-
-### Single-GPU
-
-```python
-from zeus.run import ZeusDataLoader
-
-# The one instantiated with max_epochs becomes the train dataloader
-train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100)
-eval_loader = ZeusDataLoader(eval_set, batch_size=256)
-
-for epoch_number in train_loader.epochs():
-    for batch in train_loader:
-        # Learn from batch
-    for batch in eval_loader:
-        # Evaluate on batch
-
-    train_loader.report_metric(validation_metric)
-```
-
-### Data parallel with multi-GPU on a single-node
-
-!!! Important
-    Zeus assumes that exactly one process manages one GPU, and hence
-    one instance of [`ZeusDataLoader`][zeus.run.ZeusDataLoader] exists
-    for each GPU.
-
-Users can integrate Zeus into existing data parallel training scripts
-with five specific steps, which are noted below in the comments.
+The GPU power limit can be profiled *during training* and optimized quickly for any training job.
+After going through the prerequisites, [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] into your training script.
 
 Please refer to
-[our integration example with ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)
+[our integration example with ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/)
 for a complete example.
 
 ```python
-import torch
-import torch.distributed as dist
-import torchvision
+from zeus.monitor import ZeusMonitor
+from zeus.optimizer import GlobalPowerLimitOptimizer
 
-from zeus.run import ZeusDataLoader
+# Data parallel training with four GPUs.
+# Omitting `gpu_indices` will use all GPUs, while respecting
+# `CUDA_VISIBLE_DEVICES`.
+monitor = ZeusMonitor(gpu_indices=[0,1,2,3])
+# The power limit optimizer profiles power limits during training
+# using the `ZeusMonitor` instance.
+plo = GlobalPowerLimitOptimizer(monitor)
 
-# Step 1: Initialize the default process group.
-# This should be done before instantiating `ZeusDataLoader`.
-dist.init_process_group(
-    backend=args.dist_backend,
-    init_method=args.dist_url,
-)
+for epoch in range(100):
+    plo.on_epoch_begin()
 
-# Step 2: Create a model and wrap it with `DistributedDataParallel`.
-model = torchvision.models.resnet18()
-torch.cuda.set_device(local_rank)
-model.cuda(local_rank)
-# Zeus assumes that exactly one process manages one GPU. If you are doing data
-# parallel training, please use `DistributedDataParallel` for model replication
-# and specify the `device_ids` and `output_device` as below:
-model = torch.nn.parallel.DistributedDataParallel(
-    model,
-    device_ids=[local_rank],
-    output_device=local_rank,
-)
+    for x, y in train_dataloader:
+        plo.on_step_begin()
+        # Learn from x and y!
+        plo.on_step_end()
 
-# Step 3: Create instances of `DistributedSampler` to partition the dataset
-# across the GPUs.
-train_sampler = torch.utils.data.distributed.DistributedSampler(train_set)
-eval_sampler = torch.utils.data.distributed.DistributedSampler(eval_set)
-
-# Step 4: Instantiate `ZeusDataLoader`.
-# `distributed="dp"` tells `ZeusDataLoader` to operate in data parallel mode.
-# The one instantiated with `max_epochs` becomes the train dataloader.
-train_loader = ZeusDataLoader(train_set, batch_size=256, max_epochs=100, 
-                              sampler=train_sampler, distributed="dp")
-eval_loader = ZeusDataLoader(eval_set, batch_size=256, sampler=eval_sampler,
-                             distributed="dp")
-
-# Step 5: Training loop.
-# Use the train dataloader's `epochs` generator to allow Zeus to early-stop
-# based on the training cost. Use `report_metric` to let Zeus know the current
-# validation metric.
-for epoch_number in train_loader.epochs():
-    for batch in train_loader:
-        # Learn from batch
-    for batch in eval_loader:
-        # Evaluate on batch
-
-    # Make sure you all-reduce the validation metric across all GPUs,
-    # since Zeus expects the final validation metric.
-    val_metric_tensor = torch.tensor([validation_metric], device="cuda")
-    dist.all_reduce(val_metric_tensor, async_op=False)
-    train_loader.report_metric(val_metric_tensor.item())
+    plo.on_epoch_end()
 ```
-
-The following examples will help:
-
-- Integrating Zeus with computer vision
-    - [Integrating Zeus with CIFAR100 dataset](https://github.com/SymbioticLab/Zeus/tree/master/examples/cifar100){.external}
-    - [Integrating Zeus with ImageNet dataset](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet){.external}
-- [Integrating Zeus with NLP](https://github.com/SymbioticLab/Zeus/tree/master/examples/capriccio){.external}
-
 
 ## Recurring jobs
 

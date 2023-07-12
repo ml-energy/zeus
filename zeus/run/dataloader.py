@@ -800,7 +800,9 @@ class ZeusDataLoader(DataLoader):
         if self.rank == 0:
             # Push profiling window for the current power limit value.
             # This window will profile for `self.profile_iter` iterations.
-            self._begin_measurement("__ZeusDataLoader_power_limit")
+            self._begin_measurement(
+                f"__ZeusDataLoader_power_limit_{self.current_gpu_pl//1000}"
+            )
 
         # Set the sample number when we started profiling.
         self.prof_start_sample = self.sample_num
@@ -840,7 +842,9 @@ class ZeusDataLoader(DataLoader):
 
         if self.rank == 0:
             # Pop profiling window for the current power limit and fetch profiling results.
-            profiling_result = self._end_measurement("__ZeusDataLoader_power_limit")
+            profiling_result = self._end_measurement(
+                f"__ZeusDataLoader_power_limit_{self.current_gpu_pl//1000}"
+            )
             time_consumed, energy_consumed = (
                 profiling_result.time,
                 profiling_result.energy,
