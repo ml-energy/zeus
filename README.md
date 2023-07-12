@@ -21,7 +21,7 @@
 - \[2022/11\] [Carbon-Aware Zeus](https://taikai.network/gsf/hackathons/carbonhack22/projects/cl95qxjpa70555701uhg96r0ek6/idea) won the **second overall best solution award** at Carbon Hack 22.
 ---
 
-Zeus is a general framework for (1) measuring GPU energy consumption and (2) optimizing energy and time for DNN training.
+Zeus is a framework for (1) measuring GPU energy consumption and (2) optimizing energy and time for DNN training.
 
 ### Measuring GPU energy
 
