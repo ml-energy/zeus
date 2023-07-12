@@ -102,9 +102,9 @@ The only command you need is:
 
 ```sh
 docker run -it \
-    --gpus 1                    `# Mount one GPU` \
+    --gpus all                  `# Mount all GPUs` \
     --cap-add SYS_ADMIN         `# Needed to change the power limit of the GPU` \
-    --shm-size 64G              `# PyTorch DataLoader workers need enough shm` \
+    --ipc host                  `# PyTorch DataLoader workers need enough shm` \
     symbioticlab/zeus:latest \
     bash
 ```

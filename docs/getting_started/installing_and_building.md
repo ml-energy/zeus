@@ -16,10 +16,10 @@ This document explains how to install the [`zeus`][zeus] Python package and how 
 
 ### Dependencies
 
-Install PyTorch and CUDAToolkit:
+Install PyTorch. For instance, if you have CUDA 11.8:
 
 ```bash
-conda install -c pytorch pytorch==1.10.1 cudatoolkit==11.3.1
+pip3 install torch==2.0.1 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 ### Install `zeus`

@@ -13,15 +13,25 @@ Zeus automatically tunes the **batch size** and **GPU power limit** of a recurri
 Zeus in action, integrated with Stable Diffusion fine-tuning:
 <iframe width="560" height="315" src="https://www.youtube.com/embed/MzlF5XNRSJY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
-## Prerequisites
+
+## Just measuring GPU time and energy
+
+### Prerequisites
+
+If your NVIDIA GPU's architecture is Volta or newer, simply do the following in your Python environment
+```sh
+pip install zeus-ml
+```
+and get going with [`ZeusMonitor`][zeus.monitor.ZeusMonitor].
+
+Otherwise, we recommend using our Docker container:
 
 1. [Set up your environment](environment.md).
 2. [Install and build Zeus components](installing_and_building.md).
 
+### `ZeusMonitor`
 
-## Just measuring time and energy
-
-You can use the [`ZeusMonitor`][zeus.monitor.ZeusMonitor] to simply measure the GPU time and energy consumption of arbitrary Python code blocks.
+[`ZeusMonitor`][zeus.monitor.ZeusMonitor] makes it very simple to measure the GPU time and energy consumption of arbitrary Python code blocks.
 
 ```python
 from zeus.monitor import ZeusMonitor
@@ -48,14 +58,23 @@ for epoch in range(100):
 ```
 
 
-## Non-recurring jobs
+## Optimizing a single training job's energy consumption
 
-The GPU power limit can be profiled *during training* and optimized quickly for any training job.
+All GPU power limits can be profiled quickly *during training* and used to optimize the energy consumption of the training job.
+
+### Prerequisites
+
+In order to change the GPU's power limit, the process requires the Linux `SYS_ADMIN` security capability, and the easiest way to do this is to spin up a container and give it `--cap-add SYS_ADMIN`.
+We provide ready-to-go [Docker images](environment.md).
+
+
+### `GlobalPowerLimitOptimizer`
+
 After going through the prerequisites, [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] into your training script.
 
-Please refer to
+Refer to
 [our integration example with ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/)
-for a complete example.
+for complete running examples for single-GPU and multi-GPU data parallel training.
 
 ```python
 from zeus.monitor import ZeusMonitor
@@ -93,4 +112,4 @@ Then, you can use [`ZeusMaster`][zeus.run.ZeusMaster] to drive recurring jobs an
 
 This example will come in handy:
 
-- [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](https://github.com/SymbioticLab/Zeus/tree/master/examples/trace_driven){.external}
+- [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](https://github.com/SymbioticLab/Zeus/tree/master/examples/ZeusDataLoader/trace_driven){.external}
