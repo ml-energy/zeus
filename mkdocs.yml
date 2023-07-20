@@ -2,7 +2,7 @@
 site_name: Zeus Project
 site_url: https://ml.energy/zeus
 site_author: Jae-Won Chung
-site_description: An energy optimization framework for DNN training
+site_description: Deep learning energy measurement and optimization
 edit_uri: ""
 
 # Repository
@@ -26,6 +26,7 @@ theme:
     - navigation.tabs.sticky
     - navigation.top
     - navigation.instant
+    - navigation.instant.prefetch
     - content.tooltips
     - announce.dismiss
   palette:
@@ -47,6 +48,11 @@ theme:
 plugins:
   - search
   - autorefs
+  - social:
+      cards_dir: assets/img/social
+      cards_layout_options:
+        background_color: "#f7e96d"
+        color: "#231f20"
   - gen-files:
       scripts:
         - docs/gen_ref_pages.py
@@ -54,8 +60,6 @@ plugins:
       nav_file: SUMMARY.md
   - section-index
   - mkdocstrings:
-      watch:
-        - zeus
       handlers:
         python:
           import:

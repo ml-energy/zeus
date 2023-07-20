@@ -10,3 +10,4 @@ dist/
 *.log
 *.json
 **/.DS_Store
+.cache/
