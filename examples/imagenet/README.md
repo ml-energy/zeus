@@ -21,12 +21,12 @@ You just need to download and extract the ImageNet data and mount it to the Dock
 ## `ZeusMonitor` and `GlobalPowerLimitOptimizer`
 
 - [`ZeusMonitor`](http://ml.energy/zeus/reference/monitor/#zeus.monitor.ZeusMonitor): Measures the GPU time and energy consumption of arbitrary code blocks.
-- [`GlobalPowerLimitOptimizer`](/zeus/reference/optimizer/power_limit/#zeus.optimizer.power_limit.GlobalPowerLimitOptimizer): Online-profiles each power limit with `ZeusMonitor` and finds the cost-optimal power limit.
+- [`GlobalPowerLimitOptimizer`](https://ml.energy/zeus/reference/optimizer/power_limit/#zeus.optimizer.power_limit.GlobalPowerLimitOptimizer): Online-profiles each power limit with `ZeusMonitor` and finds the cost-optimal power limit.
 
 ## Example command
 
-
-Only `ZEUS_TARGET_METRIC` is required; other environment variables have default values as shown below.
+You can specify the maximum training time slowdown factor (1.0 means no slowdown) by setting `ZEUS_MAX_SLOWDOWN`. The default is set to 1.1 in this example script, meaning the lowest power limit that keeps training time inflation within 10% will be automatically found.
+`GlobalPowerLimitOptimizer` supports other optimal power limit selection strategies. See [here](https://ml.energy/zeus/reference/optimizer/power_limit).
 
 ```bash
 # Single-GPU
@@ -39,6 +39,6 @@ torchrun \
     --nnodes 1 \
     --nproc_per_node gpu    `# Number of processes per node, should be equal to the number of GPUs.` \
                             `# When set to 'gpu', it means use all the GPUs available.` \
-    train.py \
+    train_dp.py \
     [DATA_DIR]
 ```

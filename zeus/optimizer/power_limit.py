@@ -12,7 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Optimizers that select the optimum power limit."""
+"""Optimizers that select the optimum power limit.
+
+This module contains the following pieces:
+
+- [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer]
+  is the main class that implements the state machine
+  and the logic for profiling power limits and selecting
+  the optimum power limit.
+- [`PowerLimitMeasurement`][zeus.optimizer.power_limit.PowerLimitMeasurement] and various
+  state classes are helpers that support the state machine.
+- [`OptimumSelector`][zeus.optimizer.power_limit.OptimumSelector]
+  is an abstract base class for selecting the optimum power limit
+  from a list of power limit profiling results. There are concrete classes
+  that implement different selection strategies, like
+  [minimizing energy][zeus.optimizer.power_limit.Energy],
+  [minimizing time][zeus.optimizer.power_limit.Time],
+  [minimizing the Zeus time-energy cost][zeus.optimizer.power_limit.ZeusCost],
+  or [selecting the lowest power limit that meets the given maximum training time slowdown factor][zeus.optimizer.power_limit.MaxSlowdownConstraint].
+"""
 
 from __future__ import annotations
 
@@ -27,66 +45,6 @@ from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
-
-
-class Ready(BaseModel):
-    """State for when we are ready to start measuring the next power limit.
-
-    Initial state of the state machine if no previous profiling results were given.
-    `Ready` -> `Warmup` after `step`'th `on_step_begin`.
-    """
-
-    next_power_limit: PositiveInt
-    steps: PositiveInt
-
-
-class Warmup(BaseModel):
-    """State for when we are warming up for a power limit.
-
-    `Warmup` -> `Profiling` on the `steps`'th `on_step_begin`.
-    `Warmup` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_begin`.
-    """
-
-    current_power_limit: PositiveInt
-    steps: PositiveInt
-
-
-class Profiling(BaseModel):
-    """State for when we are profiling a power limit.
-
-    `Profiling` -> `Warmup` after `steps`'th `on_step_begin` and
-        there are still power limits left to profile.
-    `Profiling` -> `Done` after `steps`'th `on_step_begin` and
-        there are no more power limits left to profile.
-    `Profiling` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_begin`.
-    """
-
-    current_power_limit: PositiveInt
-    steps: PositiveInt
-
-
-class Done(BaseModel):
-    """State for when we are done profiling all power limits.
-
-    Initial state of the state machine if previous profiling results were given.
-    Final state of the state machine in any case.
-    """
-
-    optimal_power_limit: PositiveInt
-
-
-class PowerLimitMeasurement(BaseModel):
-    """POD for GPU energy and time measurements for one power limit (W)."""
-
-    power_limit: PositiveInt  # In Watts.
-    energy: PositiveFloat
-    time: PositiveFloat
-
-
-class _PowerLimitMeasurementList(BaseModel):
-    """Proxy class to serialize and desrialize a list of power limit measurements."""
-
-    measurements: list[PowerLimitMeasurement]
 
 
 class OptimumSelector(ABC):
@@ -189,6 +147,66 @@ class MaxSlowdownConstraint(OptimumSelector):
         return min(feasible_power_limits)
 
 
+class Ready(BaseModel):
+    """State for when we are ready to start measuring the next power limit.
+
+    Initial state of the state machine if no previous profiling results were given.
+    `Ready` -> `Warmup` after `step`'th `on_step_begin`.
+    """
+
+    next_power_limit: PositiveInt
+    steps: PositiveInt
+
+
+class Warmup(BaseModel):
+    """State for when we are warming up for a power limit.
+
+    `Warmup` -> `Profiling` on the `steps`'th `on_step_begin`.
+    `Warmup` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_begin`.
+    """
+
+    current_power_limit: PositiveInt
+    steps: PositiveInt
+
+
+class Profiling(BaseModel):
+    """State for when we are profiling a power limit.
+
+    `Profiling` -> `Warmup` after `steps`'th `on_step_begin` and
+        there are still power limits left to profile.
+    `Profiling` -> `Done` after `steps`'th `on_step_begin` and
+        there are no more power limits left to profile.
+    `Profiling` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_begin`.
+    """
+
+    current_power_limit: PositiveInt
+    steps: PositiveInt
+
+
+class Done(BaseModel):
+    """State for when we are done profiling all power limits.
+
+    Initial state of the state machine if previous profiling results were given.
+    Final state of the state machine in any case.
+    """
+
+    optimal_power_limit: PositiveInt
+
+
+class PowerLimitMeasurement(BaseModel):
+    """POD for GPU energy and time measurements for one power limit (W)."""
+
+    power_limit: PositiveInt  # In Watts.
+    energy: PositiveFloat
+    time: PositiveFloat
+
+
+class _PowerLimitMeasurementList(BaseModel):
+    """Proxy class to save and load a list of `PowerLimitMeasurement`s."""
+
+    measurements: list[PowerLimitMeasurement]
+
+
 class GlobalPowerLimitOptimizer(Callback):
     """Optimizer for the power limit knob.
 
@@ -283,6 +301,7 @@ class GlobalPowerLimitOptimizer(Callback):
         # Initialize JIT profiling states.
         if self.profile_path is None:
             self.logger.info("JIT profiling enabled.")
+            self.logger.info("Will wait %d step(s) before profiling.", wait_steps)
             self.state = Ready(
                 next_power_limit=self.power_limits[0], steps=wait_steps + 1
             )
@@ -293,6 +312,7 @@ class GlobalPowerLimitOptimizer(Callback):
                 "JIT Profiling enabled. Profile will be saved to '%s'.",
                 str(self.profile_path),
             )
+            self.logger.info("Will wait %d step(s) before profiling.", wait_steps)
             self.state = Ready(
                 next_power_limit=self.power_limits[0], steps=wait_steps + 1
             )

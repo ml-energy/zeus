@@ -19,6 +19,7 @@ ignore = [
   "PLR0915",  # Too many statements
   "PLR2004",  # Magic values
   "SIM115",   # Context manager for opening files
+  "E501",     # Line too long
 ]
 line-length = 120
 

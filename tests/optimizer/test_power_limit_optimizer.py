@@ -24,7 +24,15 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from zeus.optimizer import GlobalPowerLimitOptimizer
-from zeus.optimizer.power_limit import Ready, ZeusCost
+from zeus.optimizer.power_limit import (
+    Ready,
+    Done,
+    Energy,
+    Time,
+    ZeusCost,
+    MaxSlowdownConstraint,
+    PowerLimitMeasurement,
+)
 from zeus.util.testing import ReplayZeusMonitor
 from zeus.util.metric import zeus_cost
 
@@ -63,7 +71,7 @@ class ReplayLog:
         self.log_file = log_file
         self.power_limits = df.power_limit.to_list()
 
-    def optimal_power_limit(self, eta_knob: float) -> int:
+    def optimal_zeus_cost_power_limit(self, eta_knob: float) -> int:
         cost = self.df.apply(lambda row: zeus_cost(
             energy=row["energy"],
             time=row["elapsed_time"],
@@ -71,6 +79,17 @@ class ReplayLog:
             max_power=max(self.power_limits) * len(self.gpu_indices),
         ), axis=1)
         return int(self.df.iloc[cost.argmin()].power_limit)
+
+    def optimal_time_power_limit(self) -> int:
+        return int(self.df.iloc[self.df.elapsed_time.argmin()].power_limit)
+
+    def optimal_energy_power_limit(self) -> int:
+        return int(self.df.iloc[self.df.energy.argmin()].power_limit)
+
+    def optimal_max_slowdown_constraint_power_limit(self, factor: float) -> int:
+        shortest_time = self.df.query(f"power_limit == {max(self.power_limits)}").elapsed_time.item()
+        filtered_df = self.df.query(f"elapsed_time <= {shortest_time * factor}")
+        return int(filtered_df.power_limit.min())
 
 
 @pytest.fixture(params=map(lambda p: PROFILE_DATA_DIR + p, os.listdir(PROFILE_DATA_DIR)))
@@ -168,7 +187,7 @@ def test_power_limit_optimizer(
     # the current power limit matches the target power limit, so we can just
     # assert unique power limit setting calls.
     call_list = []
-    optimal_pl = replay_log.optimal_power_limit(eta_knob)
+    optimal_pl = replay_log.optimal_zeus_cost_power_limit(eta_knob)
     power_limit = -1
     power_limits = sorted(replay_log.power_limits, reverse=True)
     # JIT profiling stage with potential interrupts.
@@ -200,6 +219,36 @@ def test_power_limit_optimizer(
     # Print out the profile data for debugging purposes.
     with open(tmp_path / "power_limit_optimizer.json", "r") as f:
         print(f.read())
+
+    ########################################
+    # Test optimum power limit selection
+    ########################################
+    temp_plo = GlobalPowerLimitOptimizer(
+        monitor,
+        optimum_selector=Energy(),
+        profile_path=tmp_path / "power_limit_optimizer.json",
+    )
+    assert isinstance(temp_plo.state, Done)
+    assert temp_plo.state.optimal_power_limit == replay_log.optimal_energy_power_limit() * 1000
+
+
+    temp_plo = GlobalPowerLimitOptimizer(
+        monitor,
+        optimum_selector=Time(),
+        profile_path=tmp_path / "power_limit_optimizer.json",
+    )
+    assert isinstance(temp_plo.state, Done)
+    assert temp_plo.state.optimal_power_limit == replay_log.optimal_time_power_limit() * 1000
+
+
+    for factor in [1.0, 1.1, 1.2, 1.5, 2.0, 3.0, 5.0, 100.0]:
+        temp_plo = GlobalPowerLimitOptimizer(
+            monitor,
+            optimum_selector=MaxSlowdownConstraint(factor=factor),
+            profile_path=tmp_path / "power_limit_optimizer.json",
+        )
+        assert isinstance(temp_plo.state, Done)
+        assert temp_plo.state.optimal_power_limit == replay_log.optimal_max_slowdown_constraint_power_limit(factor) * 1000
 
     ########################################
     # Test loading from saved profile data

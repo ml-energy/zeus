@@ -21,7 +21,7 @@ from torch.utils.data import Subset
 
 # ZEUS
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer import GlobalPowerLimitOptimizer, MaxSlowdownConstraint
 from zeus.util.check import get_env
 from zeus.callback import Callback, CallbackSet
 
@@ -202,7 +202,9 @@ def main():
         callback_set: list[Callback] = [
             GlobalPowerLimitOptimizer(
                 monitor=ZeusMonitor(gpu_indices=None),  # All visible GPUs.
-                eta_knob=get_env("ZEUS_ETA_KNOB", float, default=0.5),
+                optimum_selector=MaxSlowdownConstraint(
+                    factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
+                ),
                 warmup_steps=10,
                 profile_steps=40,
                 pl_step=25,

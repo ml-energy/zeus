@@ -20,7 +20,7 @@ import torchvision.models as models
 
 # ZEUS
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer import GlobalPowerLimitOptimizer, MaxSlowdownConstraint
 from zeus.util.check import get_env
 
 
@@ -182,7 +182,9 @@ def main():
     # This is the power limit optimizer that's in the Zeus paper.
     plo = GlobalPowerLimitOptimizer(
         monitor=monitor,
-        eta_knob=get_env("ZEUS_ETA_KNOB", float, default=0.5),
+        optimum_selector=MaxSlowdownConstraint(
+            factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
+        ),
         warmup_steps=10,
         profile_steps=40,
         pl_step=25,

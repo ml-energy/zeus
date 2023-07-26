@@ -97,7 +97,14 @@ for epoch in range(100):
         plo.on_step_end()
 
     plo.on_epoch_end()
+
+    # Validate the model if needed, but `plo` won't care.
 ```
+
+!!! Important
+    What is the *optimal* power limit?
+    The [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] supports multiple [`OptimumSelector`][zeus.optimizer.power_limit.OptimumSelector]s that chooses one power limit among all the profiled power limits.
+    Selectors that are current implemented are [`Energy`][zeus.optimizer.power_limit.Energy], [`Time`][zeus.optimizer.power_limit.Time], [`ZeusCost`][zeus.optimizer.power_limit.ZeusCost] and [`MaxSlowdownConstraint`][zeus.optimizer.power_limit.MaxSlowdownConstraint].
 
 ## Recurring jobs
 
