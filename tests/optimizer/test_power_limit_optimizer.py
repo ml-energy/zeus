@@ -24,7 +24,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from zeus.optimizer import GlobalPowerLimitOptimizer
-from zeus.optimizer.power_limit import ZeusCost
+from zeus.optimizer.power_limit import Ready, ZeusCost
 from zeus.util.testing import ReplayZeusMonitor
 from zeus.util.metric import zeus_cost
 
@@ -78,14 +78,20 @@ def replay_log(request) -> ReplayLog:
     return ReplayLog(request.param)
 
 
-def training_loop(plo: GlobalPowerLimitOptimizer, train_loader: DataLoader, num_epochs: int) -> None:
+def training_loop(
+    plo: GlobalPowerLimitOptimizer,
+    train_loader: DataLoader,
+    num_epochs: int,
+    wait_steps: int = 0,
+) -> None:
     """Simulate a training loop."""
     for epoch in range(num_epochs):
-        print(f"Training epoch {epoch:02d}")
         plo.on_epoch_begin()
         for step, _ in enumerate(train_loader):
-            print(f"Training step {step:03d}")
+            print(f"Epoch {epoch:03d} step {step:03d}")
             plo.on_step_begin()
+            if wait_steps > 0 and epoch == 0 and step < wait_steps:
+                assert isinstance(plo.state, Ready)
             plo.on_step_end()
         plo.on_epoch_end()
 
@@ -125,6 +131,7 @@ def test_power_limit_optimizer(
             eta_knob=eta_knob,
             world_size=len(monitor.gpu_indices),
         ),
+        wait_steps=1,
         warmup_steps=10,
         profile_steps=40,
         pl_step=25,
@@ -154,7 +161,7 @@ def test_power_limit_optimizer(
     else:
         raise ValueError(f"Unexpected number of interrupts: {num_interrupts}")
 
-    training_loop(plo, train_loader, num_epochs=num_epochs)
+    training_loop(plo, train_loader, num_epochs=num_epochs, wait_steps=1)
 
     # The PLO scans the power limit from the highest to the lowest, and finally
     # sets the optimal power limit. The PLO automatically skips NVML calls when

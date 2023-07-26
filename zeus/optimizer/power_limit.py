@@ -35,10 +35,11 @@ class Ready:
     """State for when we are ready to start measuring the next power limit.
 
     Initial state of the state machine if no previous profiling results were given.
-    `Ready` -> `Warmup` on next `on_step_begin`.
+    `Ready` -> `Warmup` after `step`'th `on_step_begin`.
     """
 
     next_power_limit: int
+    steps: int
 
 
 @dataclass
@@ -46,7 +47,7 @@ class Warmup:
     """State for when we are warming up for a power limit.
 
     `Warmup` -> `Profiling` on the `steps`'th `on_step_begin`.
-    `Warmup` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_end`.
+    `Warmup` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_begin`.
     """
 
     current_power_limit: int
@@ -92,15 +93,15 @@ class OptimumSelector(ABC):
     """Base class for optimum power limit selectors."""
 
     @abstractmethod
-    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
-        """Compute the optimal power limit (W) from measurements."""
+    def select(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Select the optimal power limit (W) from measurements."""
 
 
 class Energy(OptimumSelector):
     """Selects the power limit that minimizes energy consumption."""
 
-    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
-        """Compute the optimal power limit (W) from measurements."""
+    def select(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Select the optimal power limit (W) from measurements."""
         return min(measurements, key=lambda x: x.energy).power_limit
 
 
@@ -113,8 +114,8 @@ class Time(OptimumSelector):
     but lower power limit will consume less power.
     """
 
-    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
-        """Compute the optimal power limit (W) from measurements."""
+    def select(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Select the optimal power limit (W) from measurements."""
         return min(measurements, key=lambda x: x.time).power_limit
 
 
@@ -139,8 +140,8 @@ class ZeusCost(OptimumSelector):
         self.eta_knob = eta_knob
         self.world_size = world_size
 
-    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
-        """Compute the optimal power limit (W) from measurements."""
+    def select(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Select the optimal power limit (W) from measurements."""
         max_power = (
             max(measurement.power_limit for measurement in measurements)
             * self.world_size
@@ -173,8 +174,8 @@ class MaxSlowdownConstraint(OptimumSelector):
 
         self.factor = factor
 
-    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
-        """Compute the optimal power limit (W) from measurements."""
+    def select(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Select the optimal power limit (W) from measurements."""
         feasible_power_limits = []
         max_power = max(measurement.power_limit for measurement in measurements)
         shortest_time = next(
@@ -198,6 +199,7 @@ class GlobalPowerLimitOptimizer(Callback):
         self,
         monitor: ZeusMonitor,
         optimum_selector: OptimumSelector | None = None,
+        wait_steps: int = 1,
         warmup_steps: int = 10,
         profile_steps: int = 40,
         pl_step: int = 25,
@@ -210,6 +212,9 @@ class GlobalPowerLimitOptimizer(Callback):
         Args:
             monitor: `ZeusMonitor` instance used to profile GPU time and energy consumption.
             optimum_selector: The optimum selector to use. If not given, use `ZeusCost` with \eta=0.5.
+            wait_steps: Number of steps to pass by before doing anything at the beginning.
+                Useful if you have something like `torch.backends.cudnn.benchmark=True`,
+                because the first iteration won't be representative of the rest of the iterations.
             warmup_steps: Number of warmup iterations for each power limit.
             profile_steps: Number of profie iterations for each power limit.
             pl_step: The stride between power limits to explore, in unites of Watts.
@@ -276,7 +281,9 @@ class GlobalPowerLimitOptimizer(Callback):
         # Initialize JIT profiling states.
         if self.profile_path is None:
             self.logger.info("JIT profiling enabled.")
-            self.state = Ready(next_power_limit=self.power_limits[0])
+            self.state = Ready(
+                next_power_limit=self.power_limits[0], steps=wait_steps + 1
+            )
             self.logger.info("Set power limit to the maximum before starting.")
             self._set_power_limit(max(self.power_limits))
         elif not self.profile_path.exists():
@@ -284,7 +291,9 @@ class GlobalPowerLimitOptimizer(Callback):
                 "JIT Profiling enabled. Profile will be saved to '%s'.",
                 str(self.profile_path),
             )
-            self.state = Ready(next_power_limit=self.power_limits[0])
+            self.state = Ready(
+                next_power_limit=self.power_limits[0], steps=wait_steps + 1
+            )
             self.logger.info("Set power limit to the maximum before starting.")
             self._set_power_limit(max(self.power_limits))
         else:
@@ -320,7 +329,7 @@ class GlobalPowerLimitOptimizer(Callback):
                     f"__PowerLimitOptimizer_{self.state.current_power_limit // 1000}",
                     cancel=True,
                 )
-            self.state = Ready(next_power_limit=self.state.current_power_limit)
+            self.state = Ready(next_power_limit=self.state.current_power_limit, steps=1)
             self._set_power_limit(max(self.power_limits))
 
         elif isinstance(self.state, Done):
@@ -329,15 +338,17 @@ class GlobalPowerLimitOptimizer(Callback):
     def on_step_begin(self) -> None:
         """Mark the beginning of a training step."""
         if isinstance(self.state, Ready):
-            self.logger.info(
-                "Starting warmup for power limit %d W.",
-                self.state.next_power_limit // 1000,
-            )
-            self._set_power_limit(self.state.next_power_limit)
-            self.state = Warmup(
-                current_power_limit=self.state.next_power_limit,
-                steps=self.warmup_steps,
-            )
+            self.state.steps -= 1
+            if self.state.steps == 0:
+                self.logger.info(
+                    "Starting warmup for power limit %d W.",
+                    self.state.next_power_limit // 1000,
+                )
+                self._set_power_limit(self.state.next_power_limit)
+                self.state = Warmup(
+                    current_power_limit=self.state.next_power_limit,
+                    steps=self.warmup_steps,
+                )
 
         elif isinstance(self.state, Warmup):
             self.state.steps -= 1
@@ -398,14 +409,6 @@ class GlobalPowerLimitOptimizer(Callback):
         elif isinstance(self.state, Done):
             pass
 
-    def on_step_end(self) -> None:
-        """Mark the end of a training step."""
-        if isinstance(self.state, Ready):
-            raise RuntimeError("on_step_begin() must be called before on_step_end().")
-
-        elif isinstance(self.state, (Warmup, Profiling, Done)):
-            pass
-
     def _set_power_limit(self, power_limit: int) -> None:
         """Set the power limit for all GPUs.
 
@@ -420,11 +423,8 @@ class GlobalPowerLimitOptimizer(Callback):
         self.current_power_limit = power_limit
 
     def _compute_optimal_power_limit(self) -> int:
-        """Compute the optimal power limit in milliWatts.
-
-        The optimal power limit is the one that minimizes the Zeus time-energy cost.
-        """
-        optimal_power_limit = self.optimum_selector.compute(self.measurements) * 1000
+        """Compute the optimal power limit in milliWatts."""
+        optimal_power_limit = self.optimum_selector.select(self.measurements) * 1000
         self.logger.info("Optimal power limit is %d W.", optimal_power_limit // 1000)
         return optimal_power_limit
 
