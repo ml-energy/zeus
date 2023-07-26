@@ -24,7 +24,7 @@ class FileAndConsole:
 
     def __init__(self, filepath: Path) -> None:
         """Initialize the object."""
-        self.file = open(filepath, "w")  # ruff: noqa: SIM115
+        self.file = open(filepath, "w")
         self.stdout = sys.stdout
 
     def write(self, message):

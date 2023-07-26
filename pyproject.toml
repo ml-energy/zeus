@@ -18,6 +18,7 @@ ignore = [
   "B905",     # zip strict argument
   "PLR0915",  # Too many statements
   "PLR2004",  # Magic values
+  "SIM115",   # Context manager for opening files
 ]
 line-length = 120
 

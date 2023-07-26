@@ -159,7 +159,7 @@ class ZeusMonitor:
         else:
             if dir := os.path.dirname(log_file):
                 os.makedirs(dir, exist_ok=True)
-            self.log_file = open(log_file, "w")  # ruff: noqa: SIM115
+            self.log_file = open(log_file, "w")
             self.logger.info("Writing measurement logs to %s.", log_file)
             self.log_file.write(
                 f"start_time,window_name,elapsed_time,{','.join(map(lambda i: f'gpu{i}_energy', self.gpu_indices))}\n",

@@ -15,47 +15,43 @@
 """Optimizers that select the optimum power limit."""
 
 from __future__ import annotations
-from abc import ABC, abstractmethod
 
-import json
 import atexit
 from pathlib import Path
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
 import pynvml
-from zeus.callback import Callback
+from pydantic import BaseModel, PositiveInt, PositiveFloat
 
+from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
 
-@dataclass
-class Ready:
+class Ready(BaseModel):
     """State for when we are ready to start measuring the next power limit.
 
     Initial state of the state machine if no previous profiling results were given.
     `Ready` -> `Warmup` after `step`'th `on_step_begin`.
     """
 
-    next_power_limit: int
-    steps: int
+    next_power_limit: PositiveInt
+    steps: PositiveInt
 
 
-@dataclass
-class Warmup:
+class Warmup(BaseModel):
     """State for when we are warming up for a power limit.
 
     `Warmup` -> `Profiling` on the `steps`'th `on_step_begin`.
     `Warmup` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_begin`.
     """
 
-    current_power_limit: int
-    steps: int
+    current_power_limit: PositiveInt
+    steps: PositiveInt
 
 
-@dataclass
-class Profiling:
+class Profiling(BaseModel):
     """State for when we are profiling a power limit.
 
     `Profiling` -> `Warmup` after `steps`'th `on_step_begin` and
@@ -65,28 +61,32 @@ class Profiling:
     `Profiling` -> `Ready` on `on_epoch_end` before `steps`'th `on_step_begin`.
     """
 
-    current_power_limit: int
-    steps: int
+    current_power_limit: PositiveInt
+    steps: PositiveInt
 
 
-@dataclass
-class Done:
+class Done(BaseModel):
     """State for when we are done profiling all power limits.
 
     Initial state of the state machine if previous profiling results were given.
     Final state of the state machine in any case.
     """
 
-    optimal_power_limit: int
+    optimal_power_limit: PositiveInt
 
 
-@dataclass
-class PowerLimitMeasurement:
+class PowerLimitMeasurement(BaseModel):
     """POD for GPU energy and time measurements for one power limit (W)."""
 
-    power_limit: int  # In Watts.
-    energy: float
-    time: float
+    power_limit: PositiveInt  # In Watts.
+    energy: PositiveFloat
+    time: PositiveFloat
+
+
+class _PowerLimitMeasurementList(BaseModel):
+    """Proxy class to serialize and desrialize a list of power limit measurements."""
+
+    measurements: list[PowerLimitMeasurement]
 
 
 class OptimumSelector(ABC):
@@ -222,6 +222,16 @@ class GlobalPowerLimitOptimizer(Callback):
                 and do not run any profiling. If the path points to a non-existing file, profile
                 and save the profile to the file. If `None`, do not save or load any profile.
         """
+        # Sanity checks.
+        if wait_steps < 0:
+            raise ValueError("wait_steps must be non-negative.")
+        if warmup_steps < 0:
+            raise ValueError("warmup_steps must be non-negative.")
+        if profile_steps <= 0:
+            raise ValueError("profile_steps must be positive.")
+        if pl_step <= 0:
+            raise ValueError("pl_step must be positive.")
+
         self.monitor = monitor
         self.optimum_selector = optimum_selector or ZeusCost(
             eta_knob=0.5,
@@ -233,14 +243,6 @@ class GlobalPowerLimitOptimizer(Callback):
         self.profile_path = (
             Path(profile_path) if isinstance(profile_path, str) else profile_path
         )
-
-        # Sanity checks.
-        if self.warmup_steps < 0:
-            raise ValueError("warmup_steps must be non-negative.")
-        if self.profile_steps <= 0:
-            raise ValueError("profile_steps must be positive.")
-        if self.pl_step <= 0:
-            raise ValueError("pl_step must be positive.")
 
         # Setup logging.
         self.logger = get_logger(type(self).__name__)
@@ -297,8 +299,10 @@ class GlobalPowerLimitOptimizer(Callback):
             self.logger.info("Set power limit to the maximum before starting.")
             self._set_power_limit(max(self.power_limits))
         else:
-            measurements = json.load(self.profile_path.open())["measurements"]
-            self.measurements = [PowerLimitMeasurement(**m) for m in measurements]
+            self.measurements = _PowerLimitMeasurementList.model_validate_json(
+                open(self.profile_path).read(),
+                strict=True,
+            ).measurements
             self.logger.info(
                 "Loaded previous profiling results from '%s'.", str(self.profile_path)
             )
@@ -434,16 +438,10 @@ class GlobalPowerLimitOptimizer(Callback):
             return
 
         assert isinstance(self.state, Done)
-        profile = {
-            "measurements": [
-                {
-                    "power_limit": measurement.power_limit,
-                    "energy": measurement.energy,
-                    "time": measurement.time,
-                }
-                for measurement in self.measurements
-            ],
-        }
         with self.profile_path.open("w", encoding="utf-8") as f:
-            json.dump(profile, f, indent=4)
+            f.write(
+                _PowerLimitMeasurementList(
+                    measurements=self.measurements
+                ).model_dump_json(indent=4)
+            )
         self.logger.info("JIT profiling results saved to '%s'.", str(self.profile_path))

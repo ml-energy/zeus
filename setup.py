@@ -49,6 +49,7 @@ setup(
         "pandas",
         "scikit-learn",
         "pynvml",
+        "pydantic",
     ],
     python_requires=">=3.8",
     extras_require=extras_require,

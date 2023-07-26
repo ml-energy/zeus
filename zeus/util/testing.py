@@ -69,7 +69,7 @@ class ReplayZeusMonitor(ZeusMonitor):
             raise ValueError("`log_file` cannot be `None` for `ReplayZeusMonitor`.")
 
         self.monitor_exec = monitor_exec
-        self.log_file = open(log_file)  # ruff: noqa: SIM115
+        self.log_file = open(log_file)
         self.ignore_sync_cuda = ignore_sync_cuda
         self.match_window_name = match_window_name
 
