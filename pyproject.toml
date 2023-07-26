@@ -17,6 +17,7 @@ ignore = [
   "PLR0913",  # Too many function arguments
   "B905",     # zip strict argument
   "PLR0915",  # Too many statements
+  "PLR2004",  # Magic values
 ]
 line-length = 120
 

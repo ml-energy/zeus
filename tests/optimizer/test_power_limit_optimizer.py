@@ -24,6 +24,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer.power_limit import ZeusCost
 from zeus.util.testing import ReplayZeusMonitor
 from zeus.util.metric import zeus_cost
 
@@ -120,7 +121,10 @@ def test_power_limit_optimizer(
 
     plo = GlobalPowerLimitOptimizer(
         monitor,
-        eta_knob=eta_knob,
+        optimum_selector=ZeusCost(
+            eta_knob=eta_knob,
+            world_size=len(monitor.gpu_indices),
+        ),
         warmup_steps=10,
         profile_steps=40,
         pl_step=25,
@@ -186,12 +190,19 @@ def test_power_limit_optimizer(
     pynvml_mock.nvmlDeviceSetPowerManagementLimit.assert_has_calls(call_list, any_order=False)
     pynvml_mock.reset_mock()
 
+    # Print out the profile data for debugging purposes.
+    with open(tmp_path / "power_limit_optimizer.json", "r") as f:
+        print(f.read())
+
     ########################################
     # Test loading from saved profile data
     ########################################
     plo = GlobalPowerLimitOptimizer(
         monitor,
-        eta_knob=eta_knob,
+        optimum_selector=ZeusCost(
+            eta_knob=eta_knob,
+            world_size=len(monitor.gpu_indices),
+        ),
         warmup_steps=10,
         profile_steps=40,
         pl_step=25,

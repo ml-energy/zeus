@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""`PowerLimitOptimizer` finds a global GPU power limit that minimizes cost during training."""
+"""Optimizers that select the optimum power limit."""
 
 from __future__ import annotations
+from abc import ABC, abstractmethod
 
 import json
 import atexit
@@ -79,12 +80,112 @@ class Done:
 
 
 @dataclass
-class Measurement:
-    """POD for GPU energy and time measurements for one power limit."""
+class PowerLimitMeasurement:
+    """POD for GPU energy and time measurements for one power limit (W)."""
 
     power_limit: int  # In Watts.
     energy: float
     time: float
+
+
+class OptimumSelector(ABC):
+    """Base class for optimum power limit selectors."""
+
+    @abstractmethod
+    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Compute the optimal power limit (W) from measurements."""
+
+
+class Energy(OptimumSelector):
+    """Selects the power limit that minimizes energy consumption."""
+
+    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Compute the optimal power limit (W) from measurements."""
+        return min(measurements, key=lambda x: x.energy).power_limit
+
+
+class Time(OptimumSelector):
+    """Selects the power limit that minimizes training time.
+
+    This may not necessarily choose the maximum power limit, as time profiling
+    results can be slightly noisy. However, we believe that's actually better
+    because it means that training time is very similar among higher power limits,
+    but lower power limit will consume less power.
+    """
+
+    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Compute the optimal power limit (W) from measurements."""
+        return min(measurements, key=lambda x: x.time).power_limit
+
+
+class ZeusCost(OptimumSelector):
+    r"""Selects the power limit that minimizes a linear Zeus time-energy cost function.
+
+    Cost function is $C = \eta \cdot Energy + MaxPower \cdot (1 - \eta) \cdot Time$.
+    """
+
+    def __init__(self, eta_knob: float, world_size: int = 1) -> None:
+        r"""Initialize the selector.
+
+        Args:
+            eta_knob: The $0 \le \eta \le 1$ knob for the Zeus time-energy cost function.
+            world_size: The number of GPUs in the training job. Defaults to 1.
+        """
+        if eta_knob < 0 or eta_knob > 1:
+            raise ValueError("eta_knob must be between 0 and 1, inclusive both sides.")
+        if world_size < 1:
+            raise ValueError("world_size must be greater than or equal to 1.")
+
+        self.eta_knob = eta_knob
+        self.world_size = world_size
+
+    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Compute the optimal power limit (W) from measurements."""
+        max_power = (
+            max(measurement.power_limit for measurement in measurements)
+            * self.world_size
+        )
+        zeus_cost_map = {
+            measurement.power_limit: zeus_cost(
+                energy=measurement.energy,
+                time=measurement.time,
+                eta_knob=self.eta_knob,
+                max_power=max_power,
+            )
+            for measurement in measurements
+        }
+        return min(zeus_cost_map, key=lambda x: zeus_cost_map[x])
+
+
+class MaxSlowdownConstraint(OptimumSelector):
+    """Selects the minumum power limit that does not slow down training by more than the given factor."""
+
+    def __init__(self, factor: float) -> None:
+        """Initialize the selector.
+
+        Args:
+            factor: The maximum allowed slowdown factor. Greater than or equal to 1.0.
+        """
+        if factor < 1.0:
+            raise ValueError(
+                f"max_slowdown_factor must be greater than or equal to 1.0. Got {factor}.",
+            )
+
+        self.factor = factor
+
+    def compute(self, measurements: list[PowerLimitMeasurement]) -> int:
+        """Compute the optimal power limit (W) from measurements."""
+        feasible_power_limits = []
+        max_power = max(measurement.power_limit for measurement in measurements)
+        shortest_time = next(
+            measurement.time
+            for measurement in measurements
+            if measurement.power_limit == max_power
+        )
+        for measurement in measurements:
+            if measurement.time <= self.factor * shortest_time:
+                feasible_power_limits.append(measurement.power_limit)
+        return min(feasible_power_limits)
 
 
 class GlobalPowerLimitOptimizer(Callback):
@@ -96,7 +197,7 @@ class GlobalPowerLimitOptimizer(Callback):
     def __init__(
         self,
         monitor: ZeusMonitor,
-        eta_knob: float = 0.5,
+        optimum_selector: OptimumSelector | None = None,
         warmup_steps: int = 10,
         profile_steps: int = 40,
         pl_step: int = 25,
@@ -108,7 +209,7 @@ class GlobalPowerLimitOptimizer(Callback):
 
         Args:
             monitor: `ZeusMonitor` instance used to profile GPU time and energy consumption.
-            eta_knob: The $0 \le \eta \le 1$ knob for the Zeus time-energy cost function.
+            optimum_selector: The optimum selector to use. If not given, use `ZeusCost` with \eta=0.5.
             warmup_steps: Number of warmup iterations for each power limit.
             profile_steps: Number of profie iterations for each power limit.
             pl_step: The stride between power limits to explore, in unites of Watts.
@@ -117,7 +218,10 @@ class GlobalPowerLimitOptimizer(Callback):
                 and save the profile to the file. If `None`, do not save or load any profile.
         """
         self.monitor = monitor
-        self.eta_knob = eta_knob
+        self.optimum_selector = optimum_selector or ZeusCost(
+            eta_knob=0.5,
+            world_size=len(monitor.gpu_indices),
+        )
         self.warmup_steps = warmup_steps
         self.profile_steps = profile_steps
         self.pl_step = pl_step * 1000  # Internally, we use milliWatts.
@@ -126,8 +230,6 @@ class GlobalPowerLimitOptimizer(Callback):
         )
 
         # Sanity checks.
-        if self.eta_knob < 0 or self.eta_knob > 1:
-            raise ValueError("eta_knob must be between 0 and 1, inclusive both sides.")
         if self.warmup_steps < 0:
             raise ValueError("warmup_steps must be non-negative.")
         if self.profile_steps <= 0:
@@ -166,7 +268,7 @@ class GlobalPowerLimitOptimizer(Callback):
         self.current_power_limit = 0
 
         # Store `Measurement` objects in a list, one for each power limit.
-        self.measurements: list[Measurement] = []
+        self.measurements: list[PowerLimitMeasurement] = []
 
         # State for the profiler state machine.
         self.state: Ready | Warmup | Profiling | Done
@@ -187,15 +289,13 @@ class GlobalPowerLimitOptimizer(Callback):
             self._set_power_limit(max(self.power_limits))
         else:
             measurements = json.load(self.profile_path.open())["measurements"]
-            self.measurements = [Measurement(**m) for m in measurements]
+            self.measurements = [PowerLimitMeasurement(**m) for m in measurements]
             self.logger.info(
                 "Loaded previous profiling results from '%s'.", str(self.profile_path)
             )
             optimal_power_limit = self._compute_optimal_power_limit()
             self.logger.info(
-                "Optimal power limit is %d W for eta_knob %f.",
-                optimal_power_limit // 1000,
-                self.eta_knob,
+                "Optimal power limit is %d W.", optimal_power_limit // 1000
             )
             self.state = Done(optimal_power_limit=optimal_power_limit)
             self._set_power_limit(self.state.optimal_power_limit)
@@ -265,7 +365,7 @@ class GlobalPowerLimitOptimizer(Callback):
                     self.state.current_power_limit // 1000,
                 )
                 self.measurements.append(
-                    Measurement(
+                    PowerLimitMeasurement(
                         power_limit=self.state.current_power_limit // 1000,
                         energy=measurement.total_energy,
                         time=measurement.time,
@@ -324,18 +424,7 @@ class GlobalPowerLimitOptimizer(Callback):
 
         The optimal power limit is the one that minimizes the Zeus time-energy cost.
         """
-        max_power = max(self.power_limits) // 1000 * len(self.monitor.gpu_indices)
-        cost_map = {
-            measurement.power_limit
-            * 1000: zeus_cost(
-                energy=measurement.energy,
-                time=measurement.time,
-                eta_knob=self.eta_knob,
-                max_power=max_power,
-            )
-            for measurement in self.measurements
-        }
-        optimal_power_limit = min(cost_map, key=lambda x: cost_map[x])
+        optimal_power_limit = self.optimum_selector.compute(self.measurements) * 1000
         self.logger.info("Optimal power limit is %d W.", optimal_power_limit // 1000)
         return optimal_power_limit
 
