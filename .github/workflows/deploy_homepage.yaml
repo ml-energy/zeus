@@ -25,7 +25,7 @@ jobs:
       - name: Install mkdocs-material-insiders
         env:
           GH_TOKEN: ${{ secrets.MKDOCS_MATERIAL_INSIDERS_PAT }}
-        run: pip install git+https://${GH_TOKEN}@github.com/jaywonchung/mkdocs-material-insiders.git
+        run: pip install mkdocs==1.4.3 git+https://${GH_TOKEN}@github.com/jaywonchung/mkdocs-material-insiders.git
       - name: Install other homepage dependencies
         run: pip install -r docs/requirements.txt
       - name: Build homepage
