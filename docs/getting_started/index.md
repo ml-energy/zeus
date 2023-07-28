@@ -119,4 +119,4 @@ Then, you can use [`ZeusMaster`][zeus.run.ZeusMaster] to drive recurring jobs an
 
 This example will come in handy:
 
-- [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](https://github.com/SymbioticLab/Zeus/tree/master/examples/ZeusDataLoader/trace_driven){.external}
+- [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](https://github.com/SymbioticLab/Zeus/tree/master/examples/trace_driven){.external}
