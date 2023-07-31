@@ -99,6 +99,7 @@ class ZeusMonitor:
     def __init__(
         self,
         gpu_indices: list[int] | None = None,
+        approx_instant_energy: bool = False,
         monitor_exec: str = "zeus_monitor",
         log_file: str | Path | None = None,
     ) -> None:
@@ -118,9 +119,19 @@ class ZeusMonitor:
                 `CUDA_VISIBLE_DEVICES=2,3` will be interpreted as CUDA device `3`.
                 `CUDA_VISIBLE_DEVICES`s formatted with comma-separated indices are supported.
                 (Default: `None`)
+            approx_instant_energy: When the execution time of a measurement window is
+                shorter than the NVML energy counter's update period, energy consumption will
+                be shows as zero. In this case, if `approx_instant_energy` is True, the
+                window's energy consumption will be approximated by multiplying the current
+                instantaneous power consumption with the window's execution time. This should
+                be a better estimate than zero, but it's still an approximation.
+                (Default: `False`)
             monitor_exec: Zeus monitor executable. (Default: `"zeus_monitor"`)
             log_file: Path to the log CSV file. If `None`, logging will be disabled.
         """
+        # Save arguments.
+        self.approx_instant_energy = approx_instant_energy
+
         # Initialize NVML.
         pynvml.nvmlInit()
 
@@ -254,6 +265,16 @@ class ZeusMonitor:
             >= pynvml.NVML_DEVICE_ARCH_VOLTA
         )
 
+    def _get_instant_power(self) -> tuple[dict[int, float], float]:
+        """Measure the power consumption of all GPUs at the current time."""
+        power_measurement_start_time: float = time.monotonic()
+        power = {
+            i: pynvml.nvmlDeviceGetPowerUsage(h) / 1000.0
+            for i, h in self.gpu_handles.items()
+        }
+        power_measurement_time = time.monotonic() - power_measurement_start_time
+        return power, power_measurement_time
+
     def begin_window(self, key: str, sync_cuda: bool = True) -> None:
         """Begin a new measurement window.
 
@@ -307,6 +328,16 @@ class ZeusMonitor:
         except KeyError:
             raise ValueError(f"Measurement window '{key}' does not exist") from None
 
+        # Take instant power consumption measurements.
+        # This, in theory, is introducing extra NVMLs call in the critical path
+        # even if computation time is not so short. However, it is reasonable to
+        # expect that computation time would be short if the user explicitly
+        # turned on the `approx_instant_energy` option. Calling this function
+        # as early as possible will lead to more accurate energy approximation.
+        power, power_measurement_time = (
+            self._get_instant_power() if self.approx_instant_energy else ({}, 0.0)
+        )
+
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
             for gpu_index in self.gpu_handles:
@@ -334,6 +365,14 @@ class ZeusMonitor:
                     start_time - self.monitor_start_time,
                     end_time - self.monitor_start_time,
                 )
+
+        # Approximate zero energy consumption.
+        if self.approx_instant_energy:
+            for gpu_index in self.gpu_indices:
+                if energy_consumption[gpu_index] == 0.0:
+                    energy_consumption[gpu_index] = power[gpu_index] * (
+                        time_consumption - power_measurement_time
+                    )
 
         self._log(f"Measurement window '{key}' ended.")
 
