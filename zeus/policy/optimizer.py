@@ -137,9 +137,7 @@ class GTSBatchSizeOptimizer(BatchSizeOptimizer):
             #       because sampling from an infinite precision Gaussian distribution
             #       always returns the mean (the observation), and it will hamper
             #       exploration in the early stage.
-            precision = (
-                np.inf if variance == 0.0 else np.reciprocal(variance)
-            )  # ruff: noqa: PLR2004
+            precision = np.inf if variance == 0.0 else np.reciprocal(variance)
             mab = self.mabs[job]
             mab.arm_reward_prec[batch_size] = precision
             mab.fit_arm(batch_size, arm_rewards, reset=True)

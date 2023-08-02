@@ -271,7 +271,7 @@ class ZeusMaster:
             raise ValueError("You must provide a default batch size for the job.")
         if job.command is None:
             raise ValueError("You must provide a command format string for the job.")
-        if eta_knob < 0.0 or eta_knob > 1.0:  # ruff: noqa: PLR2004
+        if eta_knob < 0.0 or eta_knob > 1.0:
             raise ValueError("eta_knob must be in [0.0, 1.0].")
 
         print(f"[Zeus Master] {job} x {num_recurrence}")

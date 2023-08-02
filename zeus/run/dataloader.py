@@ -32,7 +32,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 from zeus.monitor import ZeusMonitor, Measurement
-from zeus.util.check import get_env
+from zeus.util.env import get_env
 from zeus.util.metric import ZeusCostThresholdExceededError, zeus_cost
 from zeus.util.logging import get_logger
 
@@ -957,14 +957,13 @@ class ZeusDataLoader(DataLoader):
             # Push profiling window for the current epoch.
             # Note that both train and eval dataloaders will push one profiling window *separately*.
             self._begin_measurement("__ZeusDataLoader_epoch")
-            # The power limit of the GPU is only changed by the train dataloader.
-            if self._is_train:  # ruff: noqa: SIM102
-                # If we're not profiling, use the steady state power limit.
-                # If we are profiling, the power limit will be set in __next__ with warmup.
-                # Power limit result is already loaded in when initializing the train dataloader,
-                # so we just set the power limit directly.
-                if not self._should_profile:
-                    self._set_gpu_steady_power_limit()
+            # The power limit of the GPU is only changed by the train dataloader (`self._is_train`).
+            # If we're not profiling, use the steady state power limit (`self._should_profile`).
+            # If we are profiling, the power limit will be set in __next__ with warmup.
+            # Power limit result is already loaded in when initializing the train dataloader,
+            # so we just set the power limit directly.
+            if self._is_train and not self._should_profile:
+                self._set_gpu_steady_power_limit()
 
         return self
 
