@@ -20,7 +20,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from zeus.util.check import get_env
+from zeus.util.env import get_env
 
 
 @contextmanager
