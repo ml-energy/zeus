@@ -23,7 +23,7 @@ extras_require["dev"] = extras_require["lint"] + extras_require["test"] + extras
 
 setup(
     name="zeus-ml",
-    version="0.6.0",
+    version="0.6.1",
     description="A framework for deep learning energy measurement and optimization.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
