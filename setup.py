@@ -50,6 +50,7 @@ setup(
         "scikit-learn",
         "nvidia-ml-py",
         "pydantic",
+        "rich",
     ],
     python_requires=">=3.8",
     extras_require=extras_require,

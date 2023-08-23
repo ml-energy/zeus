@@ -40,13 +40,17 @@ class FileAndConsole:
         self.stdout.flush()
 
 
-def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+def get_logger(
+    name: str,
+    level: int = logging.INFO,
+    propagate: bool = False,
+) -> logging.Logger:
     """Get a logger with the given name with some formatting configs."""
     if name in logging.Logger.manager.loggerDict:
         return logging.getLogger(name)
 
     logger = logging.getLogger(name)
-    logger.propagate = False
+    logger.propagate = propagate
     logger.setLevel(level)
     formatter = logging.Formatter(
         "[%(asctime)s] [%(name)s](%(filename)s:%(lineno)d) %(message)s"

@@ -1,6 +1,6 @@
 # Installing and Building Zeus Components
 
-This document explains how to install the [`zeus`][zeus] Python package and how to build the [Zeus power monitor](https://github.com/SymbioticLab/Zeus/tree/master/zeus_monitor).
+This document explains how to install the [`zeus`][zeus] Python package.
 
 !!! Tip
     We encourage users to utilize our Docker image. Please refer to [Environment setup](./environment.md). Quick command:
@@ -48,6 +48,10 @@ pip install -e .
 
 
 ## Zeus power monitor
+
+!!! Warning
+    The C++ Zeus power monitor is now deprecated as we've switched to a Python-based power monitor.
+    See [`PowerMonitor`][zeus.monitor.power.PowerMonitor] or run `python -m zeus.monitor --help`.
 
 ### Dependencies
 

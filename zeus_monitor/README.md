@@ -1,4 +1,4 @@
-# Zeus Power Monitor
+# [Deprecated] Zeus Power Monitor
 
 This is a simple GPU power monitor used by Zeus.
 It polls NVML and writes outputs to the designated log file path.

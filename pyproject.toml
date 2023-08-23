@@ -9,12 +9,12 @@ select = [
   "B",   # flake8-bugbear (detects likely bugs)
   "G",   # flake8-logging-format (complains about logging)
   "SIM", # flake8-simplify (suggests code simplifications)
-  "RUF", # Ruff-introduced misc rules
 ]
 ignore = [
   "PLW0603",  # Global statement
   "B019",     # Usage of functools.lru_cache
   "PLR0913",  # Too many function arguments
+  "PLR0912",  # Too many branches
   "B905",     # zip strict argument
   "PLR0915",  # Too many statements
   "PLR2004",  # Magic values
