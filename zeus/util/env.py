@@ -50,8 +50,8 @@ def resolve_gpu_indices(
 
     Returns:
         A tuple of GPU index lists, where the former is CUDA indices under the
-        illusion of `CUDA_VISIBLE_DEVICES` and the latter is the actual CUDA
-        indices that NVML understands. The order of the two lists are the same.
+            illusion of `CUDA_VISIBLE_DEVICES` and the latter is the actual CUDA
+            indices that NVML understands. The order of the two lists are the same.
     """
     # Initialize NVML.
     pynvml.nvmlInit()
