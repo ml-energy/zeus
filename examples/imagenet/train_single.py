@@ -20,7 +20,8 @@ import torchvision.models as models
 
 # ZEUS
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer, MaxSlowdownConstraint
+from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer.power_limit import MaxSlowdownConstraint
 from zeus.util.env import get_env
 
 
