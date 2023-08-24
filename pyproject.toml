@@ -1,3 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zeus-ml"
+description = "A framework for deep learning energy measurement and optimization."
+readme = "README.md"
+authors = [
+    {name = "Jae-Won Chung", email = "jwnchung@umich.edu"},
+]
+license = {text = "Apache 2.0"}
+classifiers = [
+    "Environment :: GPU :: NVIDIA CUDA",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+keywords = ["deep-learning", "power", "energy", "sustainability", "mlsys"]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "nvidia-ml-py",
+    "pydantic",
+    "rich",
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/SymbioticLab/Zeus"
+Homepage = "https://ml.energy/zeus"
+Documentation = "https://ml.energy/zeus"
+
+[project.optional-dependencies]
+lint = ["ruff", "black==22.6.0"]
+test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"]
+torch = ["torch==2.0.1"]
+dev = ["ruff", "black==22.6.0", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "torch==2.0.1"]
+
+[tool.setuptools]
+packages = ["zeus"]
+
+[tool.setuptools.dynamic]
+version = {attr = "zeus.__version__"}
+
 # Ruff
 [tool.ruff]
 select = [

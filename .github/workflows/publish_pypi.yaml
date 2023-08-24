@@ -17,7 +17,7 @@ jobs:
           python-version: 3.9
           cache: 'pip'
       - name: Build source distribution
-        run: python setup.py sdist
+        run: pip install build && python -m build
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

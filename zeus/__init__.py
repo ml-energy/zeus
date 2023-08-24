@@ -14,8 +14,6 @@
 
 """Zeus is a framework for deep learning energy measurement and optimization.
 
-Modules:
-
 - [`run`][zeus.run]: Machinery for actually running Zeus.
 - [`monitor`][zeus.monitor]: Class for profiling energy inside training scripts.
 - [`optimizer`][zeus.optimizer]: A collection of optimizers for various knobs.
@@ -27,3 +25,5 @@ Modules:
 - [`policy`][zeus.policy]: Collection of optimization policies.
 - [`util`][zeus.util]: Utility functions and classes.
 """
+
+__version__ = "0.6.1"
