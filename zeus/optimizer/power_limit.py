@@ -350,7 +350,7 @@ class GlobalPowerLimitOptimizer(Callback):
             )
             if isinstance(self.state, Profiling):
                 self.monitor.end_window(
-                    f"__PowerLimitOptimizer_{self.state.current_power_limit // 1000}",
+                    f"__GlobalPowerLimitOptimizer_{self.state.current_power_limit // 1000}",
                     cancel=True,
                 )
             self.state = Ready(next_power_limit=self.state.current_power_limit, steps=1)
@@ -386,14 +386,14 @@ class GlobalPowerLimitOptimizer(Callback):
                     steps=self.profile_steps,
                 )
                 self.monitor.begin_window(
-                    f"__PowerLimitOptimizer_{self.state.current_power_limit // 1000}",
+                    f"__GlobalPowerLimitOptimizer_{self.state.current_power_limit // 1000}",
                 )
 
         elif isinstance(self.state, Profiling):
             self.state.steps -= 1
             if self.state.steps == 0:
                 measurement = self.monitor.end_window(
-                    f"__PowerLimitOptimizer_{self.state.current_power_limit // 1000}",
+                    f"__GlobalPowerLimitOptimizer_{self.state.current_power_limit // 1000}",
                 )
                 self.logger.info(
                     "Finished profiling for power limit %d W.",
