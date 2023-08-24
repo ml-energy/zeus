@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
+# Build instructions
+#   If you're building this image locally, make sure you specify `TARGETARCH`.
+#   Currently, this image supports `amd64` and `arm64`. For instance:
+#     docker build -t symbioticlab/zeus:master --build-arg TARGETARCH=amd64 .
+
+FROM nvidia/cuda:11.8.0-base-ubuntu22.04
 
 # Basic installs
 ARG DEBIAN_FRONTEND=noninteractive
@@ -41,7 +46,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     && ln -sf /root/.local/miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 # Install PyTorch and CUDA Toolkit
-RUN pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
+RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
 
 # Place stuff under /workspace
 WORKDIR /workspace
@@ -50,7 +55,4 @@ WORKDIR /workspace
 ADD . /workspace/zeus
 
 # When an outside zeus directory is mounted, have it apply immediately.
-RUN pip install -e zeus
-
-# Build and bake in the Zeus monitor.
-RUN cd /workspace/zeus/zeus_monitor && cmake . && make && cp zeus_monitor /usr/local/bin/ && cd /workspace
+RUN cd /workspace/zeus && pip install --no-cache-dir -e .
