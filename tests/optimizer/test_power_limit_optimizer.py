@@ -16,12 +16,11 @@ from __future__ import annotations
 
 import os
 import typing
+from typing import Generator, Iterable
 from unittest.mock import call
 
 import pytest
 import pandas as pd
-import torch
-from torch.utils.data import DataLoader, Dataset
 
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.power_limit import (
@@ -31,7 +30,6 @@ from zeus.optimizer.power_limit import (
     Time,
     ZeusCost,
     MaxSlowdownConstraint,
-    PowerLimitMeasurement,
 )
 from zeus.util.testing import ReplayZeusMonitor
 from zeus.util.metric import zeus_cost
@@ -44,16 +42,18 @@ if typing.TYPE_CHECKING:
 PROFILE_DATA_DIR = "tests/profile_data/"
 
 
-def get_dataloader(step_per_epoch: int, batch_size: int = 128) -> DataLoader:
+def get_dataloader(step_per_epoch: int) -> Iterable[int]:
     """Returns a DataLoader that iterates over a fake dataset."""
-    class FakeDataset(Dataset):
-        def __len__(self) -> int:
-            return batch_size * step_per_epoch
 
-        def __getitem__(self, index) -> torch.Tensor:
-            return torch.tensor(index)
+    class DataLoader:
+        def __init__(self, step_per_epoch: int) -> None:
+            self.step_per_epoch = step_per_epoch
 
-    return DataLoader(FakeDataset(), batch_size=batch_size)
+        def __iter__(self) -> Generator[int, None, None]:
+            for i in range(self.step_per_epoch):
+                yield i
+
+    return DataLoader(step_per_epoch)
 
 
 class ReplayLog:
@@ -99,7 +99,7 @@ def replay_log(request) -> ReplayLog:
 
 def training_loop(
     plo: GlobalPowerLimitOptimizer,
-    train_loader: DataLoader,
+    train_loader: Iterable[int],
     num_epochs: int,
     wait_steps: int = 0,
 ) -> None:
