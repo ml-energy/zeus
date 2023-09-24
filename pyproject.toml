@@ -47,7 +47,6 @@ where = ["."]
 [tool.setuptools.dynamic]
 version = {attr = "zeus.__version__"}
 
-# Ruff
 [tool.ruff]
 select = [
   "E",   # pycodestyle error
