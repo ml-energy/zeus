@@ -15,7 +15,7 @@
 # Build instructions
 #   If you're building this image locally, make sure you specify `TARGETARCH`.
 #   Currently, this image supports `amd64` and `arm64`. For instance:
-#     docker build -t symbioticlab/zeus:master --build-arg TARGETARCH=amd64 .
+#     docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 .
 
 FROM nvidia/cuda:11.8.0-base-ubuntu22.04
 

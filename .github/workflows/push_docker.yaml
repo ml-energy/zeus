@@ -40,7 +40,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: symbioticlab/zeus
+          images: |
+            symbioticlab/zeus
+            mlenergy/zeus
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -55,6 +57,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=symbioticlab/zeus:buildcache
-          cache-to: type=registry,ref=symbioticlab/zeus:buildcache,mode=max
+          cache-from: type=registry,ref=mlenergy/zeus:buildcache
+          cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
           build-args: TARGETARCH=amd64

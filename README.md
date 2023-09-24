@@ -8,10 +8,10 @@
 </div>
 
 [![NSDI23 paper](https://custom-icon-badges.herokuapp.com/badge/NSDI'23-paper-b31b1b.svg)](https://www.usenix.org/conference/nsdi23/presentation/you)
-[![Docker Hub](https://badgen.net/docker/pulls/symbioticlab/zeus?icon=docker&label=Docker%20pulls)](https://hub.docker.com/r/symbioticlab/zeus)
+[![Docker Hub](https://badgen.net/docker/pulls/symbioticlab/zeus?icon=docker&label=Docker%20pulls)](https://hub.docker.com/r/mlenergy/zeus)
 [![Slack workspace](https://badgen.net/badge/icon/Join%20workspace/611f69?icon=slack&label=Slack)](https://join.slack.com/t/zeus-ml/shared_invite/zt-1najba5mb-WExy7zoNTyaZZfTlUWoLLg)
-[![Homepage build](https://github.com/SymbioticLab/Zeus/actions/workflows/deploy_homepage.yaml/badge.svg)](https://github.com/SymbioticLab/Zeus/actions/workflows/deploy_homepage.yaml)
-[![Apache-2.0 License](https://custom-icon-badges.herokuapp.com/github/license/SymbioticLab/Zeus?logo=law)](/LICENSE)
+[![Homepage build](https://github.com/ml-energy/zeus/actions/workflows/deploy_homepage.yaml/badge.svg)](https://github.com/ml-energy/zeus/actions/workflows/deploy_homepage.yaml)
+[![Apache-2.0 License](https://custom-icon-badges.herokuapp.com/github/license/ml-energy/zeus?logo=law)](/LICENSE)
 
 ---
 **Project News** ⚡ 
@@ -134,7 +134,7 @@ docker run -it \
     --gpus all                  `# Mount all GPUs` \
     --cap-add SYS_ADMIN         `# Needed to change the power limit of the GPU` \
     --ipc host                  `# PyTorch DataLoader workers need enough shm` \
-    symbioticlab/zeus:latest \
+    mlenergy/zeus:latest \
     bash
 ```
 
@@ -154,7 +154,7 @@ Refer to [Extending Zeus](https://ml.energy/zeus/extend/) for details.
 
 ## Carbon-Aware Zeus
 
-The use of GPUs for training DNNs results in high carbon emissions and energy consumption. Building on top of Zeus, we introduce *Chase* -- a carbon-aware solution. *Chase* dynamically controls the energy consumption of GPUs; adapts to shifts in carbon intensity during DNN training, reducing carbon footprint with minimal compromises on training performance. To proactively adapt to shifting carbon intensity, a lightweight machine learning algorithm is used to forecast the carbon intensity of the upcoming time frame. For more details on Chase, please refer to our [paper](https://symbioticlab.org/publications/files/chase:ccai23/chase-ccai23.pdf) and the [chase branch](https://github.com/SymbioticLab/Zeus/tree/chase). 
+The use of GPUs for training DNNs results in high carbon emissions and energy consumption. Building on top of Zeus, we introduce *Chase* -- a carbon-aware solution. *Chase* dynamically controls the energy consumption of GPUs; adapts to shifts in carbon intensity during DNN training, reducing carbon footprint with minimal compromises on training performance. To proactively adapt to shifting carbon intensity, a lightweight machine learning algorithm is used to forecast the carbon intensity of the upcoming time frame. For more details on Chase, please refer to our [paper](https://symbioticlab.org/publications/files/chase:ccai23/chase-ccai23.pdf) and the [chase branch](https://github.com/ml-energy/zeus/tree/chase). 
 
 
 ## Citation

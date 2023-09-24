@@ -5,7 +5,7 @@ This document explains how to install the [`zeus`][zeus] Python package.
 !!! Tip
     We encourage users to utilize our Docker image. Please refer to [Environment setup](./environment.md). Quick command:
     ```bash
-    docker run -it --gpus all --cap-add SYS_ADMIN --shm-size 64G symbioticlab/zeus:latest bash
+    docker run -it --gpus all --cap-add SYS_ADMIN --ipc host mlenergy/zeus:latest bash
     ```
 
 
@@ -33,7 +33,7 @@ pip install zeus-ml
 If you would like to follow the `HEAD`:
 
 ```bash
-git clone https://github.com/SymbioticLab/Zeus.git zeus
+git clone https://github.com/ml-energy/zeus.git zeus
 cd zeus
 pip install .
 ```
@@ -41,7 +41,7 @@ pip install .
 For those would like to make changes to the source code and run them, we suggest an editable installation:
 
 ```bash
-git clone https://github.com/SymbioticLab/Zeus.git zeus
+git clone https://github.com/ml-energy/zeus.git zeus
 cd zeus
 pip install -e .
 ```
@@ -62,7 +62,7 @@ All dependencies are pre-installed if you're using our Docker image.
 
 ### Configuration
 
-You can change the `#define`s in lines 28 to 31 in [`zemo/zemo.hpp`](https://github.com/SymbioticLab/Zeus/tree/master/zeus_monitor/zemo/zemo.hpp) to configure what information from the GPU is polled.
+You can change the `#define`s in lines 28 to 31 in [`zemo/zemo.hpp`](https://github.com/ml-energy/zeus/tree/master/zeus_monitor/zemo/zemo.hpp) to configure what information from the GPU is polled.
 By default, only the momentary power draw of the GPU will be collected.
 
 ### Building the power monitor

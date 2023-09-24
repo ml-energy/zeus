@@ -6,8 +6,8 @@ site_description: Deep learning energy measurement and optimization
 edit_uri: ""
 
 # Repository
-repo_name: SymbioticLab/Zeus
-repo_url: https://github.com/SymbioticLab/Zeus
+repo_name: ml-energy/zeus
+repo_url: https://github.com/ml-energy/zeus
 
 # Copyright
 copyright: Copyright &copy; 2023 Jae-Won Chung
@@ -122,7 +122,7 @@ extra:
   social:
     - name: Zeus GitHub repository
       icon: fontawesome/brands/github
-      link: https://github.com/SymbioticLab/Zeus
+      link: https://github.com/ml-energy/zeus
     - name: Zeus Docker Hub registry
       icon: fontawesome/brands/docker
-      link: https://hub.docker.com/r/symbioticlab/zeus
+      link: https://hub.docker.com/r/mlenergy/zeus

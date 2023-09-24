@@ -11,7 +11,7 @@ We encourage users to do everything inside a Docker container spawned with our p
 
 ## Zeus Docker image
 
-We provide a pre-built Docker image in [Docker Hub](https://hub.docker.com/r/symbioticlab/zeus){.external}.
+We provide a pre-built Docker image in [Docker Hub](https://hub.docker.com/r/mlenergy/zeus){.external}.
 On top of the `nvidia/cuda:11.8.0-devel-ubuntu22.04` image, the following are added:
 
 1. Miniconda3 23.3.1, PyTorch 2.0.1, torchvision 0.15.2
@@ -26,7 +26,7 @@ On top of the `nvidia/cuda:11.8.0-devel-ubuntu22.04` image, the following are ad
 !!! Tip
     If you want to build our Docker image locally, you should specify `TARGETARCH` to be one of `amd64` or `arm64` based on your environment's architecture:
     ```sh
-    docker build -t symbioticlab/zeus:master --build-arg TARGETARCH=amd64 .
+    docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 .
     ```
 
 
@@ -44,7 +44,7 @@ docker run -it \
     --gpus all \                      # (1)!
     --cap-add SYS_ADMIN \           # (2)!
     --ipc host \                  # (3)!
-    symbioticlab/zeus:latest \
+    mlenergy/zeus:latest \
     bash
 ```
 
@@ -64,7 +64,7 @@ docker run -it \
     --ipc host \                           # (3)!
     -v $(pwd):/workspace/zeus \          # (4)!
     -v /data/imagenet:/data/imagenet:ro \
-    symbioticlab/zeus:latest \
+    mlenergy/zeus:latest \
     bash
 ```
 

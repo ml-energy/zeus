@@ -18,7 +18,7 @@ There are two ways to run Zeus: trace-driven and end-to-end.
 ### Trace-driven Zeus
 
 The Zeus simulator ([`Simulator`][zeus.simulate.Simulator]) accepts one [`BatchSizeOptimizer`][zeus.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus.policy.PowerLimitOptimizer] in its constructor.
-A full-example can be found in [`examples/trace_driven`](https://github.com/SymbioticLab/Zeus/tree/master/examples/trace_driven/).
+A full-example can be found in [`examples/trace_driven`](https://github.com/ml-energy/zeus/tree/master/examples/trace_driven/).
 
 ### End-to-end Zeus
 

@@ -80,7 +80,7 @@ class ZeusDataLoader(DataLoader):
     with five specific steps, which are noted below in the comments.
 
     Please refer to
-    [our integration example with ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/train.py)
+    [our integration example with ImageNet](https://github.com/ml-energy/zeus/tree/master/examples/imagenet/train.py)
     for a complete example.
 
     ```python

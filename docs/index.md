@@ -11,7 +11,7 @@ hide:
 </div>
 
 !!! Success "Join the Zeus Slack workspace!"
-    Zeus exceeded 100k+ pulls on [Docker Hub](https://hub.docker.com/r/symbioticlab/zeus)!
+    Zeus exceeded 100k+ pulls on [Docker Hub](https://hub.docker.com/r/mlenergy/zeus)!
     The Zeus team is always happy to chat with Zeus users and help out.
     Reach out to us in the [Zeus Slack workspace](https://join.slack.com/t/zeus-ml/shared_invite/zt-1najba5mb-WExy7zoNTyaZZfTlUWoLLg).
 
@@ -100,7 +100,7 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 ## Getting Started
 
 Refer to [Getting Started](getting_started/index.md) for instructions on environment setup, installation, and integration.
-We also provide integration [examples](https://github.com/SymbioticLab/Zeus/tree/master/examples) in our GitHub repository.
+We also provide integration [examples](https://github.com/ml-energy/zeus/tree/master/examples) in our GitHub repository.
 
 ## Extending Zeus
 

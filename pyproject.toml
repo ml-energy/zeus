@@ -31,7 +31,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.urls]
-Repository = "https://github.com/SymbioticLab/Zeus"
+Repository = "https://github.com/ml-energy/zeus"
 Homepage = "https://ml.energy/zeus"
 Documentation = "https://ml.energy/zeus"
 

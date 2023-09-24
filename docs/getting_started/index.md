@@ -73,7 +73,7 @@ We provide ready-to-go [Docker images](environment.md).
 After going through the prerequisites, [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] into your training script.
 
 Refer to
-[our integration example with ImageNet](https://github.com/SymbioticLab/Zeus/tree/master/examples/imagenet/)
+[our integration example with ImageNet](https://github.com/ml-energy/zeus/tree/master/examples/imagenet/)
 for complete running examples for single-GPU and multi-GPU data parallel training.
 
 ```python
@@ -110,7 +110,7 @@ for epoch in range(100):
 
 !!! Info
     We plan to integrate [`ZeusMaster`][zeus.run.ZeusMaster] with an MLOps platform like [KubeFlow](https://www.kubeflow.org/).
-    Let us know about your preferences, use cases, and expectations by [posting an issue](https://github.com/SymbioticLab/Zeus/issues/new?assignees=&labels=&template=feature_request.md&title=Regarding%20Integration%20with%20MLOps%20Platroms)!
+    Let us know about your preferences, use cases, and expectations by [posting an issue](https://github.com/ml-energy/zeus/issues/new?assignees=&labels=&template=feature_request.md&title=Regarding%20Integration%20with%20MLOps%20Platroms)!
 
 The cost-optimal batch size is located *across* multiple job runs using a Multi-Armed Bandit algorithm.
 First, go through the steps for non-recurring jobs. 
@@ -119,4 +119,4 @@ Then, you can use [`ZeusMaster`][zeus.run.ZeusMaster] to drive recurring jobs an
 
 This example will come in handy:
 
-- [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](https://github.com/SymbioticLab/Zeus/tree/master/examples/trace_driven){.external}
+- [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](https://github.com/ml-energy/zeus/tree/master/examples/trace_driven){.external}
