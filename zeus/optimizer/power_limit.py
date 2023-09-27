@@ -319,10 +319,13 @@ class GlobalPowerLimitOptimizer(Callback):
             self.logger.info("Set power limit to the maximum before starting.")
             self._set_power_limit(max(self.power_limits))
         else:
-            self.measurements = _PowerLimitMeasurementList.model_validate_json(
-                open(self.profile_path).read(),
-                strict=True,
+            self.measurements = _PowerLimitMeasurementList.parse_file(
+                self.profile_path,
             ).measurements
+            # self.measurements = _PowerLimitMeasurementList.model_validate_json(
+            #     open(self.profile_path).read(),
+            #     strict=True,
+            # ).measurements
             self.logger.info(
                 "Loaded previous profiling results from '%s'.", str(self.profile_path)
             )
@@ -460,8 +463,8 @@ class GlobalPowerLimitOptimizer(Callback):
         assert isinstance(self.state, Done)
         with self.profile_path.open("w", encoding="utf-8") as f:
             f.write(
-                _PowerLimitMeasurementList(
-                    measurements=self.measurements
-                ).model_dump_json(indent=4)
+                _PowerLimitMeasurementList(measurements=self.measurements).json(
+                    indent=4
+                ),
             )
         self.logger.info("JIT profiling results saved to '%s'.", str(self.profile_path))

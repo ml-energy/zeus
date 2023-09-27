@@ -25,7 +25,7 @@ dependencies = [
     "pandas",
     "scikit-learn",
     "nvidia-ml-py",
-    "pydantic",
+    "pydantic<2",
     "rich",
 ]
 dynamic = ["version"]
