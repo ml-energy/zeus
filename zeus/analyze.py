@@ -111,7 +111,7 @@ def avg_power(
     seconds = _get_seconds(df)
     watts = _get_watts(df)
     area = auc(seconds, watts)
-    return area / (seconds.max() - seconds.min())
+    return area / (max(seconds) - min(seconds))
 
 
 def _get_seconds(df: pd.DataFrame) -> pd.Series:

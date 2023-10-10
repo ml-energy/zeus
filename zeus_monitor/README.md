@@ -1,5 +1,8 @@
 # [Deprecated] Zeus Power Monitor
 
+`zeus_monitor` is deprecated and will be removed in 2024.
+Please use the [`ZeusMonitor`](https://ml.energy/zeus/reference/monitor/energy/#zeus.monitor.energy.ZeusMonitor) for programmatic measurement and its CLI counterpart (`python -m zeus.monitor`) for command line measurement.
+
 This is a simple GPU power monitor used by Zeus.
 It polls NVML and writes outputs to the designated log file path.
 Find a sample of its output in [`sample.csv`](sample.csv).
