@@ -26,14 +26,14 @@ import pynvml
 class FrequencyController:
     """Spawns a separate process that sets the GPU frequency."""
 
-    def __init__(self, device_id: int = 0) -> None:
+    def __init__(self, nvml_device_id: int = 0) -> None:
         """Instantiate the frequency controller.
 
         Args:
-            device_id: The NVML device ID of the GPU to control.
+            nvml_device_id: The NVML device ID of the GPU to control.
         """
         self._q: mp.Queue[int | None] = mp.Queue()
-        self._proc = mp.Process(target=self._controller_process, args=(device_id,))
+        self._proc = mp.Process(target=self._controller_process, args=(nvml_device_id,))
 
         atexit.register(self.end)
         self._proc.start()

@@ -16,3 +16,5 @@
 
 Currently, this optimizer depends on PyTorch.
 """
+
+from zeus.optimizer.perseus.optimizer import PerseusOptimizer

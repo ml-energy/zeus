@@ -23,6 +23,7 @@ the frequency of the CPU of the current process.
 from __future__ import annotations
 
 import httpx
+import pynvml
 import torch
 import torch.distributed as dist
 
@@ -36,6 +37,7 @@ from zeus.optimizer.perseus.common import (
     RankInfo,
     FrequencySchedule,
 )
+from zeus.util.env import resolve_gpu_indices
 
 
 class PerseusOptimizer(Callback):
@@ -57,7 +59,10 @@ class PerseusOptimizer(Callback):
     ) -> None:
         """Initialize the Perseus optimizer.
 
-        `torch.distributed` must be initialized before instantiating the optimizer.
+        Assumptions:
+            - `torch.distributed` has been initialized.
+            - `torch.cuda.set_device` has been called with `device_id`.
+                This is needed to broadcast the job ID to all ranks.
 
         The master process (rank 0) will register the job with the Peresus
         server and retrieve the job ID of this job. Then, each rank will
@@ -68,7 +73,7 @@ class PerseusOptimizer(Callback):
             dp_rank: Rank in the data parallel group.
             pp_rank: Rank in the pipeline parallel group.
             tp_rank: Rank in the tensor parallel group.
-            device_id: ID of the device that the current process is running on.
+            device_id: CUDA device ID that the current process manages.
             dp_degree: Size of the data parallel group.
             pp_degree: Size of the pipeline parallel group.
             tp_degree: Size of the tensor parallel group.
@@ -88,8 +93,12 @@ class PerseusOptimizer(Callback):
         self.pp_rank = pp_rank
         self.tp_rank = tp_rank
 
-        self.device_id = device_id
-        torch.cuda.set_device(device_id)
+        cuda_device_ids, nvml_device_ids = resolve_gpu_indices([device_id])
+        self.cuda_device_id = cuda_device_ids[0]
+        nvml_device_id = nvml_device_ids[0]
+        # It is assumed that `torch.cuda.set_device` has been called with `device_id`.
+        # It won't hurt to call this again.
+        torch.cuda.set_device(self.cuda_device_id)
 
         # Rank 0 registers the job with the Perseus server and retrieves the job ID.
         job_id = None
@@ -121,12 +130,23 @@ class PerseusOptimizer(Callback):
         if self.job_id is None:
             raise RuntimeError("Failed to broadcast job ID to all ranks")
 
+        # Query the list of available frequencies of the GPU.
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(nvml_device_id)
+        max_mem_freq = max(pynvml.nvmlDeviceGetSupportedMemoryClocks(handle))
+        freqs = sorted(
+            pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq),
+            reverse=True,
+        )
+        pynvml.nvmlShutdown()
+
         # Each rank reports itself to the Perseus server with the job ID.
         rank_info = RankInfo(
             rank=self.rank,
             dp_rank=self.dp_rank,
             pp_rank=self.pp_rank,
             tp_rank=self.tp_rank,
+            available_frequencies=freqs,
         )
         response = httpx.post(
             self.server_url + REGISTER_RANK_URL.format(job_id=self.job_id),
@@ -137,13 +157,13 @@ class PerseusOptimizer(Callback):
                 f"Perseus server returned status code {code}: {response.text}"
             )
 
+        # The frequency controller is responsible for controlling the frequency
+        # of the GPU (nvml_device_id) asynchronously.
+        self.frequency_controller = FrequencyController(nvml_device_id=nvml_device_id)
+
         # Fetch the frequency schedule from the Perseus server.
         self.freq_schedule = self._get_frequency_schedule()
         self.freq_schedule_iter = iter(self.freq_schedule)
-
-        # The frequency controller is responsible for controlling the frequency
-        # of the GPU (device_id) asynchronously.
-        self.frequency_controller = FrequencyController(device_id=self.device_id)
 
     def _get_frequency_schedule(self) -> list[tuple[str, int]]:
         """Get the frequency schedule from the Perseus server."""

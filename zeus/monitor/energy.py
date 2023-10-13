@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 import atexit
-import logging
 from time import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -30,6 +29,8 @@ from zeus.monitor.power import PowerMonitor
 from zeus.util.logging import get_logger
 from zeus.util.framework import cuda_sync
 from zeus.util.env import resolve_gpu_indices
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -141,20 +142,19 @@ class ZeusMonitor:
             self.gpu_handles[gpu_index] = handle
 
         # Initialize loggers.
-        self.logger = get_logger(type(self).__name__)
         if log_file is None:
             self.log_file = None
         else:
             if dir := os.path.dirname(log_file):
                 os.makedirs(dir, exist_ok=True)
             self.log_file = open(log_file, "w")
-            self.logger.info("Writing measurement logs to %s.", log_file)
+            logger.info("Writing measurement logs to %s.", log_file)
             self.log_file.write(
                 f"start_time,window_name,elapsed_time,{','.join(map(lambda i: f'gpu{i}_energy', self.gpu_indices))}\n",
             )
             self.log_file.flush()
 
-        self.logger.info("Monitoring GPU %s.", self.gpu_indices)
+        logger.info("Monitoring GPU indices %s.", self.gpu_indices)
 
         # A dictionary that maps the string keys of active measurement windows to
         # the state of the measurement window. Each element in the dictionary is a tuple of:
@@ -230,7 +230,7 @@ class ZeusMonitor:
 
         # Add measurement state to dictionary.
         self.measurement_states[key] = (timestamp, energy_state)
-        self._log(f"Measurement window '{key}' started.")
+        logger.debug("Measurement window '%s' started.", key)
 
     def end_window(
         self, key: str, sync_cuda: bool = True, cancel: bool = False
@@ -269,7 +269,7 @@ class ZeusMonitor:
 
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:
-            self._log(f"Measurement window '{key}' cancelled.")
+            logger.debug("Measurement window '%s' cancelled.", key)
             return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_handles})
 
         end_time: float = time()
@@ -300,7 +300,7 @@ class ZeusMonitor:
                         time_consumption - power_measurement_time
                     )
 
-        self._log(f"Measurement window '{key}' ended.")
+        logger.debug("Measurement window '%s' ended.", key)
 
         # Add to log file.
         if self.log_file is not None:
@@ -312,18 +312,3 @@ class ZeusMonitor:
             self.log_file.flush()
 
         return Measurement(time_consumption, energy_consumption)
-
-    def _log(
-        self, message: str, gpu_index: int | None = None, level: int = logging.INFO
-    ) -> None:
-        """Print out message with prefix.
-
-        Args:
-            message: The message to log out.
-            gpu_index: The index of GPU for GPU-level logging. Should be `None`
-                when logging global information. (Default: `None`)
-            level: The logging level to use. (Default: `logging.INFO`)
-        """
-        if gpu_index is not None:
-            message = f"[GPU {gpu_index}] {message}"
-        self.logger.log(level, message)

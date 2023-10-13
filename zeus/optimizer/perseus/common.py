@@ -50,7 +50,7 @@ class PerseusSettings(BaseSettings):
             its states are automatically deleted from the server.
     """
 
-    scheduler: PyObject = "AllMaxFrequency"  # type: ignore
+    scheduler: PyObject = "PointSolution"  # type: ignore
     scheduler_args: dict[str, Any] = {}
     log_level: str = "DEBUG"
     dump_data: bool = True
@@ -66,12 +66,13 @@ class PerseusSettings(BaseSettings):
     def _validate_scheduler_args(cls, args, values):
         """Check whether args are as expected by the scheduler's constructor."""
         scheduler = values["scheduler"]
-        args |= dict(job_info=None, rank_infos=None, perseus_settings=None)
+        full_args = args | dict(job_info=None, rank_infos=None, perseus_settings=None)
         constructor_args = inspect.signature(scheduler)
         try:
-            constructor_args.bind(**args)
+            constructor_args.bind(**full_args)
         except TypeError as e:
             raise ValueError(f"Invalid scheduler args: {e}") from None
+        return args
 
     @validator("log_level")
     def _make_upper_case(cls, value):
@@ -141,12 +142,14 @@ class RankInfo(BaseModel):
         dp_rank: Data parallel rank of the reporting procees.
         pp_rank: Pipeline parallel rank of the reporting procees.
         tp_rank: Tensor parallel rank of the reporting procees.
+        available_frequencies: List of available frequencies for the rank's GPU.
     """
 
     rank: int = Field(ge=0)
     dp_rank: int = Field(ge=0)
     pp_rank: int = Field(ge=0)
     tp_rank: int = Field(ge=0)
+    available_frequencies: list[int]
 
 
 class FrequencySchedule(BaseModel):

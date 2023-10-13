@@ -81,7 +81,7 @@ class JobManager:
         ]
         self._job_tasks[job_id] = create_task(
             self._job_task(job_id, self.perseus_settings.dump_data),
-            logger=get_logger(__name__),
+            logger=logger,
         )
         self._job_last_active_time[job_id] = time.monotonic()
 

@@ -27,6 +27,11 @@ dependencies = [
     "nvidia-ml-py",
     "pydantic<2",
     "rich",
+    "tyro",
+    "fastapi[all]==0.87.0",
+    "httpx",
+    "aiofiles==22.1.0",
+    "lowtime",
 ]
 dynamic = ["version"]
 
@@ -38,9 +43,7 @@ Documentation = "https://ml.energy/zeus"
 [project.optional-dependencies]
 lint = ["ruff", "black==22.6.0"]
 test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"]
-torch = ["torch==2.0.1"]
-perseus = ["fastapi[all]==0.87.0", "httpx", "aiofiles==22.1.0"]
-dev = ["ruff", "black==22.6.0", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "torch==2.0.1"]
+dev = ["ruff", "black==22.6.0", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"]
 
 [tool.setuptools.packages.find]
 where = ["."]

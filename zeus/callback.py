@@ -41,6 +41,12 @@ class Callback:
     def on_evaluate(self, metric: float) -> None:
         """Called after evaluating the model."""
 
+    def on_instruction_begin(self, name: str) -> None:
+        """Called at the beginning of pipeline instructions like forward or backward."""
+
+    def on_instruction_end(self, name: str) -> None:
+        """Called at the end of pipeline instructions like forward or backward."""
+
 
 class CallbackSet(Callback):
     """A set of callbacks."""
@@ -83,3 +89,13 @@ class CallbackSet(Callback):
         """Called after evaluating the model."""
         for callback in self.callbacks:
             callback.on_evaluate(metric)
+
+    def on_instruction_begin(self, name: str) -> None:
+        """Called at the beginning of pipeline instructions like forward or backward."""
+        for callback in self.callbacks:
+            callback.on_instruction_begin(name)
+
+    def on_instruction_end(self, name: str) -> None:
+        """Called at the end of pipeline instructions like forward or backward."""
+        for callback in self.callbacks:
+            callback.on_instruction_end(name)

@@ -57,3 +57,6 @@ def cuda_sync(device: int | None = None) -> None:
         return
 
     raise RuntimeError("No frameworks are available.")
+
+
+torch_is_available()
