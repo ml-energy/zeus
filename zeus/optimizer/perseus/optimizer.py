@@ -38,6 +38,7 @@ from zeus.optimizer.perseus.common import (
     FrequencySchedule,
 )
 from zeus.util.env import resolve_gpu_indices
+from zeus.util.framework import cuda_sync
 
 
 class PerseusOptimizer(Callback):
@@ -213,6 +214,8 @@ class PerseusOptimizer(Callback):
         expected instruction matches the name of the instruction, and set the
         frequency accordingly.
         """
+        cuda_sync(self.cuda_device_id)
+
         # Retrieve the next frequency from the schedule.
         item = next(self.freq_schedule_iter, None)
         if item is None:
@@ -228,3 +231,6 @@ class PerseusOptimizer(Callback):
             )
 
         self.frequency_controller.set_frequency(frequency)
+
+    def on_instruction_end(self, _: str) -> None:
+        """Mark the end of an instruction, like forward and backward."""
