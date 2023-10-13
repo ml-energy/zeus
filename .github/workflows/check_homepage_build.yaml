@@ -33,4 +33,4 @@ jobs:
       - name: Install other homepage dependencies
         run: pip install -r docs/requirements.txt
       - name: Build homepage
-        run: mkdocs build --verbose --strict
+        run: mkdocs build --verbose

@@ -111,6 +111,9 @@ nav:
     - getting_started/index.md
     - Environment Setup: getting_started/environment.md
     - Installing and Building: getting_started/installing_and_building.md
+  - Perseus:
+    - perseus/index.md
+    - Integrating: perseus/integrating.md
   - Extending Zeus: extend.md
   - Source Code Reference: reference/
 

@@ -321,7 +321,6 @@ class Simulator:
             # We need a while loop here because we might have submitted a retry job
             # while reaping jobs that failed to reach the target metric, and that retry job
             # may finish before the current job.
-            # pylint: disable=cell-var-from-loop
             while any(map(lambda j: j.end_time <= current_time, running_jobs)):
                 if self.verbose:
                     print(f"[Simulator] Running jobs: {running_jobs}")
