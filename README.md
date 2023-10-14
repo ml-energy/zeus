@@ -16,7 +16,8 @@
 ---
 **Project News** ⚡ 
 
-- \[2023/09\] We moved to under [`ml-energy`](https://github.com/ml-energy). Please stay tuned for new exciting projects!
+- \[2023/10\] We released Perseus, an energy optimizer for large model training. Get started [here](https://ml.energy/zeus/perseus/)!
+- \[2023/09\] We moved to under [`ml-energy`](https://github.com/ml-energy)! Please stay tuned for new exciting projects!
 - \[2023/07\] [`ZeusMonitor`](https://ml.energy/zeus/reference/monitor/#zeus.monitor.ZeusMonitor) was used to profile GPU time and energy consumption for the [ML.ENERGY leaderboard & Colosseum](https://ml.energy/leaderboard).
 - \[2023/03\] [Chase](https://symbioticlab.org/publications/files/chase:ccai23/chase-ccai23.pdf), an automatic carbon optimization framework for DNN training, will appear at ICLR'23 workshop.
 - \[2022/11\] [Carbon-Aware Zeus](https://taikai.network/gsf/hackathons/carbonhack22/projects/cl95qxjpa70555701uhg96r0ek6/idea) won the **second overall best solution award** at Carbon Hack 22.
