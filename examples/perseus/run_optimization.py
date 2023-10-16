@@ -228,7 +228,7 @@ def main(args: Args) -> None:
         f.write("]\n")
 
         iter_str = f"# Iteration {iteration} "
-        real_cost = result.cost + args.num_stages + result.real_time * args.p2p_power
+        real_cost = result.cost + args.num_stages * result.real_time * args.p2p_power
         f.write(iter_str + f"cost change: {result.cost_change}\n")
         f.write(iter_str + f"total cost: {result.cost}\n")
         f.write(iter_str + f"total cost with P2P: {real_cost}\n")
