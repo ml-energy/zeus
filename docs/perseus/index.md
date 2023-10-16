@@ -7,6 +7,8 @@
 
 ## Overview
 
+<img src="img/wide-resnet.gif" width=800px>
+
 Perseus finds the training time--energy Pareto frontier of large model training.
 Users can pick any point on the frontier -- be it minimum time, minimum energy, or something in the middle, depending on the training deadline.
 
@@ -15,7 +17,7 @@ The core observation of Perseus is that work cannot be perfectly split and balan
 GPUs with smaller amounts of work finish before GPUs with more amounts of work, but ultimately training throughput is bound by GPUs with the most amount of work.
 In other words, GPUs with lighter load are running unnecessarily fast and wasting energy (i.e., there is **energy bloat**).
 
-We reduce enregy bloat by controlling the execution speed of each pipeline instruction (forward and backward) in each stage by controlling the GPU's frequency in a fine-grained manner.
+We reduce energy bloat by controlling the execution speed of each pipeline instruction (forward and backward) in each stage by controlling the GPU's frequency in a fine-grained manner.
 We call the assignment of a GPU frequency to each pipeline instruction *frequency plan*, and Perseus gives you **every Pareto-optimal frequency plan** that you can choose any point on the iteration time--energy Pareto frontier.
 These plans include frequency plans that do not make training any slower compared to not using Perseus at all, but yield free energy savings.
 If you have a bit more leeway as to when training should finish (e.g., You're good as long as training finishes by tomorrow morning), you can pick the frequency plan that slows down training by a couple percentages and save more energy.
@@ -23,7 +25,7 @@ Our core algorithm, implemented as a separate library called [`lowtime`](https:/
 
 ## How it's done
 
-Currently it's a three-step process:
+Currently, it's a three-step process:
 
 1. **Profile**: Profile the computation time and energy consumption of the forward and backward instructions in *each stage* and *each GPU frequency*.
 2. **Optimize**: Use [`lowtime`](https://github.com/ml-energy/lowtime) to generate all Pareto-optimal frequency plans.
