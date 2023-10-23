@@ -30,11 +30,24 @@ def worker(rank: int) -> None:
         raise ValueError(f"Invalid rank: {rank}")
 
     torch.cuda.set_device(rank)
-    dist.init_process_group(backend="nccl", init_method="env://", world_size=2, rank=rank)
+    dist.init_process_group(
+        backend="nccl", init_method="env://", world_size=2, rank=rank
+    )
 
     # Allocate large tensor and run some computation to warm up the GPU.
     tensor = torch.rand(10000, 10000, device="cuda")
-    tensor = tensor @ tensor @ tensor @ tensor @ tensor @ tensor @ tensor @ tensor @ tensor @ tensor
+    tensor = (
+        tensor
+        @ tensor
+        @ tensor
+        @ tensor
+        @ tensor
+        @ tensor
+        @ tensor
+        @ tensor
+        @ tensor
+        @ tensor
+    )
 
     if rank == 0:
         monitor = ZeusMonitor(gpu_indices=[rank])
