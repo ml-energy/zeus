@@ -199,7 +199,9 @@ class ZeusMonitor:
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
-    def begin_window(self, key: str, sync_cuda: callable[[], None] | bool = False) -> None:
+    def begin_window(
+        self, key: str, sync_cuda: callable[[], None] | bool = False
+    ) -> None:
         """Begin a new measurement window.
 
         Args:
@@ -219,7 +221,6 @@ class ZeusMonitor:
         elif callable(sync_cuda):
             sync_cuda()
 
-
         # Freeze the start time of the profiling window.
         timestamp: float = time()
         energy_state: dict[int, float] = {}
@@ -237,7 +238,10 @@ class ZeusMonitor:
         logger.debug("Measurement window '%s' started.", key)
 
     def end_window(
-        self, key: str, sync_cuda: callable[[], None] | bool = True, cancel: bool = False
+        self,
+        key: str,
+        sync_cuda: callable[[], None] | bool = True,
+        cancel: bool = False,
     ) -> Measurement:
         """End a measurement window and return the time and energy consumption.
 
