@@ -199,22 +199,26 @@ class ZeusMonitor:
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
-    def begin_window(self, key: str, sync_cuda: bool = True) -> None:
+    def begin_window(self, key: str, sync_cuda: callable[[], None] | bool = False) -> None:
         """Begin a new measurement window.
 
         Args:
             key: Unique name of the measurement window.
-            sync_cuda: Whether to synchronize CUDA before starting the measurement window.
-                (Default: `True`)
+            sync_cuda: if False, no CUDA syncrhonization. If it's a `True`, try to infer
+                the training framework and appropriately sync. If it's a `Callable`, it will be
+                called when CUDA sync has to happen.
         """
         # Make sure the key is unique.
         if key in self.measurement_states:
             raise ValueError(f"Measurement window '{key}' already exists")
 
         # Call cudaSynchronize to make sure we freeze at the right time.
-        if sync_cuda:
+        if sync_cuda is True:
             for gpu_index in self.gpu_handles:
                 cuda_sync(gpu_index)
+        elif callable(sync_cuda):
+            sync_cuda()
+
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
@@ -233,14 +237,15 @@ class ZeusMonitor:
         logger.debug("Measurement window '%s' started.", key)
 
     def end_window(
-        self, key: str, sync_cuda: bool = True, cancel: bool = False
+        self, key: str, sync_cuda: callable[[], None] | bool = True, cancel: bool = False
     ) -> Measurement:
         """End a measurement window and return the time and energy consumption.
 
         Args:
             key: Name of an active measurement window.
-            sync_cuda: Whether to synchronize CUDA before ending the measurement window.
-                (default: `True`)
+            sync_cuda: if False, no CUDA syncrhonization. If it's a `True`, try to infer
+                the training framework and appropriately sync. If it's a `Callable`, it will be
+                called when CUDA sync has to happen.
             cancel: Whether to cancel the measurement window. If `True`, the measurement
                 window is assumed to be cancelled and discarded. Thus, an empty Measurement
                 object will be returned and the measurement window will not be recorded in
@@ -263,9 +268,11 @@ class ZeusMonitor:
         )
 
         # Call cudaSynchronize to make sure we freeze at the right time.
-        if sync_cuda:
+        if sync_cuda is True:
             for gpu_index in self.gpu_handles:
                 cuda_sync(gpu_index)
+        elif callable(sync_cuda):
+            sync_cuda()
 
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:
