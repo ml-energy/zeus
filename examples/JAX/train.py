@@ -28,7 +28,7 @@ from absl import logging
 from clu import metric_writers
 from clu import periodic_actions
 from clu import platform
-from flax import jax_utils
+from flax import jax_utilsd
 from flax.training import checkpoints
 from flax.training import common_utils
 from flax.training import dynamic_scale as dynamic_scale_lib
@@ -39,6 +39,7 @@ import jax.numpy as jnp
 from jax import random
 import ml_collections
 import optax
+import os
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
@@ -50,6 +51,41 @@ from zeus.monitor import ZeusMonitor
 
 
 NUM_CLASSES = 1000
+
+
+def load_and_preprocess_image(path, label, image_size):
+    image = tf.io.read_file(path)
+    image = tf.image.decode_jpeg(image, channels=3)
+    image = tf.image.resize(image, [image_size, image_size])
+    image = tf.cast(image, tf.float32) / 255.0  # Normalize pixel values
+    return image, label
+
+
+def prepare_dataset(data_dir, batch_size, image_size, dtype, train):
+    # Assuming subdirectories in 'data_dir' are class names and contain images
+    class_names = sorted(os.listdir(data_dir))
+    class_to_index = dict((name, index) for index, name in enumerate(class_names))
+
+    image_paths = []
+    labels = []
+    for class_name in class_names:
+        class_dir = os.path.join(data_dir, class_name)
+        for img_name in os.listdir(class_dir):
+            img_path = os.path.join(class_dir, img_name)
+            image_paths.append(img_path)
+            labels.append(class_to_index[class_name])
+
+    dataset = tf.data.Dataset.from_tensor_slices((image_paths, labels))
+    dataset = dataset.map(
+        lambda x, y: load_and_preprocess_image(x, y, image_size),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+
+    if train:
+        dataset = dataset.shuffle(buffer_size=1000).repeat()
+
+    dataset = dataset.batch(batch_size).prefetch(buffer_size=tf.data.AUTOTUNE)
+    return dataset
 
 
 def create_model(*, model_cls, half_precision, **kwargs):
@@ -311,27 +347,40 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str) -> Train
     else:
         input_dtype = tf.float32
 
-    dataset_builder = tfds.builder(config.dataset)
-    train_iter = create_input_iter(
-        dataset_builder,
-        local_batch_size,
-        image_size,
-        input_dtype,
-        train=True,
-        cache=config.cache,
-        shuffle_buffer_size=config.shuffle_buffer_size,
-        prefetch=config.prefetch,
+    local_batch_size = config.batch_size // jax.process_count()
+    image_size = 224
+    input_dtype = tf.float32  # or tf.float16 for half_precision
+
+    train_dir = "/data/imagenet/train"
+    val_dir = "/data/imagenet/val"
+    train_iter = prepare_dataset(
+        train_dir, local_batch_size, image_size, input_dtype, train=True
     )
-    eval_iter = create_input_iter(
-        dataset_builder,
-        local_batch_size,
-        image_size,
-        input_dtype,
-        train=False,
-        cache=config.cache,
-        shuffle_buffer_size=None,
-        prefetch=config.prefetch,
+    eval_iter = prepare_dataset(
+        val_dir, local_batch_size, image_size, input_dtype, train=False
     )
+
+    # dataset_builder = tfds.builder(config.dataset)
+    # train_iter = create_input_iter(
+    #     dataset_builder,
+    #     local_batch_size,
+    #     image_size,
+    #     input_dtype,
+    #     train=True,
+    #     cache=config.cache,
+    #     shuffle_buffer_size=config.shuffle_buffer_size,
+    #     prefetch=config.prefetch,
+    # )
+    # eval_iter = create_input_iter(
+    #     dataset_builder,
+    #     local_batch_size,
+    #     image_size,
+    #     input_dtype,
+    #     train=False,
+    #     cache=config.cache,
+    #     shuffle_buffer_size=None,
+    #     prefetch=config.prefetch,
+    # )
 
     steps_per_epoch = (
         dataset_builder.info.splits["train"].num_examples // config.batch_size
