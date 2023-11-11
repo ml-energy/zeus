@@ -28,7 +28,7 @@ from absl import logging
 from clu import metric_writers
 from clu import periodic_actions
 from clu import platform
-from flax import jax_utilsd
+from flax import jax_utils
 from flax.training import checkpoints
 from flax.training import common_utils
 from flax.training import dynamic_scale as dynamic_scale_lib
@@ -308,7 +308,10 @@ def create_train_state(
     return state
 
 
-def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str) -> TrainState:
+def train_and_evaluate(
+    config: ml_collections.ConfigDict,
+    workdir: str,
+) -> TrainState:
     """Execute model training and evaluation loop.
 
     Args:
@@ -351,8 +354,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str) -> Train
     image_size = 224
     input_dtype = tf.float32  # or tf.float16 for half_precision
 
-    train_dir = "/data/imagenet/train"
-    val_dir = "/data/imagenet/val"
+    train_dir = FLAGS.dataPath + "/train"
+    val_dir = FLAGS.dataPath + "/val"
     train_iter = prepare_dataset(
         train_dir, local_batch_size, image_size, input_dtype, train=True
     )
@@ -495,6 +498,7 @@ config_flags.DEFINE_config_file(
     "File path to the training hyperparameter configuration.",
     lock_config=True,
 )
+flags.DEFINE_string("dataPath", None, "Path to the pre-downloaded dataset.")
 
 
 def main(argv):
@@ -522,5 +526,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    flags.mark_flags_as_required(["config", "workdir"])
+    flags.mark_flags_as_required(["config", "workdir", "dataPath"])
     app.run(main)
