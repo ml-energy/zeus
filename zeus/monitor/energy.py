@@ -200,26 +200,33 @@ class ZeusMonitor:
         return power, power_measurement_time
 
     def begin_window(
-        self, key: str, sync_cuda: callable[[], None] | bool = False
+        self, key: str, sync_cuda_infer_framework: callable[[], None] | bool = True
     ) -> None:
         """Begin a new measurement window.
 
         Args:
             key: Unique name of the measurement window.
-            sync_cuda: if False, no CUDA syncrhonization. If it's a `True`, try to infer
-                the training framework and appropriately sync. If it's a `Callable`, it will be
-                called when CUDA sync has to happen.
+            sync_cuda_infer_framework: Controls CUDA synchronization before starting the measurement window.
+                - If set to `True` (default), the function attempts to automatically detect the current deep learning
+                    framework (e.g., PyTorch, TensorFlow) and perform the necessary CUDA synchronization to ensure accurate
+                    timing measurements. This is useful for getting precise performance metrics in environments with GPU
+                    acceleration.
+                - If set to `False`, no CUDA synchronization is performed. This might be useful in scenarios where
+                    synchronization overhead is a concern or when measuring non-GPU related performance metrics.
+                - If a callable is provided, it will be invoked to perform the synchronization. This allows for custom
+                    synchronization logic, useful in cases where the automatic detection does not align with the specific
+                    needs of your setup or when using less common frameworks.
         """
         # Make sure the key is unique.
         if key in self.measurement_states:
             raise ValueError(f"Measurement window '{key}' already exists")
 
         # Call cudaSynchronize to make sure we freeze at the right time.
-        if sync_cuda is True:
+        if sync_cuda_infer_framework is True:
             for gpu_index in self.gpu_handles:
                 cuda_sync(gpu_index)
-        elif callable(sync_cuda):
-            sync_cuda()
+        elif callable(sync_cuda_infer_framework):
+            sync_cuda_infer_framework()
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
@@ -247,9 +254,16 @@ class ZeusMonitor:
 
         Args:
             key: Name of an active measurement window.
-            sync_cuda: if False, no CUDA syncrhonization. If it's a `True`, try to infer
-                the training framework and appropriately sync. If it's a `Callable`, it will be
-                called when CUDA sync has to happen.
+            sync_cuda_infer_framework: Controls CUDA synchronization before starting the measurement window.
+                - If set to `True` (default), the function attempts to automatically detect the current deep learning
+                    framework (e.g., PyTorch, TensorFlow) and perform the necessary CUDA synchronization to ensure accurate
+                    timing measurements. This is useful for getting precise performance metrics in environments with GPU
+                    acceleration.
+                - If set to `False`, no CUDA synchronization is performed. This might be useful in scenarios where
+                    synchronization overhead is a concern or when measuring non-GPU related performance metrics.
+                - If a callable is provided, it will be invoked to perform the synchronization. This allows for custom
+                    synchronization logic, useful in cases where the automatic detection does not align with the specific
+                    needs of your setup or when using less common frameworks.
             cancel: Whether to cancel the measurement window. If `True`, the measurement
                 window is assumed to be cancelled and discarded. Thus, an empty Measurement
                 object will be returned and the measurement window will not be recorded in
