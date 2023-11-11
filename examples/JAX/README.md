@@ -1,5 +1,5 @@
 ### Running locally
 
 ```shell
-python train.py --workdir=./imagenet --config=configs/default.py
+python train.py --workdir=./JAX --config=default.py
 ```
