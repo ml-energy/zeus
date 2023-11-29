@@ -54,14 +54,14 @@ logger = logging.getLogger()
 class Args:
     # Path to instruction profile results
     inst_profile: str
-    # GPU power consumption while blocking on P2P communication, in Watts
-    p2p_power: float = 70.0
     # Directory to output results
     output_dir: Path
     # Number of microbatchs
     num_mbs: int
     # Number of stages
     num_stages: int
+    # GPU power consumption while blocking on P2P communication, in Watts
+    p2p_power: float = 70.0
     # Interval to draw the state of the pipeline
     plot_interval: int = 100
     # The unit of reduction for each iteration, in seconds
@@ -109,13 +109,13 @@ def main(args: Args) -> None:
                     )
                 )
 
-            # Get the Preto frontier, quantize time, and deduplicate time.
-            cand_options = CandidateExecutionOptions[int](options=options)
-
             # Map the cost to be effective computation energy.
             # Everything from now on is in terms of effective energy.
-            for option in cand_options.options:
+            for option in options:
                 option.cost -= args.p2p_power * option.quant_time * option.unit_time
+
+            # Get the Preto frontier, quantize time, and deduplicate time.
+            cand_options = CandidateExecutionOptions[int](options=options)
 
             # Fit the cost model.
             model = ExponentialModel(cand_options)
