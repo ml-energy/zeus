@@ -6,7 +6,7 @@
     This document always reflects the master `HEAD`.
 
 !!! Tip
-    Stay tuned for the paper release :)
+    Our preprint is out on [arXiv](https://arxiv.org/abs/2312.06902)! :)
 
 ## Overview
 
