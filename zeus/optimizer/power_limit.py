@@ -46,7 +46,7 @@ from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
-
+ 
 class OptimumSelector(ABC):
     """Base class for optimum power limit selectors."""
 
