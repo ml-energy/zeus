@@ -46,7 +46,7 @@ from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
- 
+
 class OptimumSelector(ABC):
     """Base class for optimum power limit selectors."""
 
@@ -468,3 +468,89 @@ class GlobalPowerLimitOptimizer(Callback):
                 ),
             )
         self.logger.info("JIT profiling results saved to '%s'.", str(self.profile_path))
+
+
+
+# ISSUE #24: HFGPLO Hugging Face Callback integration
+
+from typing import TYPE_CHECKING, Type
+
+# questions
+# 1. is this the right idea?
+# 2. do i have to override all the methods in TrainerCallback?
+
+# only import when type checking
+if TYPE_CHECKING:
+    from transformers import Trainer, TrainerCallback, TrainingArguments, TrainerState, TrainerControl, PreTrainedModel
+
+def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallback]:
+
+    class Wrapper(TrainerCallback):
+        def __init__(self, *args, **kwargs) -> None:
+            self.plo = cls(*args, **kwargs) # keep it args, kwargs, or specify to GlobalPowerLimitOptimizer?
+
+            # unmatched in Callback:
+                # on_instruction_begin(self, name: str) -> None:
+                # on_instruction_end(self, name: str) -> None:
+
+            # super().__init__(*args, **kwargs) # uncomment if necessary
+
+        def on_epoch_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            self.plo.on_epoch_begin()
+        
+        def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            self.plo.on_epoch_end()
+        
+        def on_evaluate(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            self.plo.on_evaluate() # what to set metric to?
+        
+        # NO MATCH
+        def on_init_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            # self.plo.on_init_end() no match to zeus callback, should be overridden?
+            pass
+        
+        # NO MATCH
+        def on_log(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            # self.plo.on_log() no match
+            pass
+        
+        # NO MATCH
+        def on_predict(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            # self.plo.on_predict() no match
+            pass
+        
+        # NO MATCH
+        def on_prediction_step(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            # self.plo.on_prediction_step() no match
+            pass
+        
+        # NO MATCH
+        def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            # self.plo.on_save() no match
+            pass
+
+        def on_step_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            self.plo.on_step_begin()
+        
+        def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            self.plo.on_step_end()
+        
+        # NO MATCH
+        def on_substep_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            # self.plo.on_substep_end() no match
+            pass
+
+        def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            self.plo.on_train_begin()
+        
+        def on_train_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
+            self.plo.on_train_end()
+
+    Wrapper.__name__ = name or (cls.__name__ + "HFWrapper")
+    if cls.__doc__ is not None:
+        Wrapper.__doc__ = "[Wrapped for Hugging Face Trainer Callback] " + cls.__doc__
+
+    return Wrapper
+
+# Hugging Face Compatible Global Power Limit Optimizer
+HFGPLO = make_hf(GlobalPowerLimitOptimizer)
