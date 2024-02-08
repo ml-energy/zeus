@@ -1,25 +1,12 @@
 
+from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl, PreTrainedModel
+
+from zeus.optimizer import HFGPLO
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer
 
-if __name__ == '__main__':
-    monitor = ZeusMonitor(gpu_indices=[0,1,2,3])
+import pdb
 
-    monitor.begin_window()
+pdb.set_trace()
 
-    measurement = monitor.end_window("heavy computation")
-
-
-    print(f"Energy: {measurement.total_energy} J")
-    print(f"Time  : {measurement.time} s")
-
-
-    plo = GlobalPowerLimitOptimizer(monitor)
-
-    # training loop
-
-    plo.on_step_begin()
-
-    
 
 

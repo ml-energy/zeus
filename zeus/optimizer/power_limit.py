@@ -481,11 +481,29 @@ from typing import TYPE_CHECKING, Type
 
 # only import when type checking
 if TYPE_CHECKING:
-    from transformers import Trainer, TrainerCallback, TrainingArguments, TrainerState, TrainerControl, PreTrainedModel
+    from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl, PreTrainedModel
+
+# to avoid hard dependency on HuggingFace Transformers, import classes dynamically
+def import_hf_classes():
+    try:
+        from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl, PreTrainedModel
+        return TrainerCallback, TrainingArguments, TrainerState, TrainerControl, PreTrainedModel
+    except ImportError:
+        return None
+
 
 def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallback]:
 
+    # Attempt to import HuggingFace classes
+    hf_classes = import_hf_classes()
+    if hf_classes is None:
+        raise ImportError("Hugging Face is not installed. Please install it to use this feature.")
+
+    TrainerCallback, TrainingArguments, TrainerState, TrainerControl, PreTrainedModel = hf_classes
+
     class Wrapper(TrainerCallback):
+        # goal: help(HFGPLO) should show the init signature of GlobalPowerLimitOptimizer
+        # if that doesn't work, then standard class
         def __init__(self, *args, **kwargs) -> None:
             self.plo = cls(*args, **kwargs) # keep it args, kwargs, or specify to GlobalPowerLimitOptimizer?
 
@@ -502,43 +520,13 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             self.plo.on_epoch_end()
         
         def on_evaluate(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
-            self.plo.on_evaluate() # what to set metric to?
-        
-        # NO MATCH
-        def on_init_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
-            # self.plo.on_init_end() no match to zeus callback, should be overridden?
-            pass
-        
-        # NO MATCH
-        def on_log(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
-            # self.plo.on_log() no match
-            pass
-        
-        # NO MATCH
-        def on_predict(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
-            # self.plo.on_predict() no match
-            pass
-        
-        # NO MATCH
-        def on_prediction_step(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
-            # self.plo.on_prediction_step() no match
-            pass
-        
-        # NO MATCH
-        def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
-            # self.plo.on_save() no match
-            pass
+            self.plo.on_evaluate() # what to set metric to? think it is called with metric, look into it
 
         def on_step_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
             self.plo.on_step_begin()
         
         def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
             self.plo.on_step_end()
-        
-        # NO MATCH
-        def on_substep_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
-            # self.plo.on_substep_end() no match
-            pass
 
         def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, model: PreTrainedModel, **kwargs) -> None:
             self.plo.on_train_begin()
