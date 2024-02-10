@@ -47,6 +47,7 @@ from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
 from typing import TYPE_CHECKING, Type
+import functools
 
 
 class OptimumSelector(ABC):
@@ -482,62 +483,40 @@ if TYPE_CHECKING:
         PreTrainedModel,
     )
 
+try:
+    from transformers import TrainerCallback
 
-def import_hf_classes():
-    """Attempts to import and return several classes from the `transformers` library.
+    class HFGlobalPowerLimitOptimizer(TrainerCallback):
+        """[Wrapped for Hugging Face Trainer Callback] Optimizer for the power limit knob.
 
-    This function tries to import the following classes from the `transformers` library:
-    - `TrainerCallback`
-    - `TrainingArguments`
-    - `TrainerState`
-    - `TrainerControl`
-    - `PreTrainedModel`
+        This optimizer uses the JIT profiling log to determine the optimal power limit.
+        """
 
-    Returns:
-        tuple: A tuple containing the imported classes if the `transformers` library is installed.
-        None: If the `transformers` library is not installed, returns None.
+        def __init__(self, monitor: ZeusMonitor,
+            optimum_selector: OptimumSelector | None = None,
+            wait_steps: int = 1,
+            warmup_steps: int = 10,
+            profile_steps: int = 40,
+            pl_step: int = 25,
+            profile_path: str | Path | None = None) -> None:
+            r"""Initialize the optimizer.
 
-    """
-    try:
-        from transformers import (
-            TrainerCallback,
-            TrainingArguments,
-            TrainerState,
-            TrainerControl,
-            PreTrainedModel,
-        )
+            GPU indices to profile and optimize for are taken from `monitor.gpu_indices`.
 
-        return (
-            TrainerCallback,
-            TrainingArguments,
-            TrainerState,
-            TrainerControl,
-            PreTrainedModel,
-        )
-    except ImportError:
-        return None
-
-
-def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallback]:
-    """Wrap a `zeus` callback class to be compatible with Hugging Face's Trainer.
-
-    Args:
-        cls (Type[Callback]): The `zeus` callback class to wrap.
-        name (str, optional): The name of the new TrainerCallback class. If None, use `cls.__name__ + "HFWrapper"`.
-
-    """
-    # dynamically import Hugging Face classes, to avoid hard dependency
-    hf_classes = import_hf_classes()
-    if hf_classes is None:
-        raise ImportError(
-            "Hugging Face is not installed. Please install it to use this feature."
-        )
-
-    TrainerCallback, _, _, _, _ = hf_classes  # noqa: N806
-
-    class Wrapper(TrainerCallback):
-        def __init__(self, *args, **kwargs) -> None:
-            self.plo = cls(*args, **kwargs)
+            Args:
+                monitor: `ZeusMonitor` instance used to profile GPU time and energy consumption.
+                optimum_selector: The optimum selector to use. If not given, use `ZeusCost` with \eta=0.5.
+                wait_steps: Number of steps to pass by before doing anything at the beginning.
+                    Useful if you have something like `torch.backends.cudnn.benchmark=True`,
+                    because the first iteration won't be representative of the rest of the iterations.
+                warmup_steps: Number of warmup iterations for each power limit.
+                profile_steps: Number of profie iterations for each power limit.
+                pl_step: The stride between power limits to explore, in unites of Watts.
+                profile_path: If the path points to an existing file, load the profile from the file
+                    and do not run any profiling. If the path points to a non-existing file, profile
+                    and save the profile to the file. If `None`, do not save or load any profile.
+            """
+            self.optimizer = GlobalPowerLimitOptimizer(monitor=monitor,optimum_selector=optimum_selector,wait_steps=wait_steps,warmup_steps=warmup_steps,profile_steps=profile_steps,pl_step=pl_step,profile_path=profile_path)
 
         def on_epoch_begin(
             self,
@@ -547,7 +526,7 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             model: PreTrainedModel,
             **kwargs,
         ) -> None:
-            self.plo.on_epoch_begin()
+            self.optimizer.on_epoch_begin()
 
         def on_epoch_end(
             self,
@@ -557,7 +536,7 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             model: PreTrainedModel,
             **kwargs,
         ) -> None:
-            self.plo.on_epoch_end()
+            self.optimizer.on_epoch_end()
 
         def on_evaluate(
             self,
@@ -567,7 +546,11 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             model: PreTrainedModel,
             **kwargs,
         ) -> None:
-            self.plo.on_evaluate()  # what to set metric to?
+            if state.log_history:
+                # Evaluate the last metric in the log history.
+                self.optimizer.on_evaluate(metric=state.log_history[-1])
+            else:
+                pass # TODO: Add a warning here? 
 
         def on_step_begin(
             self,
@@ -577,7 +560,7 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             model: PreTrainedModel,
             **kwargs,
         ) -> None:
-            self.plo.on_step_begin()
+            self.optimizer.on_step_begin()
 
         def on_step_end(
             self,
@@ -587,7 +570,7 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             model: PreTrainedModel,
             **kwargs,
         ) -> None:
-            self.plo.on_step_end()
+            self.optimizer.on_step_end()
 
         def on_train_begin(
             self,
@@ -597,7 +580,7 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             model: PreTrainedModel,
             **kwargs,
         ) -> None:
-            self.plo.on_train_begin()
+            self.optimizer.on_train_begin()
 
         def on_train_end(
             self,
@@ -607,13 +590,253 @@ def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallbac
             model: PreTrainedModel,
             **kwargs,
         ) -> None:
-            self.plo.on_train_end()
+            self.optimizer.on_train_end()
 
-    Wrapper.__name__ = name or (cls.__name__ + "HFWrapper")
-    if cls.__doc__ is not None:
-        Wrapper.__doc__ = "[Wrapped for Hugging Face Trainer Callback] " + cls.__doc__
+except ModuleNotFoundError:
+    raise ImportError("The transformers package is not installed. Please install it to use the HFGlobalPowerLimitOptimizer.")
 
-    return Wrapper
+# def import_hf_classes():
+#     """Attempts to import and return several classes from the `transformers` library.
+
+#     This function tries to import the following classes from the `transformers` library:
+#     - `TrainerCallback`
+#     - `TrainingArguments`
+#     - `TrainerState`
+#     - `TrainerControl`
+#     - `PreTrainedModel`
+
+#     Returns:
+#         tuple: A tuple containing the imported classes if the `transformers` library is installed.
+#         None: If the `transformers` library is not installed, returns None.
+
+#     """
+#     try:
+#         from transformers import (
+#             TrainerCallback,
+#             TrainingArguments,
+#             TrainerState,
+#             TrainerControl,
+#             PreTrainedModel,
+#         )
+
+#         return (
+#             TrainerCallback,
+#             TrainingArguments,
+#             TrainerState,
+#             TrainerControl,
+#             PreTrainedModel,
+#         )
+#     except ImportError:
+#         return None
+
+# import inspect
+
+# def make_hf(cls: Type[Callback], name: str | None = None) -> Type[TrainerCallback]:
+#     """Wrap a `zeus` callback class to be compatible with Hugging Face's Trainer.
+
+#     Args:
+#         cls (Type[Callback]): The `zeus` callback class to wrap.
+#         name (str, optional): The name of the new TrainerCallback class. If None, use `"HF" + cls.__name__`.
+
+#     """
+#     # Dynamically import Hugging Face classes, to avoid hard dependency
+#     hf_classes = import_hf_classes()
+#     if hf_classes is None:
+#         raise ImportError(
+#             "Hugging Face is not installed. Please install it to use this feature."
+#         )
+
+#     TrainerCallback, _, _, _, _ = hf_classes  # noqa: N806
+
+#     orig_sig = inspect.signature(cls.__init__)
+
+#     def __init__(self, *args, **kwargs) -> None:
+#         self.optimizer = cls(*args, **kwargs)
+
+#     # Update the __init__ method to have the same signature as the original
+#     __init__.__signature__ = orig_sig
+    
+#     def on_epoch_begin(
+#             self,
+#             args: TrainingArguments,
+#             state: TrainerState,
+#             control: TrainerControl,
+#             model: PreTrainedModel,
+#             **kwargs,
+#         ) -> None:
+#             self.optimizer.on_epoch_begin()
+
+#     def on_epoch_end(
+#         self,
+#         args: TrainingArguments,
+#         state: TrainerState,
+#         control: TrainerControl,
+#         model: PreTrainedModel,
+#         **kwargs,
+#     ) -> None:
+#         self.optimizer.on_epoch_end()
+
+#     def on_evaluate(
+#         self,
+#         args: TrainingArguments,
+#         state: TrainerState,
+#         control: TrainerControl,
+#         model: PreTrainedModel,
+#         **kwargs,
+#     ) -> None:
+#         if 'metric' in kwargs:
+#             self.optimizer.on_evaluate(metric=kwargs['metric'])
+#         elif state.log_history:
+#             # Evaluate the last metric in the log history.
+#             self.optimizer.on_evaluate(metric=state.log_history[-1])
+
+#     def on_step_begin(
+#         self,
+#         args: TrainingArguments,
+#         state: TrainerState,
+#         control: TrainerControl,
+#         model: PreTrainedModel,
+#         **kwargs,
+#     ) -> None:
+#         self.optimizer.on_step_begin()
+
+#     def on_step_end(
+#         self,
+#         args: TrainingArguments,
+#         state: TrainerState,
+#         control: TrainerControl,
+#         model: PreTrainedModel,
+#         **kwargs,
+#     ) -> None:
+#         self.optimizer.on_step_end()
+
+#     def on_train_begin(
+#         self,
+#         args: TrainingArguments,
+#         state: TrainerState,
+#         control: TrainerControl,
+#         model: PreTrainedModel,
+#         **kwargs,
+#     ) -> None:
+#         self.optimizer.on_train_begin()
+
+#     def on_train_end(
+#         self,
+#         args: TrainingArguments,
+#         state: TrainerState,
+#         control: TrainerControl,
+#         model: PreTrainedModel,
+#         **kwargs,
+#     ) -> None:
+#         self.optimizer.on_train_end()
 
 
-HFGPLO = make_hf(GlobalPowerLimitOptimizer)
+#     # Use functools.update_wrapper to copy metadata from cls.__init__ to __init__
+#     # functools.update_wrapper(__init__, cls.__init__)
+
+#     # Dynamically create the Wrapper class
+#     Wrapper = type(name or "HF" + cls.__name__, (TrainerCallback,), {
+#         "__init__": __init__,
+#         "on_epoch_begin": on_epoch_begin,
+#         "on_epoch_end": on_epoch_end,
+#         "on_evaluate": on_evaluate,
+#         "on_step_begin": on_step_begin,
+#         "on_step_end": on_step_end,
+#         "on_train_begin": on_train_begin,
+#         "on_train_end": on_train_end,
+#     })
+
+#     if cls.__doc__ is not None:
+#         Wrapper.__doc__ = "[Wrapped for Hugging Face Trainer Callback] " + cls.__doc__
+
+
+#     return Wrapper
+
+
+
+    # class Wrapper(TrainerCallback):
+    #     def __init__(self, *args, **kwargs) -> None:
+    #         self.optimizer = cls(*args, **kwargs)
+
+    #     def on_epoch_begin(
+    #         self,
+    #         args: TrainingArguments,
+    #         state: TrainerState,
+    #         control: TrainerControl,
+    #         model: PreTrainedModel,
+    #         **kwargs,
+    #     ) -> None:
+    #         self.optimizer.on_epoch_begin()
+
+    #     def on_epoch_end(
+    #         self,
+    #         args: TrainingArguments,
+    #         state: TrainerState,
+    #         control: TrainerControl,
+    #         model: PreTrainedModel,
+    #         **kwargs,
+    #     ) -> None:
+    #         self.optimizer.on_epoch_end()
+
+    #     def on_evaluate(
+    #         self,
+    #         args: TrainingArguments,
+    #         state: TrainerState,
+    #         control: TrainerControl,
+    #         model: PreTrainedModel,
+    #         **kwargs,
+    #     ) -> None:
+    #         if 'metric' in kwargs:
+    #             self.optimizer.on_evaluate(metric=kwargs['metric'])
+    #         elif state.log_history:
+    #             # Evaluate the last metric in the log history.
+    #             self.optimizer.on_evaluate(metric=state.log_history[-1])
+
+    #     def on_step_begin(
+    #         self,
+    #         args: TrainingArguments,
+    #         state: TrainerState,
+    #         control: TrainerControl,
+    #         model: PreTrainedModel,
+    #         **kwargs,
+    #     ) -> None:
+    #         self.optimizer.on_step_begin()
+
+    #     def on_step_end(
+    #         self,
+    #         args: TrainingArguments,
+    #         state: TrainerState,
+    #         control: TrainerControl,
+    #         model: PreTrainedModel,
+    #         **kwargs,
+    #     ) -> None:
+    #         self.optimizer.on_step_end()
+
+    #     def on_train_begin(
+    #         self,
+    #         args: TrainingArguments,
+    #         state: TrainerState,
+    #         control: TrainerControl,
+    #         model: PreTrainedModel,
+    #         **kwargs,
+    #     ) -> None:
+    #         self.optimizer.on_train_begin()
+
+    #     def on_train_end(
+    #         self,
+    #         args: TrainingArguments,
+    #         state: TrainerState,
+    #         control: TrainerControl,
+    #         model: PreTrainedModel,
+    #         **kwargs,
+    #     ) -> None:
+    #         self.optimizer.on_train_end()
+
+    # Wrapper.__name__ = name or ("HF" + cls.__name__)
+    # if cls.__doc__ is not None:
+    #     Wrapper.__doc__ = "[Wrapped for Hugging Face Trainer Callback] " + cls.__doc__
+
+    # return Wrapper
+
+
+# HFGPLO = make_hf(GlobalPowerLimitOptimizer)

@@ -15,4 +15,4 @@
 """A collection of optimizers for various knobs."""
 
 from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
-from zeus.optimizer.power_limit import HFGPLO
+from zeus.optimizer.power_limit import HFGlobalPowerLimitOptimizer
