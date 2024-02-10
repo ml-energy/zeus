@@ -487,72 +487,78 @@ if TYPE_CHECKING:
 try:
     from transformers import TrainerCallback
 
-    class HFGlobalPowerLimitOptimizer(TrainerCallback):
-        """[Wrapped for Hugging Face Trainer Callback] Optimizer for the power limit knob.
+    transformers_available = True
+except ModuleNotFoundError:
+    transformers_available = False
+    TrainerCallback = object  # Fallback base class
 
-        This optimizer uses the JIT profiling log to determine the optimal power limit.
+
+class HFGlobalPowerLimitOptimizer(TrainerCallback):
+    """[Wrapped for Hugging Face Trainer Callback] Optimizer for the power limit knob.
+
+    This optimizer uses the JIT profiling log to determine the optimal power limit.
+    """
+
+    def __init__(
+        self,
+        monitor: ZeusMonitor,
+        optimum_selector: OptimumSelector | None = None,
+        wait_steps: int = 1,
+        warmup_steps: int = 10,
+        profile_steps: int = 40,
+        pl_step: int = 25,
+        profile_path: str | Path | None = None,
+    ) -> None:
+        r"""[Wrapped for Hugging Face Trainer Callback] Initialize the optimizer.
+
+        GPU indices to profile and optimize for are taken from `monitor.gpu_indices`.
+
+        Args:
+            monitor: `ZeusMonitor` instance used to profile GPU time and energy consumption.
+            optimum_selector: The optimum selector to use. If not given, use `ZeusCost` with \eta=0.5.
+            wait_steps: Number of steps to pass by before doing anything at the beginning.
+                Useful if you have something like `torch.backends.cudnn.benchmark=True`,
+                because the first iteration won't be representative of the rest of the iterations.
+            warmup_steps: Number of warmup iterations for each power limit.
+            profile_steps: Number of profie iterations for each power limit.
+            pl_step: The stride between power limits to explore, in unites of Watts.
+            profile_path: If the path points to an existing file, load the profile from the file
+                and do not run any profiling. If the path points to a non-existing file, profile
+                and save the profile to the file. If `None`, do not save or load any profile.
         """
-
-        def __init__(
-            self,
-            monitor: ZeusMonitor,
-            optimum_selector: OptimumSelector | None = None,
-            wait_steps: int = 1,
-            warmup_steps: int = 10,
-            profile_steps: int = 40,
-            pl_step: int = 25,
-            profile_path: str | Path | None = None,
-        ) -> None:
-            r"""[Wrapped for Hugging Face Trainer Callback] Initialize the optimizer.
-
-            GPU indices to profile and optimize for are taken from `monitor.gpu_indices`.
-
-            Args:
-                monitor: `ZeusMonitor` instance used to profile GPU time and energy consumption.
-                optimum_selector: The optimum selector to use. If not given, use `ZeusCost` with \eta=0.5.
-                wait_steps: Number of steps to pass by before doing anything at the beginning.
-                    Useful if you have something like `torch.backends.cudnn.benchmark=True`,
-                    because the first iteration won't be representative of the rest of the iterations.
-                warmup_steps: Number of warmup iterations for each power limit.
-                profile_steps: Number of profie iterations for each power limit.
-                pl_step: The stride between power limits to explore, in unites of Watts.
-                profile_path: If the path points to an existing file, load the profile from the file
-                    and do not run any profiling. If the path points to a non-existing file, profile
-                    and save the profile to the file. If `None`, do not save or load any profile.
-            """
-            self.optimizer = GlobalPowerLimitOptimizer(
-                monitor=monitor,
-                optimum_selector=optimum_selector,
-                wait_steps=wait_steps,
-                warmup_steps=warmup_steps,
-                profile_steps=profile_steps,
-                pl_step=pl_step,
-                profile_path=profile_path,
+        if not transformers_available:
+            raise ImportError(
+                "The transformers package is not installed. Please install it to use the HFGlobalPowerLimitOptimizer."
             )
 
-        def on_epoch_end(
-            self,
-            args: TrainingArguments,
-            state: TrainerState,
-            control: TrainerControl,
-            model: PreTrainedModel,
-            **kwargs,
-        ) -> None:
-            """[Wrapped for Hugging Face Trainer Callback] Mark the end of a training epoch."""
-            self.optimizer.on_epoch_end()
+        self.optimizer = GlobalPowerLimitOptimizer(
+            monitor=monitor,
+            optimum_selector=optimum_selector,
+            wait_steps=wait_steps,
+            warmup_steps=warmup_steps,
+            profile_steps=profile_steps,
+            pl_step=pl_step,
+            profile_path=profile_path,
+        )
 
-        def on_step_begin(
-            self,
-            args: TrainingArguments,
-            state: TrainerState,
-            control: TrainerControl,
-            model: PreTrainedModel,
-            **kwargs,
-        ) -> None:
-            """[Wrapped for Hugging Face Trainer Callback] Mark the beginning of a training step."""
-            self.optimizer.on_step_begin()
+    def on_epoch_end(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        model: PreTrainedModel,
+        **kwargs,
+    ) -> None:
+        """[Wrapped for Hugging Face Trainer Callback] Mark the end of a training epoch."""
+        self.optimizer.on_epoch_end()
 
-except ModuleNotFoundError as err:
-    raise ImportError(
-        "The transformers package is not installed. Please install it to use the HFGlobalPowerLimitOptimizer."
-    ) from err
+    def on_step_begin(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        model: PreTrainedModel,
+        **kwargs,
+    ) -> None:
+        """[Wrapped for Hugging Face Trainer Callback] Mark the beginning of a training step."""
+        self.optimizer.on_step_begin()
