@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -7,6 +8,19 @@ from pytest_mock import MockerFixture
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
 from zeus.optimizer.batch_size.common import JobSpec
+=======
+from copy import deepcopy
+from unittest.mock import MagicMock
+from fastapi.testclient import TestClient
+import pytest
+import httpx
+from pytest_mock import MockerFixture
+from tests.test_monitor import mock_gpus, pynvml_mock
+from zeus.monitor.energy import ZeusMonitor
+from zeus.optimizer.batch_size.client import BatchSizeOptimizerClient
+from zeus.optimizer.batch_size.server.models import JobSpec
+
+>>>>>>> 9a91219 (checkpoint - testing client)
 from zeus.optimizer.batch_size.server.router import app
 
 fake_job = {
@@ -36,6 +50,7 @@ def client():
         yield c
 
 
+<<<<<<< HEAD
 @pytest.fixture
 def mock_monitor(mocker: MockerFixture):
     mocker.patch("pynvml.nvmlInit")
@@ -52,14 +67,41 @@ def mock_monitor(mocker: MockerFixture):
             3: 4158.034000009298,
         },
     )
+=======
+#  pynvml.nvmlInit()
+#         pls = []
+#         self.max_power = 0
+#         for index in self.monitor.nvml_gpu_indices:
+#             device = pynvml.nvmlDeviceGetHandleByIndex(index)
+#             pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
+#         if not all(pls[0] == pl for pl in pls):
+#             raise ValueError("Power limits ranges are not uniform across GPUs.")
+
+#         self.max_power = max(pls) * len(self.monitor.gpu_indices)
+
+
+@pytest.mark.anyio
+def test_register_job(client, mocker: MockerFixture):
+    mocker.patch("httpx.post", side_effect=client.post)
+    mocker.patch("pynvml.nvmlInit")
+
+    zeus_monitor_mock_instance = MagicMock(spec=ZeusMonitor)
+    zeus_monitor_mock_instance.nvml_gpu_indices = [0]
+    zeus_monitor_mock_instance.gpu_indices = [0]
+>>>>>>> 9a91219 (checkpoint - testing client)
 
     mocker.patch(
         "zeus.monitor.energy.ZeusMonitor", return_value=zeus_monitor_mock_instance
     )
+<<<<<<< HEAD
+=======
+
+>>>>>>> 9a91219 (checkpoint - testing client)
     mocker.patch("pynvml.nvmlDeviceGetHandleByIndex").return_value = 0
     mocker.patch("pynvml.nvmlDeviceGetPowerManagementLimitConstraints").return_value = (
         300
     )
+<<<<<<< HEAD
     return zeus_monitor_mock_instance
 
 
@@ -137,3 +179,9 @@ def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
     bs = bso_client.get_batch_size()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048
+=======
+    job = JobSpec.parse_obj(fake_job)
+    print(f"Parsed Job: {job.json()}")
+    bso_client = BatchSizeOptimizerClient(zeus_monitor_mock_instance, "", job)
+    assert bso_client.max_power == 300
+>>>>>>> 9a91219 (checkpoint - testing client)

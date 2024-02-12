@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import asyncio
 from copy import deepcopy
 from typing import AsyncIterator
@@ -15,6 +16,14 @@ from zeus.optimizer.batch_size.server.database.models import Base
 from zeus.optimizer.batch_size.server.router import app
 
 
+=======
+from copy import deepcopy
+from fastapi.testclient import TestClient
+import pytest
+
+from zeus.optimizer.batch_size.server.router import app
+
+>>>>>>> 9a91219 (checkpoint - testing client)
 # https://fastapi.tiangolo.com/tutorial/testing/
 
 fake_job = {
@@ -37,6 +46,7 @@ fake_job = {
     },
 }
 
+<<<<<<< HEAD
 sessionmanager = DatabaseSessionManager("sqlite+aiosqlite:///test.db", {"echo": True})
 
 
@@ -66,6 +76,8 @@ def database_setup():
     yield
     asyncio.run(clean())
 
+=======
+>>>>>>> 9a91219 (checkpoint - testing client)
 
 @pytest.fixture
 def client():
@@ -76,15 +88,22 @@ def client():
 @pytest.mark.anyio
 def test_register_job(client):
     response = client.post("/jobs", json=fake_job)
+<<<<<<< HEAD
     print(response.text)
     assert response.status_code == 201
 
     response = client.post("/jobs", json=fake_job)
     print(response.text)
+=======
+    assert response.status_code == 201
+
+    response = client.post("/jobs", json=fake_job)
+>>>>>>> 9a91219 (checkpoint - testing client)
     assert response.status_code == 200
 
 
 @pytest.mark.anyio
+<<<<<<< HEAD
 def test_register_job_with_diff_config(client):
     fake_job_diff = deepcopy(fake_job)
     fake_job_diff["default_batch_size"] = 512
@@ -95,6 +114,8 @@ def test_register_job_with_diff_config(client):
 
 
 @pytest.mark.anyio
+=======
+>>>>>>> 9a91219 (checkpoint - testing client)
 def test_register_job_validation_error(client):
     temp = deepcopy(fake_job)
     temp["default_batch_size"] = 128
@@ -115,6 +136,7 @@ def test_register_job_validation_error(client):
     response = client.post("/jobs", json=temp)
     assert response.status_code == 422
 
+<<<<<<< HEAD
     temp = deepcopy(fake_job)
     temp["eta_knob"] = 1.1
     response = client.post("/jobs", json=temp)
@@ -229,3 +251,77 @@ def test_register_job_validation_error(client):
 
 #     assert response.status_code == 200
 #     assert response.json() == 2048
+=======
+
+@pytest.mark.anyio
+def test_predict(client):
+    # @app.get("/jobs/batch_size")
+    response = client.post("/jobs", json=fake_job)
+    assert response.status_code == 201
+
+    response = client.get(
+        "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
+    )
+    assert response.status_code == 200
+    assert response.json() == 1024
+
+    print(response.status_code)
+
+
+@pytest.mark.anyio
+def test_report(client):
+    # @app.post("/jobs/report")
+    # job_id: UUID
+    # batch_size: int
+    # cost: float
+    # converged: bool | None = None  # for pruning stage
+    response = client.post("/jobs", json=fake_job)
+    assert response.status_code == 201
+
+    response = client.get(
+        "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
+    )
+    assert response.status_code == 200
+    assert response.json() == 1024
+
+    response = client.post(
+        "/jobs/report",
+        json={
+            "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "batch_size": 1024,
+            "time": "14.438",
+            "energy": 3000.123,
+            "max_power": 300,
+            "converged": True,
+        },
+    )
+    assert response.status_code == 200
+
+    # Should get 512 since the cost converged
+    response = client.get(
+        "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == 512
+
+    response = client.post(
+        "/jobs/report",
+        json={
+            "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "batch_size": 512,
+            "time": "16.438",
+            "energy": 2787.123,
+            "max_power": 300,
+            "converged": False,
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.get(
+        "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == 2048
+>>>>>>> 9a91219 (checkpoint - testing client)

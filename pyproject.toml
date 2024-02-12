@@ -88,5 +88,10 @@ convention = "google"
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
 "zeus/util/pydantic_v1.py" = ["F403"]
 
+<<<<<<< HEAD
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"
+=======
+# [tool.pytest.ini_options]
+# addopts = "--numprocesses auto"
+>>>>>>> 9a91219 (checkpoint - testing client)
