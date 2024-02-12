@@ -330,7 +330,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
             if self.verbose:
                 self._log(f"{job} in pruning stage -> \033[31mBS = {batch_size}\033[0m")
         except StopIteration as exp:
-            # Pruning stage is over.
+            # Pruning stage is over. We construct MAB after pruning
             if job not in self.mabs:
                 self._construct_mab(job, exp.value)
             batch_size = self.mabs[job].predict()
@@ -485,3 +485,7 @@ class JITPowerLimitOptimizer(PowerLimitOptimizer):
         if prev_best_cost is None or prev_best_cost > cost:
             self.best_pl[job][batch_size] = power_limit
             self.best_cost[job][batch_size] = cost
+
+    def _log(self, message: str) -> None:
+        """Log message with object name."""
+        print(f"[{self.name}] {message}")
