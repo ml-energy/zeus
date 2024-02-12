@@ -36,7 +36,8 @@ Zeus follows a **BDFL (Benevolent Dictator For Life)** governance model. The pro
 - Python >= 3.9
 - Run [`scripts/lint.sh`](/scripts/lint.sh) to format and lint code.
 - Strictly type-annotate all code.
-- Tests should accompany new features and be placed in the `tests/` directory.
+- Tests should accompany new features and be placed in the `tests/` directory. Tests should not require GPUs to run.
+- Changes, whenever appropriate, should be accompanied by documentation changes in the `docs/` directory.
 
 ## Review Process
 
