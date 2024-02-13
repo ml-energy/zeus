@@ -40,14 +40,9 @@ Documentation = "https://ml.energy/zeus"
 # One day FastAPI will drop support for Pydantic V1. Then fastapi has to be pinned as well.
 perseus = ["fastapi[all]", "pydantic<2", "lowtime", "aiofiles", "httpx"]
 lint = ["ruff", "black==22.6.0"]
-<<<<<<< HEAD
 migration = ["alembic","asyncpg"]
 test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio<4", "aiosqlite", "greenlet"] # TODO: aiosqlite is needed for sqlite  
 dev = ["ruff", "black==22.6.0", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"]
-=======
-test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"]
-dev = ["zeus-ml[perseus,lint,test]"]
->>>>>>> 026e6f2 (Isolate Perseus as optional dependency)
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -89,9 +84,14 @@ convention = "google"
 "zeus/util/pydantic_v1.py" = ["F403"]
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"
 =======
 # [tool.pytest.ini_options]
 # addopts = "--numprocesses auto"
 >>>>>>> 9a91219 (checkpoint - testing client)
+=======
+[tool.pytest.ini_options]
+addopts = "--numprocesses auto"
+>>>>>>> 8aa3b04 (simple client test)
