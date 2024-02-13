@@ -68,6 +68,8 @@ class ZeusBatchSizeOptimizer:
     def register_job(self, job: JobSpec) -> int:
         """Register a user-submitted job. Return number of newly created job"""
         if job.job_id in self.jobs:
+            if self.verbose:
+                self._log(f"Job({job.job_id}) already exists")
             return 0
 
         # TODO: Append the job to Jobs table by POST to DBServer

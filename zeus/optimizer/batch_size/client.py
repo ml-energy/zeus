@@ -48,7 +48,7 @@ class BatchSizeOptimizerClient(Callback):
 
     def get_batch_size(self) -> int:
         """Get batch size to use from the BSO server"""
-
+        self.cur_epoch = 0
         res = httpx.get(
             self.server_url + "/jobs/batch_size", params={"job_id": self.job.job_id}
         )
@@ -92,7 +92,7 @@ class BatchSizeOptimizerClient(Callback):
                 job_id=self.job.job_id,
                 batch_size=self.current_batch_size,
                 time=measurement.time,
-                energy=measurement.energy,
+                energy=measurement.total_energy,  # TODO: DOUBLE CHECK
                 max_power=self.max_power,
                 converged=converged,
             )
