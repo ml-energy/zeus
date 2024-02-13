@@ -497,6 +497,8 @@ class HFGlobalPowerLimitOptimizer(TrainerCallback):
     """[Wrapped for Hugging Face Trainer Callback] Optimizer for the power limit knob.
 
     This optimizer uses the JIT profiling log to determine the optimal power limit.
+    See [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer]
+    for the underlying optimizer implementation.
     """
 
     def __init__(
