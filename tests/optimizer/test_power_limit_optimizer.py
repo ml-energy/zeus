@@ -22,7 +22,7 @@ from unittest.mock import call
 import pytest
 import pandas as pd
 
-from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer import GlobalPowerLimitOptimizer, HFGlobalPowerLimitOptimizer
 from zeus.optimizer.power_limit import (
     Ready,
     Done,
@@ -37,6 +37,8 @@ from zeus.util.metric import zeus_cost
 if typing.TYPE_CHECKING:
     from pathlib import Path
     from pytest_mock import MockerFixture
+
+import inspect
 
 
 PROFILE_DATA_DIR = "tests/profile_data/"
@@ -271,3 +273,12 @@ def test_power_limit_optimizer(
         [call(f"handle{i}", optimal_pl * 1000) for i in sorted(monitor.gpu_indices)],
         any_order=False,
     )
+
+# DRAFT:
+
+def test_HFGPLO_signature_equivalence() -> None:
+    """Ensure that the constructor signatures of GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer are equivalent."""
+    gplo_signature = inspect.signature(GlobalPowerLimitOptimizer.__init__)
+    hfgplo_signature = inspect.signature(HFGlobalPowerLimitOptimizer.__init__)
+
+    assert gplo_signature == hfgplo_signature, "GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer signatures do not match."
