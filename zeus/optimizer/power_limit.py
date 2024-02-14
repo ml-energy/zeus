@@ -511,7 +511,7 @@ class HFGlobalPowerLimitOptimizer(TrainerCallback):
         pl_step: int = 25,
         profile_path: str | Path | None = None,
     ) -> None:
-        r"""[Wrapped for Hugging Face Trainer Callback] Initialize the optimizer.
+        r"""Initialize the optimizer.
 
         GPU indices to profile and optimize for are taken from `monitor.gpu_indices`.
 
@@ -551,7 +551,7 @@ class HFGlobalPowerLimitOptimizer(TrainerCallback):
         model: PreTrainedModel,
         **kwargs,
     ) -> None:
-        """[Wrapped for Hugging Face Trainer Callback] Mark the end of a training epoch."""
+        """Mark the end of a training epoch."""
         self.optimizer.on_epoch_end()
 
     def on_step_begin(
@@ -562,5 +562,5 @@ class HFGlobalPowerLimitOptimizer(TrainerCallback):
         model: PreTrainedModel,
         **kwargs,
     ) -> None:
-        """[Wrapped for Hugging Face Trainer Callback] Mark the beginning of a training step."""
+        """Mark the beginning of a training step."""
         self.optimizer.on_step_begin()
