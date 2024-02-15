@@ -1,6 +1,6 @@
 # Integrating Zeus with HuggingFace 🤗
 
-This example will demonstrate how to integrate Zeus with `HuggingFace 🤗` using `HFGlobalPowerLimitOptimizer`
+This example will demonstrate how to integrate Zeus with `HuggingFace 🤗` using `HFGlobalPowerLimitOptimizer`.
 
 [`run_clm.py`](run_clm.py) was adapted from [HuggingFace 🤗's example training code for fine-tuning lanuguage models](https://github.com/huggingface/transformers/tree/main/examples/pytorch/language-modeling).
 
@@ -8,7 +8,7 @@ This example will demonstrate how to integrate Zeus with `HuggingFace 🤗` usin
 
 Use the included requirements.txt file to include all extra dependencies:
 ```sh
-    pip install -r "requirements.txt"
+    pip install -r requirements.txt
 ```
 
 ## `ZeusMonitor` and `HFGlobalPowerLimitOptimizer`
@@ -17,7 +17,7 @@ Use the included requirements.txt file to include all extra dependencies:
 - [`HFGlobalPowerLimitOptimizer`](https://ml.energy/zeus/reference/optimizer/power_limit/#zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer): Online-profiles each power limit with `ZeusMonitor` and finds the cost-optimal power limit. Calls GlobalPowerLimitOptimizer under the hood.
 
 ## Integration with HuggingFace 🤗 Trainer
-For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/transformers/en/index), use [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] is a drop-in compatible [HuggingFace 🤗 Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback). When initializing a [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), initialize and pass in [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] as shown below:
+For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/transformers/en/index), [`HFGlobalPowerLimitOptimizer`](zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer) is a drop-in compatible [HuggingFace 🤗 Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback). When initializing a [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), initialize and pass in [`HFGlobalPowerLimitOptimizer`](zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer) as shown below:
 
 ```python
     monitor = ZeusMonitor()
@@ -30,8 +30,11 @@ For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/tr
     )
 ```
 
+## Fine-tuning Example
 ```bash
-# Single-GPU example fine-tunes GPT-2 on WikiText-2. We're using the raw WikiText-2 (no tokens were replaced before the tokenization). The loss here is that of causal language modeling.
+# Single-GPU example fine-tunes GPT-2 on WikiText-2. We're using the raw WikiText-2 
+# (no tokens were replaced before the tokenization). 
+# The loss here is that of causal language modeling.
 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \

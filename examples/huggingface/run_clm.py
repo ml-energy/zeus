@@ -299,7 +299,7 @@ class ZeusTrainingArguments:
     gpu_indices: Optional[str] = field(
         default=None,
         metadata={
-            "help": "The indices of the gpus to use for training. If none, all gpus will be used."
+            "help": 'The indices of the gpus to use for training (ex. "0,1,2"). If none, all gpus will be used.'
         },
     )
 

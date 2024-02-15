@@ -274,8 +274,6 @@ def test_power_limit_optimizer(
         any_order=False,
     )
 
-# DRAFT:
-
 def test_HFGPLO_signature_equivalence() -> None:
     """Ensure that the constructor signatures of GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer are equivalent."""
     gplo_signature = inspect.signature(GlobalPowerLimitOptimizer.__init__)

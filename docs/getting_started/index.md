@@ -119,7 +119,7 @@ For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/tr
         callbacks=[optimizer], # Add the `HFGlobalPowerLimitOptimizer` callback
     )
 ```
-Refer to [HuggingFace 🤗's example training code for fine-tuning lanuguage models](https://github.com/ml-energy/zeus/tree/master/examples/huggingface/) for complete running examples for single-GPU and multi-GPU training using [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer).
+Refer to our [HuggingFace 🤗 example training code for fine-tuning using HFGlobalPowerLimitOptimizer](https://github.com/ml-energy/zeus/tree/master/examples/huggingface/) for complete running examples for single-GPU and multi-GPU training using [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer).
 
 ## Recurring jobs
 
