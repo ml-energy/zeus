@@ -16,7 +16,7 @@ class MabSetting(BaseModel):
     prior_mean: float = 0.0
     prior_precision: float = 0.0
     seed: int = 123456
-    num_exploration: int = 2
+    num_exploration: int = 1
 
 
 class JobSpec(BaseModel):
@@ -33,7 +33,7 @@ class JobSpec(BaseModel):
     max_epochs: int = 100
     num_pruning_rounds: int = 2
     window_size: int = 0
-    mab_setting: MabSetting
+    mab_setting: MabSetting = MabSetting()
 
     @validator("job_id")
     def _validate_job_id(cls, v: UUID) -> UUID:
@@ -72,3 +72,4 @@ class TrainingResult(BaseModel):
     energy: float
     max_power: int
     converged: bool  # Client computes converged anyways to check if it reached max epochs. So just send the result to the server
+    current_epoch: int  # For early stopping. Easier to just get current epoch from the client than server tracking it if there is a concurrency

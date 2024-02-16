@@ -5,8 +5,6 @@ from uuid import UUID
 
 import pynvml
 import httpx
-from pydantic import BaseModel, PositiveInt, PositiveFloat
-from zeus import monitor
 
 from zeus.callback import Callback
 from zeus.job import Job
@@ -28,6 +26,8 @@ class BatchSizeOptimizerClient(Callback):
         self.server_url = server_url
         self.job = job
         self.cur_epoch = 0
+        self.running_time = 0.0
+        self.consumed_energy = 0.0
 
         # Get max PL
         pynvml.nvmlInit()
@@ -66,7 +66,6 @@ class BatchSizeOptimizerClient(Callback):
     def on_train_begin(self) -> None:
         self.monitor.begin_window("BatciSizeOptimizerClient")
 
-    # TODO:  def report_metric(self, metric: float, higher_is_better: bool) -> None:
     def on_evaluate(
         self,
         metric: float,
@@ -84,32 +83,33 @@ class BatchSizeOptimizerClient(Callback):
         ):
             converged = True
 
-        # Converged or max_epoch reached -> Stop training
-        if converged or self.cur_epoch >= self.job.max_epochs:
-            measurement = self.monitor.end_window("BatciSizeOptimizerClient")
+        measurement = self.monitor.end_window("BatciSizeOptimizerClient")
 
-            training_result = TrainingResult(
-                job_id=self.job.job_id,
-                batch_size=self.current_batch_size,
-                time=measurement.time,
-                energy=measurement.total_energy,  # TODO: DOUBLE CHECK
-                max_power=self.max_power,
-                converged=converged,
-            )
+        self.running_time += measurement.time
+        self.consumed_energy += measurement.total_energy
 
-            # report to the server about the result of this training
-            res = httpx.post(
-                self.server_url + "/jobs/report", content=training_result.json()
-            )
-            self._handle_response(res)
+        training_result = TrainingResult(
+            job_id=self.job.job_id,
+            batch_size=self.current_batch_size,
+            time=self.running_time,
+            energy=self.consumed_energy,
+            max_power=self.max_power,
+            converged=converged,
+            current_epoch=self.cur_epoch,
+        )
 
-            if not converged:
-                raise RuntimeError(
-                    f"Couldn't converge within max_epoch({self.job.max_epochs})"
-                )
-            else:
-                # TODO: If training is done, anything BSO should do? (stop training? -> User should do this probably)
-                pass
+        # report to the server about the result of this training
+        res = httpx.post(
+            self.server_url + "/jobs/report", content=training_result.json()
+        )
+        self._handle_response(res)
+
+        if not converged and self.cur_epoch < self.job.max_epochs:
+            self.monitor.begin_window("BatciSizeOptimizerClient")
+
+        if converged:
+            # TODO: If training is done and converged, anything BSO should do? (stop training? -> User should do this probably)
+            pass
 
     def _handle_response(self, res: httpx.Response) -> None:
         if not (200 <= (code := res.status_code) < 300):

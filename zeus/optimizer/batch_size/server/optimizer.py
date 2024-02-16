@@ -51,6 +51,9 @@ class ZeusBatchSizeOptimizer:
         # Observation history (batch size, reward) for each job.
         self.history: dict[UUID, defaultdict[int, list[float]]] = {}
 
+        # Min_cost observed so far
+        self.min_costs: dict[UUID, float] = {}
+
         # One PruningExplorationManager for each job.
         self.exp_manager: dict[UUID, PruningExploreManager] = {}
 
@@ -82,6 +85,7 @@ class ZeusBatchSizeOptimizer:
             )
 
         self.jobs[job.job_id] = job
+        self.min_costs[job.job_id] = np.inf  # initialize it to inf.
 
         # Set internal states.
         self.exp_manager[job.job_id] = PruningExploreManager(
@@ -120,6 +124,11 @@ class ZeusBatchSizeOptimizer:
         """Give feedback to MAB
         Learn from the cost of using the given batch size for the job."""
         # Add observation to history.
+        cost_ub = np.inf
+
+        if self.jobs[result.job_id].beta_knob > 0:  # Early stop enabled
+            cost_ub = self.jobs[result.job_id].beta_knob * self.min_costs[result.job_id]
+
         cost = zeus_cost(
             result.energy,
             result.time,
@@ -127,7 +136,23 @@ class ZeusBatchSizeOptimizer:
             result.max_power,
         )
 
+        if (
+            cost_ub >= cost
+            and result.current_epoch < self.jobs[result.job_id].max_epochs
+            and result.converged == False
+        ):
+            # If it's not converged but below cost upper bound and haven't reached max_epochs, give more chance
+            # Training ongoing
+            return
+
+        # Two cases below here (training ended)
+        # 1. Converged == true
+        # 2. reached max_epoch OR excceded upper bound cost (error case)
+
         self.history[result.job_id].append((result.batch_size, -cost))
+
+        # update min cost
+        self.min_costs[result.job_id] = min(self.min_costs[result.job_id], cost)
 
         # We're in Thompson Sampling stage.
         if result.job_id in self.mabs:
@@ -188,6 +213,23 @@ class ZeusBatchSizeOptimizer:
                 self.exp_manager[result.job_id].report_batch_size_result(
                     result.batch_size, cost, result.converged
                 )
+
+            # Early stopping
+            # Result can be converged / max epoch reached / in the middle of epoch
+            # If the cost is above the upper bound, we should stop no matter what, report to explore manger that we failed
+            if cost_ub < cost:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Batch Size({result.batch_size}) exceeded the cost upper bound: current cost({cost}) > beta_knob({self.jobs[result.job_id].beta_knob})*min_cost({self.min_costs[result.job_id]})",
+                )
+
+        if result.converged == False:
+            # Should be true unless returned above
+            assert result.current_epoch >= self.jobs[result.job_id].max_epochs
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to converge within max_epochs({self.jobs[result.job_id].max_epochs})",
+            )
 
     def _get_job(self, job_id: UUID) -> JobSpec:
         """Return jobSpec based on job_id"""

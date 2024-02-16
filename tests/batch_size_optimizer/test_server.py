@@ -95,6 +95,7 @@ def test_report(client):
     assert response.status_code == 200
     assert response.json() == 1024
 
+    # Converged within max epoch => successful training
     response = client.post(
         "/jobs/report",
         json={
@@ -104,6 +105,7 @@ def test_report(client):
             "energy": 3000.123,
             "max_power": 300,
             "converged": True,
+            "current_epoch": 98,
         },
     )
     assert response.status_code == 200
@@ -116,6 +118,7 @@ def test_report(client):
     assert response.status_code == 200
     assert response.json() == 512
 
+    # Converge fail before after max_epoch reached => Should keep training
     response = client.post(
         "/jobs/report",
         json={
@@ -125,9 +128,25 @@ def test_report(client):
             "energy": 2787.123,
             "max_power": 300,
             "converged": False,
+            "current_epoch": 56,
         },
     )
     assert response.status_code == 200
+
+    # Converge fail after max_epoch reached => Should stop training with err
+    response = client.post(
+        "/jobs/report",
+        json={
+            "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "batch_size": 512,
+            "time": "16.438",
+            "energy": 2787.123,
+            "max_power": 300,
+            "converged": False,
+            "current_epoch": 100,
+        },
+    )
+    assert response.status_code == 500
 
     response = client.get(
         "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}

@@ -1,6 +1,9 @@
 from copy import deepcopy
+from math import inf
 from unittest.mock import MagicMock
+from uuid import uuid4
 from fastapi.testclient import TestClient
+import numpy as np
 import pytest
 import httpx
 from pytest_mock import MockerFixture
@@ -95,13 +98,40 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
 
     i = 0
     with pytest.raises(Exception) as e_info:
-        while i < job.max_epochs + 10:
+        while i < job.max_epochs - 10:  # Test Early stop
             bso_client.on_evaluate(0.3)
             i += 1
             assert i == bso_client.cur_epoch
             assert bso_client.current_batch_size == 512
 
-    assert str(e_info.value) == f"Couldn't converge within max_epoch({job.max_epochs})"
+    assert str(e_info.value).find("cost upper bound") != -1
+    bs = bso_client.get_batch_size()
+
+    assert bs == 2048 and bso_client.current_batch_size == 2048
+
+
+@pytest.mark.anyio
+def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
+    mocker.patch("httpx.post", side_effect=client.post)
+    mocker.patch("httpx.get", side_effect=client.get)
+    job = JobSpec.parse_obj(fake_job)
+    job.job_id = uuid4()
+    job.beta_knob = -1
+    bso_client = BatchSizeOptimizerClient(mock_monitor, "", job)
+    bs = bso_client.get_batch_size()
+
+    assert bs == 1024 and bso_client.current_batch_size == 1024
+
+    i = 0
+    with pytest.raises(Exception) as e_info:
+        while i < job.max_epochs + 10:  # Fail after max_epoch
+            bso_client.on_evaluate(0.3)
+            i += 1
+            assert i == bso_client.cur_epoch
+            assert bso_client.current_batch_size == 1024
+
+    print(e_info.value, i)
+    assert str(e_info.value).find("Failed to converge within max_epochs") != -1
     bs = bso_client.get_batch_size()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048
