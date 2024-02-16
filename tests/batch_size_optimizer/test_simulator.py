@@ -1,13 +1,25 @@
+<<<<<<< HEAD
 import pytest
 from examples.trace_driven.run_single import read_trace
 from fastapi.testclient import TestClient
 from pyparsing import Literal
 from pytest_mock import MockerFixture
 from tests.batch_size_optimizer.simulate_with_server import SimulatorWithServer
+=======
+from fastapi.testclient import TestClient
+from pyparsing import Literal
+import pytest
+from pytest_mock import MockerFixture
+from examples.trace_driven.run_single import read_trace
+>>>>>>> 0dee589 (added early stop)
 from zeus.job import Job
 from zeus.optimizer.batch_size.server.router import app
 from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
 from zeus.simulate import Simulator
+<<<<<<< HEAD
+=======
+from zeus.simulate_with_server import SimulatorWithServer
+>>>>>>> 0dee589 (added early stop)
 
 config = {
     "gpu": "v100",
