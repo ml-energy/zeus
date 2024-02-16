@@ -1,6 +1,6 @@
 # Integrating Zeus with HuggingFace 🤗
 
-This example will demonstrate how to integrate Zeus with `HuggingFace 🤗` using `HFGlobalPowerLimitOptimizer`.
+This example will demonstrate how to integrate Zeus with `HuggingFace 🤗 Trainer` using `HFGlobalPowerLimitOptimizer`.
 
 [`run_clm.py`](run_clm.py) was adapted from [HuggingFace 🤗's example training code for fine-tuning lanuguage models](https://github.com/huggingface/transformers/tree/main/examples/pytorch/language-modeling).
 
