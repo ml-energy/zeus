@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import typing
 from typing import Generator, Iterable
@@ -37,8 +38,6 @@ from zeus.util.metric import zeus_cost
 if typing.TYPE_CHECKING:
     from pathlib import Path
     from pytest_mock import MockerFixture
-
-import inspect
 
 
 PROFILE_DATA_DIR = "tests/profile_data/"

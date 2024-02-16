@@ -34,7 +34,6 @@ import datasets
 import evaluate
 import torch
 from datasets import load_dataset
-
 import transformers
 from transformers import (
     CONFIG_MAPPING,
@@ -290,20 +289,6 @@ class DataTrainingArguments:
                 ], "`validation_file` should be a csv, a json or a txt file."
 
 
-@dataclass
-class ZeusTrainingArguments:
-    """
-    Arguments pertaining to the zeus training.
-    """
-
-    gpu_indices: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": 'The indices of the gpus to use for training (ex. "0,1,2"). If none, all gpus will be used.'
-        },
-    )
-
-
 def main():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
@@ -314,13 +299,12 @@ def main():
             ModelArguments,
             DataTrainingArguments,
             TrainingArguments,
-            ZeusTrainingArguments,
         )
     )
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args, zeus_args = parser.parse_json_file(
+        model_args, data_args, training_args = parser.parse_json_file(
             json_file=os.path.abspath(sys.argv[1])
         )
     else:
@@ -328,7 +312,6 @@ def main():
             model_args,
             data_args,
             training_args,
-            zeus_args,
         ) = parser.parse_args_into_dataclasses()
 
     if model_args.use_auth_token is not None:
@@ -689,13 +672,8 @@ def main():
             preds = preds[:, :-1].reshape(-1)
             return metric.compute(predictions=preds, references=labels)
 
-    # See if gpu_indices is set, and pass it to the monitor
-    gpu_indices = None
-    if zeus_args.gpu_indices is not None:
-        gpu_indices = [int(i) for i in zeus_args.gpu_indices.split(",")]
-
     # Initialize our ZeusMonitor and HFGlobalPowerLimitOptimizer
-    monitor = ZeusMonitor(gpu_indices=gpu_indices)
+    monitor = ZeusMonitor()
     optimizer = HFGlobalPowerLimitOptimizer(monitor)
 
     # Initialize our Trainer
