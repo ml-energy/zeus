@@ -17,7 +17,7 @@ Use the included requirements.txt file to include all extra dependencies:
 - [`HFGlobalPowerLimitOptimizer`](https://ml.energy/zeus/reference/optimizer/power_limit/#zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer): Online-profiles each power limit with `ZeusMonitor` and finds the cost-optimal power limit. Calls GlobalPowerLimitOptimizer under the hood.
 
 ## Integration with HuggingFace 🤗 Trainer
-For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/transformers/en/index), `HFGlobalPowerLimitOptimizer` is a drop-in compatible [HuggingFace 🤗 Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback). When initializing a [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), initialize and pass in `HFGlobalPowerLimitOptimizer` as shown below:
+For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/transformers/en/index), [`HFGlobalPowerLimitOptimizer`](https://ml.energy/zeus/reference/optimizer/power_limit/#zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer) is a drop-in compatible [HuggingFace 🤗 Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback). When initializing a [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer), initialize and pass in [`HFGlobalPowerLimitOptimizer`](https://ml.energy/zeus/reference/optimizer/power_limit/#zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer) as shown below:
 
 ```python
     monitor = ZeusMonitor()
