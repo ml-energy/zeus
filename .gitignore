@@ -11,3 +11,4 @@ dist/
 *.json
 **/.DS_Store
 .cache/
+env/

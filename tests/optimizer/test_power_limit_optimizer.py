@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import typing
 from typing import Generator, Iterable
@@ -22,7 +23,7 @@ from unittest.mock import call
 import pytest
 import pandas as pd
 
-from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer import GlobalPowerLimitOptimizer, HFGlobalPowerLimitOptimizer
 from zeus.optimizer.power_limit import (
     Ready,
     Done,
@@ -271,3 +272,10 @@ def test_power_limit_optimizer(
         [call(f"handle{i}", optimal_pl * 1000) for i in sorted(monitor.gpu_indices)],
         any_order=False,
     )
+
+def test_HFGPLO_signature_equivalence() -> None:
+    """Ensure that the constructor signatures of GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer are equivalent."""
+    gplo_signature = inspect.signature(GlobalPowerLimitOptimizer.__init__)
+    hfgplo_signature = inspect.signature(HFGlobalPowerLimitOptimizer.__init__)
+
+    assert gplo_signature == hfgplo_signature, "GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer signatures do not match."
