@@ -13,7 +13,7 @@ Use the included requirements.txt file to include all extra dependencies:
 
 ## `ZeusMonitor` and `HFGlobalPowerLimitOptimizer`
 
-- [`ZeusMonitor`](http://ml.energy/zeus/reference/monitor/#zeus.monitor.ZeusMonitor): Measures the GPU time and energy consumption of arbitrary code blocks.
+- [`ZeusMonitor`](https://ml.energy/zeus/reference/monitor/energy/#zeus.monitor.energy.ZeusMonitor): Measures the GPU time and energy consumption of arbitrary code blocks.
 - [`HFGlobalPowerLimitOptimizer`](https://ml.energy/zeus/reference/optimizer/power_limit/#zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer): Online-profiles each power limit with `ZeusMonitor` and finds the cost-optimal power limit. Calls GlobalPowerLimitOptimizer under the hood.
 
 ## Integration with HuggingFace 🤗 Trainer
