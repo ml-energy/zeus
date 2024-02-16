@@ -30,11 +30,11 @@ For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/tr
     )
 ```
 
-## Fine-tuning Example
+## Running the Example
+
+By default, `Trainer` will make use of all available GPUs. If you would like to use only a subset of the GPUs, specify the `CUDA_VISIBLE_DEVICES` environment variable, which Zeus will also automatically respect.
+
 ```bash
-# Single-GPU example fine-tunes GPT-2 on WikiText-2. We're using the raw WikiText-2 
-# (no tokens were replaced before the tokenization). 
-# The loss here is that of causal language modeling.
 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
@@ -43,19 +43,4 @@ python run_clm.py \
     --per_device_eval_batch_size 8 \
     --do_train \
     --do_eval \
-    --output_dir /tmp/test-clm \
-    --gpu_indices="0" # Specify GPUs to ZeusMonitor. If left out, Zeus Monitor uses all available GPUs. 
-
-# Multi-GPU example fine-tunes GPT-2 on WikiText-2 using 4 GPUs
-torchrun \
-    --nproc_per_node 4 run_clm.py \
-	--model_name_or_path gpt2 \
-    --dataset_name wikitext \
-    --dataset_config_name wikitext-2-raw-v1 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
-    --do_train \
-    --do_eval \
-    --output_dir /tmp/test-clm \
-    --gpu_indices="0,1,2,3" # Specify GPUs to ZeusMonitor. If left out, Zeus Monitor uses all available GPUs. 
-```
+    --output_dir /tmp/test-clm
