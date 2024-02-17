@@ -10,7 +10,11 @@ from zeus.callback import Callback
 from zeus.job import Job
 from zeus.monitor import ZeusMonitor
 from zeus.monitor.energy import Measurement
-from zeus.optimizer.batch_size.server.models import JobSpec, TrainingResult
+from zeus.optimizer.batch_size.server.models import (
+    JobSpec,
+    ReportResponse,
+    TrainingResult,
+)
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
@@ -76,13 +80,6 @@ class BatchSizeOptimizerClient(Callback):
             raise ValueError("Call get_batch_size to set the batch size first")
 
         self.cur_epoch += 1
-        converged = False
-
-        if (self.job.high_is_better_metric and self.job.target_metric <= metric) or (
-            not self.job.high_is_better_metric and self.job.target_metric >= metric
-        ):
-            converged = True
-
         measurement = self.monitor.end_window("BatciSizeOptimizerClient")
 
         self.running_time += measurement.time
@@ -94,7 +91,7 @@ class BatchSizeOptimizerClient(Callback):
             time=self.running_time,
             energy=self.consumed_energy,
             max_power=self.max_power,
-            converged=converged,
+            metric=metric,
             current_epoch=self.cur_epoch,
         )
 
@@ -104,12 +101,14 @@ class BatchSizeOptimizerClient(Callback):
         )
         self._handle_response(res)
 
-        if not converged and self.cur_epoch < self.job.max_epochs:
-            self.monitor.begin_window("BatciSizeOptimizerClient")
+        parsedResposne = ReportResponse.parse_obj(res.json())
 
-        if converged:
-            # TODO: If training is done and converged, anything BSO should do? (stop training? -> User should do this probably)
-            pass
+        if parsedResposne.stop_train == False:
+            self.monitor.begin_window("BatciSizeOptimizerClient")
+        elif parsedResposne.converged == False:
+            raise RuntimeError(f"Train failed: {parsedResposne.message}")
+
+        # TODO: If training is done and converged, anything BSO should do? (stop training? -> User should do this probably)
 
     def _handle_response(self, res: httpx.Response) -> None:
         if not (200 <= (code := res.status_code) < 300):

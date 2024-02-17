@@ -1,7 +1,11 @@
 from fastapi import Depends, FastAPI, Response, status
 from uuid import uuid4, UUID
 
-from zeus.optimizer.batch_size.server.models import JobSpec, TrainingResult
+from zeus.optimizer.batch_size.server.models import (
+    JobSpec,
+    ReportResponse,
+    TrainingResult,
+)
 from zeus.optimizer.batch_size.server.optimizer import (
     ZeusBatchSizeOptimizer,
     get_global_zeus_server,
@@ -57,7 +61,7 @@ async def predict(
 async def report(
     result: TrainingResult,
     zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_server),
-) -> None:
+) -> ReportResponse:
     """Endpoint for users to register a new job and receive batch size."""
     print(result)
     return zeus_server.report(result)

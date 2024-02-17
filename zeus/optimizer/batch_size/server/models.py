@@ -1,11 +1,12 @@
 """Shared model definitions for the server and client."""
 
 from enum import Enum
-from typing import List, Dict
+from typing import Any, List, Dict
 from uuid import UUID
 
 from pydantic import (
     BaseModel,
+    root_validator,
     validator,
 )
 
@@ -24,8 +25,8 @@ class JobSpec(BaseModel):
 
     job_id: UUID
     seed: int = 1
-    default_batch_size: int = 1024
     batch_sizes: list[int] = []
+    default_batch_size: int = 1024
     eta_knob: float = 0.5
     beta_knob: float = 2.0
     target_metric: float = 0.50
@@ -35,18 +36,6 @@ class JobSpec(BaseModel):
     window_size: int = 0
     mab_setting: MabSetting = MabSetting()
 
-    @validator("job_id")
-    def _validate_job_id(cls, v: UUID) -> UUID:
-        """
-        Pure data validation. It is not ASYNC
-        """
-        # TODO: Check if the job_id already exists in DB.Jobs
-        #   - If job exists, validate that the job spec is the same
-        #     - If job spec is the same, return job_id
-        #     - Otherwise, return an error that suggests the user to generate a new job_id for this new job
-        #   - If job not exists, return job_id
-        return v
-
     @validator("batch_sizes")
     def _validate_batch_sizes(cls, bs: list[int]) -> int:
         if bs is None or len(bs) != 0:
@@ -55,12 +44,35 @@ class JobSpec(BaseModel):
         else:
             raise ValueError(f"Batch Sizes = {bs} is empty")
 
+    @validator("eta_knob")
+    def _validate_eta_knob(cls, v: float) -> int:
+        if v < 0 or v > 1:
+            raise ValueError(f"eta_knob should be in range [0,1]")
+        return v
+
+    @validator("beta_knob")
+    def _validate_beta_knob(cls, v: float) -> int:
+        if v == -1 or v > 0:
+            return v
+        else:
+            raise ValueError(
+                f"Invalid beta_knob({v}). To disable early stop, set beta_knob = -1 or positive value."
+            )
+
     @validator("default_batch_size", "max_epochs")
     def _check_positivity(cls, n: int) -> int:
         if n > 0:
             return n
         else:
             raise ValueError(f"{n} should be larger than 0")
+
+    @root_validator
+    def _check_default_batch_size(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        bs = values.get("default_batch_size")
+        bss = values.get("batch_sizes")
+        if bs not in bss:
+            raise ValueError(f"Default BS({bs}) not in batch_sizes({bss}).")
+        return values
 
 
 class TrainingResult(BaseModel):
@@ -71,5 +83,13 @@ class TrainingResult(BaseModel):
     time: float
     energy: float
     max_power: int
-    converged: bool  # Client computes converged anyways to check if it reached max epochs. So just send the result to the server
+    metric: float
     current_epoch: int  # For early stopping. Easier to just get current epoch from the client than server tracking it if there is a concurrency
+
+
+class ReportResponse(BaseModel):
+    """Response format"""
+
+    stop_train: bool
+    converged: bool
+    message: str

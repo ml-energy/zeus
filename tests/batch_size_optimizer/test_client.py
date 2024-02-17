@@ -131,7 +131,7 @@ def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
             assert bso_client.current_batch_size == 1024
 
     print(e_info.value, i)
-    assert str(e_info.value).find("Failed to converge within max_epochs") != -1
+    assert str(e_info.value).find("Train failed to converge within max_epoch") != -1
     bs = bso_client.get_batch_size()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048

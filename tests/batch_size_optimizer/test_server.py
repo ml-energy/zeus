@@ -43,6 +43,18 @@ def test_register_job(client):
 
 
 @pytest.mark.anyio
+def test_register_job_with_diff_config(client):
+    response = client.post("/jobs", json=fake_job)
+    assert response.status_code == 201
+
+    fake_job_diff = deepcopy(fake_job)
+    fake_job_diff["default_batch_size"] = 512
+
+    response = client.post("/jobs", json=fake_job_diff)
+    assert response.status_code == 409
+
+
+@pytest.mark.anyio
 def test_register_job_validation_error(client):
     temp = deepcopy(fake_job)
     temp["default_batch_size"] = 128
@@ -60,6 +72,16 @@ def test_register_job_validation_error(client):
 
     temp = deepcopy(fake_job)
     temp["batch_sizes"] = []
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
+
+    temp = deepcopy(fake_job)
+    temp["eta_knob"] = 1.1
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
+
+    temp = deepcopy(fake_job)
+    temp["beta_knob"] = 0
     response = client.post("/jobs", json=temp)
     assert response.status_code == 422
 
@@ -104,11 +126,15 @@ def test_report(client):
             "time": "14.438",
             "energy": 3000.123,
             "max_power": 300,
-            "converged": True,
+            "metric": 0.55,
             "current_epoch": 98,
         },
     )
-    assert response.status_code == 200
+    assert (
+        response.status_code == 200
+        and response.json()["converged"] == True
+        and response.json()["stop_train"] == True
+    )
 
     # Should get 512 since the cost converged
     response = client.get(
@@ -127,11 +153,16 @@ def test_report(client):
             "time": "16.438",
             "energy": 2787.123,
             "max_power": 300,
-            "converged": False,
+            "metric": 0.3,
             "current_epoch": 56,
         },
     )
-    assert response.status_code == 200
+
+    assert (
+        response.status_code == 200
+        and response.json()["converged"] == False
+        and response.json()["stop_train"] == False
+    )
 
     # Converge fail after max_epoch reached => Should stop training with err
     response = client.post(
@@ -142,11 +173,15 @@ def test_report(client):
             "time": "16.438",
             "energy": 2787.123,
             "max_power": 300,
-            "converged": False,
+            "metric": 0.3,
             "current_epoch": 100,
         },
     )
-    assert response.status_code == 500
+    assert (
+        response.status_code == 200
+        and response.json()["converged"] == False
+        and response.json()["stop_train"] == True
+    )
 
     response = client.get(
         "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}

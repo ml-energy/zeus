@@ -9,6 +9,7 @@ from zeus.optimizer import batch_size
 
 from zeus.optimizer.batch_size.server.models import (
     JobSpec,
+    ReportResponse,
     TrainingResult,
 )
 from zeus.optimizer.batch_size.server.mab import GaussianTS
@@ -69,20 +70,19 @@ class ZeusBatchSizeOptimizer:
         return "Pruning GaussianTS BSO"
 
     def register_job(self, job: JobSpec) -> int:
-        """Register a user-submitted job. Return number of newly created job"""
+        """Register a user-submitted job. Return number of newly created job. Return the number of job that is registered"""
         if job.job_id in self.jobs:
             if self.verbose:
                 self._log(f"Job({job.job_id}) already exists")
+            if self.jobs[job.job_id] != job:
+                raise HTTPException(
+                    status_code=409,
+                    detail="JobSpec doesn't match with existing jobSpec. Use a new job_id for different configuration",
+                )
             return 0
 
         # TODO: Append the job to Jobs table by POST to DBServer
         # await DBAPI.insert_job(job)
-
-        if job.default_batch_size not in job.batch_sizes:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Default BS({job.default_batch_size}) not in batch_sizes({job.batch_sizes}).",
-            )
 
         self.jobs[job.job_id] = job
         self.min_costs[job.job_id] = np.inf  # initialize it to inf.
@@ -120,7 +120,7 @@ class ZeusBatchSizeOptimizer:
 
         return batch_size
 
-    def report(self, result: TrainingResult) -> None:
+    def report(self, result: TrainingResult) -> ReportResponse:
         """Give feedback to MAB
         Learn from the cost of using the given batch size for the job."""
         # Add observation to history.
@@ -136,18 +136,35 @@ class ZeusBatchSizeOptimizer:
             result.max_power,
         )
 
+        converged = (
+            self.jobs[result.job_id].high_is_better_metric
+            and self.jobs[result.job_id].target_metric <= result.metric
+        ) or (
+            not self.jobs[result.job_id].high_is_better_metric
+            and self.jobs[result.job_id].target_metric >= result.metric
+        )
+
         if (
             cost_ub >= cost
             and result.current_epoch < self.jobs[result.job_id].max_epochs
-            and result.converged == False
+            and converged == False
         ):
             # If it's not converged but below cost upper bound and haven't reached max_epochs, give more chance
             # Training ongoing
-            return
+            return ReportResponse(
+                stop_train=False,
+                converged=False,
+                message="Stop condition not met, keep training",
+            )
 
         # Two cases below here (training ended)
         # 1. Converged == true
         # 2. reached max_epoch OR excceded upper bound cost (error case)
+        message = (
+            "Train succeeded"
+            if converged
+            else f"Train failed to converge within max_epoch({self.jobs[result.job_id].max_epochs})"
+        )
 
         self.history[result.job_id].append((result.batch_size, -cost))
 
@@ -178,12 +195,11 @@ class ZeusBatchSizeOptimizer:
 
         # We're in pruning stage.
         else:
-            assert result.converged is not None
             # Log before we potentially error out.
             if self.verbose:
                 self._log(
                     f"{result.job_id} in pruning stage, expecting BS {self.exp_manager[result.job_id].expecting}."
-                    f" Current BS {result.batch_size} that did {'not ' * (not result.converged)}converge."
+                    f" Current BS {result.batch_size} that did {'not ' * (not converged)}converge."
                 )
 
             # If we don't support concurrency, we can just pass the results to the
@@ -193,9 +209,11 @@ class ZeusBatchSizeOptimizer:
                 self.exp_manager[result.job_id].report_batch_size_result(
                     result.batch_size,
                     cost,
-                    result.converged,  # TODO: Double check -cost vs cost.
+                    converged,
                 )
-                return
+                return ReportResponse(
+                    stop_train=True, converged=converged, message=message
+                )
 
             # If we are supporting concurrency, there's a subtle issue.
             # Pruning exploration demands a specific order of trying out a batch size
@@ -211,25 +229,17 @@ class ZeusBatchSizeOptimizer:
             # (first line of this method) and don't touch the PruningExplorationManager.
             if self.exp_manager[result.job_id].expecting == result.batch_size:
                 self.exp_manager[result.job_id].report_batch_size_result(
-                    result.batch_size, cost, result.converged
+                    result.batch_size, cost, converged
                 )
 
             # Early stopping
             # Result can be converged / max epoch reached / in the middle of epoch
             # If the cost is above the upper bound, we should stop no matter what, report to explore manger that we failed
             if cost_ub < cost:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Batch Size({result.batch_size}) exceeded the cost upper bound: current cost({cost}) > beta_knob({self.jobs[result.job_id].beta_knob})*min_cost({self.min_costs[result.job_id]})",
-                )
+                message = f"""Batch Size({result.batch_size}) exceeded the cost upper bound: current cost({cost}) >
+                          beta_knob({self.jobs[result.job_id].beta_knob})*min_cost({self.min_costs[result.job_id]})"""
 
-        if result.converged == False:
-            # Should be true unless returned above
-            assert result.current_epoch >= self.jobs[result.job_id].max_epochs
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to converge within max_epochs({self.jobs[result.job_id].max_epochs})",
-            )
+        return ReportResponse(stop_train=True, converged=converged, message=message)
 
     def _get_job(self, job_id: UUID) -> JobSpec:
         """Return jobSpec based on job_id"""

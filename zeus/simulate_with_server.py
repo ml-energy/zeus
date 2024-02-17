@@ -40,7 +40,6 @@ class BatchSizeOptimizerDummyClient:
         return
 
     def register_job(self, job: JobSpec):
-        print(job)
         httpx.post("/jobs", content=job.json())
 
     def predict(self, job: JobSpec):
@@ -63,7 +62,7 @@ class BatchSizeOptimizerDummyClient:
             time=time,
             energy=total_energy,
             max_power=max_power,
-            converged=converged,
+            metric=job.target_metric + 1 if converged else job.target_metric - 1,
             current_epoch=epoch,
         )
 
@@ -349,15 +348,6 @@ class SimulatorWithServer:
                 print(f"[run job] {cost_per_epoch=}")
                 print(f"[run job] {max_epochs=}")
 
-        # The job virtually never ran. Time and Energy being zero will be treated specially outside.
-        # If the min_cost is so low, this might even prevent this BS from running at all.
-        if max_epochs == 0:
-            print(
-                f"[run job] {job} cannot run even one epoch without exceeding the cost UB."
-                f" BS {batch_size}, PL {power_limit}, {eta_knob=}"
-            )
-            return 0.0, 0.0, False, job.max_epochs
-
         def compute_energy_and_time(
             num_epochs: int, profile_power: bool
         ) -> tuple[float, float]:
@@ -384,6 +374,16 @@ class SimulatorWithServer:
                 energy_consumption = path.energy_per_epoch.item() * num_epochs
                 time_consumption = path.time_per_epoch.item() * num_epochs
             return energy_consumption, time_consumption
+
+        # The job virtually never ran. Time and Energy being zero will be treated specially outside.
+        # If the min_cost is so low, this might even prevent this BS from running at all.
+        if max_epochs == 0:
+            eta, tta = compute_energy_and_time(max_epochs + 1, profile_power)
+            print(
+                f"[run job] {job} cannot run even one epoch without exceeding the cost UB."
+                f" BS {batch_size}, PL {power_limit}, {eta_knob=}"
+            )
+            return eta, tta, False, max_epochs + 1
 
         # Job reached target metric.
         target_epoch = path.target_epoch.item()
