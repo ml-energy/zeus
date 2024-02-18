@@ -14,6 +14,7 @@
 
 """Utilities for logging."""
 
+import os
 import sys
 import logging
 from pathlib import Path
@@ -51,7 +52,7 @@ def get_logger(
 
     logger = logging.getLogger(name)
     logger.propagate = propagate
-    logger.setLevel(level)
+    logger.setLevel(os.environ.get("ZEUS_LOG_LEVEL", level))
     formatter = logging.Formatter(
         "[%(asctime)s] [%(name)s](%(filename)s:%(lineno)d) %(message)s"
     )
