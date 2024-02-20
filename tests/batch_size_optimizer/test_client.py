@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -11,19 +12,21 @@ from zeus.optimizer.batch_size.common import JobSpec
 =======
 from copy import deepcopy
 from math import inf
+=======
+>>>>>>> 1af1486 (clean up and resolving PR comments)
 from unittest.mock import MagicMock
 from uuid import uuid4
-from fastapi.testclient import TestClient
-import numpy as np
-import pytest
-import httpx
-from pytest_mock import MockerFixture
-from tests.test_monitor import mock_gpus, pynvml_mock
-from zeus.monitor.energy import Measurement, ZeusMonitor
-from zeus.optimizer.batch_size.client import BatchSizeOptimizerClient
-from zeus.optimizer.batch_size.server.models import JobSpec
 
+<<<<<<< HEAD
 >>>>>>> 9a91219 (checkpoint - testing client)
+=======
+import pytest
+from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
+from zeus.monitor.energy import Measurement, ZeusMonitor
+from zeus.optimizer.batch_size.client import BatchSizeOptimizer
+from zeus.optimizer.batch_size.common import JobSpec
+>>>>>>> 1af1486 (clean up and resolving PR comments)
 from zeus.optimizer.batch_size.server.router import app
 
 fake_job = {
@@ -123,6 +126,7 @@ def mock_monitor(mocker: MockerFixture):
 =======
 >>>>>>> 8aa3b04 (simple client test)
     mocker.patch("pynvml.nvmlDeviceGetHandleByIndex").return_value = 0
+<<<<<<< HEAD
     mocker.patch("pynvml.nvmlDeviceGetPowerManagementLimitConstraints").return_value = (
         300
     )
@@ -130,6 +134,11 @@ def mock_monitor(mocker: MockerFixture):
 <<<<<<< HEAD
 =======
 >>>>>>> 8aa3b04 (simple client test)
+=======
+    mocker.patch(
+        "pynvml.nvmlDeviceGetPowerManagementLimitConstraints"
+    ).return_value = 300
+>>>>>>> 1af1486 (clean up and resolving PR comments)
     return zeus_monitor_mock_instance
 
 
@@ -216,9 +225,9 @@ def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
 >>>>>>> 9a91219 (checkpoint - testing client)
 =======
     job = JobSpec.parse_obj(fake_job)
-    bso_client = BatchSizeOptimizerClient(mock_monitor, "", job)
+    bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.max_power == 300 * len(mock_monitor.gpu_indices)
-    bso_client = BatchSizeOptimizerClient(mock_monitor, "", job)
+    bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.max_power == 300 * len(mock_monitor.gpu_indices)
 
 
@@ -227,7 +236,7 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
     job = JobSpec.parse_obj(fake_job)
-    bso_client = BatchSizeOptimizerClient(mock_monitor, "", job)
+    bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
 
     assert bs == 1024 and bso_client.current_batch_size == 1024
@@ -236,6 +245,8 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     bso_client.on_evaluate(0.1)
     bso_client.on_evaluate(0.2)
     bso_client.on_evaluate(0.6)  # Converged
+
+    bso_client.on_train_begin()
     bs = bso_client.get_batch_size()
 
     assert bs == 512 and bso_client.current_batch_size == 512
@@ -249,6 +260,8 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
             assert bso_client.current_batch_size == 512
 
     assert str(e_info.value).find("cost upper bound") != -1
+
+    bso_client.on_train_begin()
     bs = bso_client.get_batch_size()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048
@@ -261,7 +274,8 @@ def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
     job = JobSpec.parse_obj(fake_job)
     job.job_id = uuid4()
     job.beta_knob = -1
-    bso_client = BatchSizeOptimizerClient(mock_monitor, "", job)
+    bso_client = BatchSizeOptimizer(mock_monitor, "", job)
+    bso_client.on_train_begin()
     bs = bso_client.get_batch_size()
 
     assert bs == 1024 and bso_client.current_batch_size == 1024
@@ -275,7 +289,13 @@ def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
             assert bso_client.current_batch_size == 1024
 
     print(e_info.value, i)
+<<<<<<< HEAD
     assert str(e_info.value).find("Failed to converge within max_epochs") != -1
+=======
+    assert str(e_info.value).find("Train failed to converge within max_epoch") != -1
+
+    bso_client.on_train_begin()
+>>>>>>> 1af1486 (clean up and resolving PR comments)
     bs = bso_client.get_batch_size()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048
