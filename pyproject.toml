@@ -32,7 +32,7 @@ dependencies = [
     "httpx",
     "aiofiles==22.1.0",
     "lowtime",
-    "anyio<4" # why it downloads 4.2 if I put ths under test?
+    "anyio<4"
 ]
 dynamic = ["version"]
 
@@ -84,5 +84,5 @@ convention = "google"
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
 
-# [tool.pytest.ini_options]
-# addopts = "--numprocesses auto"
+[tool.pytest.ini_options]
+addopts = "--numprocesses auto"

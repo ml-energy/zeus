@@ -1,14 +1,13 @@
 """Shared model definitions for the server and client."""
 
-from enum import Enum
-from typing import Any, List, Dict
+from typing import Any, Dict
 from uuid import UUID
 
-from pydantic import (
-    BaseModel,
-    root_validator,
-    validator,
-)
+from pydantic import BaseModel, root_validator, validator
+
+REGISTER_JOB_URL = "/jobs"
+GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
+REPORT_RESULT_URL = "/jobs/report"
 
 
 class MabSetting(BaseModel):
@@ -76,7 +75,9 @@ class JobSpec(BaseModel):
 
 
 class TrainingResult(BaseModel):
-    """Result of training for that job & batch size"""
+    """Result of training for that job & batch size
+    current_epoch: For early stopping. Easier to just get current epoch from the client than server tracking it if there is a concurrency
+    """
 
     job_id: UUID
     batch_size: int
@@ -84,7 +85,7 @@ class TrainingResult(BaseModel):
     energy: float
     max_power: int
     metric: float
-    current_epoch: int  # For early stopping. Easier to just get current epoch from the client than server tracking it if there is a concurrency
+    current_epoch: int
 
 
 class ReportResponse(BaseModel):
@@ -93,3 +94,13 @@ class ReportResponse(BaseModel):
     stop_train: bool
     converged: bool
     message: str
+
+
+class ZeusBSOJobSpecMismatch(Exception):
+    def __init__(self, message: str):
+        self.message = message
+
+
+class ZeusBSOValueError(Exception):
+    def __init__(self, message: str):
+        self.message = message

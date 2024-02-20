@@ -1,7 +1,7 @@
 from copy import deepcopy
-from fastapi.testclient import TestClient
-import pytest
 
+import pytest
+from fastapi.testclient import TestClient
 from zeus.optimizer.batch_size.server.router import app
 
 # https://fastapi.tiangolo.com/tutorial/testing/

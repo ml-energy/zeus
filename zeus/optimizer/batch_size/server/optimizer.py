@@ -2,27 +2,22 @@ from __future__ import annotations
 
 from collections import defaultdict
 from uuid import UUID
-from fastapi import HTTPException
 
 import numpy as np
-from zeus.optimizer import batch_size
-
-from zeus.optimizer.batch_size.server.models import (
+from zeus.optimizer.batch_size.common import (
     JobSpec,
     ReportResponse,
     TrainingResult,
+    ZeusBSOJobSpecMismatch,
+    ZeusBSOValueError,
 )
-from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
+from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.util.metric import zeus_cost
 
 # from dbapis import DBAPI
 
 GLOBAL_ZEUS_SERVER: ZeusBatchSizeOptimizer | None = None
-
-"""
-TODO: ADD EARLY STOPPING SOMEHOW?. If cost is too much, stop training 
-"""
 
 
 class ZeusBatchSizeOptimizer:
@@ -69,17 +64,16 @@ class ZeusBatchSizeOptimizer:
         """Name of the batch size optimizer."""
         return "Pruning GaussianTS BSO"
 
-    def register_job(self, job: JobSpec) -> int:
+    def register_job(self, job: JobSpec) -> bool:
         """Register a user-submitted job. Return number of newly created job. Return the number of job that is registered"""
         if job.job_id in self.jobs:
             if self.verbose:
                 self._log(f"Job({job.job_id}) already exists")
             if self.jobs[job.job_id] != job:
-                raise HTTPException(
-                    status_code=409,
-                    detail="JobSpec doesn't match with existing jobSpec. Use a new job_id for different configuration",
+                raise ZeusBSOJobSpecMismatch(
+                    "JobSpec doesn't match with existing jobSpec. Use a new job_id for different configuration"
                 )
-            return 0
+            return False
 
         # TODO: Append the job to Jobs table by POST to DBServer
         # await DBAPI.insert_job(job)
@@ -96,7 +90,7 @@ class ZeusBatchSizeOptimizer:
         self.history[job.job_id] = []
         if self.verbose:
             self._log(f"Registered {job.job_id}")
-        return 1
+        return True
 
     def predict(self, job_id: UUID) -> None:
         """return a batch size to use. Probably get the MAB from DB? then do some computation
@@ -266,7 +260,7 @@ class ZeusBatchSizeOptimizer:
         batch_sizes are the ones which can converge"""
         # Sanity check.
         if not batch_sizes:
-            raise ValueError(
+            raise ZeusBSOValueError(
                 "Empty batch size set when constructing MAB. "
                 "Probably all batch sizes have been pruned."
             )
@@ -298,13 +292,13 @@ class ZeusBatchSizeOptimizer:
 ## End of class ZeusBatchSizeOptimizer
 
 
-def init_global_zeus_server(setting) -> ZeusBatchSizeOptimizer:
-    """Initialize the global singleton `ZeusServer`."""
+def init_global_zeus_batch_size_optimizer(setting) -> ZeusBatchSizeOptimizer:
+    """Initialize the global singleton `ZeusBatchSizeOptimizer`."""
     global GLOBAL_ZEUS_SERVER
     GLOBAL_ZEUS_SERVER = ZeusBatchSizeOptimizer(setting)
     return GLOBAL_ZEUS_SERVER
 
 
-def get_global_zeus_server() -> ZeusBatchSizeOptimizer:
-    """Fetch the global singleton `ZeusServer`."""
+def get_global_zeus_batch_size_optimizer() -> ZeusBatchSizeOptimizer:
+    """Fetch the global singleton `ZeusBatchSizeOptimizer`."""
     return GLOBAL_ZEUS_SERVER

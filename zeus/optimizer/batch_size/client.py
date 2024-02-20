@@ -1,29 +1,13 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from uuid import UUID
-
-import pynvml
 import httpx
-
+import pynvml
 from zeus.callback import Callback
-from zeus.job import Job
 from zeus.monitor import ZeusMonitor
-from zeus.monitor.energy import Measurement
-from zeus.optimizer.batch_size.server.models import (
-    JobSpec,
-    ReportResponse,
-    TrainingResult,
-)
-from zeus.util.logging import get_logger
-from zeus.util.metric import zeus_cost
-
-"""
-TODO: Do we want one job -> one BSO Client? 
-"""
+from zeus.optimizer.batch_size.common import JobSpec, ReportResponse, TrainingResult
 
 
-class BatchSizeOptimizerClient(Callback):
+class BatchSizeOptimizer(Callback):
     def __init__(self, monitor: ZeusMonitor, server_url: str, job: JobSpec) -> None:
 
         self.monitor = monitor
@@ -32,6 +16,7 @@ class BatchSizeOptimizerClient(Callback):
         self.cur_epoch = 0
         self.running_time = 0.0
         self.consumed_energy = 0.0
+        self.train_end = False
 
         # Get max PL
         pynvml.nvmlInit()
@@ -52,6 +37,10 @@ class BatchSizeOptimizerClient(Callback):
 
     def get_batch_size(self) -> int:
         """Get batch size to use from the BSO server"""
+
+        if self.train_end == True:
+            return self.current_batch_size
+
         self.cur_epoch = 0
         res = httpx.get(
             self.server_url + "/jobs/batch_size", params={"job_id": self.job.job_id}
@@ -68,6 +57,7 @@ class BatchSizeOptimizerClient(Callback):
         return batch_size
 
     def on_train_begin(self) -> None:
+        self.train_end = False
         self.monitor.begin_window("BatciSizeOptimizerClient")
 
     def on_evaluate(
@@ -78,6 +68,9 @@ class BatchSizeOptimizerClient(Callback):
 
         if self.current_batch_size == 0:
             raise ValueError("Call get_batch_size to set the batch size first")
+
+        if self.train_end == True:
+            return
 
         self.cur_epoch += 1
         measurement = self.monitor.end_window("BatciSizeOptimizerClient")
@@ -103,12 +96,13 @@ class BatchSizeOptimizerClient(Callback):
 
         parsedResposne = ReportResponse.parse_obj(res.json())
 
+        print(f"Result: {parsedResposne}")
         if parsedResposne.stop_train == False:
             self.monitor.begin_window("BatciSizeOptimizerClient")
-        elif parsedResposne.converged == False:
-            raise RuntimeError(f"Train failed: {parsedResposne.message}")
-
-        # TODO: If training is done and converged, anything BSO should do? (stop training? -> User should do this probably)
+        else:
+            self.train_end = True
+            if parsedResposne.converged == False:
+                raise RuntimeError(f"Train failed: {parsedResposne.message}")
 
     def _handle_response(self, res: httpx.Response) -> None:
         if not (200 <= (code := res.status_code) < 300):

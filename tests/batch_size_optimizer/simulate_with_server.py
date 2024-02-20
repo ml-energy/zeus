@@ -16,21 +16,15 @@
 
 from __future__ import annotations
 
-import operator
-from copy import deepcopy
-from dataclasses import dataclass
 import uuid
+from copy import deepcopy
+
 import httpx
-from matplotlib.pylab import beta
 import numpy as np
 import pandas as pd
-
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
-from zeus.monitor.energy import ZeusMonitor
-from zeus.optimizer import batch_size
-from zeus.optimizer.batch_size.client import BatchSizeOptimizerClient
-from zeus.optimizer.batch_size.server.models import JobSpec, MabSetting, TrainingResult
+from zeus.optimizer.batch_size.common import JobSpec, MabSetting, TrainingResult
 from zeus.policy import PowerLimitOptimizer
 from zeus.util import zeus_cost
 
