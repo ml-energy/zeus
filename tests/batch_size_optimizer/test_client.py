@@ -127,6 +127,7 @@ def mock_monitor(mocker: MockerFixture):
 >>>>>>> 8aa3b04 (simple client test)
     mocker.patch("pynvml.nvmlDeviceGetHandleByIndex").return_value = 0
 <<<<<<< HEAD
+<<<<<<< HEAD
     mocker.patch("pynvml.nvmlDeviceGetPowerManagementLimitConstraints").return_value = (
         300
     )
@@ -139,6 +140,11 @@ def mock_monitor(mocker: MockerFixture):
         "pynvml.nvmlDeviceGetPowerManagementLimitConstraints"
     ).return_value = 300
 >>>>>>> 1af1486 (clean up and resolving PR comments)
+=======
+    mocker.patch("pynvml.nvmlDeviceGetPowerManagementLimitConstraints").return_value = (
+        300
+    )
+>>>>>>> 8a5ea36 (checkpoint before adding ORM)
     return zeus_monitor_mock_instance
 
 
