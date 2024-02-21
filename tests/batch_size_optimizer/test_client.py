@@ -57,9 +57,9 @@ def mock_monitor(mocker: MockerFixture):
         "zeus.monitor.energy.ZeusMonitor", return_value=zeus_monitor_mock_instance
     )
     mocker.patch("pynvml.nvmlDeviceGetHandleByIndex").return_value = 0
-    mocker.patch(
-        "pynvml.nvmlDeviceGetPowerManagementLimitConstraints"
-    ).return_value = 300
+    mocker.patch("pynvml.nvmlDeviceGetPowerManagementLimitConstraints").return_value = (
+        300
+    )
     return zeus_monitor_mock_instance
 
 

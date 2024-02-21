@@ -3,11 +3,11 @@ from examples.trace_driven.run_single import read_trace
 from fastapi.testclient import TestClient
 from pyparsing import Literal
 from pytest_mock import MockerFixture
+from tests.batch_size_optimizer.simulate_with_server import SimulatorWithServer
 from zeus.job import Job
 from zeus.optimizer.batch_size.server.router import app
 from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
 from zeus.simulate import Simulator
-from tests.batch_size_optimizer.simulate_with_server import SimulatorWithServer
 
 config = {
     "gpu": "v100",
