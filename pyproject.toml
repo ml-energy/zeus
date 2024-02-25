@@ -28,10 +28,8 @@ dependencies = [
     "pydantic",
     "rich",
     "tyro",
-    "fastapi[all]==0.87.0",
     "httpx",
     "aiofiles==22.1.0",
-    "lowtime",
 ]
 dynamic = ["version"]
 
@@ -41,6 +39,7 @@ Homepage = "https://ml.energy/zeus"
 Documentation = "https://ml.energy/zeus"
 
 [project.optional-dependencies]
+perseus = ["fastapi[all]", "lowtime"]
 lint = ["ruff", "black==22.6.0"]
 test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"]
 dev = ["ruff", "black==22.6.0", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1"]
