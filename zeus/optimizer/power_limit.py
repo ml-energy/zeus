@@ -41,12 +41,12 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 
 import pynvml
-from pydantic import BaseModel, PositiveInt, PositiveFloat
 
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
+from zeus.util.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
 
 from typing import TYPE_CHECKING
 
@@ -477,7 +477,6 @@ class GlobalPowerLimitOptimizer(Callback):
 # Only import HuggingFace Classes when type checking, to avoid hard dependency on HuggingFace Transformers
 if TYPE_CHECKING:
     from transformers import (
-        TrainerCallback,
         TrainingArguments,
         TrainerState,
         TrainerControl,
