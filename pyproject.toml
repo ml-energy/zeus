@@ -25,7 +25,7 @@ dependencies = [
     "pandas",
     "scikit-learn",
     "nvidia-ml-py",
-    "pydantic<2",
+    "pydantic",
     "rich",
     "tyro",
     "fastapi[all]==0.87.0",
@@ -82,6 +82,7 @@ convention = "google"
 "**/__init__.py" = ["F401", "F403"]
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
+"zeus/util/pydantic_v1.py" = ["F403"]
 
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"
