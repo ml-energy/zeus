@@ -91,6 +91,7 @@ Then, start the Perseus server and plug in the frequency plan you chose:
 
 ```console
 $ docker exec -it merak-zeus bash
+# pip install '.[perseus]'
 # PERSEUS_SCHEDULER_ARGS='{"solution_path": "path/to/freqs_pipeline_%05d.py"}' uvicorn zeus.optimizer.perseus.server.router:app --port 7787
 ```
 
