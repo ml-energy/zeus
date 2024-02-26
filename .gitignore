@@ -17,3 +17,4 @@ test.db
 env/
 .env 
 test.db
+.pytest_cache/
