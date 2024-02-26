@@ -4,6 +4,9 @@ from collections import defaultdict
 from uuid import UUID
 
 import numpy as np
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import NoResultFound
+
 from zeus.optimizer.batch_size.common import (
     JobSpec,
     ReportResponse,
@@ -11,6 +14,8 @@ from zeus.optimizer.batch_size.common import (
     ZeusBSOJobSpecMismatch,
     ZeusBSOValueError,
 )
+from zeus.optimizer.batch_size.server.database.dbapi import DBapi
+from zeus.optimizer.batch_size.server.database.models import Job
 from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
 from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.util.metric import zeus_cost
@@ -64,19 +69,25 @@ class ZeusBatchSizeOptimizer:
         """Name of the batch size optimizer."""
         return "Pruning GaussianTS BSO"
 
-    def register_job(self, job: JobSpec) -> bool:
+    async def register_job(self, job: JobSpec, db: AsyncSession) -> bool:
         """Register a user-submitted job. Return number of newly created job. Return the number of job that is registered"""
-        if job.job_id in self.jobs:
+        registered_job = await DBapi.create_job(db, job)
+
+        if registered_job is None:
+            # Job already exists
             if self.verbose:
                 self._log(f"Job({job.job_id}) already exists")
-            if self.jobs[job.job_id] != job:
+            registered_job = await DBapi.get_job(db, job.job_id)
+
+            if registered_job == None:
+                raise NoResultFound("Can't create job but job doesn't exist")
+            elif not registered_job.equal_to(job):
                 raise ZeusBSOJobSpecMismatch(
                     "JobSpec doesn't match with existing jobSpec. Use a new job_id for different configuration"
                 )
             return False
 
-        # TODO: Append the job to Jobs table by POST to DBServer
-        # await DBAPI.insert_job(job)
+        # Job just created
 
         self.jobs[job.job_id] = job
         self.min_costs[job.job_id] = np.inf  # initialize it to inf.
@@ -90,6 +101,7 @@ class ZeusBatchSizeOptimizer:
         self.history[job.job_id] = []
         if self.verbose:
             self._log(f"Registered {job.job_id}")
+
         return True
 
     def predict(self, job_id: UUID) -> None:

@@ -11,3 +11,6 @@ dist/
 *.json
 **/.DS_Store
 .cache/
+.env
+test.db
+/migrations/versions

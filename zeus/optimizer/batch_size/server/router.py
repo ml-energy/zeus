@@ -12,11 +12,15 @@ from zeus.optimizer.batch_size.common import (
     ZeusBSOJobSpecMismatch,
     ZeusBSOValueError,
 )
+from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
 from zeus.optimizer.batch_size.server.optimizer import (
     ZeusBatchSizeOptimizer,
     get_global_zeus_batch_size_optimizer,
     init_global_zeus_batch_size_optimizer,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
+
 
 app = FastAPI()
 
@@ -44,6 +48,22 @@ async def value_err_handler(request: Request, exc: ZeusBSOValueError):
     )
 
 
+@app.exception_handler(SQLAlchemyError)
+async def db_err_handler(request: Request, exc: SQLAlchemyError):
+    return JSONResponse(
+        status_code=500,
+        content={"message": str(exc)},
+    )
+
+
+@app.exception_handler(Exception)
+async def err_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"message": str(exc)},
+    )
+
+
 @app.post(
     REGISTER_JOB_URL,
     responses={
@@ -55,9 +75,11 @@ async def register_job(
     job: JobSpec,
     response: Response,
     zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
+    db_session: AsyncSession = Depends(get_db_session),
 ) -> JobSpec:
     """Endpoint for users to register a new job and receive batch size."""
-    if zeus_server.register_job(job):
+    res = await zeus_server.register_job(job, db_session)
+    if res:
         response.status_code = status.HTTP_201_CREATED
     else:
         response.status_code = status.HTTP_200_OK
