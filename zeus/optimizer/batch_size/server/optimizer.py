@@ -101,6 +101,7 @@ class ZeusBatchSizeOptimizer:
         self.history[job.job_id] = []
         if self.verbose:
             self._log(f"Registered {job.job_id}")
+
         return True
 
     def predict(self, job_id: UUID) -> None:

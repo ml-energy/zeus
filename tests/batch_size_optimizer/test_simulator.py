@@ -1,42 +1,13 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 import pytest
 from examples.trace_driven.run_single import read_trace
 from fastapi.testclient import TestClient
 from pyparsing import Literal
 from pytest_mock import MockerFixture
 from tests.batch_size_optimizer.simulate_with_server import SimulatorWithServer
-<<<<<<< HEAD
-=======
-=======
-import pytest
-from examples.trace_driven.run_single import read_trace
->>>>>>> 1af1486 (clean up and resolving PR comments)
-from fastapi.testclient import TestClient
-from pyparsing import Literal
-from pytest_mock import MockerFixture
-<<<<<<< HEAD
-from examples.trace_driven.run_single import read_trace
->>>>>>> 0dee589 (added early stop)
-=======
->>>>>>> 1af1486 (clean up and resolving PR comments)
-=======
->>>>>>> 8a5ea36 (checkpoint before adding ORM)
 from zeus.job import Job
 from zeus.optimizer.batch_size.server.router import app
 from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
 from zeus.simulate import Simulator
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-from zeus.simulate_with_server import SimulatorWithServer
->>>>>>> 0dee589 (added early stop)
-=======
-from tests.batch_size_optimizer.simulate_with_server import SimulatorWithServer
->>>>>>> 1af1486 (clean up and resolving PR comments)
-=======
->>>>>>> 8a5ea36 (checkpoint before adding ORM)
 
 config = {
     "gpu": "v100",
