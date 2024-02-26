@@ -14,4 +14,7 @@
 
 """A collection of optimizers for various knobs."""
 
-from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
+from zeus.optimizer.power_limit import (
+    GlobalPowerLimitOptimizer,
+    HFGlobalPowerLimitOptimizer,
+)

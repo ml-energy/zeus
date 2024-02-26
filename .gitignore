@@ -14,3 +14,4 @@ dist/
 .env
 test.db
 /migrations/versions
+env/
