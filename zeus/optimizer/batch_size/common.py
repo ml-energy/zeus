@@ -1,5 +1,6 @@
 """Shared model definitions for the server and client."""
 
+import enum
 from typing import Any, Dict
 from uuid import UUID
 
@@ -34,6 +35,10 @@ class JobSpec(BaseModel):
     num_pruning_rounds: int = 2
     window_size: int = 0
     mab_setting: MabSetting = MabSetting()
+
+    max_power: float
+    number_of_gpus: int
+    gpu_model: str
 
     @validator("batch_sizes")
     def _validate_batch_sizes(cls, bs: list[int]) -> int:
@@ -96,11 +101,21 @@ class ReportResponse(BaseModel):
     message: str
 
 
+class Stage(enum.Enum):
+    Exploration = "Exploration"
+    MAB = "MAB"
+
+
 class ZeusBSOJobSpecMismatch(Exception):
     def __init__(self, message: str):
         self.message = message
 
 
 class ZeusBSOValueError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+
+
+class ZeusBSOOperationOrderError(Exception):
     def __init__(self, message: str):
         self.message = message

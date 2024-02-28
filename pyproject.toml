@@ -39,6 +39,7 @@ Documentation = "https://ml.energy/zeus"
 [project.optional-dependencies]
 # One day FastAPI will drop support for Pydantic V1. Then fastapi has to be pinned as well.
 perseus = ["fastapi[all]", "pydantic<2", "lowtime", "aiofiles", "httpx"]
+zeus = ["fastapi[all]", "pydantic<2", "sqlalchemy", "httpx"]
 lint = ["ruff", "black==22.6.0"]
 test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio<4", "aiosqlite", "greenlet"]
 dev = ["zeus-ml[perseus,lint,test]"]
@@ -82,5 +83,5 @@ convention = "google"
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
 "zeus/util/pydantic_v1.py" = ["F403"]
 
-[tool.pytest.ini_options]
-addopts = "--numprocesses auto"
+#[tool.pytest.ini_options]
+#addopts = "--numprocesses auto"

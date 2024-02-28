@@ -75,25 +75,25 @@ class GaussianTS:
         # Track how many times an arm reward has been observed.
         self.arm_num_observations = dict.fromkeys(arms, 0)
 
-    def fit(
-        self,
-        decisions: list[int] | np.ndarray,
-        rewards: list[float] | np.ndarray,
-        reset: bool,
-    ) -> None:
-        """Fit the bandit on the given list of observations.
+    # def fit(
+    #     self,
+    #     decisions: list[int] | np.ndarray,
+    #     rewards: list[float] | np.ndarray,
+    #     reset: bool,
+    # ) -> None:
+    #     """Fit the bandit on the given list of observations.
 
-        Args:
-            decisions: A list of arms chosen.
-            rewards: A list of rewards that resulted from choosing the arms in `decisions`.
-            reset: Whether to reset all arms.
-        """
-        decisions_arr = np.array(decisions)
-        rewards_arr = np.array(rewards)
+    #     Args:
+    #         decisions: A list of arms chosen.
+    #         rewards: A list of rewards that resulted from choosing the arms in `decisions`.
+    #         reset: Whether to reset all arms.
+    #     """
+    #     decisions_arr = np.array(decisions)
+    #     rewards_arr = np.array(rewards)
 
-        # Fit all arms.
-        for arm in self.arms:
-            self.fit_arm(arm, rewards_arr[decisions_arr == arm], reset)
+    #     # Fit all arms.
+    #     for arm in self.arms:
+    #         self.fit_arm(arm, rewards_arr[decisions_arr == arm], reset)
 
     def fit_arm(self, arm: int, rewards: np.ndarray, reset: bool) -> None:
         """Update the parameter distribution for one arm.

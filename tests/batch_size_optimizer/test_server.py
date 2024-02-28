@@ -1,10 +1,10 @@
 import asyncio
 from copy import deepcopy
+import random
 from typing import AsyncIterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import MetaData
 from zeus.optimizer.batch_size.server.database.db_connection import (
     DatabaseSessionManager,
     get_db_session,
@@ -35,9 +35,12 @@ fake_job = {
         "seed": 123456,
         "num_exploration": 2,
     },
+    "max_power": 3000,
+    "number_of_gpus": 4,
+    "gpu_model": "A100",
 }
 
-sessionmanager = DatabaseSessionManager("sqlite+aiosqlite:///test.db", {"echo": True})
+sessionmanager = DatabaseSessionManager("sqlite+aiosqlite:///test.db", {"echo": False})
 
 
 async def override_db_session() -> AsyncIterator[AsyncSession]:
@@ -69,7 +72,7 @@ def database_setup():
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    with TestClient(app=app) as c:
         yield c
 
 
@@ -77,6 +80,7 @@ def client():
 def test_register_job(client):
     response = client.post("/jobs", json=fake_job)
     print(response.text)
+    print(str(response))
     assert response.status_code == 201
 
     response = client.post("/jobs", json=fake_job)
@@ -126,106 +130,129 @@ def test_register_job_validation_error(client):
     assert response.status_code == 422
 
 
-# @pytest.mark.anyio
-# def test_predict(client):
-#     # @app.get("/jobs/batch_size")
-#     response = client.post("/jobs", json=fake_job)
-#     assert response.status_code == 201
+@pytest.mark.anyio
+def test_predict(client):
+    cur_default_bs = fake_job["default_batch_size"]
+    response = client.get(
+        "/jobs/batch_size",
+        params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+    )
+    print(response.text)
+    assert response.status_code == 200
+    assert response.json() == cur_default_bs
 
-#     response = client.get(
-#         "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
-#     )
-#     assert response.status_code == 200
-#     assert response.json() == 1024
+    # concurrent job submission
+    response = client.get(
+        "/jobs/batch_size",
+        params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+    )
+    print(response.text)
+    assert response.status_code == 200
+    assert response.json() == cur_default_bs
 
-#     print(response.status_code)
+
+@pytest.mark.anyio
+def test_report(client):
+    # Converged within max epoch => successful training
+    response = client.post(
+        "/jobs/report",
+        json={
+            "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "batch_size": 1024,
+            "time": 14.438,
+            "energy": 3000.123,
+            "max_power": 300,
+            "metric": 0.55,
+            "current_epoch": 98,
+        },
+    )
+    assert (
+        response.status_code == 200
+        and response.json()["converged"] == True
+        and response.json()["stop_train"] == True
+    )
+    # NO update in exploration state since this was a concurrent job submission
+    response = client.post(
+        "/jobs/report",
+        json={
+            "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "batch_size": 1024,
+            "time": 14.438,
+            "energy": 3000.123,
+            "max_power": 300,
+            "metric": 0.55,
+            "current_epoch": 98,
+        },
+    )
+    assert (
+        response.status_code == 200
+        and response.json()["converged"] == True
+        and response.json()["stop_train"] == True
+    )
 
 
-# @pytest.mark.anyio
-# def test_report(client):
-#     # @app.post("/jobs/report")
-#     # job_id: UUID
-#     # batch_size: int
-#     # cost: float
-#     # converged: bool | None = None  # for pruning stage
-#     response = client.post("/jobs", json=fake_job)
-#     assert response.status_code == 201
+@pytest.mark.anyio
+def test_predict_report_sequence(client):
+    cur_default_bs = fake_job["default_batch_size"]
 
-#     response = client.get(
-#         "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
-#     )
-#     assert response.status_code == 200
-#     assert response.json() == 1024
+    # Previous default batch size is converged
+    for trial in range(1, fake_job["num_pruning_rounds"] + 1):
+        idx = fake_job["batch_sizes"].index(cur_default_bs)
+        down = sorted(fake_job["batch_sizes"][: idx + 1], reverse=True)
+        up = sorted(fake_job["batch_sizes"][idx + 1 :])
 
-#     # Converged within max epoch => successful training
-#     response = client.post(
-#         "/jobs/report",
-#         json={
-#             "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-#             "batch_size": 1024,
-#             "time": "14.438",
-#             "energy": 3000.123,
-#             "max_power": 300,
-#             "metric": 0.55,
-#             "current_epoch": 98,
-#         },
-#     )
-#     assert (
-#         response.status_code == 200
-#         and response.json()["converged"] == True
-#         and response.json()["stop_train"] == True
-#     )
+        print("Exploration space:", [down, up])
+        for bs_list in [down, up]:
+            for bs in bs_list:
+                if (
+                    trial == 1 and bs == cur_default_bs
+                ):  # already reported converged before
+                    continue
 
-#     # Should get 512 since the cost converged
-#     response = client.get(
-#         "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
-#     )
+                # Predict
+                response = client.get(
+                    "/jobs/batch_size",
+                    params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+                )
+                assert response.status_code == 200
+                assert response.json() == bs
 
-#     assert response.status_code == 200
-#     assert response.json() == 512
+                # Concurrent job
+                response = client.get(
+                    "/jobs/batch_size",
+                    params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+                )
+                assert response.status_code == 200
+                assert response.json() == (
+                    cur_default_bs if trial == 1 and bs == 512 else 512
+                )
 
-#     # Converge fail before after max_epoch reached => Should keep training
-#     response = client.post(
-#         "/jobs/report",
-#         json={
-#             "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-#             "batch_size": 512,
-#             "time": "16.438",
-#             "energy": 2787.123,
-#             "max_power": 300,
-#             "metric": 0.3,
-#             "current_epoch": 56,
-#         },
-#     )
+                time = 14.438
+                converged = random.choice([True, True, False])
+                if (
+                    bs == 512
+                ):  # make 512 as the best bs so that we can change the default bs to 512 next round
+                    converged = True
+                    time = 12
 
-#     assert (
-#         response.status_code == 200
-#         and response.json()["converged"] == False
-#         and response.json()["stop_train"] == False
-#     )
+                response = client.post(
+                    "/jobs/report",
+                    json={
+                        "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                        "batch_size": bs,
+                        "time": time,
+                        "energy": 3000.123,
+                        "max_power": 300,
+                        "metric": 0.55 if converged else 0.33,
+                        "current_epoch": 98 if converged else 100,
+                    },
+                )
+                assert (
+                    response.status_code == 200
+                    and response.json()["converged"] == converged
+                    and response.json()["stop_train"] == True
+                )
+                if not converged:
+                    break
 
-#     # Converge fail after max_epoch reached => Should stop training with err
-#     response = client.post(
-#         "/jobs/report",
-#         json={
-#             "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-#             "batch_size": 512,
-#             "time": "16.438",
-#             "energy": 2787.123,
-#             "max_power": 300,
-#             "metric": 0.3,
-#             "current_epoch": 100,
-#         },
-#     )
-#     assert (
-#         response.status_code == 200
-#         and response.json()["converged"] == False
-#         and response.json()["stop_train"] == True
-#     )
-
-#     response = client.get(
-#         "/jobs/batch_size", params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"}
-#     )
-
-#     assert response.status_code == 200
-#     assert response.json() == 2048
+        cur_default_bs = 512

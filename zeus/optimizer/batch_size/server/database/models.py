@@ -5,8 +5,9 @@ ORM models
 
 import enum
 from datetime import datetime
-from typing import List
+from math import isclose
 from uuid import UUID
+import numpy as np
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -17,13 +18,17 @@ from sqlalchemy import (
     Integer,
     Uuid,
 )
+from sqlalchemy.ext.asyncio.session import AsyncAttrs
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
+from sqlalchemy.sql.sqltypes import VARCHAR
+
 
 from zeus.optimizer.batch_size.common import JobSpec
+from zeus.util.metric import zeus_cost
 
 
-class Base(DeclarativeBase):
+class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 
@@ -31,7 +36,7 @@ class Job(Base):
     __tablename__ = "Job"
 
     job_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    default_batch_size: Mapped[int] = mapped_column(Integer)
+    default_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
     high_is_better_metric: Mapped[bool] = mapped_column(Boolean, default=True)
     eta_knob: Mapped[float] = mapped_column(Float, default=0.5)
     beta_knob: Mapped[float] = mapped_column(Float, default=2.0)
@@ -40,13 +45,26 @@ class Job(Base):
     num_pruning_rounds: Mapped[int] = mapped_column(Integer, default=2)
     window_size: Mapped[int] = mapped_column(Integer, default=0)
 
+    max_power: Mapped[float] = mapped_column(Float, nullable=False)
+    number_of_gpus: Mapped[int] = mapped_column(Integer, nullable=False)
+    gpu_model: Mapped[str] = mapped_column(VARCHAR(length=30), nullable=False)
+
     mab_prior_mean: Mapped[float] = mapped_column(Float, default=0.0)
     mab_prior_precision: Mapped[float] = mapped_column(Float, default=0.0)
     mab_seed: Mapped[int] = mapped_column(Integer, default=123456)
     mab_num_exploration: Mapped[int] = mapped_column(Integer, default=2)
 
-    batch_sizes: Mapped[List["BatchSize"]] = relationship()
-    arm_states: Mapped[List["GaussianTsArmState"]] = relationship()
+    exp_default_batch_size: Mapped[int] = mapped_column(Integer, default=0)
+
+    batch_sizes: Mapped[list["BatchSize"]] = relationship(
+        order_by="BatchSize.batch_size.asc()",
+        lazy="joined",
+        # https://stackoverflow.com/questions/74252768/missinggreenlet-greenlet-spawn-has-not-been-called
+        # https://docs.sqlalchemy.org/en/14/orm/loading_relationships.html#relationship-loading-techniques
+    )
+    arm_states: Mapped[list["GaussianTsArmState"]] = relationship(
+        order_by="GaussianTsArmState.batch_size.asc()", lazy="joined"
+    )
 
     def populate_from_job_spec(self, jobSpec: JobSpec):
         self.job_id = jobSpec.job_id
@@ -62,8 +80,37 @@ class Job(Base):
         self.mab_prior_precision = jobSpec.mab_setting.prior_precision
         self.mab_seed = jobSpec.mab_setting.seed
         self.mab_num_exploration = jobSpec.mab_setting.num_exploration
+        self.number_of_gpus = jobSpec.number_of_gpus
+        self.max_power = jobSpec.max_power
+        self.gpu_model = jobSpec.gpu_model
+        self.exp_default_batch_size = jobSpec.default_batch_size
+
+    def get_min_cost(self) -> tuple[float, int]:
+        """
+        Get min cost with batch size. If no trials have done, return default bs with INF cost
+        """
+        min_cost = np.inf
+        best_bs = self.default_batch_size
+        # If no measurements available, give default bs
+        for bs in self.batch_sizes:
+            for measurement in bs.measurements:
+                cur_cost = zeus_cost(
+                    measurement.energy,
+                    measurement.time,
+                    self.eta_knob,
+                    self.max_power,
+                )
+                if (
+                    (not isclose(min_cost, cur_cost))
+                    and min_cost > cur_cost
+                    and measurement.converged
+                ):
+                    min_cost = cur_cost
+                    best_bs = bs.batch_size
+        return (min_cost, best_bs)
 
     def equal_to(self, jobSpec: JobSpec) -> bool:
+        bss = [bs.batch_size for bs in self.batch_sizes]
         return (
             self.job_id == jobSpec.job_id
             and self.default_batch_size == jobSpec.default_batch_size
@@ -78,26 +125,61 @@ class Job(Base):
             and self.mab_prior_precision == jobSpec.mab_setting.prior_precision
             and self.mab_seed == jobSpec.mab_setting.seed
             and self.mab_num_exploration == jobSpec.mab_setting.num_exploration
+            and self.max_power == jobSpec.max_power
+            and self.gpu_model == jobSpec.gpu_model
+            and self.number_of_gpus == jobSpec.number_of_gpus
+            and bss == jobSpec.batch_sizes
         )
 
+    def __str__(self) -> str:
+        instance_dict = {
+            column.name: getattr(self, column.name) for column in self.__table__.columns
+        }
+        instance_dict["batch_sizes"] = [str(bs) for bs in self.batch_sizes]
+        instance_dict["arm_states"] = [str(arm) for arm in self.arm_states]
+        return str(instance_dict)
 
-class State(enum.Enum):
-    Exploring = "Exploring"
-    Converged = "Converged"
-    Unconverged = "Unconverged"
-    Unexplored = "Unexplored"
 
-
-class BatchSize(Base):  # TODO: better naming?
+class BatchSize(Base):
     __tablename__ = "BatchSize"
     job_id: Mapped[UUID] = mapped_column(ForeignKey("Job.job_id"), primary_key=True)
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
-    exploration_state: Mapped[State] = mapped_column(
-        Enum(State), default=State.Unexplored
-    )
-    exploration_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    measurements: Mapped[List["Measurement"]] = relationship()
+    explorations: Mapped[list["ExplorationState"]] = relationship(
+        lazy="joined", order_by="ExplorationState.trial_number.asc()"
+    )
+    measurements: Mapped[list["Measurement"]] = relationship(lazy="joined")
+
+    def __str__(self) -> str:
+        instance_dict = {
+            column.name: getattr(self, column.name) for column in self.__table__.columns
+        }
+        instance_dict["explorations"] = [str(exp) for exp in self.explorations]
+        instance_dict["measurements"] = [str(m) for m in self.measurements]
+        return str(instance_dict)
+
+
+class ExplorationState(Base):
+    class State(enum.Enum):
+        Exploring = "Exploring"
+        Converged = "Converged"
+        Unconverged = "Unconverged"
+
+    __tablename__ = "ExplorationState"
+    job_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
+    trial_number: Mapped[int] = mapped_column(Integer, nullable=False, primary_key=True)
+    state: Mapped[State] = mapped_column(Enum(State), default=State.Exploring)
+    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    ForeignKeyConstraint(
+        [job_id, batch_size], [BatchSize.job_id, BatchSize.batch_size]
+    ),
+
+    def __str__(self) -> str:
+        instance_dict = {
+            column.name: getattr(self, column.name) for column in self.__table__.columns
+        }
+        return str(instance_dict)
 
 
 class GaussianTsArmState(Base):
@@ -108,6 +190,12 @@ class GaussianTsArmState(Base):
     arm_param_prec: Mapped[float] = mapped_column(Float, default=0.0)
     reward_precision: Mapped[float] = mapped_column(Float, default=0.0)
     arm_num_observations: Mapped[float] = mapped_column(Float, default=0.0)
+
+    def __str__(self) -> str:
+        instance_dict = {
+            column.name: getattr(self, column.name) for column in self.__table__.columns
+        }
+        return str(instance_dict)
 
 
 class Measurement(Base):
@@ -126,3 +214,9 @@ class Measurement(Base):
     ForeignKeyConstraint(
         [job_id, batch_size], [BatchSize.job_id, BatchSize.batch_size]
     ),
+
+    def __str__(self) -> str:
+        instance_dict = {
+            column.name: getattr(self, column.name) for column in self.__table__.columns
+        }
+        return str(instance_dict)

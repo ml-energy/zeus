@@ -10,6 +10,7 @@ from zeus.optimizer.batch_size.common import (
     ReportResponse,
     TrainingResult,
     ZeusBSOJobSpecMismatch,
+    ZeusBSOOperationOrderError,
     ZeusBSOValueError,
 )
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
@@ -42,6 +43,14 @@ async def conflict_err_handler(request: Request, exc: ZeusBSOJobSpecMismatch):
 
 @app.exception_handler(ZeusBSOValueError)
 async def value_err_handler(request: Request, exc: ZeusBSOValueError):
+    return JSONResponse(
+        status_code=400,
+        content={"message": exc.message},
+    )
+
+
+@app.exception_handler(ZeusBSOOperationOrderError)
+async def value_err_handler(request: Request, exc: ZeusBSOOperationOrderError):
     return JSONResponse(
         status_code=400,
         content={"message": exc.message},
@@ -93,16 +102,17 @@ async def register_job(
 async def predict(
     job_id: UUID,
     zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
+    db_session: AsyncSession = Depends(get_db_session),
 ) -> int:
     """Endpoint for users to register a new job and receive batch size."""
-    return zeus_server.predict(job_id)
+    return await zeus_server.predict(db_session, job_id)
 
 
-@app.post(REPORT_RESULT_URL)
+@app.post(REPORT_RESULT_URL, response_model=ReportResponse)
 async def report(
     result: TrainingResult,
     zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
+    db_session: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
     """Endpoint for users to register a new job and receive batch size."""
-    print(result)
-    return zeus_server.report(result)
+    return await zeus_server.report(db_session, result)
