@@ -18,7 +18,6 @@ from zeus.optimizer.batch_size.common import (
 )
 from zeus.optimizer.batch_size.server.database.dbapi import DBapi
 from zeus.optimizer.batch_size.server.database.models import ExplorationState, Job
-from zeus.optimizer.batch_size.server.explore_1 import PruningExploreManagerr
 from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
 from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.util.metric import zeus_cost
@@ -89,19 +88,6 @@ class ZeusBatchSizeOptimizer:
 
         # Create job
         registered_job = await DBapi.create_job(db, job)
-
-        self.jobs[job.job_id] = registered_job
-        self.min_costs[job.job_id] = registered_job.get_min_cost()[
-            0
-        ]  # initialize it to inf.
-
-        # Set internal states.
-        self.exp_manager[job.job_id] = PruningExploreManager(
-            job.batch_sizes,
-            job.default_batch_size,
-            job.num_pruning_rounds,
-        )
-        self.history[job.job_id] = []
         if self.verbose:
             self._log(f"Registered {job.job_id}")
 
@@ -116,7 +102,7 @@ class ZeusBatchSizeOptimizer:
 
         print(str(job))
 
-        batch_size = await PruningExploreManagerr.next_batch_size(
+        batch_size = await PruningExploreManager.next_batch_size(
             db,
             job_id,
             job.batch_sizes,
@@ -206,7 +192,7 @@ class ZeusBatchSizeOptimizer:
                     f"Current batch_size({result.batch_size}) is not in the batch_size list({[bs.batch_size for bs in job.batch_sizes]})"
                 )
 
-            await PruningExploreManagerr.report_batch_size_result(
+            await PruningExploreManager.report_batch_size_result(
                 db, bs, converged, cost, cost < cost_ub
             )
 
