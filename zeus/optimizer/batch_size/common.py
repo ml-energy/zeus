@@ -16,8 +16,9 @@ class MabSetting(BaseModel):
 
     prior_mean: float = 0.0
     prior_precision: float = 0.0
-    seed: int = 123456
+    seed: int | None = None
     num_exploration: int = 1
+    random_generator_state: str | None = None
 
 
 class JobSpec(BaseModel):
@@ -33,7 +34,7 @@ class JobSpec(BaseModel):
     high_is_better_metric: bool = True
     max_epochs: int = 100
     num_pruning_rounds: int = 2
-    window_size: int = 0
+    window_size: int = 10
     mab_setting: MabSetting = MabSetting()
 
     max_power: float

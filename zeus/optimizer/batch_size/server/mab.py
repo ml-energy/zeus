@@ -15,10 +15,16 @@
 """Multi-Armed Bandit implementations."""
 
 from __future__ import annotations
+from datetime import datetime
+import json
 
 import warnings
 
 import numpy as np
+from numpy.random import Generator as np_Generator
+
+from zeus.optimizer.batch_size.common import MabSetting, ZeusBSOValueError
+from zeus.optimizer.batch_size.server.database.models import GaussianTsArmState
 
 
 class GaussianTS:
@@ -30,12 +36,6 @@ class GaussianTS:
 
     def __init__(
         self,
-        arms: list[int],
-        reward_precision: list[float] | float,
-        prior_mean: float = 0.0,
-        prior_precision: float = 0.0,
-        num_exploration: int = 1,
-        seed: int = 123456,
         verbose: bool = True,
     ) -> None:
         """Initialze the object.
@@ -53,49 +53,15 @@ class GaussianTS:
             verbose: Whether to print out what's going on.
         """
         self.name = "GaussianTS"
-
-        self.arms = arms
-        self.prior_mean = prior_mean
-        self.prior_prec = prior_precision
-        self.num_exploration = num_exploration
-        self.seed = seed
-        self.rng = np.random.default_rng(seed)
         self.verbose = verbose
 
-        # Set the precision of the reward distribution of each arm.
-        if isinstance(reward_precision, list):
-            self.arm_reward_prec = dict(zip(arms, reward_precision))
-        else:
-            self.arm_reward_prec = {arm: reward_precision for arm in arms}
-
-        # Initialze the parameter distribution with the prior parameters.
-        self.arm_param_mean = dict.fromkeys(arms, prior_mean)
-        self.arm_param_prec = dict.fromkeys(arms, prior_precision)
-
-        # Track how many times an arm reward has been observed.
-        self.arm_num_observations = dict.fromkeys(arms, 0)
-
-    # def fit(
-    #     self,
-    #     decisions: list[int] | np.ndarray,
-    #     rewards: list[float] | np.ndarray,
-    #     reset: bool,
-    # ) -> None:
-    #     """Fit the bandit on the given list of observations.
-
-    #     Args:
-    #         decisions: A list of arms chosen.
-    #         rewards: A list of rewards that resulted from choosing the arms in `decisions`.
-    #         reset: Whether to reset all arms.
-    #     """
-    #     decisions_arr = np.array(decisions)
-    #     rewards_arr = np.array(rewards)
-
-    #     # Fit all arms.
-    #     for arm in self.arms:
-    #         self.fit_arm(arm, rewards_arr[decisions_arr == arm], reset)
-
-    def fit_arm(self, arm: int, rewards: np.ndarray, reset: bool) -> None:
+    def fit_arm(
+        self,
+        mab_setting: MabSetting,
+        arm_state: GaussianTsArmState,
+        rewards: np.ndarray,
+        reset: bool,
+    ) -> None:
         """Update the parameter distribution for one arm.
 
         Reference: <https://en.wikipedia.org/wiki/Conjugate_prior>
@@ -106,17 +72,17 @@ class GaussianTS:
             reset: Whether to reset the parameters of the arm before fitting.
         """
         if reset:
-            self.arm_param_mean[arm] = self.prior_mean
-            self.arm_param_prec[arm] = self.prior_prec
-            self.arm_num_observations[arm] = 0
+            arm_state.param_mean = mab_setting.prior_mean
+            arm_state.param_precision = mab_setting.prior_precision
+            arm_state.num_observations = 0
 
         if len(rewards) == 0:
             return
 
         # Read previous state.
-        reward_prec = self.arm_reward_prec[arm]
-        mean = self.arm_param_mean[arm]
-        prec = self.arm_param_prec[arm]
+        reward_prec = arm_state.reward_precision
+        mean = arm_state.param_mean
+        prec = arm_state.param_precision
 
         # Compute the parameters of the posterior distribution.
         # The reward distribution's precision is given as infinite only when we
@@ -130,33 +96,56 @@ class GaussianTS:
             new_mean = (prec * mean + reward_prec * rewards.sum()) / new_prec
 
         # Update state.
-        self.arm_param_mean[arm] = new_mean
-        self.arm_param_prec[arm] = new_prec
-        self.arm_num_observations[arm] += len(rewards)
+        arm_state.param_mean = new_mean
+        arm_state.param_precision = new_prec
+        arm_state.num_observations += len(rewards)
 
-    def predict(self) -> int:
+    def predict(
+        self,
+        mab_setting: MabSetting,
+        arms: list[GaussianTsArmState],
+    ) -> int:
         """Return the arm with the largest sampled expected reward."""
+        rng = np.random.default_rng(int(datetime.now().timestamp()))
+
+        if mab_setting.seed != None:
+            if mab_setting.random_generator_state == None:
+                raise ZeusBSOValueError(
+                    "MAB seed is set but state is unknown. Need to re-register the job"
+                )
+            state = json.loads(mab_setting.random_generator_state)
+            rng.__setstate__(state)
+
+        arm_dict = {arm.batch_size: arm for arm in arms}
         # Exploration-only phase.
         # Order is random considering concurrent bandit scenarios.
-        arrms = np.array(self.arms)
-        for arm in self.rng.choice(arrms, len(arrms), replace=False):
-            if self.arm_num_observations[arm] < self.num_exploration:
+        arrms = np.array([arm.batch_size for arm in arms])
+
+        for arm in rng.choice(arrms, len(arrms), replace=False):
+            if arm_dict[arm].num_observations < mab_setting.num_exploration:
                 if self.verbose:
                     print(f"[{self.name}] Explore arm {arm}.")
                 return arm
 
         # Thomopson Sampling phase.
-        expectations = self.predict_expectations()
+        expectations = self._predict_expectations(
+            arms, rng, mab_setting.prior_precision
+        )
         if self.verbose:
             print(f"[{self.name}] Sampled mean rewards:")
             for arm, sample in expectations.items():
                 print(
-                    f"[{self.name}] Arm {arm:4d}: mu ~ N({self.arm_param_mean[arm]:.2f}, "
-                    f"{1/self.arm_param_prec[arm]:.2f}) -> {sample:.2f}"
+                    f"[{self.name}] Arm {arm:4d}: mu ~ N({arm_dict[arm].param_mean:.2f}, "
+                    f"{1/arm_dict[arm].param_precision:.2f}) -> {sample:.2f}"
                 )
         return max(expectations, key=expectations.get)  # type: ignore
 
-    def predict_expectations(self) -> dict[int, float]:
+    def _predict_expectations(
+        self,
+        arms: list[GaussianTsArmState],
+        rng: np_Generator,
+        prior_prec: float,
+    ) -> dict[int, float]:
         """Sample the expected reward for each arm.
 
         Assumes that each arm has been explored at least once. Otherwise,
@@ -166,13 +155,13 @@ class GaussianTS:
             A mapping from every arm to their sampled expected reward.
         """
         expectations = {}
-        for arm in self.arms:
-            mean = self.arm_param_mean[arm]
-            prec = self.arm_param_prec[arm]
-            if prec == self.prior_prec:
+        for arm in arms:
+            if arm.param_precision == prior_prec:
                 warnings.warn(
-                    f"predict_expectations called when arm '{arm}' is cold.",
+                    f"predict_expectations called when arm '{arm.batch_size}' is cold.",
                     stacklevel=1,
                 )
-            expectations[arm] = self.rng.normal(mean, np.sqrt(np.reciprocal(prec)))
+            expectations[arm.batch_size] = rng.normal(
+                arm.param_mean, np.sqrt(np.reciprocal(arm.param_precision))
+            )
         return expectations

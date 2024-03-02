@@ -3,8 +3,10 @@ ORM models
 
 """
 
+import asyncio
 import enum
 from datetime import datetime
+import json
 from math import isclose
 from uuid import UUID
 import numpy as np
@@ -24,7 +26,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.sqltypes import VARCHAR
 
 
-from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.common import JobSpec, MabSetting
 from zeus.util.metric import zeus_cost
 
 
@@ -43,7 +45,7 @@ class Job(Base):
     target_metric: Mapped[float] = mapped_column(Float, default=0.5)
     max_epochs: Mapped[int] = mapped_column(Integer, default=100)
     num_pruning_rounds: Mapped[int] = mapped_column(Integer, default=2)
-    window_size: Mapped[int] = mapped_column(Integer, default=0)
+    window_size: Mapped[int] = mapped_column(Integer, default=10)
 
     max_power: Mapped[float] = mapped_column(Float, nullable=False)
     number_of_gpus: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -51,19 +53,22 @@ class Job(Base):
 
     mab_prior_mean: Mapped[float] = mapped_column(Float, default=0.0)
     mab_prior_precision: Mapped[float] = mapped_column(Float, default=0.0)
-    mab_seed: Mapped[int] = mapped_column(Integer, default=123456)
     mab_num_exploration: Mapped[int] = mapped_column(Integer, default=2)
+    mab_seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mab_random_generator_state: Mapped[str | None] = mapped_column(
+        VARCHAR(length=300), nullable=True
+    )
 
     exp_default_batch_size: Mapped[int] = mapped_column(Integer, default=0)
 
     batch_sizes: Mapped[list["BatchSize"]] = relationship(
-        order_by="BatchSize.batch_size.asc()",
-        lazy="joined",
+        order_by="BatchSize.batch_size.asc()"
         # https://stackoverflow.com/questions/74252768/missinggreenlet-greenlet-spawn-has-not-been-called
         # https://docs.sqlalchemy.org/en/14/orm/loading_relationships.html#relationship-loading-techniques
     )
     arm_states: Mapped[list["GaussianTsArmState"]] = relationship(
-        order_by="GaussianTsArmState.batch_size.asc()", lazy="joined"
+        lazy="joined",
+        order_by="GaussianTsArmState.batch_size.asc()",
     )
 
     def populate_from_job_spec(self, jobSpec: JobSpec):
@@ -76,23 +81,34 @@ class Job(Base):
         self.max_epochs = jobSpec.max_epochs
         self.num_pruning_rounds = jobSpec.num_pruning_rounds
         self.window_size = jobSpec.window_size
+
         self.mab_prior_mean = jobSpec.mab_setting.prior_mean
         self.mab_prior_precision = jobSpec.mab_setting.prior_precision
         self.mab_seed = jobSpec.mab_setting.seed
         self.mab_num_exploration = jobSpec.mab_setting.num_exploration
+        if self.mab_seed != None:
+            rng = np.random.default_rng(jobSpec.mab_setting.seed)
+            self.mab_random_generator_state = json.dumps(rng.__getstate__())
+
         self.number_of_gpus = jobSpec.number_of_gpus
         self.max_power = jobSpec.max_power
         self.gpu_model = jobSpec.gpu_model
         self.exp_default_batch_size = jobSpec.default_batch_size
 
-    def get_min_cost(self) -> tuple[float, int]:
+    async def get_min_cost(self) -> tuple[float, int]:
         """
         Get min cost with batch size. If no trials have done, return default bs with INF cost
         """
         min_cost = np.inf
         best_bs = self.default_batch_size
+        # TODO: CHange this to windowed measurements!
+        await asyncio.gather(
+            *[bs.awaitable_attrs.measurements for bs in self.batch_sizes]
+        )
+
         # If no measurements available, give default bs
         for bs in self.batch_sizes:
+            # await bs.awaitable_attrs.measurements
             for measurement in bs.measurements:
                 cur_cost = zeus_cost(
                     measurement.energy,
@@ -109,7 +125,8 @@ class Job(Base):
                     best_bs = bs.batch_size
         return (min_cost, best_bs)
 
-    def equal_to(self, jobSpec: JobSpec) -> bool:
+    async def equal_to(self, jobSpec: JobSpec) -> bool:
+        await self.awaitable_attrs.batch_sizes
         bss = [bs.batch_size for bs in self.batch_sizes]
         return (
             self.job_id == jobSpec.job_id
@@ -131,6 +148,15 @@ class Job(Base):
             and bss == jobSpec.batch_sizes
         )
 
+    def get_mab_setting(self) -> MabSetting:
+        return MabSetting(
+            prior_mean=self.mab_prior_mean,
+            prior_precision=self.mab_prior_precision,
+            seed=self.mab_seed,
+            num_exploration=self.mab_num_exploration,
+            random_generator_state=self.mab_random_generator_state,
+        )
+
     def __str__(self) -> str:
         instance_dict = {
             column.name: getattr(self, column.name) for column in self.__table__.columns
@@ -146,9 +172,11 @@ class BatchSize(Base):
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     explorations: Mapped[list["ExplorationState"]] = relationship(
-        lazy="joined", order_by="ExplorationState.trial_number.asc()"
+        order_by="ExplorationState.trial_number.asc()",
     )
-    measurements: Mapped[list["Measurement"]] = relationship(lazy="joined")
+    measurements: Mapped[list["Measurement"]] = relationship(
+        order_by="Measurement.timestamp.asc()"
+    )
 
     def __str__(self) -> str:
         instance_dict = {
@@ -186,10 +214,10 @@ class GaussianTsArmState(Base):
     __tablename__ = "GaussianTsArmState"
     job_id: Mapped[UUID] = mapped_column(ForeignKey("Job.job_id"), primary_key=True)
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)  # arm
-    arm_param_mean: Mapped[float] = mapped_column(Float, default=0.0)
-    arm_param_prec: Mapped[float] = mapped_column(Float, default=0.0)
+    param_mean: Mapped[float] = mapped_column(Float, default=0.0)
+    param_precision: Mapped[float] = mapped_column(Float, default=0.0)
     reward_precision: Mapped[float] = mapped_column(Float, default=0.0)
-    arm_num_observations: Mapped[float] = mapped_column(Float, default=0.0)
+    num_observations: Mapped[int] = mapped_column(Integer, default=0)
 
     def __str__(self) -> str:
         instance_dict = {

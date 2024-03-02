@@ -88,6 +88,7 @@ async def register_job(
 ) -> JobSpec:
     """Endpoint for users to register a new job and receive batch size."""
     res = await zeus_server.register_job(job, db_session)
+    await db_session.commit()
     if res:
         response.status_code = status.HTTP_201_CREATED
     else:
@@ -105,7 +106,9 @@ async def predict(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> int:
     """Endpoint for users to register a new job and receive batch size."""
-    return await zeus_server.predict(db_session, job_id)
+    res = await zeus_server.predict(db_session, job_id)
+    await db_session.commit()
+    return res
 
 
 @app.post(REPORT_RESULT_URL, response_model=ReportResponse)
@@ -115,4 +118,16 @@ async def report(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
     """Endpoint for users to register a new job and receive batch size."""
-    return await zeus_server.report(db_session, result)
+    res = await zeus_server.report(db_session, result)
+    await db_session.commit()
+    return res
+
+
+@app.get("/test")
+async def test(
+    job_id: UUID,
+    zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
+    db_session: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Endpoint for users to register a new job and receive batch size."""
+    return await zeus_server.test(db_session, job_id)

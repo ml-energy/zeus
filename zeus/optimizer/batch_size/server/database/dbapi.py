@@ -1,13 +1,13 @@
 from uuid import UUID
 from build.lib.zeus.analyze import energy
 from build.lib.zeus.optimizer import batch_size
-from sqlalchemy import update, and_
 
 from sqlalchemy.orm import session
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, insert, update, and_
+from sqlalchemy.orm import joinedload
 
 from zeus.optimizer.batch_size.common import JobSpec, TrainingResult
 from zeus.optimizer.batch_size.server.database.models import (
@@ -24,22 +24,14 @@ from zeus.optimizer.batch_size.server.database.models import (
 class DBapi(object):
 
     @staticmethod
-    async def create_job(db: AsyncSession, jobSpec: JobSpec) -> Job:
+    def add_job(db: AsyncSession, jobSpec: JobSpec) -> None:
         """Create job and return the job if successful. If job already exists, return None"""
-        try:
-            job_obj = Job()
-            job_obj.populate_from_job_spec(jobSpec)
-            db.add(job_obj)
-            for bs in jobSpec.batch_sizes:
-                bs_obj = BatchSize(job_id=jobSpec.job_id, batch_size=bs)
-                db.add(bs_obj)  # Create each batch size
-            await db.commit()
-            await db.refresh(job_obj)
-            return job_obj
-        except Exception as err:
-            await db.rollback()
-            DBapi._log(f"create_job: {str(err)}")
-            raise err
+        job_obj = Job()
+        job_obj.populate_from_job_spec(jobSpec)
+        for bs in jobSpec.batch_sizes:
+            job_obj.batch_sizes.append(BatchSize(job_id=jobSpec.job_id, batch_size=bs))
+        db.add(job_obj)
+        return job_obj
 
     @staticmethod
     async def get_job(db: AsyncSession, job_id: UUID) -> Job | None:
@@ -55,32 +47,57 @@ class DBapi(object):
             raise err
 
     @staticmethod
+    async def get_job_with_explorations(db: AsyncSession, job_id: UUID) -> Job | None:
+        try:
+            stmt = (
+                select(Job)
+                .where(Job.job_id == job_id)
+                .options(joinedload(Job.batch_sizes).joinedload(BatchSize.explorations))
+            )
+            return await db.scalar(stmt)
+        except Exception as err:
+            await db.rollback()
+            DBapi._log(f"get_job: {str(err)}")
+            raise err
+
+    @staticmethod
+    async def get_measurements_of_bs(
+        db: AsyncSession, job_id: UUID, window_size: int, bs: int
+    ) -> list[Measurement]:
+        try:
+            if window_size == 0:
+                return []
+            stmt = (
+                select(Measurement)
+                .where(and_(Measurement.job_id == job_id, Measurement.batch_size == bs))
+                .order_by(Measurement.timestamp.desc())
+                .limit(window_size)
+            )
+            return (await db.scalars(stmt)).all()
+        except Exception as err:
+            await db.rollback()
+            DBapi._log(f"get_measurements_of_bs: {str(err)}")
+            raise err
+
+    @staticmethod
     async def delete_job(db: AsyncSession, job: JobSpec):
         pass
 
     @staticmethod
-    async def add_exploration(
+    def add_exploration(
         db: AsyncSession,
         job_id: UUID,
         batch_size: int,
         trial_number: int,
         state: ExplorationState.State,
     ) -> None:
-        try:
-            exp = ExplorationState(
-                job_id=job_id,
-                batch_size=batch_size,
-                trial_number=trial_number,
-                state=state,
-            )
-            db.add(exp)
-            await db.commit()
-        except Exception as err:
-            await db.rollback()
-            DBapi._log(
-                f"add_exploration(job_id={job_id}, bs={batch_size}, trial_number={trial_number}, state={state}): {str(err)}"
-            )
-            raise err
+        exp = ExplorationState(
+            job_id=job_id,
+            batch_size=batch_size,
+            trial_number=trial_number,
+            state=state,
+        )
+        db.add(exp)
 
     @staticmethod
     async def update_exploration(
@@ -90,7 +107,6 @@ class DBapi(object):
         trial_number: int,
         state: ExplorationState.State,
         cost: float,
-        commit: bool = True,
     ) -> None:
         try:
             stmt = (
@@ -105,68 +121,68 @@ class DBapi(object):
                 .values(state=state, cost=cost)
             )
             await db.execute(stmt)
-            if commit:
-                await db.commit()
         except Exception as err:
             await db.rollback()
             DBapi._log(f"update_exploration: {str(err)}")
             raise err
 
     @staticmethod
-    def add_arm(db: AsyncSession, job_id: UUID, batch_size: int) -> None:
-        db.add(GaussianTsArmState(job_id=job_id, batch_size=batch_size))
+    def add_arms(db: AsyncSession, arms: list[GaussianTsArmState]) -> None:
+        db.add_all(arms)
 
     @staticmethod
     def add_measurement(
         db: AsyncSession, result: TrainingResult, converged: bool
     ) -> None:
-        measurement = Measurement(
-            job_id=result.job_id,
-            batch_size=result.batch_size,
-            time=result.time,
-            energy=result.energy,
-            converged=converged,
+        db.add(
+            Measurement(
+                job_id=result.job_id,
+                batch_size=result.batch_size,
+                time=result.time,
+                energy=result.energy,
+                converged=converged,
+            )
         )
-        db.add(measurement)
-        return
 
     @staticmethod
     async def update_exp_default_bs(
-        db: AsyncSession, job_id: UUID, exp_default_bs: int, commit: bool = True
+        db: AsyncSession, job_id: UUID, exp_default_bs: int
     ) -> None:
         try:
             stmt = (
                 update(Job)
-                .where(and_(Job.job_id == job_id))
+                .where(Job.job_id == job_id)
                 .values(exp_default_batch_size=exp_default_bs)
             )
             await db.execute(stmt)
-            if commit:
-                await db.commit()
         except Exception as err:
             await db.rollback()
             DBapi._log(f"update_exp_default_bs: {str(err)}")
             raise err
 
     @staticmethod
-    async def get_history(db: AsyncSession, job_id: UUID):
-        pass
-
-    @staticmethod
-    async def update_exploration_state(db: AsyncSession):
-        pass
-
-    @staticmethod
-    async def upsert_arm_state(db: AsyncSession):
-        pass
-
-    @staticmethod
-    async def get_arm_state(db: AsyncSession):
-        pass
-
-    @staticmethod
-    async def get_measurement(db: AsyncSession):
-        pass
+    async def update_arm_state(db: AsyncSession, arm: GaussianTsArmState) -> None:
+        try:
+            stmt = (
+                update(GaussianTsArmState)
+                .where(
+                    and_(
+                        GaussianTsArmState.job_id == arm.job_id,
+                        GaussianTsArmState.batch_size == arm.batch_size,
+                    )
+                )
+                .values(
+                    num_observations=arm.num_observations,
+                    param_mean=arm.param_mean,
+                    param_precision=arm.param_precision,
+                    reward_precision=arm.reward_precision,
+                )
+            )
+            await db.execute(stmt)
+        except Exception as err:
+            await db.rollback()
+            DBapi._log(f"update_exp_default_bs: {str(err)}")
+            raise err
 
     @staticmethod
     def _log(message: str):

@@ -44,9 +44,37 @@ class PruningExploreManager(object):
                 f"Default bs({default_batch_size}) is not in batch_size list({[bs.batch_size for bs in batch_sizes]})"
             )
 
-        down = batch_sizes[: idx + 1]
+        exp_bs: list[BatchSize] = []
+
+        if trial > 1:
+            for bs in batch_sizes:
+                last_trial_exp = next(
+                    (exp for exp in bs.explorations if exp.trial_number == trial - 1),
+                    None,
+                )
+                if (
+                    last_trial_exp is not None
+                    and last_trial_exp.state == ExplorationState.State.Converged
+                ):
+                    exp_bs.append(bs)
+            idx = next(
+                (
+                    i
+                    for i, bs in enumerate(exp_bs)
+                    if bs.batch_size == default_batch_size
+                ),
+                None,
+            )
+            if idx == None:
+                raise ZeusBSOValueError(
+                    f"Default bs({default_batch_size}) is not in converged batch_size list from last round({[bs.batch_size for bs in exp_bs]})"
+                )
+        else:
+            exp_bs = batch_sizes
+
+        down = exp_bs[: idx + 1]
         down.reverse()
-        up = batch_sizes[idx + 1 :]
+        up = exp_bs[idx + 1 :]
 
         PruningExploreManager._log(
             f"Exploration space: {[[bs.batch_size for bs in down],[bs.batch_size for bs in up]]}"
@@ -99,20 +127,19 @@ class PruningExploreManager(object):
             if next_batch_size == -1:
                 # this trial is over. Need to go to next round!
                 trial += 1
-                PruningExploreManager._log(f"Going to next trial({trial})")
                 if trial > num_pruning_rounds:
                     # Exceeded pruning rounds, go to MAB stage
+                    PruningExploreManager._log(f"Pruning over. go to MAB")
                     return Stage.MAB
+                PruningExploreManager._log(f"Going to next trial({trial})")
                 if best_bs != default_batch_size:
                     PruningExploreManager._log(
                         f"Update default_bs to {best_bs} from {default_batch_size}"
                     )
-                    await DBapi.update_exp_default_bs(
-                        db, job_id, best_bs, commit=False
-                    )  # defer commit to return
+                    await DBapi.update_exp_default_bs(db, job_id, best_bs)
                 next_batch_size = best_bs
 
-        await DBapi.add_exploration(
+        DBapi.add_exploration(
             db,
             job_id,
             next_batch_size,
@@ -152,7 +179,6 @@ class PruningExploreManager(object):
             PruningExploreManager._log(
                 f"Couldn't find issuing {bs} for exploration. Should be a concurrent job."
             )
-            await db.commit()  # Commit what is in the session
             return
 
         state = (
@@ -162,13 +188,7 @@ class PruningExploreManager(object):
         )
         PruningExploreManager._log(f"Update exploration for {bs.batch_size}.")
         await DBapi.update_exploration(
-            db,
-            bs.job_id,
-            bs.batch_size,
-            trial_number,
-            state,
-            cost,
-            commit=True,
+            db, bs.job_id, bs.batch_size, trial_number, state, cost
         )
 
     @staticmethod
