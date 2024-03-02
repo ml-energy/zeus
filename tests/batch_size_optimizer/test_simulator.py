@@ -9,6 +9,11 @@ from zeus.optimizer.batch_size.server.router import app
 from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
 from zeus.simulate import Simulator
 
+"""
+TODO: Need update based on change in server
+"""
+
+
 config = {
     "gpu": "v100",
     "eta_knob": 0.5,

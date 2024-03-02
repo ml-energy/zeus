@@ -1,13 +1,9 @@
 from __future__ import annotations
-import asyncio
 
-from collections import defaultdict
-import json
 from uuid import UUID
 
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from zeus.optimizer.batch_size.common import (
     JobSpec,
     MabSetting,
@@ -15,7 +11,6 @@ from zeus.optimizer.batch_size.common import (
     Stage,
     TrainingResult,
     ZeusBSOJobSpecMismatch,
-    ZeusBSOOperationOrderError,
     ZeusBSOValueError,
 )
 from zeus.optimizer.batch_size.server.database.dbapi import DBapi
@@ -26,7 +21,6 @@ from zeus.optimizer.batch_size.server.database.models import (
     Measurement,
 )
 from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
-from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.util.metric import zeus_cost
 
@@ -81,6 +75,7 @@ class ZeusBatchSizeOptimizer:
 
         return True
 
+    # TODO: Just for testing. Erase in the future
     async def test(self, db: AsyncSession, job_id: UUID):
         tr = TrainingResult(
             job_id="3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -141,7 +136,7 @@ class ZeusBatchSizeOptimizer:
         """
         BEGIN
         1. ADD result to the measurement
-        2. Check which stage are we in - Exploration or MAB (By checking explorations and see if there is an entry with "Exploring" state)
+        2. Check which stage we are in - Exploration or MAB (By checking explorations and see if there is an entry with "Exploring" state)
             2.a IF Exploration: Report to explore_manager
             2.b IF MAB: Report to MAB (observe)
         COMMIT

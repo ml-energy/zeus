@@ -1,20 +1,19 @@
 import asyncio
-from copy import deepcopy
-import random
 from typing import AsyncIterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
 from zeus.optimizer.batch_size.server.database.db_connection import (
     DatabaseSessionManager,
     get_db_session,
 )
-
-from sqlalchemy.ext.asyncio import AsyncSession
 from zeus.optimizer.batch_size.server.database.models import Base
 from zeus.optimizer.batch_size.server.router import app
 
-
+"""
+Just for testing. Will be cleaned up later
+"""
 # https://fastapi.tiangolo.com/tutorial/testing/
 
 fake_job = {

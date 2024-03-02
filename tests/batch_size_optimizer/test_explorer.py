@@ -1,24 +1,19 @@
 import asyncio
-from copy import deepcopy
-import random
+import re
 import sys
-from typing import AsyncIterator
 import uuid
-from build.lib.zeus.optimizer.batch_size.common import TrainingResult
+from typing import AsyncIterator
 
 import pytest
+from build.lib.zeus.optimizer.batch_size.common import TrainingResult
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
 from zeus.optimizer.batch_size.server.database.db_connection import (
     DatabaseSessionManager,
     get_db_session,
 )
-
-from sqlalchemy.ext.asyncio import AsyncSession
 from zeus.optimizer.batch_size.server.database.models import Base
 from zeus.optimizer.batch_size.server.router import app
-
-
-# https://fastapi.tiangolo.com/tutorial/testing/
 
 fake_job = {
     "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -100,7 +95,19 @@ class TestPruningExploreManager:
         )
 
     # 0.5 * energy + (1 - eta_knob) * max_power * time
+    @pytest.mark.anyio
+    def register_job_with_default_bs(self, client, default_bs: int) -> str:
+        job_id = str(uuid.uuid4())
+        fake_job["job_id"] = job_id
+        fake_job["batch_sizes"] = self.batch_sizes
+        fake_job["default_batch_size"] = default_bs
 
+        response = client.post("/jobs", json=fake_job)
+        assert response.status_code == 201
+
+        return job_id
+
+    @pytest.mark.anyio
     def run_exploration(
         self,
         client,
@@ -127,23 +134,31 @@ class TestPruningExploreManager:
             assert response.json()["converged"] == exp[2]
         # Now good_bs should be equal to result!
 
+        # this will construct mab
+        response = client.get(
+            "/jobs/batch_size",
+            params={"job_id": job_id},
+        )
+        assert response.status_code == 200
+
         out, err = capsys.readouterr()
         sys.stdout.write(out)
         sys.stderr.write(err)
-        print("OUT", out)
-        print("SYS", err)
+        out.find("with arms")
+        # Capture list of arms from stdout
+        matches = re.search(r"with arms \[(.*?)\]", out)
+
+        if matches:
+            arms = [int(x) for x in matches.group(1).split(",")]
+            assert arms == result
+        else:
+            assert False, "No output found from constructing Mab"
 
     @pytest.mark.anyio
     def test_normal(self, client, capsys):
-        job_id = str(uuid.uuid4())
-        fake_job["job_id"] = job_id
-        fake_job["batch_sizes"] = self.batch_sizes
-        fake_job["default_batch_size"] = 128
-
-        response = client.post("/jobs", json=fake_job)
-        assert response.status_code == 201
-
         """Test a typical case."""
+        job_id = self.register_job_with_default_bs(client, 128)
+
         exploration = [
             (128, 10.0, True),
             (64, 9.0, True),
@@ -161,65 +176,67 @@ class TestPruningExploreManager:
         result = [32, 64, 128]
         self.run_exploration(client, capsys, job_id, exploration, result)
 
-    # def test_default_is_largest(self):
-    #     """Test the case when the default batch size is the largest one."""
-    #     manager = PruningExploreManager(self.batch_sizes, 256)
-    #     exploration = [
-    #         (256, 7.0, True),
-    #         (128, 8.0, True),
-    #         (64, 9.0, True),
-    #         (32, 13.0, True),
-    #         (16, 22.0, False),
-    #         (256, 8.0, True),
-    #         (128, 8.5, True),
-    #         (64, 9.0, True),
-    #         (32, 12.0, True),
-    #     ]
-    #     result = [32, 64, 128, 256]
-    #     self.run_exploration(manager, exploration, result)
+    def test_default_is_largest(self, client, capsys):
+        """Test the case when the default batch size is the largest one."""
+        job_id = self.register_job_with_default_bs(client, 256)
 
-    # def test_default_is_smallest(self):
-    #     """Test the case when the default batch size is the smallest one."""
-    #     manager = PruningExploreManager(self.batch_sizes, 8)
-    #     exploration = [
-    #         (8, 10.0, True),
-    #         (16, 17.0, True),
-    #         (32, 20.0, True),
-    #         (64, 25.0, False),
-    #         (8, 10.0, True),
-    #         (16, 21.0, False),
-    #     ]
-    #     result = [8]
-    #     self.run_exploration(manager, exploration, result)
+        exploration = [
+            (256, 7.0, True),
+            (128, 8.0, True),
+            (64, 9.0, True),
+            (32, 13.0, True),
+            (16, 22.0, False),
+            (256, 8.0, True),
+            (128, 8.5, True),
+            (64, 9.0, True),
+            (32, 12.0, True),
+        ]
+        result = [32, 64, 128, 256]
+        self.run_exploration(client, capsys, job_id, exploration, result)
 
-    # def test_all_converge(self):
-    #     """Test the case when every batch size converges."""
-    #     manager = PruningExploreManager(self.batch_sizes, 64)
-    #     exploration = [
-    #         (64, 10.0, True),
-    #         (32, 8.0, True),
-    #         (16, 12.0, True),
-    #         (8, 15.0, True),
-    #         (128, 12.0, True),
-    #         (256, 13.0, True),
-    #         (32, 7.0, True),
-    #         (16, 10.0, True),
-    #         (8, 15.0, True),
-    #         (64, 10.0, True),
-    #         (128, 12.0, True),
-    #         (256, 13.0, True),
-    #     ]
-    #     result = self.batch_sizes
-    #     self.run_exploration(manager, exploration, result)
+    def test_default_is_smallest(self, client, capsys):
+        """Test the case when the default batch size is the smallest one."""
+        job_id = self.register_job_with_default_bs(client, 8)
 
-    # def test_every_bs_is_bs(self):
-    #     """Test the case when every batch size other than the default fail to converge."""
-    #     manager = PruningExploreManager(self.batch_sizes, 64)
-    #     exploration = [
-    #         (64, 10.0, True),
-    #         (32, 22.0, False),
-    #         (128, 25.0, False),
-    #         (64, 9.0, True),
-    #     ]
-    #     result = [64]
-    #     self.run_exploration(manager, exploration, result)
+        exploration = [
+            (8, 10.0, True),
+            (16, 17.0, True),
+            (32, 20.0, True),
+            (64, 25.0, False),
+            (8, 10.0, True),
+            (16, 21.0, False),
+        ]
+        result = [8]
+        self.run_exploration(client, capsys, job_id, exploration, result)
+
+    def test_all_converge(self, client, capsys):
+        """Test the case when every batch size converges."""
+        job_id = self.register_job_with_default_bs(client, 64)
+        exploration = [
+            (64, 10.0, True),
+            (32, 8.0, True),
+            (16, 12.0, True),
+            (8, 15.0, True),
+            (128, 12.0, True),
+            (256, 13.0, True),
+            (32, 7.0, True),
+            (16, 10.0, True),
+            (8, 15.0, True),
+            (64, 10.0, True),
+            (128, 12.0, True),
+            (256, 13.0, True),
+        ]
+        result = self.batch_sizes
+        self.run_exploration(client, capsys, job_id, exploration, result)
+
+    def test_every_bs_is_bs(self, client, capsys):
+        """Test the case when every batch size other than the default fail to converge."""
+        job_id = self.register_job_with_default_bs(client, 64)
+        exploration = [
+            (64, 10.0, True),
+            (32, 22.0, False),
+            (128, 25.0, False),
+            (64, 9.0, True),
+        ]
+        result = [64]
+        self.run_exploration(client, capsys, job_id, exploration, result)

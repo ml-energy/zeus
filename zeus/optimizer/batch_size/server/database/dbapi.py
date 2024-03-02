@@ -1,14 +1,9 @@
 from uuid import UUID
-from build.lib.zeus.analyze import energy
-from build.lib.zeus.optimizer import batch_size
 
-from sqlalchemy.orm import session
-
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy import select, insert, update, and_
 from sqlalchemy.orm import joinedload
-
+from sqlalchemy.orm.exc import NoResultFound
 from zeus.optimizer.batch_size.common import JobSpec, TrainingResult
 from zeus.optimizer.batch_size.server.database.models import (
     BatchSize,

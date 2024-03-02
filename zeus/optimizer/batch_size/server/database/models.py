@@ -1,14 +1,10 @@
-"""
-ORM models 
-
-"""
-
 import asyncio
 import enum
-from datetime import datetime
 import json
+from datetime import datetime
 from math import isclose
 from uuid import UUID
+
 import numpy as np
 from sqlalchemy import (
     Boolean,
@@ -21,11 +17,9 @@ from sqlalchemy import (
     Uuid,
 )
 from sqlalchemy.ext.asyncio.session import AsyncAttrs
-from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.sql.sqltypes import VARCHAR
-
-
 from zeus.optimizer.batch_size.common import JobSpec, MabSetting
 from zeus.util.metric import zeus_cost
 
@@ -100,8 +94,9 @@ class Job(Base):
         Get min cost with batch size. If no trials have done, return default bs with INF cost
         """
         min_cost = np.inf
-        best_bs = self.default_batch_size
-        # TODO: CHange this to windowed measurements!
+        best_bs = self.exp_default_batch_size
+
+        # TODO: Currently, grab all measurements. Do we need to change this to windowed? Anyways only during Exploration stage
         await asyncio.gather(
             *[bs.awaitable_attrs.measurements for bs in self.batch_sizes]
         )

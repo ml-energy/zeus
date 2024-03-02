@@ -15,14 +15,13 @@
 """Multi-Armed Bandit implementations."""
 
 from __future__ import annotations
-from datetime import datetime
-import json
 
+import json
 import warnings
+from datetime import datetime
 
 import numpy as np
 from numpy.random import Generator as np_Generator
-
 from zeus.optimizer.batch_size.common import MabSetting, ZeusBSOValueError
 from zeus.optimizer.batch_size.server.database.models import GaussianTsArmState
 
