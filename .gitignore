@@ -13,8 +13,8 @@ dist/
 .cache/
 .env
 test.db
-/migrations/versions
 env/
 test.db
 .pytest_cache/
 /envs
+/zeus/optimizer/batch_size/migrations/versions/*

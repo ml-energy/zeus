@@ -12,7 +12,7 @@ from zeus.optimizer.batch_size.server.database.db_connection import (
     DatabaseSessionManager,
     get_db_session,
 )
-from zeus.optimizer.batch_size.server.database.models import Base
+from zeus.optimizer.batch_size.server.database.schema import Base
 from zeus.optimizer.batch_size.server.router import app
 
 fake_job = {

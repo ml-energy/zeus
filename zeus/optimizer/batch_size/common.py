@@ -1,31 +1,27 @@
 """Shared model definitions for the server and client."""
 
+from datetime import datetime
 import enum
+import json
 from typing import Any, Dict
 from uuid import UUID
+import numpy as np
 
 from pydantic import BaseModel, root_validator, validator
+from numpy.random import Generator as np_Generator
+from pydantic.fields import Field, PrivateAttr
+from pydantic.utils import GetterDict
+
 
 REGISTER_JOB_URL = "/jobs"
 GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
 REPORT_RESULT_URL = "/jobs/report"
 
 
-class MabSetting(BaseModel):
-    """Mab setting"""
-
-    prior_mean: float = 0.0
-    prior_precision: float = 0.0
-    seed: int | None = None
-    num_exploration: int = 1
-    random_generator_state: str | None = None
-
-
 class JobSpec(BaseModel):
     """Specification of a job submitted by users."""
 
     job_id: UUID
-    seed: int = 1
     batch_sizes: list[int] = []
     default_batch_size: int = 1024
     eta_knob: float = 0.5
@@ -35,7 +31,12 @@ class JobSpec(BaseModel):
     max_epochs: int = 100
     num_pruning_rounds: int = 2
     window_size: int = 10
-    mab_setting: MabSetting = MabSetting()
+
+    mab_prior_mean: float = 0.0
+    mab_prior_precision: float = 0.0
+    mab_num_exploration: int = 2
+    mab_seed: int | None = None
+    window_size: int = 10
 
     max_power: float
     number_of_gpus: int
@@ -102,11 +103,6 @@ class ReportResponse(BaseModel):
     message: str
 
 
-class Stage(enum.Enum):
-    Exploration = "Exploration"
-    MAB = "MAB"
-
-
 class ZeusBSOJobSpecMismatch(Exception):
     def __init__(self, message: str):
         self.message = message
@@ -118,5 +114,10 @@ class ZeusBSOValueError(Exception):
 
 
 class ZeusBSOOperationOrderError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+
+
+class ZeusBSOServiceError(Exception):
     def __init__(self, message: str):
         self.message = message

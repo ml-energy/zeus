@@ -2,9 +2,10 @@ from uuid import UUID
 
 import numpy as np
 from sqlalchemy.ext.asyncio.session import AsyncSession
-from zeus.optimizer.batch_size.common import Stage, ZeusBSOValueError
+from zeus.optimizer.batch_size.common import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.database.dbapi import DBapi
-from zeus.optimizer.batch_size.server.database.models import BatchSize, ExplorationState
+from zeus.optimizer.batch_size.server.database.schema import BatchSize, ExplorationState
+from zeus.optimizer.batch_size.server.job.models import Stage
 
 
 class PruningExploreManager(object):
@@ -111,7 +112,7 @@ class PruningExploreManager(object):
                         PruningExploreManager._log(
                             f"Concurrent job submission. Waiting for {bs.batch_size}"
                         )
-                        return Stage.Exploration
+                        return Stage.Pruning
                     else:
                         if min_cost > cur_exp.cost:
                             min_cost = cur_exp.cost

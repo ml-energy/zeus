@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.exc import NoResultFound
 from zeus.optimizer.batch_size.common import JobSpec, TrainingResult
-from zeus.optimizer.batch_size.server.database.models import (
+from zeus.optimizer.batch_size.server.database.schema import (
     BatchSize,
     ExplorationState,
     GaussianTsArmState,

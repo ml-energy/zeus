@@ -1,3 +1,4 @@
+from typing import Annotated, Callable
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Response, status
@@ -15,6 +16,7 @@ from zeus.optimizer.batch_size.common import (
     ZeusBSOValueError,
 )
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
+from zeus.optimizer.batch_size.server.job.repository import JobStateRepository
 from zeus.optimizer.batch_size.server.optimizer import (
     ZeusBatchSizeOptimizer,
     get_global_zeus_batch_size_optimizer,
@@ -47,7 +49,7 @@ async def register_job(
 ) -> JobSpec:
     """Endpoint for users to register a new job and receive batch size."""
     try:
-        res = await zeus_server.register_job(job, db_session)
+        res = await zeus_server.register_job(job, JobStateRepository(db_session))
         await db_session.commit()
         if res:
             response.status_code = status.HTTP_201_CREATED
@@ -69,7 +71,7 @@ async def register_job(
         print(f"Commit Failed: {str(err)}")
         return JSONResponse(
             status_code=500,
-            content={"message": err.message},
+            content={"message": str(err)},
         )
 
 
@@ -98,7 +100,7 @@ async def predict(
         print(f"Commit Failed: {str(err)}")
         return JSONResponse(
             status_code=500,
-            content={"message": err.message},
+            content={"message": str(err)},
         )
 
 
@@ -124,7 +126,7 @@ async def report(
         print(f"Commit Failed: {str(err)}")
         return JSONResponse(
             status_code=500,
-            content={"message": err.message},
+            content={"message": str(err)},
         )
 
 

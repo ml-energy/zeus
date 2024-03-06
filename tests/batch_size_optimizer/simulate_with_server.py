@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
-from zeus.optimizer.batch_size.common import JobSpec, MabSetting, TrainingResult
+from zeus.optimizer.batch_size.common import JobSpec, TrainingResult
 from zeus.policy import PowerLimitOptimizer
 from zeus.util import zeus_cost
 
