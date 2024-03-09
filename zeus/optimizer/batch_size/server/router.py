@@ -17,11 +17,8 @@ from zeus.optimizer.batch_size.common import (
 )
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
 from zeus.optimizer.batch_size.server.job.repository import JobStateRepository
-from zeus.optimizer.batch_size.server.optimizer import (
-    ZeusBatchSizeOptimizer,
-    get_global_zeus_batch_size_optimizer,
-    init_global_zeus_batch_size_optimizer,
-)
+from zeus.optimizer.batch_size.server.optimizer import ZeusBatchSizeOptimizer
+from zeus.optimizer.batch_size.server.services.service import ZeusService
 
 app = FastAPI()
 
@@ -30,8 +27,6 @@ app = FastAPI()
 def startup_hook():
     """Startup hook."""
     print("START UP")
-    # TODO: change setting
-    init_global_zeus_batch_size_optimizer("setting")
 
 
 @app.post(
@@ -40,16 +35,17 @@ def startup_hook():
         200: {"description": "Job is already registered"},
         201: {"description": "Job is successfully registered"},
     },
+    response_model=JobSpec,
 )
 async def register_job(
     job: JobSpec,
     response: Response,
-    zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
     db_session: AsyncSession = Depends(get_db_session),
 ) -> JobSpec:
     """Endpoint for users to register a new job and receive batch size."""
+    optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
-        res = await zeus_server.register_job(job, JobStateRepository(db_session))
+        res = await optimizer.register_job(job)
         await db_session.commit()
         if res:
             response.status_code = status.HTTP_201_CREATED
@@ -81,12 +77,12 @@ async def register_job(
 @app.get(GET_NEXT_BATCH_SIZE_URL)
 async def predict(
     job_id: UUID,
-    zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
     db_session: AsyncSession = Depends(get_db_session),
 ) -> int:
     """Endpoint for users to register a new job and receive batch size."""
+    optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
-        res = await zeus_server.predict(db_session, job_id)
+        res = await optimizer.predict(job_id)
         await db_session.commit()
         return res
     except (ZeusBSOValueError, ZeusBSOOperationOrderError) as err:
@@ -97,7 +93,7 @@ async def predict(
         )
     except Exception as err:
         await db_session.rollback()
-        print(f"Commit Failed: {str(err)}")
+        print(f"Commit Failed(predict): {str(err)}")
         return JSONResponse(
             status_code=500,
             content={"message": str(err)},
@@ -107,12 +103,12 @@ async def predict(
 @app.post(REPORT_RESULT_URL, response_model=ReportResponse)
 async def report(
     result: TrainingResult,
-    zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
     """Endpoint for users to register a new job and receive batch size."""
+    optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
-        res = await zeus_server.report(db_session, result)
+        res = await optimizer.report(result)
         await db_session.commit()
         return res
     except (ZeusBSOValueError, ZeusBSOOperationOrderError) as err:
@@ -128,14 +124,3 @@ async def report(
             status_code=500,
             content={"message": str(err)},
         )
-
-
-# TODO: Just for testing. Erase in the future
-@app.get("/test")
-async def test(
-    job_id: UUID,
-    zeus_server: ZeusBatchSizeOptimizer = Depends(get_global_zeus_batch_size_optimizer),
-    db_session: AsyncSession = Depends(get_db_session),
-) -> None:
-    """Endpoint for users to register a new job and receive batch size."""
-    return await zeus_server.test(db_session, job_id)

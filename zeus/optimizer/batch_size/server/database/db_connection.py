@@ -45,9 +45,11 @@ class DatabaseSessionManager:
 
         session = self._sessionmaker()
         try:
+            print("YIELD SESSION")
             yield session
-        except Exception:
+        except Exception as err:
             await session.rollback()
+            print(f"Commit Failed: {str(err)}")
             raise
         finally:
             await session.close()

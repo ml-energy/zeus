@@ -16,9 +16,8 @@
 
 from __future__ import annotations
 
-import json
+from uuid import UUID
 import warnings
-from datetime import datetime
 
 import numpy as np
 from numpy.random import Generator as np_Generator
@@ -28,20 +27,35 @@ from zeus.optimizer.batch_size.server.batch_size_state.commands import (
 )
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
+    ExplorationStateModel,
     GaussianTsArmStateModel,
+    MeasurementOfBs,
 )
-from zeus.optimizer.batch_size.server.database.schema import GaussianTsArmState
+from zeus.optimizer.batch_size.server.database.schema import GaussianTsArmState, State
+from zeus.optimizer.batch_size.server.job.commands import UpdateJobStage
+from zeus.optimizer.batch_size.server.job.models import JobState, Stage
+from zeus.optimizer.batch_size.server.services.commands import (
+    CreateArms,
+    GetNormal,
+    GetRandomChoices,
+)
+from zeus.optimizer.batch_size.server.services.service import ZeusService
+from zeus.util.metric import zeus_cost
 
 
-class GaussianTS(object):
+class GaussianTS:
     """Thompson Sampling policy for Gaussian bandits.
 
     For each arm, the reward is modeled as a Gaussian distribution with
     known precision. The conjugate priors are also Gaussian distributions.
     """
 
-    @staticmethod
+    def __init__(self, service: ZeusService):
+        self.service = service
+        self.name = "GaussianTS"
+
     def fit_arm(
+        self,
         bs_base: BatchSizeBase,
         prior_mean: float,
         prior_precision: float,
@@ -87,66 +101,154 @@ class GaussianTS(object):
 
     def predict(
         self,
-        mab_setting: MabSetting,
-        arms: list[GaussianTsArmState],
+        job_id: UUID,
+        prior_precision: float,
+        num_exploration: int,
+        arms: list[GaussianTsArmStateModel],
     ) -> int:
         """Return the arm with the largest sampled expected reward."""
-        rng = np.random.default_rng(int(datetime.now().timestamp()))
-
-        if mab_setting.seed != None:
-            if mab_setting.random_generator_state == None:
-                raise ZeusBSOValueError(
-                    "MAB seed is set but state is unknown. Need to re-register the job"
-                )
-            state = json.loads(mab_setting.random_generator_state)
-            rng.__setstate__(state)
-
         arm_dict = {arm.batch_size: arm for arm in arms}
+
         # Exploration-only phase.
         # Order is random considering concurrent bandit scenarios.
-        arrms = np.array([arm.batch_size for arm in arms])
+        choices = self.service.get_random_choices(
+            GetRandomChoices(job_id=job_id, choices=[arm.batch_size for arm in arms])
+        )
 
-        for arm in rng.choice(arrms, len(arrms), replace=False):
-            if arm_dict[arm].num_observations < mab_setting.num_exploration:
-                if self.verbose:
-                    print(f"[{self.name}] Explore arm {arm}.")
+        for arm in choices:
+            if arm_dict[arm].num_observations < num_exploration:
+                # if self.verbose:
+                print(f"[{self.name}] Explore arm {arm}.")
                 return arm
 
-        # Thomopson Sampling phase.
-        expectations = self._predict_expectations(
-            arms, rng, mab_setting.prior_precision
-        )
-        if self.verbose:
-            print(f"[{self.name}] Sampled mean rewards:")
-            for arm, sample in expectations.items():
-                print(
-                    f"[{self.name}] Arm {arm:4d}: mu ~ N({arm_dict[arm].param_mean:.2f}, "
-                    f"{1/arm_dict[arm].param_precision:.2f}) -> {sample:.2f}"
-                )
-        return max(expectations, key=expectations.get)  # type: ignore
+        """Thomopson Sampling phase.
 
-    def _predict_expectations(
-        self,
-        arms: list[GaussianTsArmState],
-        rng: np_Generator,
-        prior_prec: float,
-    ) -> dict[int, float]:
-        """Sample the expected reward for each arm.
-
+        Sample the expected reward for each arm.
         Assumes that each arm has been explored at least once. Otherwise,
         a value will be sampled from the prior.
 
-        Returns:
-            A mapping from every arm to their sampled expected reward.
         """
-        expectations = {}
+        expectations = {}  # A mapping from every arm to their sampled expected reward.
         for arm in arms:
-            if arm.param_precision == prior_prec:
+            if arm.param_precision == prior_precision:
                 warnings.warn(
                     f"predict_expectations called when arm '{arm.batch_size}' is cold.",
                     stacklevel=1,
                 )
-            expectations[arm.batch_size] = rng.normal(
-                arm.param_mean, np.sqrt(np.reciprocal(arm.param_precision))
+            expectations[arm.batch_size] = self.service.get_normal(
+                GetNormal(
+                    job_id=job_id,
+                    loc=arm.param_mean,
+                    scale=np.sqrt(np.reciprocal(arm.param_precision)),
+                )
             )
-        return expectations
+
+        # if self.verbose:
+        print(f"[{self.name}] Sampled mean rewards:")
+        for arm, sample in expectations.items():
+            print(
+                f"[{self.name}] Arm {arm:4d}: mu ~ N({arm_dict[arm].param_mean:.2f}, "
+                f"{1/arm_dict[arm].param_precision:.2f}) -> {sample:.2f}"
+            )
+
+        return max(expectations, key=expectations.get)
+
+    async def construct_mab(
+        self, job: JobState, arms: CreateArms
+    ) -> list[GaussianTsArmStateModel]:
+        """
+        1. From Explorations,
+        2. Get converged bs (good_bs)
+        3. get measurement of each of good_bs
+        4. create arms
+        5. update stage to MAB!
+        """
+        arms.validate_exp_rounds(job.num_pruning_rounds)
+
+        good_bs: list[ExplorationStateModel] = []
+
+        for bs, exps_per_bs in arms.explorations_per_bs.items():
+            for exp in exps_per_bs.explorations:
+                if (
+                    exp.round_number == job.num_pruning_rounds
+                    and exp.state == State.Converged
+                ):
+                    good_bs.append(exp)
+                    break
+
+        if len(good_bs) == 0:
+            raise ZeusBSOValueError("While creating arms, no batch size is selected")
+
+        print(
+            f"Construct MAB for {job.job_id} with arms {[exp.batch_size for exp in good_bs]}"
+        )
+
+        new_arms: list[GaussianTsArmStateModel] = []
+
+        # Fit the arm for each good batch size.
+        for i, exp in enumerate(good_bs):
+            history = await self.service.get_measurements_of_bs(
+                BatchSizeBase(job_id=job.job_id, batch_size=exp.batch_size)
+            )
+
+            rewards = []
+            # Collect rewards starting from the most recent ones and backwards.
+            for m in history.measurements:
+                rewards.append(
+                    -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
+                )
+
+            new_arms.append(
+                self.fit_arm(
+                    BatchSizeBase(job_id=exp.job_id, batch_size=exp.batch_size),
+                    job.mab_prior_mean,
+                    job.mab_prior_precision,
+                    np.array(rewards),
+                )
+            )
+
+        self.service.create_arms(new_arms)
+        self.service.update_job_stage(
+            UpdateJobStage(job_id=job.job_id, stage=Stage.MAB)
+        )
+        return new_arms
+
+    async def report(self, job: JobState, current_meausurement: MeasurementOfBs):
+        batch_size_key = BatchSizeBase(
+            job_id=job.job_id, batch_size=current_meausurement.batch_size
+        )
+
+        # Get measurements of this bs in descending order. At most window_size length
+        history = await self.service.get_measurements_of_bs(batch_size_key)
+
+        # Add current measurement to the window
+        history.measurements.pop()
+        history.measurements.reverse()
+        history.measurements.append(current_meausurement)
+
+        arm_rewards = np.array(
+            [
+                -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
+                for m in history.measurements
+            ]
+        )
+        arm = await self.service.get_arm(batch_size_key)
+
+        if arm == None:
+            raise ZeusBSOValueError(
+                f"MAB stage but Arm for batch size({current_meausurement.batch_size}) is not found."
+            )
+        new_arm = self.fit_arm(
+            batch_size_key, job.mab_prior_mean, job.mab_prior_precision, arm_rewards
+        )
+
+        await self.service.update_arm_state(current_meausurement, new_arm)
+
+        arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])
+        self._log(
+            f"{job.job_id} @ {current_meausurement.batch_size}: "
+            f"arm_rewards = [{arm_rewards_repr}], reward_prec = {new_arm.reward_precision}"
+        )
+
+    def _log(self, msg: str):
+        print(f"[GaussianTs] {msg}")

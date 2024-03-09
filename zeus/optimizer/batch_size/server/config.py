@@ -6,7 +6,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 """
-TODO: Add app setting too
+TODO: Add app setting too + use BaseSetting
 """
 
 

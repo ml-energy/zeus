@@ -11,45 +11,41 @@ from zeus.optimizer.batch_size.common import (
     ZeusBSOJobSpecMismatch,
     ZeusBSOValueError,
 )
-from zeus.optimizer.batch_size.server.batch_size_state.models import ExplorationOfBs
-from zeus.optimizer.batch_size.server.database.dbapi import DBapi
+from zeus.optimizer.batch_size.server.batch_size_state.models import (
+    MeasurementOfBs,
+)
 from zeus.optimizer.batch_size.server.database.schema import (
-    ExplorationState,
-    GaussianTsArmState,
-    Job,
     Measurement,
 )
 from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
 from zeus.optimizer.batch_size.server.job.commands import CreateJob
 from zeus.optimizer.batch_size.server.job.models import Stage
-from zeus.optimizer.batch_size.server.job.repository import JobStateRepository
 from zeus.optimizer.batch_size.server.mab import GaussianTS
+from zeus.optimizer.batch_size.server.services.commands import CreateArms
+from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.metric import zeus_cost
-
-# from dbapis import DBAPI
-
-GLOBAL_ZEUS_SERVER: ZeusBatchSizeOptimizer | None = None
 
 
 class ZeusBatchSizeOptimizer:
     def __init__(
         self,
+        service: ZeusService,
         verbose: bool = True,
     ) -> None:
         """Initialize the server."""
         self.verbose = verbose
-        self.mab = GaussianTS(verbose)
+        self.service = service
+        self.pruning_manager = PruningExploreManager(service)
+        self.mab = GaussianTS(service)
 
     @property
     def name(self) -> str:
         """Name of the batch size optimizer."""
         return "ZeusBatchSizeOptimizer"
 
-    async def register_job(
-        self, job: JobSpec, jsRepository: JobStateRepository
-    ) -> bool:
+    async def register_job(self, job: JobSpec) -> bool:
         """Register a user-submitted job. Return number of newly created job. Return the number of job that is registered"""
-        registered_job = await jsRepository.get_job(job.job_id)
+        registered_job = await self.service.get_job(job.job_id)
 
         if registered_job is not None:
             # Job exists
@@ -63,70 +59,61 @@ class ZeusBatchSizeOptimizer:
                 )
             return False
 
-        jsRepository.create_job(CreateJob.from_jobSpec(job))
+        self.service.create_job(CreateJob.from_jobSpec(job))
         if self.verbose:
             self._log(f"Registered {job.job_id}")
 
         return True
 
-    # TODO: Just for testing. Erase in the future
-    async def test(self, db: AsyncSession, job_id: UUID):
-        tr = TrainingResult(
-            job_id="3fa85f64-5717-4562-b3fc-2c963f66afa6",
-            batch_size=1024,
-            time=12321,
-            energy=3000,
-            max_power=300,
-            metric=0.55,
-            current_epoch=98,
-        )
-        db.add(
-            Measurement(
-                job_id=tr.job_id,
-                batch_size=tr.batch_size,
-                time=tr.time,
-                energy=tr.energy,
-                converged=False,
-            )
-        )
-        # await DBapi.insert_measurement(db, tr, False)
-        res = await DBapi.get_measurements_of_bs(db, tr.job_id, 10, 1024)
-        print("Test res", str(res[0]), len(res))
-
-    async def predict(self, db: AsyncSession, job_id: UUID) -> int:
+    async def predict(self, job_id: UUID) -> int:
         """Return a batch size to use."""
-        # Try to see if the exploration manager has something.
-        job = await DBapi.get_job_with_explorations(db, job_id)
+        job = await self.service.get_job(job_id)
 
         if job == None:
             raise ZeusBSOValueError(
                 f"Unknown job({job_id}). Please register the job first"
             )
 
-        # First check if pruning explorer can give us any batch size
-        batch_size = await PruningExploreManager.next_batch_size(
-            db,
-            job_id,
-            job.batch_sizes,
-            job.num_pruning_rounds,
-            job.exp_default_batch_size,
-        )
-
-        if isinstance(batch_size, Stage) and batch_size == Stage.Pruning:
-            # Concurrent job submission during pruning stage
-            return (await job.get_min_cost())[1]
-        elif isinstance(batch_size, Stage):
-            # MAB stage: construct MAB if we haven't done yet and return the batch size from MAB
-            mab_setting = job.get_mab_setting()
-            arms = job.arm_states
-            if len(arms) == 0:  # MAB is not constructed
-                arms = await self._construct_mab(db, job, mab_setting)
-            return self.mab.predict(mab_setting, arms)
+        if job.stage == Stage.MAB:
+            arms = await self.service.get_arms(job_id)
+            return self.mab.predict(
+                job_id, job.mab_prior_precision, job.mab_num_exploration, arms
+            )
         else:
-            # Exploration stage and got the next available batch size to explore from the explore manager
-            return batch_size
+            # Pruning stage
+            explorations = await self.service.get_explorations_of_job(job_id)
+            # First check if pruning explorer can give us any batch size
+            next_batch_size = self.pruning_manager.next_batch_size(
+                job_id,
+                explorations,
+                job.num_pruning_rounds,
+                job.exp_default_batch_size,
+                job.batch_sizes,
+            )
 
-    async def report(self, db: AsyncSession, result: TrainingResult) -> ReportResponse:
+            if isinstance(next_batch_size, Stage) and next_batch_size == Stage.Pruning:
+                # Concurrent job submission during pruning stage
+                return job.min_batch_size
+            elif isinstance(next_batch_size, Stage):
+                # MAB stage: construct MAB if we haven't done yet and return the batch size from MAB
+                self._log(
+                    f"Constructing a MAB {explorations.explorations_per_bs == None}"
+                )
+                arms = await self.mab.construct_mab(
+                    job,
+                    CreateArms(
+                        job_id=job_id,
+                        explorations_per_bs=explorations.explorations_per_bs,
+                    ),
+                )
+                return self.mab.predict(
+                    job_id, job.mab_prior_precision, job.mab_num_exploration, arms
+                )
+            else:
+                # Exploration stage and got the next available batch size to explore from the explore manager
+                return next_batch_size
+
+    async def report(self, result: TrainingResult) -> ReportResponse:
         """
         1. ADD result to the measurement
         2. Check which stage we are in - Exploration or MAB (By checking explorations and see if there is an entry with "Exploring" state)
@@ -134,14 +121,11 @@ class ZeusBatchSizeOptimizer:
             2.b IF MAB: Report to MAB (observe)
         """
         cost_ub = np.inf
-        job = await DBapi.get_job_with_explorations(db, result.job_id)
+        job = await self.service.get_job(result.job_id)
+        if job.beta_knob > 0 and job.min_cost != None:  # Early stop enabled
+            cost_ub = job.beta_knob * job.min_cost
 
-        min_cost = (await job.get_min_cost())[0]
-
-        if job.beta_knob > 0:  # Early stop enabled
-            cost_ub = job.beta_knob * min_cost
-
-        cost = zeus_cost(
+        reported_cost = zeus_cost(
             result.energy,
             result.time,
             job.eta_knob,
@@ -153,11 +137,12 @@ class ZeusBatchSizeOptimizer:
         ) or (not job.high_is_better_metric and job.target_metric >= result.metric)
 
         if (
-            cost_ub >= cost
+            cost_ub >= reported_cost
             and result.current_epoch < job.max_epochs
             and converged == False
         ):
             # If it's not converged but below cost upper bound and haven't reached max_epochs, keep training
+
             return ReportResponse(
                 stop_train=False,
                 converged=False,
@@ -172,10 +157,15 @@ class ZeusBatchSizeOptimizer:
             if converged
             else f"Train failed to converge within max_epoch({job.max_epochs})"
         )
+        current_meausurement = MeasurementOfBs(
+            job_id=result.job_id,
+            batch_size=result.batch_size,
+            time=result.time,
+            energy=result.energy,
+            converged=converged,
+        )
 
-        DBapi.add_measurement(db, result, converged)
-
-        if self._get_stage(job) == Stage.MAB:
+        if job.stage == Stage.MAB:
             # We are in MAB stage
             # Since we're learning the reward precision, we need to
             # 1. re-compute the precision of this arm based on the reward history,
@@ -184,58 +174,20 @@ class ZeusBatchSizeOptimizer:
             # Note that `arm_rewards` always has more than one entry (and hence a
             # non-zero variance) because we've been through pruning exploration.
 
-            history = await ZeusBatchSizeOptimizer._get_history_for_bs(
-                db,
-                job.job_id,
-                result.batch_size,
-                job.window_size,
-                job.eta_knob,
-                job.max_power,
-            )
-            arm_rewards = np.array(history)
-            precision = np.reciprocal(np.var(arm_rewards))
-            arm = next(
-                (arm for arm in job.arm_states if arm.batch_size == result.batch_size),
-                None,
-            )
-            if arm == None:
-                raise ZeusBSOValueError(
-                    f"MAB stage but Arm for batch size({result.batch_size}) is not found."
-                )
-            arm.reward_precision = precision
-            self.mab.fit_arm(job.get_mab_setting(), arm, arm_rewards, reset=True)
-            await DBapi.update_arm_state(db, arm)
-
-            if self.verbose:
-                arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])
-                self._log(
-                    f"{result.job_id} @ {result.batch_size}: "
-                    f"arm_rewards = [{arm_rewards_repr}], reward_prec = {precision}"
-                )
+            await self.mab.report(job, current_meausurement)
         else:
-            # We are in Exploration Stage
             if self.verbose:
                 self._log(
                     f"{result.job_id} in pruning stage, Current BS {result.batch_size} that did {'not ' * (not converged)}converge."
                 )
 
-            bs = next(
-                (bs for bs in job.batch_sizes if bs.batch_size == result.batch_size),
-                None,
+            await self.pruning_manager.report_batch_size_result(
+                current_meausurement, reported_cost < cost_ub, reported_cost
             )
 
-            if bs == None:
-                raise ZeusBSOValueError(
-                    f"Current batch_size({result.batch_size}) is not in the batch_size list({[bs.batch_size for bs in job.batch_sizes]})"
-                )
-
-            await PruningExploreManager.report_batch_size_result(
-                db, bs, converged, cost, cost < cost_ub
-            )
-
-            if cost_ub < cost:
-                message = f"""Batch Size({result.batch_size}) exceeded the cost upper bound: current cost({cost}) >
-                        beta_knob({job.beta_knob})*min_cost({min_cost})"""
+        if cost_ub < reported_cost:
+            message = f"""Batch Size({result.batch_size}) exceeded the cost upper bound: current cost({reported_cost}) >
+                    beta_knob({job.beta_knob})*min_cost({job.min_cost})"""
 
         return ReportResponse(stop_train=True, converged=converged, message=message)
 
@@ -243,100 +195,5 @@ class ZeusBatchSizeOptimizer:
         """Log message with object name."""
         print(f"[{self.name}] {message}")
 
-    @staticmethod
-    async def _get_history_for_bs(
-        db: AsyncSession,
-        job_id: UUID,
-        batch_size: int,
-        window_size: int,
-        eta_knob: float,
-        max_power: float,
-    ) -> list[float]:
-        """Return the windowed history for the given job's batch size."""
-        history = await DBapi.get_measurements_of_bs(
-            db, job_id, window_size, batch_size
-        )
-        rewards = []
-        # Collect rewards starting from the most recent ones and backwards.
-        for m in history:
-            rewards.append(-zeus_cost(m.energy, m.time, eta_knob, max_power))
-
-        # There's no need to return this in time order, but just in case.
-        return list(reversed(rewards))
-
-    async def _construct_mab(
-        self, db: AsyncSession, job: Job, mab_setting
-    ) -> list[GaussianTsArmState]:
-        """When exploration is over, this method is called to construct and learn GTS.
-        batch_sizes are the ones which can converge"""
-
-        good_bs = []
-        for bs in job.batch_sizes:
-            for exp in bs.explorations:
-                if (
-                    exp.trial_number == job.num_pruning_rounds
-                    and exp.state == ExplorationOfBs.State.Converged
-                ):
-                    good_bs.append(bs.batch_size)
-                    break
-
-        arms = [
-            GaussianTsArmState(
-                job_id=job.job_id,
-                batch_size=bs,
-                param_mean=job.mab_prior_mean,
-                param_precision=job.mab_prior_precision,
-                reward_precision=0.0,
-            )
-            for bs in good_bs
-        ]
-
-        if self.verbose:
-            self._log(f"Construct MAB for {job.job_id} with arms {good_bs}")
-
-        # Fit the arm for each good batch size.
-        for i, batch_size in enumerate(good_bs):
-            history = await ZeusBatchSizeOptimizer._get_history_for_bs(
-                db,
-                job.job_id,
-                batch_size,
-                job.window_size,
-                job.eta_knob,
-                job.max_power,
-            )
-            arm_rewards = np.array(history)
-            assert (
-                len(arm_rewards) >= job.num_pruning_rounds
-            ), f"Number of observations for {batch_size} is {len(arm_rewards)}."
-            self._log(f"Number of observations for {batch_size} is {len(arm_rewards)}.")
-
-            # mab.arm_reward_prec[batch_size] = np.reciprocal(np.var(arm_rewards))
-            arms[i].reward_precision = np.reciprocal(np.var(arm_rewards))
-            self.mab.fit_arm(mab_setting, arms[i], arm_rewards, reset=True)
-
-        DBapi.add_arms(db, arms)
-        return arms
-
-    def _get_stage(self, job: Job) -> Stage:
-        """Return the stage."""
-        for bs in job.batch_sizes:
-            if len(bs.explorations) > 0 and any(
-                exp.state == ExplorationState.State.Exploring for exp in bs.explorations
-            ):
-                return Stage.Pruning
-        return Stage.MAB
-
 
 ## End of class ZeusBatchSizeOptimizer
-
-
-def init_global_zeus_batch_size_optimizer(setting) -> ZeusBatchSizeOptimizer:
-    """Initialize the global singleton `ZeusBatchSizeOptimizer`."""
-    global GLOBAL_ZEUS_SERVER
-    GLOBAL_ZEUS_SERVER = ZeusBatchSizeOptimizer(setting)
-    return GLOBAL_ZEUS_SERVER
-
-
-def get_global_zeus_batch_size_optimizer() -> ZeusBatchSizeOptimizer:
-    """Fetch the global singleton `ZeusBatchSizeOptimizer`."""
-    return GLOBAL_ZEUS_SERVER

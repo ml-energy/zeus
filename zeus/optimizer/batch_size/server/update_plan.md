@@ -97,9 +97,10 @@ If we add stage, Now do we detect transition? -> when we call predict()
                 -> Fetch windowed measurements per bs *
                 -> add arms*
                 -> UPDATE STAGE TO MAB from Pruning *
+                -> Call MAB predict
             1.b.1.2) Proceed next round
                 -> MIGHT Update exp_default_bs*
-                -> ADD exploration *
+                -> ADD exploration*
         1.b.2) Explorting in current round
             -> ADD exploration*
         1.b.3) Pending exploration exists -> Concurrent job

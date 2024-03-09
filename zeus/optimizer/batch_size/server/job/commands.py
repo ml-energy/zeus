@@ -17,6 +17,13 @@ class UpdateJobStage(BaseModel):
     stage: Stage
 
 
+class UpdateGeneratorState(BaseModel):
+    job_id: UUID
+    state: str
+
+    # TODO: Validate state (json format and check fields)
+
+
 class UpdateJobMinCost(BaseModel):
     job_id: UUID
     min_cost: float
