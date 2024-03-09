@@ -18,6 +18,7 @@ hide:
 ---
 **Project News** ⚡ 
 
+- \[2024/02\] Zeus was selected as a [2024 Mozilla Technology Fund awardee](https://foundation.mozilla.org/en/blog/open-source-AI-for-environmental-justice/). Thanks, Mozilla!
 - \[2023/12\] The preprint of the Perseus paper is out [here](https://arxiv.org/abs/2312.06902)!
 - \[2023/10\] We released Perseus, an energy optimizer for large model training. Get started [here](https://ml.energy/zeus/perseus/)!
 - \[2023/09\] We moved to under [`ml-energy`](https://github.com/ml-energy)! Please stay tuned for new exciting projects!
