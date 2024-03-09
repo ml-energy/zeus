@@ -26,13 +26,11 @@ fake_job = {
     "high_is_better_metric": True,
     "max_epochs": 100,
     "num_pruning_rounds": 2,
-    "mab_setting": {
-        "prior_mean": 0,
-        "prior_precision": 0,
-        "window_size": 0,
-        "seed": 123456,
-        "num_exploration": 2,
-    },
+    "window_size": 5,
+    "mab_prior_mean": 0,
+    "mab_prior_precision": 0,
+    "mab_seed": 123456,
+    "mab_num_exploration": 2,
     "max_power": 3000,
     "number_of_gpus": 4,
     "gpu_model": "A100",
@@ -63,9 +61,9 @@ async def clean():
 
 @pytest.fixture(scope="session", autouse=True)
 def database_setup():
+    asyncio.run(clean())
     asyncio.run(create())
     yield
-    asyncio.run(clean())
 
 
 @pytest.fixture

@@ -13,10 +13,6 @@ from zeus.optimizer.batch_size.server.database.db_connection import (
 from zeus.optimizer.batch_size.server.database.schema import Base
 from zeus.optimizer.batch_size.server.router import app
 
-"""
-TODO: Might need update based on change in server
-"""
-
 # https://fastapi.tiangolo.com/tutorial/testing/
 
 fake_job = {
@@ -94,217 +90,217 @@ def test_register_job(client):
 #     print(response.text)
 
 
-# @pytest.mark.anyio
-# def test_register_job_with_diff_config(client):
-#     fake_job_diff = deepcopy(fake_job)
-#     fake_job_diff["default_batch_size"] = 512
+@pytest.mark.anyio
+def test_register_job_with_diff_config(client):
+    fake_job_diff = deepcopy(fake_job)
+    fake_job_diff["default_batch_size"] = 512
 
-#     response = client.post("/jobs", json=fake_job_diff)
-#     print(response.text)
-#     assert response.status_code == 409
-
-
-# @pytest.mark.anyio
-# def test_register_job_validation_error(client):
-#     temp = deepcopy(fake_job)
-#     temp["default_batch_size"] = 128
-#     response = client.post("/jobs", json=temp)
-#     assert response.status_code == 422
-
-#     temp["default_batch_size"] = 0
-#     response = client.post("/jobs", json=temp)
-#     assert response.status_code == 422
-
-#     temp = deepcopy(fake_job)
-#     temp["max_epochs"] = 0
-#     response = client.post("/jobs", json=temp)
-#     assert response.status_code == 422
-
-#     temp = deepcopy(fake_job)
-#     temp["batch_sizes"] = []
-#     response = client.post("/jobs", json=temp)
-#     assert response.status_code == 422
-
-#     temp = deepcopy(fake_job)
-#     temp["eta_knob"] = 1.1
-#     response = client.post("/jobs", json=temp)
-#     assert response.status_code == 422
-
-#     temp = deepcopy(fake_job)
-#     temp["beta_knob"] = 0
-#     response = client.post("/jobs", json=temp)
-#     assert response.status_code == 422
+    response = client.post("/jobs", json=fake_job_diff)
+    print(response.text)
+    assert response.status_code == 409
 
 
-# @pytest.mark.anyio
-# def test_predict(client):
-#     cur_default_bs = fake_job["default_batch_size"]
-#     response = client.get(
-#         "/jobs/batch_size",
-#         params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
-#     )
-#     print(response.text)
-#     assert response.status_code == 200
-#     assert response.json() == cur_default_bs
+@pytest.mark.anyio
+def test_register_job_validation_error(client):
+    temp = deepcopy(fake_job)
+    temp["default_batch_size"] = 128
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
 
-#     # concurrent job submission
-#     response = client.get(
-#         "/jobs/batch_size",
-#         params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
-#     )
-#     print(response.text)
-#     assert response.status_code == 200
-#     assert response.json() == cur_default_bs
+    temp["default_batch_size"] = 0
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
 
+    temp = deepcopy(fake_job)
+    temp["max_epochs"] = 0
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
 
-# @pytest.mark.anyio
-# def test_report(client):
-#     # Converged within max epoch => successful training
-#     response = client.post(
-#         "/jobs/report",
-#         json={
-#             "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-#             "batch_size": 1024,
-#             "time": 14.438,
-#             "energy": 3000.123,
-#             "max_power": 300,
-#             "metric": 0.55,
-#             "current_epoch": 98,
-#         },
-#     )
-#     assert (
-#         response.status_code == 200
-#         and response.json()["converged"] == True
-#         and response.json()["stop_train"] == True
-#     )
-#     # NO update in exploration state since this was a concurrent job submission
-#     response = client.post(
-#         "/jobs/report",
-#         json={
-#             "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-#             "batch_size": 1024,
-#             "time": 14.438,
-#             "energy": 3000.123,
-#             "max_power": 300,
-#             "metric": 0.55,
-#             "current_epoch": 98,
-#         },
-#     )
-#     assert (
-#         response.status_code == 200
-#         and response.json()["converged"] == True
-#         and response.json()["stop_train"] == True,
-#         response.text,
-#     )
+    temp = deepcopy(fake_job)
+    temp["batch_sizes"] = []
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
+
+    temp = deepcopy(fake_job)
+    temp["eta_knob"] = 1.1
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
+
+    temp = deepcopy(fake_job)
+    temp["beta_knob"] = 0
+    response = client.post("/jobs", json=temp)
+    assert response.status_code == 422
 
 
-# @pytest.mark.anyio
-# def test_predict_report_sequence(client):
-#     cur_default_bs = fake_job["default_batch_size"]
+@pytest.mark.anyio
+def test_predict(client):
+    cur_default_bs = fake_job["default_batch_size"]
+    response = client.get(
+        "/jobs/batch_size",
+        params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+    )
+    print(response.text)
+    assert response.status_code == 200
+    assert response.json() == cur_default_bs
 
-#     # Previous default batch size is converged
-#     bss = fake_job["batch_sizes"]
-#     for trial in range(1, fake_job["num_pruning_rounds"] + 1):
-#         idx = bss.index(cur_default_bs)
-#         down = sorted(bss[: idx + 1], reverse=True)
-#         up = sorted(bss[idx + 1 :])
-#         new_bss = []
-
-#         print("Exploration space:", [down, up])
-#         for bs_list in [down, up]:
-#             for bs in bs_list:
-#                 if (
-#                     trial == 1 and bs == cur_default_bs
-#                 ):  # already reported converged before
-#                     new_bss.append(bs)
-#                     continue
-
-#                 # Predict
-#                 response = client.get(
-#                     "/jobs/batch_size",
-#                     params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
-#                 )
-#                 assert response.status_code == 200
-#                 assert response.json() == bs
-
-#                 # Concurrent job
-#                 response = client.get(
-#                     "/jobs/batch_size",
-#                     params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
-#                 )
-#                 assert response.status_code == 200
-#                 assert response.json() == (
-#                     cur_default_bs if trial == 1 and bs == 512 else 512
-#                 )
-
-#                 time = 14.438
-#                 converged = random.choice([True, True, False])
-#                 if (
-#                     bs == 512
-#                 ):  # make 512 as the best bs so that we can change the default bs to 512 next round
-#                     converged = True
-#                     time = 12
-#                 if converged:
-#                     new_bss.append(bs)
-
-#                 response = client.post(
-#                     "/jobs/report",
-#                     json={
-#                         "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-#                         "batch_size": bs,
-#                         "time": time,
-#                         "energy": 3000.123,
-#                         "max_power": 300,
-#                         "metric": 0.55 if converged else 0.33,
-#                         "current_epoch": 98 if converged else 100,
-#                     },
-#                 )
-#                 assert (
-#                     response.status_code == 200
-#                     and response.json()["converged"] == converged
-#                     and response.json()["stop_train"] == True
-#                 )
-#                 if not converged:
-#                     break
-#         bss = sorted(new_bss)
-#         cur_default_bs = 512
+    # concurrent job submission
+    response = client.get(
+        "/jobs/batch_size",
+        params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+    )
+    print(response.text)
+    assert response.status_code == 200
+    assert response.json() == cur_default_bs
 
 
-# @pytest.mark.anyio
-# def test_mab_stage(client):
-#     bs_seq = []
-#     # Previous default batch size is converged
-#     for _ in range(10):
-#         # Predict
-#         response = client.get(
-#             "/jobs/batch_size",
-#             params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
-#         )
-#         assert response.status_code == 200
-#         bs_seq.append(response.json())
-#         # Concurrent job
-#         response = client.get(
-#             "/jobs/batch_size",
-#             params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
-#         )
-#         assert response.status_code == 200
-#         bs_seq.append(response.json())
+@pytest.mark.anyio
+def test_report(client):
+    # Converged within max epoch => successful training
+    response = client.post(
+        "/jobs/report",
+        json={
+            "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "batch_size": 1024,
+            "time": 14.438,
+            "energy": 3000.123,
+            "max_power": 300,
+            "metric": 0.55,
+            "current_epoch": 98,
+        },
+    )
+    assert (
+        response.status_code == 200
+        and response.json()["converged"] == True
+        and response.json()["stop_train"] == True
+    )
+    # NO update in exploration state since this was a concurrent job submission
+    response = client.post(
+        "/jobs/report",
+        json={
+            "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "batch_size": 1024,
+            "time": 14.438,
+            "energy": 3000.123,
+            "max_power": 300,
+            "metric": 0.55,
+            "current_epoch": 98,
+        },
+    )
+    assert (
+        response.status_code == 200
+        and response.json()["converged"] == True
+        and response.json()["stop_train"] == True,
+        response.text,
+    )
 
-#         response = client.post(
-#             "/jobs/report",
-#             json={
-#                 "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-#                 "batch_size": response.json(),
-#                 "time": 15.123,
-#                 "energy": 3000.123,
-#                 "max_power": 300,
-#                 "metric": 0.55,
-#                 "current_epoch": 98,
-#             },
-#         )
-#         assert (
-#             response.status_code == 200
-#             and response.json()["converged"] == True
-#             and response.json()["stop_train"] == True
-#         )
-#     print(bs_seq)
+
+@pytest.mark.anyio
+def test_predict_report_sequence(client):
+    cur_default_bs = fake_job["default_batch_size"]
+
+    # Previous default batch size is converged
+    bss = fake_job["batch_sizes"]
+    for trial in range(1, fake_job["num_pruning_rounds"] + 1):
+        idx = bss.index(cur_default_bs)
+        down = sorted(bss[: idx + 1], reverse=True)
+        up = sorted(bss[idx + 1 :])
+        new_bss = []
+
+        print("Exploration space:", [down, up])
+        for bs_list in [down, up]:
+            for bs in bs_list:
+                if (
+                    trial == 1 and bs == cur_default_bs
+                ):  # already reported converged before
+                    new_bss.append(bs)
+                    continue
+
+                # Predict
+                response = client.get(
+                    "/jobs/batch_size",
+                    params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+                )
+                assert response.status_code == 200
+                assert response.json() == bs
+
+                # Concurrent job
+                response = client.get(
+                    "/jobs/batch_size",
+                    params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+                )
+                assert response.status_code == 200
+                assert response.json() == (
+                    cur_default_bs if trial == 1 and bs == 512 else 512
+                )
+
+                time = 14.438
+                converged = random.choice([True, True, False])
+                if (
+                    bs == 512
+                ):  # make 512 as the best bs so that we can change the default bs to 512 next round
+                    converged = True
+                    time = 12
+                if converged:
+                    new_bss.append(bs)
+
+                response = client.post(
+                    "/jobs/report",
+                    json={
+                        "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                        "batch_size": bs,
+                        "time": time,
+                        "energy": 3000.123,
+                        "max_power": 300,
+                        "metric": 0.55 if converged else 0.33,
+                        "current_epoch": 98 if converged else 100,
+                    },
+                )
+                assert (
+                    response.status_code == 200
+                    and response.json()["converged"] == converged
+                    and response.json()["stop_train"] == True
+                )
+                if not converged:
+                    break
+        bss = sorted(new_bss)
+        cur_default_bs = 512
+
+
+@pytest.mark.anyio
+def test_mab_stage(client):
+    bs_seq = []
+    # Previous default batch size is converged
+    for _ in range(10):
+        # Predict
+        response = client.get(
+            "/jobs/batch_size",
+            params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+        )
+        assert response.status_code == 200
+        bs_seq.append(response.json())
+        # Concurrent job
+        response = client.get(
+            "/jobs/batch_size",
+            params={"job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"},
+        )
+        assert response.status_code == 200
+        bs_seq.append(response.json())
+
+        response = client.post(
+            "/jobs/report",
+            json={
+                "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "batch_size": response.json(),
+                "time": 15.123,
+                "energy": 3000.123,
+                "max_power": 300,
+                "metric": 0.55,
+                "current_epoch": 98,
+            },
+        )
+        assert (
+            response.status_code == 200
+            and response.json()["converged"] == True
+            and response.json()["stop_train"] == True
+        )
+    print(bs_seq)
