@@ -1,11 +1,12 @@
 import asyncio
+import logging
 import re
 import sys
 import uuid
 from typing import AsyncIterator
 
 import pytest
-from build.lib.zeus.optimizer.batch_size.common import TrainingResult
+from zeus.optimizer.batch_size.common import TrainingResult
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from zeus.optimizer.batch_size.server.database.db_connection import (
@@ -61,6 +62,11 @@ async def clean():
 
 @pytest.fixture(scope="session", autouse=True)
 def database_setup():
+    logger = logging.getLogger(
+        "zeus.optimizer.batch_size.server.mab"
+    )  # for testing, propagate the log to the root logger so that caplog can capture
+    logger.propagate = True
+
     asyncio.run(clean())
     asyncio.run(create())
     yield
@@ -73,7 +79,7 @@ def client():
 
 
 @pytest.mark.usefixtures("client")
-@pytest.mark.usefixtures("capsys")
+@pytest.mark.usefixtures("caplog")
 class TestPruningExploreManager:
     """Unit test class for pruning exploration."""
 
@@ -109,7 +115,7 @@ class TestPruningExploreManager:
     def run_exploration(
         self,
         client,
-        capsys,
+        caplog,
         job_id: str,
         exploration: list[tuple[int, float, bool]],
         result: list[int],
@@ -139,12 +145,8 @@ class TestPruningExploreManager:
         )
         assert response.status_code == 200
 
-        out, err = capsys.readouterr()
-        sys.stdout.write(out)
-        sys.stderr.write(err)
-        out.find("with arms")
         # Capture list of arms from stdout
-        matches = re.search(r"with arms \[(.*?)\]", out)
+        matches = re.search(r"with arms \[(.*?)\]", caplog.text)
 
         if matches:
             arms = [int(x) for x in matches.group(1).split(",")]
@@ -153,7 +155,8 @@ class TestPruningExploreManager:
             assert False, "No output found from constructing Mab"
 
     @pytest.mark.anyio
-    def test_normal(self, client, capsys):
+    def test_normal(self, client, caplog):
+        caplog.set_level(logging.INFO)
         """Test a typical case."""
         job_id = self.register_job_with_default_bs(client, 128)
 
@@ -172,9 +175,9 @@ class TestPruningExploreManager:
         ]
 
         result = [32, 64, 128]
-        self.run_exploration(client, capsys, job_id, exploration, result)
+        self.run_exploration(client, caplog, job_id, exploration, result)
 
-    def test_default_is_largest(self, client, capsys):
+    def test_default_is_largest(self, client, caplog):
         """Test the case when the default batch size is the largest one."""
         job_id = self.register_job_with_default_bs(client, 256)
 
@@ -190,9 +193,9 @@ class TestPruningExploreManager:
             (32, 12.0, True),
         ]
         result = [32, 64, 128, 256]
-        self.run_exploration(client, capsys, job_id, exploration, result)
+        self.run_exploration(client, caplog, job_id, exploration, result)
 
-    def test_default_is_smallest(self, client, capsys):
+    def test_default_is_smallest(self, client, caplog):
         """Test the case when the default batch size is the smallest one."""
         job_id = self.register_job_with_default_bs(client, 8)
 
@@ -205,9 +208,9 @@ class TestPruningExploreManager:
             (16, 21.0, False),
         ]
         result = [8]
-        self.run_exploration(client, capsys, job_id, exploration, result)
+        self.run_exploration(client, caplog, job_id, exploration, result)
 
-    def test_all_converge(self, client, capsys):
+    def test_all_converge(self, client, caplog):
         """Test the case when every batch size converges."""
         job_id = self.register_job_with_default_bs(client, 64)
         exploration = [
@@ -225,9 +228,9 @@ class TestPruningExploreManager:
             (256, 13.0, True),
         ]
         result = self.batch_sizes
-        self.run_exploration(client, capsys, job_id, exploration, result)
+        self.run_exploration(client, caplog, job_id, exploration, result)
 
-    def test_every_bs_is_bs(self, client, capsys):
+    def test_every_bs_is_bs(self, client, caplog):
         """Test the case when every batch size other than the default fail to converge."""
         job_id = self.register_job_with_default_bs(client, 64)
         exploration = [
@@ -237,4 +240,4 @@ class TestPruningExploreManager:
             (64, 9.0, True),
         ]
         result = [64]
-        self.run_exploration(client, capsys, job_id, exploration, result)
+        self.run_exploration(client, caplog, job_id, exploration, result)

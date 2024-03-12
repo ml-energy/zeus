@@ -2,8 +2,11 @@
 Pydantic models for Batch size/Exploration/Measurement/GaussianTsArmState
 """
 
-from enum import Enum
+from __future__ import annotations
+from typing import Any
 from uuid import UUID
+
+from pydantic.class_validators import root_validator
 from pydantic.fields import Field
 from pydantic.main import BaseModel
 from zeus.optimizer.batch_size.server.database.schema import (
@@ -15,7 +18,7 @@ from zeus.optimizer.batch_size.server.database.schema import (
 
 class BatchSizeBase(BaseModel):
     job_id: UUID
-    batch_size: int
+    batch_size: int = Field(gt=0)
 
     class Config:
         validate_assignment = True
@@ -26,7 +29,7 @@ class GaussianTsArmStateModel(BatchSizeBase):
     param_mean: float
     param_precision: float
     reward_precision: float
-    num_observations: int
+    num_observations: int = Field(ge=0)
 
     class Config:
         orm_mode = True
@@ -41,8 +44,8 @@ class GaussianTsArmStateModel(BatchSizeBase):
 
 
 class MeasurementOfBs(BatchSizeBase):
-    time: float
-    energy: float
+    time: float = Field(ge=0)
+    energy: float = Field(ge=0)
     converged: bool
 
     class Config:
@@ -59,7 +62,7 @@ class MeasurementOfBs(BatchSizeBase):
 
 class ExplorationStateModel(BatchSizeBase):
 
-    round_number: int
+    round_number: int = Field(ge=1)
     state: State = State.Exploring
     cost: float | None = None
 
@@ -71,35 +74,77 @@ class ExplorationStateModel(BatchSizeBase):
 class ExplorationsPerBs(BatchSizeBase):
     explorations: list[ExplorationStateModel]
 
-    # TODO: Add validator that check if the list is legit
-    # 1. trial number <= len(explorations)
-    # 2. trial number should be in order (0,1,2, ... )
-    # 3. check bs corresponds to batchSizeBase
-
     class Config:
         validate_assignment = True
         frozen = True
+
+    @root_validator
+    def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
+        bs: int = values.get("batch_size")
+        job_id: UUID = values.get("job_id")
+        exps: list[ExplorationStateModel] = values.get("explorations")
+        exps = list(reversed(sorted(exps, key=lambda exp: exp.round_number)))
+
+        round_number = -1
+        for exp in exps:
+            if job_id != exp.job_id:
+                raise ValueError(
+                    f"job_id doesn't correspond with explorations: {job_id} != {exp.job_id}"
+                )
+            if bs != exp.batch_size:
+                raise ValueError(
+                    f"Batch size doesn't correspond with explorations: {bs} != {exp.batch_size}"
+                )
+            if round_number != -1 and round_number - 1 != exp.round_number:
+                raise ValueError(
+                    f"Round number is not in order. Should be ordered in desc without any gaps: Expecting {round_number - 1} but got {exp.round_number}"
+                )
+            round_number = exp.round_number
+
+        return values
 
 
 class MeasurementsPerBs(BatchSizeBase):
     measurements: list[MeasurementOfBs]
 
     # Validate if job_id and bs are consistent
+    @root_validator
+    def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
+        bs: int = values.get("batch_size")
+        job_id: UUID = values.get("job_id")
+        ms: list[MeasurementOfBs] = values.get("measurements")
 
-    # Trigger validator when the list changes
-    # class Config:
-    #     validate_assignment = True
-    #     frozen = True
+        for m in ms:
+            if job_id != m.job_id:
+                raise ValueError(
+                    f"job_id doesn't correspond with explorations: {job_id} != {m.job_id}"
+                )
+            if bs != m.batch_size:
+                raise ValueError(
+                    f"Batch size doesn't correspond with explorations: {bs} != {m.batch_size}"
+                )
 
-
-class BatchSizeStates(BatchSizeBase):
-    explorations: ExplorationsPerBs
-    measurements: MeasurementsPerBs
-    arm_state: GaussianTsArmStateModel | None
+        return values
 
 
 class ExplorationsPerJob(BaseModel):
     job_id: UUID
     explorations_per_bs: dict[int, ExplorationsPerBs]  # BS -> Explorations
 
-    # Add validator, check trial number is in order per bs + bs and job_id correspond
+    # Check bs and job_id corresponds to explorations_per_bs
+    @root_validator
+    def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
+        job_id: UUID = values.get("job_id")
+        exps_per_bs: dict[int, ExplorationsPerBs] = values.get("explorations_per_bs")
+
+        for bs, exps in exps_per_bs.items():
+            if job_id != exps.job_id:
+                raise ValueError(
+                    f"job_id doesn't correspond with explorations: {job_id} != {exps.job_id}"
+                )
+            if bs != exps.batch_size:
+                raise ValueError(
+                    f"Batch size doesn't correspond with explorations: {bs} != {exps.batch_size}"
+                )
+
+        return values

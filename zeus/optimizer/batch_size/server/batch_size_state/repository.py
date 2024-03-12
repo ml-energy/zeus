@@ -1,17 +1,17 @@
+from __future__ import annotations
 from copy import deepcopy
 from uuid import UUID
-from sqlalchemy import and_, select, update
 
+from sqlalchemy import and_, select, update
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateExploration,
     UpdateExploration,
 )
-
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
-    ExplorationStateModel,
     ExplorationsPerBs,
     ExplorationsPerJob,
+    ExplorationStateModel,
     GaussianTsArmStateModel,
     MeasurementOfBs,
     MeasurementsPerBs,

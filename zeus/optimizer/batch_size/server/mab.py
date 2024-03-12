@@ -16,8 +16,8 @@
 
 from __future__ import annotations
 
-from uuid import UUID
 import warnings
+from uuid import UUID
 
 import numpy as np
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
@@ -26,7 +26,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.models import (
     GaussianTsArmStateModel,
     MeasurementOfBs,
 )
-from zeus.optimizer.batch_size.server.database.schema import GaussianTsArmState, State
+from zeus.optimizer.batch_size.server.database.schema import State
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.job.commands import UpdateJobStage
 from zeus.optimizer.batch_size.server.job.models import JobState, Stage
@@ -40,6 +40,7 @@ from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
 logger = get_logger(__name__)
+
 
 class GaussianTS:
     """Thompson Sampling policy for Gaussian bandits.
@@ -115,8 +116,7 @@ class GaussianTS:
 
         for arm in choices:
             if arm_dict[arm].num_observations < num_exploration:
-                # if self.verbose:
-                print(f"[{self.name}] Explore arm {arm}.")
+                logger.info(f"[{self.name}] Explore arm {arm}.")
                 return arm
 
         """Thomopson Sampling phase.
@@ -141,17 +141,16 @@ class GaussianTS:
                 )
             )
 
-        # if self.verbose:
-        print(f"[{self.name}] Sampled mean rewards:")
+        logger.info(f"[{self.name}] Sampled mean rewards:")
         for arm, sample in expectations.items():
-            print(
+            logger.info(
                 f"[{self.name}] Arm {arm:4d}: mu ~ N({arm_dict[arm].param_mean:.2f}, "
                 f"{1/arm_dict[arm].param_precision:.2f}) -> {sample:.2f}"
             )
 
         bs = max(expectations, key=expectations.get)
         logger.info(f"{job_id} in Thompson Sampling stage -> \033[31mBS = {bs}\033[0m")
-        return bs 
+        return bs
 
     async def construct_mab(
         self, job: JobState, arms: CreateArms
@@ -179,6 +178,9 @@ class GaussianTS:
         if len(good_bs) == 0:
             raise ZeusBSOValueError("While creating arms, no batch size is selected")
 
+        logger.info(
+            f"Construct MAB for {job.job_id} with arms {[exp.batch_size for exp in good_bs]}"
+        )
         print(
             f"Construct MAB for {job.job_id} with arms {[exp.batch_size for exp in good_bs]}"
         )
@@ -225,21 +227,16 @@ class GaussianTS:
         if len(history.measurements) > job.window_size and job.window_size > 0:
             # if the history is already above the window size, pop the last one.
             history.measurements.pop()
-            history.measurements.reverse() # Now ascending order.
-        
-        history.measurements.append(current_meausurement)
+            history.measurements.reverse()  # Now ascending order.
 
-        print(f"History of bs: {[
-                -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
-                for m in history.measurements
-            ]}, max_power({job.max_power}), eta_knob({job.eta_knob}))")
+        history.measurements.append(current_meausurement)
         arm_rewards = np.array(
             [
                 -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
                 for m in history.measurements
             ]
         )
-        print(f"Arm_rewards: {arm_rewards}")
+        logger.info(f"Arm_rewards: {arm_rewards}")
         arm = await self.service.get_arm(batch_size_key)
 
         if arm == None:
@@ -257,6 +254,3 @@ class GaussianTS:
             f"{job.job_id} @ {current_meausurement.batch_size}: "
             f"arm_rewards = [{arm_rewards_repr}], reward_prec = {new_arm.reward_precision}"
         )
-
-    def _log(self, msg: str):
-        print(f"[GaussianTs] {msg}")

@@ -2,12 +2,13 @@
 Pydantic models for Job
 """
 
-from enum import Enum
+from __future__ import annotations
 import json
+from enum import Enum
 from typing import Any
-from uuid import UUID
+
 import numpy as np
-from pydantic.class_validators import root_validator, validator
+from pydantic.class_validators import root_validator
 from pydantic.utils import GetterDict
 from zeus.optimizer.batch_size.common import JobSpec
 
@@ -34,11 +35,22 @@ class JobState(JobSpec):
 
     mab_random_generator_state: str | None = None
 
-    # batch_size_states
-
-    # TODO: Validate generator state is not empty when seed is not empty
-    # batch_size_states = []
-
     class Config:
         orm_mode = True
         getter_dict = JobGetter
+
+    @root_validator
+    def _validate_mab(cls, values: dict[str, Any]) -> dict[str, Any]:
+        state: str | None = values.get("mab_random_generator_state")
+        mab_seed: int | None = values.get("mab_seed")
+
+        if mab_seed != None:
+            if state == None:
+                raise ValueError("mab_seed is not none, but generator state is none")
+            else:
+                try:
+                    np.random.default_rng(1).__setstate__(json.loads(state))
+                except (TypeError, ValueError):
+                    raise ValueError(f"Invalid generator state ({state})")
+
+        return values

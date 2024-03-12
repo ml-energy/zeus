@@ -1,11 +1,9 @@
 import logging
-from typing import Annotated, Callable
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from zeus.exception import ZeusBaseError
 from zeus.optimizer.batch_size.common import (
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
@@ -15,19 +13,16 @@ from zeus.optimizer.batch_size.common import (
     TrainingResult,
 )
 from zeus.optimizer.batch_size.server.config import ZeusBsoSettings
-from zeus.util.logging import get_logger
-
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerBaseError
 from zeus.optimizer.batch_size.server.optimizer import ZeusBatchSizeOptimizer
 from zeus.optimizer.batch_size.server.services.service import ZeusService
+from zeus.util.logging import get_logger
 
 app = FastAPI()
 
 settings = ZeusBsoSettings()
 logger = get_logger(__name__)
-
-logging.basicConfig(level=logging.getLevelName(settings.log_level))
 
 
 @app.on_event("startup")

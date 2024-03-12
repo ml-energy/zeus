@@ -1,6 +1,11 @@
+from __future__ import annotations
 import json
+from typing import Any
 from uuid import UUID
+
 import numpy as np
+from pydantic.class_validators import root_validator, validator
+from pydantic.fields import Field
 from pydantic.main import BaseModel
 from zeus.optimizer.batch_size.common import JobSpec
 from zeus.optimizer.batch_size.server.database.schema import BatchSize, Job
@@ -9,36 +14,72 @@ from zeus.optimizer.batch_size.server.job.models import Stage
 
 class UpdateExpDefaultBs(BaseModel):
     job_id: UUID
-    exp_default_batch_size: int
+    exp_default_batch_size: int = Field(gt=0)
 
 
 class UpdateJobStage(BaseModel):
     job_id: UUID
-    stage: Stage
+    stage: Stage = Field(Stage.MAB, const=True)
 
 
 class UpdateGeneratorState(BaseModel):
     job_id: UUID
     state: str
 
-    # TODO: Validate state (json format and check fields)
+    @validator("state")
+    def _validate_state(cls, state: str) -> str:
+        try:
+            np.random.default_rng(1).__setstate__(json.loads(state))
+            return state
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid generator state ({state})")
 
 
 class UpdateJobMinCost(BaseModel):
     job_id: UUID
-    min_cost: float
-    min_batch_size: int
+    min_cost: float = Field(ge=0)
+    min_batch_size: int = Field(gt=0)
 
 
 class CreateJob(JobSpec):
     exp_default_batch_size: int
-    min_cost: float | None = None
+    min_cost: None = Field(None, const=True)
     min_batch_size: int
-    stage: Stage = Stage.Pruning
+    stage: Stage = Field(Stage.Pruning, const=True)
     mab_random_generator_state: str | None = None
 
-    # TODO: Validate generator state is not empty when seed is not empty
-    # batch_size_states = []
+    class Config:
+        frozen = True
+        validate_assignment = True
+
+    @root_validator
+    def _validate_mab_states(cls, values: dict[str, Any]) -> dict[str, Any]:
+        state: str | None = values.get("mab_random_generator_state")
+        mab_seed: int | None = values.get("mab_seed")
+        bss: list[int] = values.get("batch_sizes")
+        dbs: int = values.get("default_batch_size")
+        ebs: int = values.get("exp_default_batch_size")
+        mbs: int = values.get("min_batch_size")
+
+        if mab_seed != None:
+            if state == None:
+                raise ValueError("mab_seed is not none, but generator state is none")
+            else:
+                try:
+                    np.random.default_rng(1).__setstate__(json.loads(state))
+                except (TypeError, ValueError):
+                    raise ValueError(f"Invalid generator state ({state})")
+
+        if not (dbs == ebs == mbs):
+            raise ValueError(
+                f"During initialization, default_batch_size({dbs}), exp_default_batch_size({ebs}), min_batch_size({mbs}) should be all the same"
+            )
+        if dbs not in bss:
+            raise ValueError(
+                f"default_batch_size({dbs}) is not in the batch size list({bss})"
+            )
+
+        return values
 
     def from_jobSpec(js: JobSpec) -> "CreateJob":
         d = js.dict()

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import sys
 from typing import AsyncIterator
@@ -18,10 +19,6 @@ from zeus.optimizer.batch_size.server.database.schema import Base
 from zeus.optimizer.batch_size.server.router import app
 from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
 from zeus.simulate import Simulator
-
-"""
-TODO: Need update based on change in server
-"""
 
 
 config = {
@@ -63,6 +60,11 @@ async def clean():
 
 @pytest.fixture(scope="session", autouse=True)
 def database_setup():
+    logger = logging.getLogger(
+        "zeus.optimizer.batch_size.server.mab"
+    )  # for testing, propagate the log to the root logger so that caplog can capture
+    logger.propagate = True
+
     asyncio.run(clean())
     asyncio.run(create())
     yield
@@ -94,7 +96,7 @@ def arm_state_parser(output):
 
 
 @pytest.mark.anyio
-def test_end_to_end(client, capsys, mocker: MockerFixture):
+def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
 
@@ -151,10 +153,11 @@ def test_end_to_end(client, capsys, mocker: MockerFixture):
     org_selected_bs = [item.bs for item in original_result]
 
     out, err = capsys.readouterr()
-    sys.stdout.write(out)
     records = arm_state_parser(out)
 
+    new_sim_records = arm_state_parser(caplog.text)
+
     # Compare arm states
-    assert records[: len(records) // 2] == records[len(records) // 2 :]
+    assert records == new_sim_records
     # Compare selected batch sizes
     assert selected_bs == org_selected_bs

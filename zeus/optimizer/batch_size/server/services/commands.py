@@ -1,19 +1,16 @@
 from typing import Any
 from uuid import UUID
+
 from pydantic import BaseModel
+from pydantic.class_validators import root_validator
 from pydantic.fields import Field
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
-    BatchSizeBase,
     ExplorationsPerBs,
 )
-from zeus.optimizer.batch_size.server.job.models import JobState
-
-from pydantic.class_validators import root_validator
 
 
 class CreateArms(BaseModel):
     explorations_per_bs: dict[int, ExplorationsPerBs]
-
     job_id: UUID
 
     @root_validator

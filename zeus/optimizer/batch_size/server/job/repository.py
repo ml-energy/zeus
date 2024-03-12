@@ -2,9 +2,12 @@
 Pydantic model(JobModel) -> DB operation(Job) -> result pydantic model(JobModel). 
 """
 
+from __future__ import annotations
 from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
-from sqlalchemy.orm.util import identity_key
+from sqlalchemy.orm import joinedload
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import Job
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServiceBadRequestError
@@ -16,10 +19,7 @@ from zeus.optimizer.batch_size.server.job.commands import (
     UpdateJobStage,
 )
 from zeus.optimizer.batch_size.server.job.models import JobState
-from sqlalchemy import and_, select, update
-from sqlalchemy.orm import joinedload
 from zeus.util.logging import get_logger
-
 
 logger = get_logger(__name__)
 

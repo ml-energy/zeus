@@ -1,18 +1,18 @@
-from datetime import datetime
-import functools
+from __future__ import annotations
 import json
-from typing import Annotated, Any, Tuple
+from datetime import datetime
+from typing import Any, Tuple
 from uuid import UUID
+
 import numpy as np
+from numpy.random import Generator as np_Generator
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateExploration,
-    UpsertGaussianTsArmState,
     UpdateExploration,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
-    ExplorationStateModel,
     ExplorationsPerBs,
     ExplorationsPerJob,
     GaussianTsArmStateModel,
@@ -22,15 +22,9 @@ from zeus.optimizer.batch_size.server.batch_size_state.models import (
 from zeus.optimizer.batch_size.server.batch_size_state.repository import (
     BatchSizeStateRepository,
 )
-from zeus.optimizer.batch_size.server.database.schema import Job
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOServiceBadRequestError,
     ZeusBSOValueError,
-)
-from zeus.optimizer.batch_size.server.services.commands import (
-    CreateArms,
-    GetNormal,
-    GetRandomChoices,
 )
 from zeus.optimizer.batch_size.server.job.commands import (
     CreateJob,
@@ -40,9 +34,12 @@ from zeus.optimizer.batch_size.server.job.commands import (
     UpdateJobStage,
 )
 from zeus.optimizer.batch_size.server.job.models import JobState
-from zeus.util import zeus_cost
 from zeus.optimizer.batch_size.server.job.repository import JobStateRepository
-from numpy.random import Generator as np_Generator
+from zeus.optimizer.batch_size.server.services.commands import (
+    GetNormal,
+    GetRandomChoices,
+)
+from zeus.util import zeus_cost
 
 
 class ZeusService:

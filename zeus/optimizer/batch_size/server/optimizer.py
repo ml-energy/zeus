@@ -3,14 +3,8 @@ from __future__ import annotations
 from uuid import UUID
 
 import numpy as np
-from sqlalchemy.ext.asyncio import AsyncSession
 from zeus.optimizer.batch_size.common import JobSpec, ReportResponse, TrainingResult
-from zeus.optimizer.batch_size.server.batch_size_state.models import (
-    MeasurementOfBs,
-)
-from zeus.optimizer.batch_size.server.database.schema import (
-    Measurement,
-)
+from zeus.optimizer.batch_size.server.batch_size_state.models import MeasurementOfBs
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOJobSpecMismatchError,
     ZeusBSOValueError,
@@ -23,7 +17,6 @@ from zeus.optimizer.batch_size.server.services.commands import CreateArms
 from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
-
 
 logger = get_logger(__name__)
 

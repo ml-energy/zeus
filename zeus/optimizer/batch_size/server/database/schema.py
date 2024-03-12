@@ -1,12 +1,9 @@
-import asyncio
-import json
+from __future__ import annotations
 import enum
 from datetime import datetime
-from math import isclose
 from typing import Optional
 from uuid import UUID
 
-import numpy as np
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -21,9 +18,7 @@ from sqlalchemy.ext.asyncio.session import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.sql.sqltypes import VARCHAR
-from zeus.optimizer.batch_size.common import JobSpec
 from zeus.optimizer.batch_size.server.job.models import Stage
-from zeus.util.metric import zeus_cost
 
 
 class Base(AsyncAttrs, DeclarativeBase):

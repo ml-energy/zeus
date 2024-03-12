@@ -1,12 +1,8 @@
 from pydantic.env_settings import BaseSettings
 
-"""
-TODO: Add app setting too + use BaseSetting
-"""
-
 
 class ZeusBsoSettings(BaseSettings):
-    """DB setting"""
+    """App setting"""
 
     database_url: str
     database_password: str = ""

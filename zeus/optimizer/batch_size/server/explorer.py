@@ -1,3 +1,4 @@
+from __future__ import annotations
 from uuid import UUID
 
 import numpy as np
@@ -144,10 +145,7 @@ class PruningExploreManager:
         # Add exploration at the end
         self.service.add_exploration(
             CreateExploration(
-                job_id=job_id,
-                batch_size=next_batch_size,
-                round_number=round_number,
-                state=State.Exploring,
+                job_id=job_id, batch_size=next_batch_size, round_number=round_number
             )
         )
 
