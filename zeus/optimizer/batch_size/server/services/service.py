@@ -3,15 +3,8 @@ import functools
 import json
 from typing import Annotated, Any, Tuple
 from uuid import UUID
-from build.lib.zeus.util.metric import zeus_cost
 import numpy as np
 from sqlalchemy.ext.asyncio.session import AsyncSession
-from sqlalchemy.orm.util import identity_key
-from zeus.optimizer.batch_size.common import (
-    ZeusBSOServiceBadRequest,
-    ZeusBSOServiceError,
-    ZeusBSOValueError,
-)
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateExploration,
     UpsertGaussianTsArmState,
@@ -30,6 +23,10 @@ from zeus.optimizer.batch_size.server.batch_size_state.repository import (
     BatchSizeStateRepository,
 )
 from zeus.optimizer.batch_size.server.database.schema import Job
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOServiceBadRequestError,
+    ZeusBSOValueError,
+)
 from zeus.optimizer.batch_size.server.services.commands import (
     CreateArms,
     GetNormal,
@@ -42,7 +39,8 @@ from zeus.optimizer.batch_size.server.job.commands import (
     UpdateJobMinCost,
     UpdateJobStage,
 )
-from zeus.optimizer.batch_size.server.job.models import JobState, Stage
+from zeus.optimizer.batch_size.server.job.models import JobState
+from zeus.util import zeus_cost
 from zeus.optimizer.batch_size.server.job.repository import JobStateRepository
 from numpy.random import Generator as np_Generator
 
@@ -51,7 +49,6 @@ class ZeusService:
     def __init__(self, db_session: AsyncSession):
         self.bs_repo = BatchSizeStateRepository(db_session)
         self.job_repo = JobStateRepository(db_session)
-        self.rng: dict[UUID, np_Generator] = {}
 
     async def get_arms(self, job_id: UUID) -> list[GaussianTsArmStateModel]:
         return await self.bs_repo.get_arms(job_id)
@@ -70,7 +67,7 @@ class ZeusService:
         measurement: MeasurementOfBs,
         updated_exp: UpdateExploration,
     ) -> None:
-        self._check_job_fetched(measurement.job_id, "update_exploration")
+        self._check_job_fetched(measurement.job_id)
         """
         1. add measurement
         2. update that exploration
@@ -87,7 +84,7 @@ class ZeusService:
         measurement: MeasurementOfBs,
         updated_arm: GaussianTsArmStateModel,
     ):
-        self._check_job_fetched(measurement.job_id, "update_arm_state")
+        self._check_job_fetched(measurement.job_id)
         """
         1. add measurement
         2. update arm_state
@@ -100,7 +97,7 @@ class ZeusService:
         self._update_min_if_needed(measurement, job)
 
     def report_concurrent_job(self, measurement: MeasurementOfBs):
-        self._check_job_fetched(measurement.job_id, "report_concurrent_job")
+        self._check_job_fetched(measurement.job_id)
         """
         1. add measurement
         -----
@@ -111,14 +108,14 @@ class ZeusService:
         self._update_min_if_needed(measurement, job)
 
     def update_exp_default_bs(self, updated_default_bs: UpdateExpDefaultBs) -> None:
-        self._check_job_fetched(updated_default_bs.job_id, "update_exp_default_bs")
+        self._check_job_fetched(updated_default_bs.job_id)
         """
         1. Update exp_default bs
         """
         self.job_repo.update_exp_default_bs(updated_default_bs)
 
     def add_exploration(self, exp: CreateExploration):
-        self._check_job_fetched(exp.job_id, "add_exploration")
+        self._check_job_fetched(exp.job_id)
         """
         add exploration
         """
@@ -126,7 +123,7 @@ class ZeusService:
 
     # JOBSTATE
     def get_random_choices(self, choice: GetRandomChoices) -> np.ndarray[Any, Any]:
-        self._check_job_fetched(choice.job_id, "get_random_choices")
+        self._check_job_fetched(choice.job_id)
         """
         If seed is not none,
         1. get generator state
@@ -148,7 +145,7 @@ class ZeusService:
         return res
 
     def get_normal(self, arg: GetNormal):
-        self._check_job_fetched(arg.job_id, "get_normal")
+        self._check_job_fetched(arg.job_id)
 
         ret = self._get_generator(arg.job_id)
         res = ret[0].normal(arg.loc, arg.scale)
@@ -178,11 +175,11 @@ class ZeusService:
 
     def create_arms(self, new_arms: list[GaussianTsArmStateModel]):
         if len(new_arms) != 0:
-            self._check_job_fetched(new_arms[0].job_id, "create_arms")
+            self._check_job_fetched(new_arms[0].job_id)
             self.bs_repo.create_arms(new_arms)
 
     def update_job_stage(self, updated_stage: UpdateJobStage):
-        self._check_job_fetched(updated_stage.job_id, "update_job_stage")
+        self._check_job_fetched(updated_stage.job_id)
 
         self.job_repo.update_stage(updated_stage)
 
@@ -227,10 +224,10 @@ class ZeusService:
     def _get_job(self, job_id: UUID) -> JobState:
         res = self.job_repo.get_job_from_session(job_id)
         if res == None:
-            raise ZeusBSOServiceBadRequest(
+            raise ZeusBSOServiceBadRequestError(
                 f"Should have fetched the job first or job does not exist(job_id = {job_id})"
             )
         return res
 
-    def _check_job_fetched(self, job_id: UUID, caller: str = "") -> None:
-        return self.job_repo.check_job_fetched(job_id, caller)
+    def _check_job_fetched(self, job_id: UUID) -> None:
+        return self.job_repo.check_job_fetched(job_id)

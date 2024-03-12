@@ -1,18 +1,17 @@
 from uuid import UUID
 
 import numpy as np
-from zeus.optimizer.batch_size.common import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateExploration,
     UpdateExploration,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
-    ExplorationStateModel,
     ExplorationsPerJob,
     MeasurementOfBs,
 )
-from zeus.optimizer.batch_size.server.database.schema import BatchSize, State
+from zeus.optimizer.batch_size.server.database.schema import State
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.job.commands import UpdateExpDefaultBs
 from zeus.optimizer.batch_size.server.job.models import Stage
 from zeus.optimizer.batch_size.server.services.service import ZeusService
@@ -38,8 +37,6 @@ class PruningExploreManager:
         # Explore round.
         round_number = 0
         bs_list = batch_sizes
-
-        self._log(f"Explorations: {exploration_history.explorations_per_bs}")
 
         # Get which round we are in now by finding the max round: it is possible that exploring current round is over
         # We can detect this case by iterating batch_sizes and check all possible batch sizes already have that round number (will be done after)

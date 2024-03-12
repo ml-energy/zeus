@@ -1,16 +1,9 @@
 """Shared model definitions for the server and client."""
 
-from datetime import datetime
-import enum
-import json
 from typing import Any, Dict
 from uuid import UUID
-import numpy as np
 
 from pydantic import BaseModel, root_validator, validator
-from numpy.random import Generator as np_Generator
-from pydantic.fields import Field, PrivateAttr
-from pydantic.utils import GetterDict
 
 
 REGISTER_JOB_URL = "/jobs"
@@ -101,28 +94,3 @@ class ReportResponse(BaseModel):
     stop_train: bool
     converged: bool
     message: str
-
-
-class ZeusBSOJobSpecMismatch(Exception):
-    def __init__(self, message: str):
-        self.message = message
-
-
-class ZeusBSOValueError(Exception):
-    def __init__(self, message: str):
-        self.message = message
-
-
-class ZeusBSOOperationOrderError(Exception):
-    def __init__(self, message: str):
-        self.message = message
-
-
-class ZeusBSOServiceError(Exception):
-    def __init__(self, message: str):
-        self.message = message
-
-
-class ZeusBSOServiceBadRequest(Exception):
-    def __init__(self, message: str):
-        self.message = message

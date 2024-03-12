@@ -5,6 +5,11 @@ import pynvml
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer.batch_size.common import JobSpec, ReportResponse, TrainingResult
+from zeus.optimizer.batch_size.exceptions import (
+    ZeusBSOConfigError,
+    ZeusBSOOperationOrderError,
+    ZeusBSORuntimError,
+)
 
 
 class BatchSizeOptimizer(Callback):
@@ -26,7 +31,7 @@ class BatchSizeOptimizer(Callback):
             device = pynvml.nvmlDeviceGetHandleByIndex(index)
             pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
         if not all(pls[0] == pl for pl in pls):
-            raise ValueError("Power limits ranges are not uniform across GPUs.")
+            raise ZeusBSOConfigError("Power limits ranges are not uniform across GPUs.")
 
         self.max_power = max(pls) * len(monitor.gpu_indices)
         self.current_batch_size = 0
@@ -49,7 +54,7 @@ class BatchSizeOptimizer(Callback):
 
         batch_size = res.json()
         if not isinstance(batch_size, int) or batch_size not in self.job.batch_sizes:
-            raise RuntimeError(
+            raise ZeusBSORuntimError(
                 f"Zeus server returned a strange batch_size: {batch_size}"
             )
 
@@ -67,7 +72,9 @@ class BatchSizeOptimizer(Callback):
         """If converged or max_epoch is reached, report the result to BSO server"""
 
         if self.current_batch_size == 0:
-            raise ValueError("Call get_batch_size to set the batch size first")
+            raise ZeusBSOOperationOrderError(
+                "Call get_batch_size to set the batch size first"
+            )
 
         if self.train_end == True:
             return
@@ -102,8 +109,10 @@ class BatchSizeOptimizer(Callback):
         else:
             self.train_end = True
             if parsedResposne.converged == False:
-                raise RuntimeError(f"Train failed: {parsedResposne.message}")
+                raise ZeusBSORuntimError(f"Train failed: {parsedResposne.message}")
 
     def _handle_response(self, res: httpx.Response) -> None:
         if not (200 <= (code := res.status_code) < 300):
-            raise RuntimeError(f"Zeus server returned status code {code}: {res.text}")
+            raise ZeusBSORuntimError(
+                f"Zeus server returned status code {code}: {res.text}"
+            )

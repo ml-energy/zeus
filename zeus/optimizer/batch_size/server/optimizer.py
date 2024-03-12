@@ -4,18 +4,16 @@ from uuid import UUID
 
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
-from zeus.optimizer.batch_size.common import (
-    JobSpec,
-    ReportResponse,
-    TrainingResult,
-    ZeusBSOJobSpecMismatch,
-    ZeusBSOValueError,
-)
+from zeus.optimizer.batch_size.common import JobSpec, ReportResponse, TrainingResult
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     MeasurementOfBs,
 )
 from zeus.optimizer.batch_size.server.database.schema import (
     Measurement,
+)
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOJobSpecMismatchError,
+    ZeusBSOValueError,
 )
 from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
 from zeus.optimizer.batch_size.server.job.commands import CreateJob
@@ -23,17 +21,16 @@ from zeus.optimizer.batch_size.server.job.models import Stage
 from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.optimizer.batch_size.server.services.commands import CreateArms
 from zeus.optimizer.batch_size.server.services.service import ZeusService
+from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
 
+logger = get_logger(__name__)
+
+
 class ZeusBatchSizeOptimizer:
-    def __init__(
-        self,
-        service: ZeusService,
-        verbose: bool = True,
-    ) -> None:
+    def __init__(self, service: ZeusService) -> None:
         """Initialize the server."""
-        self.verbose = verbose
         self.service = service
         self.pruning_manager = PruningExploreManager(service)
         self.mab = GaussianTS(service)
@@ -49,19 +46,17 @@ class ZeusBatchSizeOptimizer:
 
         if registered_job is not None:
             # Job exists
-            if self.verbose:
-                self._log(f"Job({job.job_id}) already exists")
+            logger.info(f"Job({job.job_id}) already exists")
             registerd_job_spec = JobSpec.parse_obj(registered_job.dict())
 
             if registerd_job_spec != job:
-                raise ZeusBSOJobSpecMismatch(
+                raise ZeusBSOJobSpecMismatchError(
                     "JobSpec doesn't match with existing jobSpec. Use a new job_id for different configuration"
                 )
             return False
 
         self.service.create_job(CreateJob.from_jobSpec(job))
-        if self.verbose:
-            self._log(f"Registered {job.job_id}")
+        logger.info(f"Registered {job.job_id}")
 
         return True
 
@@ -96,7 +91,7 @@ class ZeusBatchSizeOptimizer:
                 return job.min_batch_size
             elif isinstance(next_batch_size, Stage):
                 # MAB stage: construct MAB if we haven't done yet and return the batch size from MAB
-                self._log(
+                logger.info(
                     f"Constructing a MAB {explorations.explorations_per_bs == None}"
                 )
                 arms = await self.mab.construct_mab(
@@ -176,10 +171,9 @@ class ZeusBatchSizeOptimizer:
 
             await self.mab.report(job, current_meausurement)
         else:
-            if self.verbose:
-                self._log(
-                    f"{result.job_id} in pruning stage, Current BS {result.batch_size} that did {'not ' * (not converged)}converge."
-                )
+            logger.info(
+                f"{result.job_id} in pruning stage, Current BS {result.batch_size} that did {'not ' * (not converged)}converge."
+            )
 
             await self.pruning_manager.report_batch_size_result(
                 current_meausurement, reported_cost < cost_ub, reported_cost
@@ -190,10 +184,6 @@ class ZeusBatchSizeOptimizer:
                     beta_knob({job.beta_knob})*min_cost({job.min_cost})"""
 
         return ReportResponse(stop_train=True, converged=converged, message=message)
-
-    def _log(self, message: str) -> None:
-        """Log message with object name."""
-        print(f"[{self.name}] {message}")
 
 
 ## End of class ZeusBatchSizeOptimizer

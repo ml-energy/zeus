@@ -5,9 +5,9 @@ Pydantic model(JobModel) -> DB operation(Job) -> result pydantic model(JobModel)
 from uuid import UUID
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm.util import identity_key
-from zeus.optimizer.batch_size.common import ZeusBSOServiceBadRequest
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import Job
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServiceBadRequestError
 from zeus.optimizer.batch_size.server.job.commands import (
     CreateJob,
     UpdateExpDefaultBs,
@@ -75,6 +75,8 @@ class JobStateRepository(DatabaseRepository):
     def _log(self, msg: str):
         print(f"[JobStateRepository]: {msg}")
 
-    def check_job_fetched(self, job_id: UUID, caller: str = "") -> None:
+    def check_job_fetched(self, job_id: UUID) -> None:
         if self.fetched_job == None or self.fetched_job.job_id != job_id:
-            raise ZeusBSOServiceBadRequest(f"{caller}: {job_id} is unknown")
+            raise ZeusBSOServiceBadRequestError(
+                f"check_job_fetched: {job_id} is not currently in the session"
+            )

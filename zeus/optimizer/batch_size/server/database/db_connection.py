@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from zeus.optimizer.batch_size.server.config import setting
+from zeus.optimizer.batch_size.server.config import settings
 
 # Heavily inspired by https://praciano.com.br/fastapi-and-async-sqlalchemy-20-with-pytest-done-right.html
 # https://medium.com/@tclaitken/setting-up-a-fastapi-app-with-async-sqlalchemy-2-0-pydantic-v2-e6c540be4308
@@ -45,18 +45,16 @@ class DatabaseSessionManager:
 
         session = self._sessionmaker()
         try:
-            print("YIELD SESSION")
             yield session
         except Exception as err:
             await session.rollback()
-            print(f"Commit Failed: {str(err)}")
-            raise
+            raise err
         finally:
             await session.close()
 
 
 sessionmanager = DatabaseSessionManager(
-    setting.database_url, {"echo": setting.echo_sql}
+    settings.database_url, {"echo": settings.echo_sql}
 )
 
 

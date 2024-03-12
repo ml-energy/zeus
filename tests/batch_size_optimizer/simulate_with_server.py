@@ -15,6 +15,7 @@
 """A simulator for running trace-driven Zeus experiments."""
 
 from __future__ import annotations
+from typing import Literal
 
 import uuid
 from copy import deepcopy
@@ -73,6 +74,7 @@ class SimulatorWithServer:
         summary_train: str | pd.DataFrame,
         summary_power: str | pd.DataFrame,
         power_limit_optimizer: PowerLimitOptimizer,
+        gpu: Literal["a40", "v100", "p100", "rtx6000"],
         seed: int = 123456,
         verbose: bool = True,
     ) -> None:
@@ -117,6 +119,7 @@ class SimulatorWithServer:
         # Save arguments.
         self.seed = seed
         self.verbose = verbose
+        self.gpu = gpu
 
     def simulate_one_job(
         self,
@@ -138,6 +141,11 @@ class SimulatorWithServer:
         Returns:
             A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.
         """
+        # Figure out MAXPOWER.
+        max_power = self.df.power_limit.max().item()
+        if self.verbose:
+            print(f"[Simulator] Max power = {max_power}W")
+
         # Copy all internal state so that simulation does not modify any
         # internal state and is deterministic w.r.t. the random seed.
         # A new job. Profile the feasible batch size range.
@@ -149,8 +157,11 @@ class SimulatorWithServer:
             max_epochs=job.max_epochs,
             beta_knob=beta_knob,
             eta_knob=eta_knob,
-            seed=self.seed,
-            mab_setting=MabSetting(seed=self.seed),
+            mab_seed=self.seed,
+            max_power=max_power,
+            gpu_model=self.gpu,
+            number_of_gpus=1,
+            window_size=0,
         )
 
         # register job in the server
@@ -159,11 +170,6 @@ class SimulatorWithServer:
         ## Should be mocked
         plo = deepcopy(self.plo)
         rng = np.random.default_rng(self.seed)
-
-        # Figure out MAXPOWER.
-        max_power = self.df.power_limit.max().item()
-        if self.verbose:
-            print(f"[Simulator] Max power = {max_power}W")
 
         # Track the minimum cost observed for the early stopping energy threshold.
         min_cost = np.inf

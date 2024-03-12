@@ -1,12 +1,20 @@
+import asyncio
+from typing import AsyncIterator
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
+from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
 from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.server.database.db_connection import (
+    DatabaseSessionManager,
+    get_db_session,
+)
+from zeus.optimizer.batch_size.server.database.schema import Base
 from zeus.optimizer.batch_size.server.router import app
 
 fake_job = {
@@ -20,14 +28,44 @@ fake_job = {
     "high_is_better_metric": True,
     "max_epochs": 100,
     "num_pruning_rounds": 2,
-    "mab_setting": {
-        "prior_mean": 0,
-        "prior_precision": 0,
-        "window_size": 0,
-        "seed": 123456,
-        "num_exploration": 2,
-    },
+    "window_size": 5,
+    "mab_prior_mean": 0,
+    "mab_prior_precision": 0,
+    "mab_seed": 123456,
+    "mab_num_exploration": 2,
+    "max_power": 3000,
+    "number_of_gpus": 4,
+    "gpu_model": "A100",
 }
+
+sessionmanager = DatabaseSessionManager("sqlite+aiosqlite:///test.db", {"echo": False})
+
+
+async def override_db_session() -> AsyncIterator[AsyncSession]:
+    async with sessionmanager.session() as session:
+        yield session
+
+
+app.dependency_overrides[get_db_session] = override_db_session
+
+
+async def create():
+    print("Create tables")
+    async with sessionmanager._engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def clean():
+    print("Clean")
+    async with sessionmanager._engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def database_setup():
+    asyncio.run(clean())
+    asyncio.run(create())
+    yield
 
 
 @pytest.fixture

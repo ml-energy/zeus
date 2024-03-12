@@ -26,7 +26,7 @@ fake_job = {
     "high_is_better_metric": True,
     "max_epochs": 100,
     "num_pruning_rounds": 2,
-    "window_size": 5,
+    "window_size": 0,
     "mab_prior_mean": 0,
     "mab_prior_precision": 0,
     "mab_seed": 123456,

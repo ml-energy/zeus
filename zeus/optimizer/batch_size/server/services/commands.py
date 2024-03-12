@@ -32,7 +32,6 @@ class CreateArms(BaseModel):
 
     def validate_exp_rounds(self, num_pruning_rounds: int):
         any_at_num_pruning_rounds = False
-        print("IS THIS NONE", self.explorations_per_bs)
         for bs, exp_list_per_bs in self.explorations_per_bs.items():
             for exp in exp_list_per_bs.explorations:
                 if exp.round_number > num_pruning_rounds:

@@ -32,8 +32,6 @@ class BatchSizeStateRepository(DatabaseRepository):
     ) -> MeasurementsPerBs:
         # Load window size amount of measurement for that bs
         try:
-            if window_size == 0:
-                return []
             stmt = (
                 select(Measurement)
                 .where(
@@ -43,8 +41,10 @@ class BatchSizeStateRepository(DatabaseRepository):
                     )
                 )
                 .order_by(Measurement.timestamp.desc())
-                .limit(window_size)
             )
+            if window_size > 0:
+                stmt = stmt.limit(window_size)
+
             res = (await self.session.scalars(stmt)).all()
             return MeasurementsPerBs(
                 job_id=batch_size.job_id,

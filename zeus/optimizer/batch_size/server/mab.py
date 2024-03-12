@@ -20,11 +20,6 @@ from uuid import UUID
 import warnings
 
 import numpy as np
-from numpy.random import Generator as np_Generator
-from zeus.optimizer.batch_size.common import ZeusBSOValueError
-from zeus.optimizer.batch_size.server.batch_size_state.commands import (
-    UpsertGaussianTsArmState,
-)
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
     ExplorationStateModel,
@@ -32,6 +27,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.models import (
     MeasurementOfBs,
 )
 from zeus.optimizer.batch_size.server.database.schema import GaussianTsArmState, State
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.job.commands import UpdateJobStage
 from zeus.optimizer.batch_size.server.job.models import JobState, Stage
 from zeus.optimizer.batch_size.server.services.commands import (
@@ -40,8 +36,10 @@ from zeus.optimizer.batch_size.server.services.commands import (
     GetRandomChoices,
 )
 from zeus.optimizer.batch_size.server.services.service import ZeusService
+from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 
+logger = get_logger(__name__)
 
 class GaussianTS:
     """Thompson Sampling policy for Gaussian bandits.
@@ -151,7 +149,11 @@ class GaussianTS:
                 f"{1/arm_dict[arm].param_precision:.2f}) -> {sample:.2f}"
             )
 
-        return max(expectations, key=expectations.get)
+        bs = max(expectations, key=expectations.get)
+        self._log(
+            f"{job_id} in Thompson Sampling stage -> \033[31mBS = {bs}\033[0m"
+        )
+        return bs 
 
     async def construct_mab(
         self, job: JobState, arms: CreateArms
@@ -222,16 +224,24 @@ class GaussianTS:
         history = await self.service.get_measurements_of_bs(batch_size_key)
 
         # Add current measurement to the window
-        history.measurements.pop()
-        history.measurements.reverse()
+        if len(history.measurements) > job.window_size and job.window_size > 0:
+            # if the history is already above the window size, pop the last one.
+            history.measurements.pop()
+            history.measurements.reverse() # Now ascending order.
+        
         history.measurements.append(current_meausurement)
 
+        print(f"History of bs: {[
+                -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
+                for m in history.measurements
+            ]}, max_power({job.max_power}), eta_knob({job.eta_knob}))")
         arm_rewards = np.array(
             [
                 -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
                 for m in history.measurements
             ]
         )
+        print(f"Arm_rewards: {arm_rewards}")
         arm = await self.service.get_arm(batch_size_key)
 
         if arm == None:
