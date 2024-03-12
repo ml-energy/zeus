@@ -35,6 +35,7 @@ from zeus.monitor import ZeusMonitor, Measurement
 from zeus.util.env import get_env
 from zeus.util.metric import ZeusCostThresholdExceededError, zeus_cost
 from zeus.util.logging import get_logger
+from zeus.device import GPUManager
 
 
 # JIT profiling states

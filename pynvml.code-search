@@ -1,0 +1,371 @@
+# Query: pynvml
+# ContextLines: 1
+
+131 results - 12 files
+
+tests/test_monitor.py:
+   21  
+   22: import pynvml
+   23  import pytest
+
+   34  ARCHS = [
+   35:     pynvml.NVML_DEVICE_ARCH_PASCAL,
+   36:     pynvml.NVML_DEVICE_ARCH_VOLTA,
+   37:     pynvml.NVML_DEVICE_ARCH_AMPERE,
+   38  ]
+
+   41  @pytest.fixture
+   42: def pynvml_mock(mocker: MockerFixture):
+   43:     """Mock the entire pynvml module."""
+   44:     mock = mocker.patch("zeus.monitor.energy.pynvml", autospec=True)
+   45      
+   46      # Except for the arch constants.
+   47:     mock.NVML_DEVICE_ARCH_PASCAL = pynvml.NVML_DEVICE_ARCH_PASCAL
+   48:     mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
+   49:     mock.NVML_DEVICE_ARCH_AMPERE = pynvml.NVML_DEVICE_ARCH_AMPERE
+   50  
+   51:     mocker.patch("zeus.util.env.pynvml", mock)
+   52  
+
+   92  @pytest.fixture(params=gpu_cases())
+   93: def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
+   94:     """Mock `pynvml` so that it looks like there are GPUs with the given archs.
+   95  
+
+  108  
+  109:     def mock_pynvml(nvml_indices: list[int], archs: list[int]) -> None:
+  110          assert len(nvml_indices) == len(archs)
+
+  112          handle_to_arch = {f"handle{i}": arch for i, arch in zip(nvml_indices, archs)}
+  113:         pynvml_mock.nvmlDeviceGetCount.return_value = NUM_GPUS
+  114:         pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: index_to_handle[index]
+  115:         pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
+  116  
+
+  119          if gpu_indices is None:
+  120:             mock_pynvml(list(range(NUM_GPUS)), archs)
+  121          else:
+  122:             mock_pynvml(gpu_indices, archs)
+  123  
+
+  127          if gpu_indices is None:
+  128:             mock_pynvml(cuda_visible_devices, archs)
+  129          else:
+  130              # We need to translate `gpu_indices` to NVML indices.
+  131:             mock_pynvml([cuda_visible_devices[idx] for idx in gpu_indices], archs)
+  132  
+
+  135  
+  136: def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
+  137      """Test the `ZeusMonitor` class."""
+
+  153      num_gpus = len(gpu_archs)
+  154:     is_old_nvml = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(nvml_gpu_indices, gpu_archs)}
+  155:     is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
+  156      old_gpu_torch_indices = [index for index, is_old in is_old_torch.items() if is_old]
+
+  175      }
+  176:     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counters[handle])
+  177  
+
+  205          }
+  206:         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
+  207              call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]
+  208          ])
+  209:         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
+  210  
+
+  238  
+  239:         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
+  240              call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]
+  241          ])
+  242:         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
+  243  
+
+tests/optimizer/test_power_limit_optimizer.py:
+  127  ):
+  128:     # Mock PyNVML.
+  129:     pynvml_mock = mocker.patch("zeus.optimizer.power_limit.pynvml", autospec=True)
+  130:     pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda i: f"handle{i}"
+  131:     pynvml_mock.nvmlDeviceGetPowerManagementLimitConstraints.side_effect = \
+  132          lambda _: (min(replay_log.power_limits) * 1000, max(replay_log.power_limits) * 1000)
+
+  216              call_list.append(call(f"handle{i}", optimal_pl * 1000))
+  217:     pynvml_mock.nvmlDeviceSetPowerManagementLimit.assert_has_calls(call_list, any_order=False)
+  218:     pynvml_mock.reset_mock()
+  219  
+
+  270  
+  271:     pynvml_mock.nvmlDeviceSetPowerManagementLimit.assert_has_calls(
+  272          [call(f"handle{i}", optimal_pl * 1000) for i in sorted(monitor.gpu_indices)],
+
+zeus/controller.py:
+  18  
+  19: import pynvml
+  20  
+
+  86              assert self.monitor is not None
+  87:             pynvml.nvmlInit()
+  88              for gpu_index in self.monitor.gpu_indices:
+  89:                 device = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+  90                  self.gpu_handles[gpu_index] = device
+  91                  self.max_power[gpu_index] = (
+  92:                     pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device)[1]
+  93                      // 1000
+
+zeus/device/gpu.py:
+    9  
+   10: Usages of pynvml:
+   11: pynvml.nvmlInit()
+   12: handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+   13: minmax = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
+   14: pynvml.nvmlShutdown()
+   15: pynvml.nvmlDeviceGetCount()
+   16: pynvml.nvmlDeviceSetPowerManagementLimit(
+   17: pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
+   18: pynvml.nvmlDeviceGetHandleByIndex(index)
+   19: pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq)
+   20: pynvml.nvmlDeviceGetSupportedMemoryClocks(handle)
+   21  
+   22: with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
+   23:   87:             pynvml.nvmlDeviceResetMemoryLockedClocks(handle)
+   24:   88:         pynvml.nvmlDeviceResetGpuLockedClocks(handle)
+   25  
+
+   30  import abc
+   31: import pynvml
+   32  import os
+
+  106      def __init__(self, ensure_homogeneuous: bool = True) -> None:
+  107:         pynvml.nvmlInit()
+  108  
+  109      def __del__(self) -> None:
+  110:         pynvml.nvmlShutdown()
+  111  
+
+  136  def get_gpus() -> GPUs:
+  137:     return NVIDIAGPUs() if pynvml.is_initialized() else AMDGPUs()
+  138  
+
+zeus/monitor/energy.py:
+   25  
+   26: import pynvml
+   27  
+
+  131          # Initialize NVML.
+  132:         pynvml.nvmlInit()
+  133:         atexit.register(pynvml.nvmlShutdown)
+  134  
+
+  138          # Save all the NVML GPU handles. These should be called with system-level GPU indices.
+  139:         self.gpu_handles: dict[int, pynvml.c_nvmlDevice_t] = {}
+  140          for nvml_gpu_index, gpu_index in zip(self.nvml_gpu_indices, self.gpu_indices):
+  141:             handle = pynvml.nvmlDeviceGetHandleByIndex(nvml_gpu_index)
+  142              self.gpu_handles[gpu_index] = handle
+
+  182          return (
+  183:             pynvml.nvmlDeviceGetArchitecture(self.gpu_handles[gpu])
+  184:             >= pynvml.NVML_DEVICE_ARCH_VOLTA
+  185          )
+
+  195          power = {
+  196:             i: pynvml.nvmlDeviceGetPowerUsage(h) / 1000.0
+  197              for i, h in self.gpu_handles.items()
+
+  227                  energy_state[gpu_index] = (
+  228:                     pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
+  229                  )
+
+  281                  end_energy = (
+  282:                     pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
+  283                  )
+
+zeus/monitor/power.py:
+   24  
+   25: import pynvml
+   26  import pandas as pd
+
+   32  
+   33: def infer_counter_update_period(nvml_handles: list[pynvml.c_nvmlDevice_t]) -> float:
+   34      """Infer the update period of the NVML power counter.
+
+   41      """
+   42:     pynvml.nvmlInit()
+   43  
+
+   49      for handle in nvml_handles:
+   50:         if (model := pynvml.nvmlDeviceGetName(handle)) not in gpu_models_covered:
+   51              logger.info(
+
+   63  
+   64:     pynvml.nvmlShutdown()
+   65  
+
+   78  
+   79: def _infer_counter_update_period_single(nvml_handle: pynvml.c_nvmlDevice_t) -> float:
+   80      """Infer the update period of the NVML power counter for a single GPU."""
+
+   85              time(),
+   86:             pynvml.nvmlDeviceGetPowerUsage(nvml_handle),
+   87          )
+
+  131          # Initialize NVML.
+  132:         pynvml.nvmlInit()
+  133  
+
+  138          self.gpu_indices, nvml_gpu_indices = resolve_gpu_indices(gpu_indices)
+  139:         nvml_handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in nvml_gpu_indices]
+  140          self.logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
+
+  162          """Stop monitoring power usage."""
+  163:         pynvml.nvmlShutdown()
+  164          if self.process is not None:
+
+  247      try:
+  248:         pynvml.nvmlInit()
+  249:         nvml_handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in nvml_gpu_indices]
+  250  
+
+  256                  for nvml_handle in nvml_handles:
+  257:                     power.append(pynvml.nvmlDeviceGetPowerUsage(nvml_handle))
+  258                  power_str = ",".join(map(lambda p: str(p / 1000), power))
+
+  264      finally:
+  265:         pynvml.nvmlShutdown()
+
+zeus/optimizer/power_limit.py:
+   42  
+   43: import pynvml
+   44  
+
+  273          # Assert that supported power limits ranges are uniform across GPUs.
+  274:         pynvml.nvmlInit()
+  275          pls = []
+
+  277          for index in monitor.nvml_gpu_indices:
+  278:             device = pynvml.nvmlDeviceGetHandleByIndex(index)
+  279              self.handles.append(device)
+  280:             pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
+  281          if not all(pls[0] == pl for pl in pls):
+
+  289              for handle in self.handles:
+  290:                 pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
+  291:         except pynvml.NVMLError_NoPermission:  # type: ignore
+  292              raise RuntimeError(
+
+  452          for handle in self.handles:
+  453:             pynvml.nvmlDeviceSetPowerManagementLimit(handle, power_limit)
+  454          self.current_power_limit = power_limit
+
+TODO:
+zeus/optimizer/perseus/frequency_controller.py:
+  22  
+  23: import pynvml
+  24  
+
+  54          """Receive frequency values through a queue and apply it."""
+  55:         pynvml.nvmlInit()
+  56:         handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+  57  
+  58          # Return the power limit to the default.
+  59:         pynvml.nvmlDeviceSetPowerManagementLimit(
+  60              handle,
+  61:             pynvml.nvmlDeviceGetPowerManagementDefaultLimit(handle),
+  62          )
+
+  64          # Set the memory frequency to be the highest.
+  65:         max_mem_freq = max(pynvml.nvmlDeviceGetSupportedMemoryClocks(handle))
+  66:         with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
+  67:             pynvml.nvmlDeviceSetMemoryLockedClocks(handle, max_mem_freq, max_mem_freq)
+  68  
+
+  70          max_freq = max(
+  71:             pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq)
+  72          )
+  73:         pynvml.nvmlDeviceSetGpuLockedClocks(handle, max_freq, max_freq)
+  74          current_freq = max_freq
+
+  81              if current_freq != target_freq:
+  82:                 pynvml.nvmlDeviceSetGpuLockedClocks(handle, target_freq, target_freq)
+  83                  current_freq = target_freq
+
+  85          # Reset everything.
+  86:         with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
+  87:             pynvml.nvmlDeviceResetMemoryLockedClocks(handle)
+  88:         pynvml.nvmlDeviceResetGpuLockedClocks(handle)
+  89:         pynvml.nvmlShutdown()
+
+zeus/optimizer/perseus/optimizer.py:
+   25  import httpx
+   26: import pynvml
+   27  import torch
+
+  134          # Query the list of available frequencies of the GPU.
+  135:         pynvml.nvmlInit()
+  136:         handle = pynvml.nvmlDeviceGetHandleByIndex(nvml_device_id)
+  137:         max_mem_freq = max(pynvml.nvmlDeviceGetSupportedMemoryClocks(handle))
+  138          freqs = sorted(
+  139:             pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq),
+  140              reverse=True,
+  141          )
+  142:         pynvml.nvmlShutdown()
+  143  
+
+zeus/run/dataloader.py:
+   27  
+   28: import pynvml
+   29  import torch
+
+  421          self.gpu_handles = []
+  422:         pynvml.nvmlInit()
+  423          for index in range(self.world_size):
+  424:             handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+  425              # Set persistent mode.
+  426              # TODO(JW): Check SYS_ADMIN permissions and error with an explanation.
+  427:             pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
+  428              self.gpu_handles.append(handle)
+  429          # Query NVML for the possible power limit range. Unit is mW.
+  430:         min_pl, self.max_pl = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(
+  431              self.gpu_handles[0]
+
+  457          if self._is_train:
+  458:             atexit.register(pynvml.nvmlShutdown)
+  459  
+
+  689              for index in range(self.world_size):
+  690:                 pynvml.nvmlDeviceSetPowerManagementLimit(
+  691                      self.gpu_handles[index], power_limit
+
+DONE:
+zeus/run/master.py:
+   27  import numpy as np
+   28: import pynvml
+   29  import torch
+
+  105          # Query the max power limit of the GPU.
+  106:         pynvml.nvmlInit()
+  107:         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+  108:         minmax = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)  # unit: mW
+  109          self.max_pl = minmax[1] // 1000  # unit: W
+  110          print(
+  111:             f"[Zeus Master] Max power limit of {pynvml.nvmlDeviceGetName(handle)}: {self.max_pl}W"
+  112          )
+  113:         pynvml.nvmlShutdown()
+  114  
+
+zeus/util/env.py:
+  21  
+  22: import pynvml
+  23  
+
+  56      # Initialize NVML.
+  57:     pynvml.nvmlInit()
+  58  
+
+  66      else:
+  67:         nvml_visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
+  68  
+
+  79      # Deinitialize NVML.
+  80:     pynvml.nvmlShutdown()
+  81  
