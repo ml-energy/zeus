@@ -15,6 +15,9 @@ from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.job.commands import UpdateExpDefaultBs
 from zeus.optimizer.batch_size.server.job.models import Stage
 from zeus.optimizer.batch_size.server.services.service import ZeusService
+from zeus.util.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class PruningExploreManager:
@@ -88,7 +91,7 @@ class PruningExploreManager:
             down = sorted(bs_list[: idx + 1], reverse=True)
             up = sorted(bs_list[idx + 1 :])
 
-            self._log(f"Exploration space: {[down, up]}")
+            logger.info(f"Exploration space: {[down, up]}")
 
             best_bs = default_exp_bs  # best_bs of current round
             min_cost = np.inf
@@ -111,7 +114,7 @@ class PruningExploreManager:
                         break
                     elif current_round_exp.state == State.Exploring:
                         # Concurrent job submission, give the best bs known so far (skip updating exploration states).
-                        self._log(f"Concurrent job submission. Waiting for {bs}")
+                        logger.info(f"Concurrent job submission. Waiting for {bs}")
                         return Stage.Pruning
                     else:
                         if min_cost > current_round_exp.cost:
@@ -127,12 +130,12 @@ class PruningExploreManager:
                 round_number += 1
                 if round_number > num_pruning_rounds:
                     # Exceeded pruning rounds, go to MAB stage
-                    self._log(f"Pruning over. go to MAB")
+                    logger.info(f"Pruning over. go to MAB")
                     return Stage.MAB
 
-                self._log(f"Going to next round({round_number})")
+                logger.info(f"Going to next round({round_number})")
                 if best_bs != default_exp_bs:
-                    self._log(f"Update default_bs to {best_bs} from {default_exp_bs}")
+                    logger.info(f"Update default_bs to {best_bs} from {default_exp_bs}")
                 next_batch_size = best_bs
 
                 self.service.update_exp_default_bs(
@@ -178,7 +181,7 @@ class PruningExploreManager:
             raise ZeusBSOValueError(
                 f"Current batch_size({current_meausurement.batch_size}) is not in the batch_size list({explorations_per_bs.explorations})"
             )
-        self._log(f"Explorations per bs: {explorations_per_bs}")
+        logger.info(f"Explorations per bs: {explorations_per_bs}")
         round_number = -1
 
         for exp in explorations_per_bs.explorations:  # round_number DESC
@@ -188,7 +191,7 @@ class PruningExploreManager:
                 break
 
         if round_number == -1:
-            self._log(
+            logger.info(
                 f"Couldn't find issuing {current_meausurement.batch_size} for exploration. Should be a concurrent job."
             )
             self.service.report_concurrent_job(current_meausurement)
@@ -198,7 +201,7 @@ class PruningExploreManager:
                 if current_meausurement.converged and within_cost_range
                 else State.Unconverged
             )
-            self._log(
+            logger.info(
                 f"Update exploration for {current_meausurement.batch_size} with state({state})."
             )
             await self.service.update_exploration(
@@ -211,7 +214,3 @@ class PruningExploreManager:
                     cost=cost,
                 ),
             )
-
-    def _log(self, message: str) -> None:
-        """Log message with object name."""
-        print(f"[Pruning Explore Manager] {message}")

@@ -18,6 +18,10 @@ from zeus.optimizer.batch_size.server.job.commands import (
 from zeus.optimizer.batch_size.server.job.models import JobState
 from sqlalchemy import and_, select, update
 from sqlalchemy.orm import joinedload
+from zeus.util.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class JobStateRepository(DatabaseRepository):
@@ -26,24 +30,17 @@ class JobStateRepository(DatabaseRepository):
 
     async def get_job(self, job_id: UUID) -> JobState | None:
         # Only parse jobSpec + batch_sizes: list[int], without specific states of each batch_size
-        try:
-            stmt = (
-                select(Job)
-                .where(Job.job_id == job_id)
-                .options(joinedload(Job.batch_sizes))
-            )
-            job = await self.session.scalar(stmt)
+        stmt = (
+            select(Job).where(Job.job_id == job_id).options(joinedload(Job.batch_sizes))
+        )
+        job = await self.session.scalar(stmt)
 
-            if job == None:
-                self._log("get_job: NoResultFound")
-                return None
+        if job == None:
+            logger.info("get_job: NoResultFound")
+            return None
 
-            self.fetched_job = job
-            return JobState.from_orm(job)
-        except Exception as err:
-            await self.session.rollback()
-            self._log(f"get_job: {str(err)}")
-            raise err
+        self.fetched_job = job
+        return JobState.from_orm(job)
 
     def get_job_from_session(self, job_id: UUID) -> JobState | None:
         # https://stackoverflow.com/questions/70441711/python-conditional-async-method
@@ -71,9 +68,6 @@ class JobStateRepository(DatabaseRepository):
 
     def create_job(self, new_job: CreateJob) -> None:
         self.session.add(new_job.to_orm())
-
-    def _log(self, msg: str):
-        print(f"[JobStateRepository]: {msg}")
 
     def check_job_fetched(self, job_id: UUID) -> None:
         if self.fetched_job == None or self.fetched_job.job_id != job_id:

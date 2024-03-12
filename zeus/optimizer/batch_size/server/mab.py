@@ -150,9 +150,7 @@ class GaussianTS:
             )
 
         bs = max(expectations, key=expectations.get)
-        self._log(
-            f"{job_id} in Thompson Sampling stage -> \033[31mBS = {bs}\033[0m"
-        )
+        logger.info(f"{job_id} in Thompson Sampling stage -> \033[31mBS = {bs}\033[0m")
         return bs 
 
     async def construct_mab(
@@ -255,7 +253,7 @@ class GaussianTS:
         await self.service.update_arm_state(current_meausurement, new_arm)
 
         arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])
-        self._log(
+        logger.info(
             f"{job.job_id} @ {current_meausurement.batch_size}: "
             f"arm_rewards = [{arm_rewards_repr}], reward_prec = {new_arm.reward_precision}"
         )
