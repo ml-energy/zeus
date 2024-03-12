@@ -18,6 +18,8 @@ Fine-tuning the library models for causal language modeling (GPT, GPT-2, CTRL, .
 
 Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 https://huggingface.co/models?filter=text-generation
+
+Forked from https://github.com/huggingface/transformers/tree/f3aa7db439a2a3942f76c115197fe953984ac334/examples/pytorch/language-modeling
 """
 # You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
 
