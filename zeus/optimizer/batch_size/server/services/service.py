@@ -68,7 +68,6 @@ class ZeusService:
         """
         1. add measurement
         2. update that exploration
-        ----
         3. Update min cost if it is needed
         """
         job = self._get_job(measurement.job_id)
@@ -85,7 +84,6 @@ class ZeusService:
         """
         1. add measurement
         2. update arm_state
-        -----
         3. Update min cost if it is needed
         """
         job = self._get_job(measurement.job_id)
@@ -97,7 +95,6 @@ class ZeusService:
         self._check_job_fetched(measurement.job_id)
         """
         1. add measurement
-        -----
         2. update min cost
         """
         job = self._get_job(measurement.job_id)
@@ -142,6 +139,9 @@ class ZeusService:
         return res
 
     def get_normal(self, arg: GetNormal):
+        """
+        Sample from normal distribution and update the generator state if seed was set
+        """
         self._check_job_fetched(arg.job_id)
 
         ret = self._get_generator(arg.job_id)
@@ -227,4 +227,7 @@ class ZeusService:
         return res
 
     def _check_job_fetched(self, job_id: UUID) -> None:
+        """
+        Check if we fetched the job in the current session
+        """
         return self.job_repo.check_job_fetched(job_id)

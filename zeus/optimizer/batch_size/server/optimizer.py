@@ -103,10 +103,13 @@ class ZeusBatchSizeOptimizer:
 
     async def report(self, result: TrainingResult) -> ReportResponse:
         """
-        1. ADD result to the measurement
-        2. Check which stage we are in - Exploration or MAB (By checking explorations and see if there is an entry with "Exploring" state)
-            2.a IF Exploration: Report to explore_manager
-            2.b IF MAB: Report to MAB (observe)
+        Report the training result
+        3 cases.
+        1) MAB: Update arm state for reported batch size*
+        2) Pruning
+            2-a) concurrent job -> skip
+            2-b) update exploration states for corresponding batch sizes
+        3) Keep training
         """
         cost_ub = np.inf
         job = await self.service.get_job(result.job_id)

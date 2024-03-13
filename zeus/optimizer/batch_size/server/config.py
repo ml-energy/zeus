@@ -10,6 +10,7 @@ class ZeusBsoSettings(BaseSettings):
     log_level: str = "DEBUG"
 
     class Config:
+        env_prefix = "ZEUS_"
         env_file = ".env"
         env_file_encoding = "utf-8"
 

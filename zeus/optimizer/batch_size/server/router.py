@@ -22,7 +22,7 @@ from zeus.util.logging import get_logger
 app = FastAPI()
 
 settings = ZeusBsoSettings()
-logger = get_logger(__name__)
+logger = get_logger(__name__, level=settings.log_level)
 
 
 @app.on_event("startup")
@@ -44,7 +44,7 @@ async def register_job(
     response: Response,
     db_session: AsyncSession = Depends(get_db_session),
 ) -> JobSpec:
-    """Endpoint for users to register a new job and receive batch size."""
+    """Endpoint for users to register a new job."""
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.register_job(job)
@@ -77,7 +77,7 @@ async def predict(
     job_id: UUID,
     db_session: AsyncSession = Depends(get_db_session),
 ) -> int:
-    """Endpoint for users to register a new job and receive batch size."""
+    """Endpoint for users receive batch size."""
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.predict(job_id)
@@ -103,7 +103,7 @@ async def report(
     result: TrainingResult,
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
-    """Endpoint for users to register a new job and receive batch size."""
+    """Endpoint for users to report the training result."""
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.report(result)

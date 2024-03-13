@@ -25,6 +25,7 @@ class PruningExploreManager:
     """Helper class that generates batch sizes to explore and prune."""
 
     def __init__(self, service: ZeusService):
+        """Set up zeus service"""
         self.service = service
 
     def next_batch_size(

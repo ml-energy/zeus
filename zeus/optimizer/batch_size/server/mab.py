@@ -50,6 +50,7 @@ class GaussianTS:
     """
 
     def __init__(self, service: ZeusService):
+        """Set up zeus service"""
         self.service = service
         self.name = "GaussianTS"
 
@@ -71,7 +72,8 @@ class GaussianTS:
         if len(rewards) == 0:
             return
 
-        reward_prec = np.reciprocal(np.var(rewards))
+        variance = np.var(rewards)
+        reward_prec = np.inf if variance == 0.0 else np.reciprocal(variance)
 
         # Reset to priors
         mean = prior_mean
@@ -156,11 +158,12 @@ class GaussianTS:
         self, job: JobState, arms: CreateArms
     ) -> list[GaussianTsArmStateModel]:
         """
+        construct arms for mab
         1. From Explorations,
         2. Get converged bs (good_bs)
         3. get measurement of each of good_bs
         4. create arms
-        5. update stage to MAB!
+        5. update stage to MAB
         """
         arms.validate_exp_rounds(job.num_pruning_rounds)
 
@@ -216,6 +219,9 @@ class GaussianTS:
         return new_arms
 
     async def report(self, job: JobState, current_meausurement: MeasurementOfBs):
+        """
+        Based on the measurement, update the arm state.
+        """
         batch_size_key = BatchSizeBase(
             job_id=job.job_id, batch_size=current_meausurement.batch_size
         )

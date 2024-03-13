@@ -28,8 +28,11 @@ class JobStateRepository(DatabaseRepository):
     def __init__(self, session: AsyncSession):
         super().__init__(session)
 
+        # One job per session
+        self.fetched_job: Job | None = None
+
     async def get_job(self, job_id: UUID) -> JobState | None:
-        # Only parse jobSpec + batch_sizes: list[int], without specific states of each batch_size
+        """Only parse jobSpec + batch_sizes: list[int], without specific states of each batch_size"""
         stmt = (
             select(Job).where(Job.job_id == job_id).options(joinedload(Job.batch_sizes))
         )
@@ -43,12 +46,7 @@ class JobStateRepository(DatabaseRepository):
         return JobState.from_orm(job)
 
     def get_job_from_session(self, job_id: UUID) -> JobState | None:
-        # https://stackoverflow.com/questions/70441711/python-conditional-async-method
-        # https://stackoverflow.com/questions/33958770/sqlalchemy-get-items-from-the-identity-map-not-only-by-primary-key
-        # https://stackoverflow.com/questions/5869514/sqlalchemy-identity-map-question
-        # job_key = identity_key(Job, job_id)
-        # return self.session.identity_map.get(job_key)
-
+        """Get a job that was fetched from this session"""
         if self.fetched_job == None or self.fetched_job.job_id != job_id:
             return None
         return self.fetched_job
