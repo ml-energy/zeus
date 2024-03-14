@@ -120,7 +120,7 @@ class ZeusBatchSizeOptimizer:
             result.energy,
             result.time,
             job.eta_knob,
-            result.max_power,
+            job.max_power,
         )
 
         converged = (

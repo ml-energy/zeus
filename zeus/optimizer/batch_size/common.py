@@ -13,8 +13,8 @@ GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
 REPORT_RESULT_URL = "/jobs/report"
 
 
-class JobSpec(BaseModel):
-    """Specification of a job submitted by users."""
+class JobSpecIn(BaseModel):
+    """Job specification that user inputs."""
 
     job_id: UUID
     batch_sizes: list[int] = []
@@ -32,10 +32,7 @@ class JobSpec(BaseModel):
     mab_num_exploration: int = 2
     mab_seed: Optional[int] = None
     window_size: int = 10
-
-    max_power: float
-    number_of_gpus: int
-    gpu_model: str
+    gpu_model: str  # TODO: Can I get the gpu_model from monitor?
 
     @validator("batch_sizes")
     def _validate_batch_sizes(cls, bs: list[int]) -> int:
@@ -76,6 +73,13 @@ class JobSpec(BaseModel):
         return values
 
 
+class JobSpec(JobSpecIn):
+    """Specification of a job submitted by users."""
+
+    max_power: float
+    number_of_gpus: int
+
+
 class TrainingResult(BaseModel):
     """Result of training for that job & batch size
     current_epoch: For early stopping. Easier to just get current epoch from the client than server tracking it if there is a concurrency
@@ -85,7 +89,6 @@ class TrainingResult(BaseModel):
     batch_size: int
     time: float
     energy: float
-    max_power: int
     metric: float
     current_epoch: int
 

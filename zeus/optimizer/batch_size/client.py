@@ -4,20 +4,29 @@ import httpx
 import pynvml
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer.batch_size.common import JobSpec, ReportResponse, TrainingResult
+from zeus.optimizer.batch_size.common import (
+    JobSpec,
+    JobSpecIn,
+    ReportResponse,
+    TrainingResult,
+)
 from zeus.optimizer.batch_size.exceptions import (
     ZeusBSOConfigError,
     ZeusBSOOperationOrderError,
     ZeusBSORuntimError,
 )
+from zeus.util.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BatchSizeOptimizer(Callback):
-    def __init__(self, monitor: ZeusMonitor, server_url: str, job: JobSpec) -> None:
+    def __init__(
+        self, monitor: ZeusMonitor, server_url: str, job_in: JobSpecIn
+    ) -> None:
 
         self.monitor = monitor
         self.server_url = server_url
-        self.job = job
         self.cur_epoch = 0
         self.running_time = 0.0
         self.consumed_energy = 0.0
@@ -26,19 +35,24 @@ class BatchSizeOptimizer(Callback):
         # Get max PL
         pynvml.nvmlInit()
         pls = []
-        self.max_power = 0
         for index in self.monitor.nvml_gpu_indices:
             device = pynvml.nvmlDeviceGetHandleByIndex(index)
             pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
         if not all(pls[0] == pl for pl in pls):
             raise ZeusBSOConfigError("Power limits ranges are not uniform across GPUs.")
 
-        self.max_power = max(pls) * len(monitor.gpu_indices)
+        self.job = JobSpec(
+            **job_in.dict(),
+            max_power=max(pls) * len(monitor.gpu_indices),
+            number_of_gpus=len(monitor.gpu_indices),
+        )
         self.current_batch_size = 0
 
         # Register job
-        res = httpx.post(self.server_url + "/jobs", content=job.json())
+        res = httpx.post(self.server_url + "/jobs", content=self.job.json())
         self._handle_response(res)
+
+        logger.info(f"Job is registered: {self.job}")
 
     def get_batch_size(self) -> int:
         """Get batch size to use from the BSO server"""
@@ -90,7 +104,6 @@ class BatchSizeOptimizer(Callback):
             batch_size=self.current_batch_size,
             time=self.running_time,
             energy=self.consumed_energy,
-            max_power=self.max_power,
             metric=metric,
             current_epoch=self.cur_epoch,
         )

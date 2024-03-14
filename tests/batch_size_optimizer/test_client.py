@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.common import JobSpec, JobSpecIn
 from zeus.optimizer.batch_size.server.database.db_connection import (
     DatabaseSessionManager,
     get_db_session,
@@ -33,8 +33,6 @@ fake_job = {
     "mab_prior_precision": 0,
     "mab_seed": 123456,
     "mab_num_exploration": 2,
-    "max_power": 3000,
-    "number_of_gpus": 4,
     "gpu_model": "A100",
 }
 
@@ -104,18 +102,18 @@ def mock_monitor(mocker: MockerFixture):
 @pytest.mark.anyio
 def test_register_job(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
-    job = JobSpec.parse_obj(fake_job)
+    job = JobSpecIn.parse_obj(fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
-    assert bso_client.max_power == 300 * len(mock_monitor.gpu_indices)
+    assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
-    assert bso_client.max_power == 300 * len(mock_monitor.gpu_indices)
+    assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
 
 
 @pytest.mark.anyio
 def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
-    job = JobSpec.parse_obj(fake_job)
+    job = JobSpecIn.parse_obj(fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
 
@@ -151,9 +149,9 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
 def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
-    job = JobSpec.parse_obj(fake_job)
+    job = JobSpecIn.parse_obj(fake_job)
     job.job_id = uuid4()
-    job.beta_knob = -1
+    job.beta_knob = -1  # disable early stop
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bso_client.on_train_begin()
     bs = bso_client.get_batch_size()

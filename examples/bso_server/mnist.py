@@ -12,12 +12,38 @@ import torch.nn.functional as F
 import torch.optim as optim
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer.batch_size.client import BatchSizeOptimizer
+from zeus.optimizer.batch_size.common import JobSpec, JobSpecIn
 
 
 WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
 
+job = {
+    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "seed": 1,
+    "default_batch_size": 256,
+    "batch_sizes": [32, 64, 256, 512, 1024, 4096, 2048],
+    "eta_knob": 0.5,
+    "beta_knob": 2,
+    "target_metric": 0.5,
+    "high_is_better_metric": True,
+    "max_epochs": 100,
+    "num_pruning_rounds": 2,
+    "window_size": 5,
+    "mab_prior_mean": 0,
+    "mab_prior_precision": 0,
+    "mab_seed": 123456,
+    "mab_num_exploration": 2,
+    "gpu_model": "A100",
+}
+
 monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
 plo = GlobalPowerLimitOptimizer(monitor)
+bso = BatchSizeOptimizer(
+    monitor=monitor,
+    server_url="http://127.0.0.1:8000",
+    job_in=JobSpecIn.parse_obj(job),
+)
 
 
 class Net(nn.Module):
@@ -39,7 +65,7 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(args, model, device, train_loader, optimizer, epoch, writer, plo):
+def train(args, model, device, train_loader, optimizer, epoch, writer):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         plo.on_step_begin()
@@ -88,6 +114,7 @@ def test(args, model, device, test_loader, writer, epoch):
     writer.add_scalar("accuracy", float(correct) / len(test_loader.dataset), epoch)
 
     ## ON evaluate
+    bso.on_evaluate(float(correct) / len(test_loader.dataset))
 
 
 def should_distribute():
@@ -186,7 +213,9 @@ def main():
 
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
 
-    # TODO: Set bs here
+    batch_size = bso.get_batch_size()
+    print("Chosen batach_size:", batch_size)
+
     train_loader = torch.utils.data.DataLoader(
         datasets.FashionMNIST(
             "../data",
@@ -196,7 +225,7 @@ def main():
                 [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
             ),
         ),
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=True,
         **kwargs,
     )
@@ -225,10 +254,12 @@ def main():
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
+    bso.on_train_begin()
+
     for epoch in range(1, args.epochs + 1):
         plo.on_epoch_begin()
         monitor.begin_window("epoch")
-        train(args, model, device, train_loader, optimizer, epoch, writer, plo)
+        train(args, model, device, train_loader, optimizer, epoch, writer)
         eres = monitor.end_window("epoch")
         plo.on_epoch_end()
         print(f"Epoch {epoch} consumed {eres.time} s and {eres.total_energy} J.")
