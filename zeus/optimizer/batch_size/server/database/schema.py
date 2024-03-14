@@ -45,15 +45,15 @@ class Job(Base):
     mab_prior_mean: Mapped[float] = mapped_column(Float, default=0.0)
     mab_prior_precision: Mapped[float] = mapped_column(Float, default=0.0)
     mab_num_exploration: Mapped[int] = mapped_column(Integer, default=2)
-    mab_seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mab_seed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    mab_random_generator_state: Mapped[str | None] = mapped_column(
+    mab_random_generator_state: Mapped[Optional[str]] = mapped_column(
         VARCHAR(length=300), nullable=True
     )
     exp_default_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
     stage: Mapped[Stage] = mapped_column(Enum(Stage), default=Stage.Pruning)
-    min_cost: Mapped[float | None] = mapped_column(Float, default=None, nullable=True)
+    min_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     min_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
     batch_sizes: Mapped[list["BatchSize"]] = relationship(
