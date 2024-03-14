@@ -1,15 +1,21 @@
 # Integrating Zeus with HuggingFace 🤗
 
-This example will demonstrate how to integrate Zeus with `HuggingFace 🤗 Trainer` using `HFGlobalPowerLimitOptimizer`.
-
-[`run_clm.py`](run_clm.py) was adapted from [HuggingFace 🤗's example training code for fine-tuning language models](https://github.com/huggingface/transformers/tree/f3aa7db439a2a3942f76c115197fe953984ac334/examples/pytorch/language-modeling).
+This example will demonstrate how to integrate Zeus's `HFGlobalPowerLimitOptimizer` with HuggingFace Transformers:
+- `run_clm.py`: Transformers [`Trainer`](https://huggingface.co/docs/transformers/main_classes/trainer) for **causal langauge modeling** (i.e., pre-training)
+- `run_gemma_sft_qlora.py`: TRL [`SFTTrainer`](https://huggingface.co/docs/trl/main/en/sft_trainer) for **Gemma 7b supervised fine-tuning with QLoRA**
 
 ## Dependencies
 
-Use the included requirements.txt file to include all extra dependencies:
+To run the `Trainer` integration script (`run_clm.py`):
 ```sh
-    pip install -r requirements.txt
+pip install -r requirements.txt
 ```
+
+To run the `SFTTrainer` integration script (`run_gemma_sft_qlora.py`):
+```sh
+pip install -r requirements-qlora.txt
+```
+Note that you may have to tweak `requirements-qlora.txt` depending on your setup. The current requirements file assumes that you are using CUDA 11, and installs `nvidia-cusparse-cu11` for `bitsandbytes`. Basically, you want to get a setup where training runs, and just add `pip install zeus-ml` on top of it.
 
 ## `ZeusMonitor` and `HFGlobalPowerLimitOptimizer`
 
@@ -23,7 +29,7 @@ For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/tr
     monitor = ZeusMonitor()
     optimizer = HFGlobalPowerLimitOptimizer(monitor)
 
-    # Initialize HuggingFace 🤗 Trainer
+    # Also works for SFTTrainer.
     trainer = Trainer(
         ...,
         callbacks=[optimizer], # Add the `HFGlobalPowerLimitOptimizer` callback
@@ -32,9 +38,10 @@ For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/tr
 
 ## Running the Example
 
-By default, `Trainer` will make use of all available GPUs. If you would like to use only a subset of the GPUs, specify the `CUDA_VISIBLE_DEVICES` environment variable, which Zeus will also automatically respect.
+By default, `Trainer`/`SFTTrainer` will make use of all available GPUs. If you would like to use only a subset of the GPUs, specify the `CUDA_VISIBLE_DEVICES` environment variable, which Zeus will also automatically respect.
 
 ```bash
+# For Trainer.
 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
@@ -44,4 +51,8 @@ python run_clm.py \
     --do_train \
     --do_eval \
     --output_dir /tmp/test-clm
+
+# For SFTTrainer.
+python run_gemma_sft_qlora.py \
+    --dataset_name stingning/ultrachat
 ```
