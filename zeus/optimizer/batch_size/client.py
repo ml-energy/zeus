@@ -43,7 +43,7 @@ class BatchSizeOptimizer(Callback):
 
         self.job = JobSpec(
             **job_in.dict(),
-            max_power=max(pls) * len(monitor.gpu_indices),
+            max_power=(pls[0][1] // 1000) * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
         )
         self.current_batch_size = 0
@@ -73,6 +73,7 @@ class BatchSizeOptimizer(Callback):
             )
 
         self.current_batch_size = batch_size
+        logger.info(f"[BatchSizeOptimizer] Chosen batch size: {batch_size}")
         return batch_size
 
     def on_train_begin(self) -> None:

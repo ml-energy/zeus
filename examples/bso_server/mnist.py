@@ -13,7 +13,7 @@ import torch.optim as optim
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobSpec, JobSpecIn
+from zeus.optimizer.batch_size.common import JobSpecIn
 
 
 WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
