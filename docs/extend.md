@@ -1,5 +1,10 @@
 # Extending Zeus
 
+!!! Warning
+    Content in this page pertains to Zeus when it was a research artifact of our NSDI paper.
+    We will soon refactor the simulator and replace this page with something along the lines of "How to reproduce our research results."
+    Track this issue [here](https://github.com/ml-energy/zeus/issues/38).
+
 Users can implement custom policies to optimize batch size and power limits, and plug it into Zeus.
 
 ## Interfaces
