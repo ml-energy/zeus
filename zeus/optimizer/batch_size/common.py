@@ -1,6 +1,8 @@
 """Shared model definitions for the server and client."""
 
-from typing import Any, Dict
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, root_validator, validator
@@ -28,7 +30,7 @@ class JobSpec(BaseModel):
     mab_prior_mean: float = 0.0
     mab_prior_precision: float = 0.0
     mab_num_exploration: int = 2
-    mab_seed: int | None = None
+    mab_seed: Optional[int] = None
     window_size: int = 10
 
     max_power: float

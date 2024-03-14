@@ -5,7 +5,7 @@ Pydantic models for Job
 from __future__ import annotations
 import json
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 from pydantic.class_validators import root_validator
@@ -29,11 +29,11 @@ class JobGetter(GetterDict):
 class JobState(JobSpec):
     exp_default_batch_size: int
 
-    min_cost: float | None = None
+    min_cost: Optional[float] = None
     min_batch_size: int
     stage: Stage = Stage.Pruning
 
-    mab_random_generator_state: str | None = None
+    mab_random_generator_state: Optional[str] = None
 
     class Config:
         orm_mode = True

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 import numpy as np
@@ -46,7 +46,7 @@ class CreateJob(JobSpec):
     min_cost: None = Field(None, const=True)
     min_batch_size: int
     stage: Stage = Field(Stage.Pruning, const=True)
-    mab_random_generator_state: str | None = None
+    mab_random_generator_state: Optional[str] = None
 
     class Config:
         frozen = True

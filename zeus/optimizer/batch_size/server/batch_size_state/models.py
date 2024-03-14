@@ -3,7 +3,7 @@ Pydantic models for Batch size/Exploration/Measurement/GaussianTsArmState
 """
 
 from __future__ import annotations
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic.class_validators import root_validator
@@ -64,7 +64,7 @@ class ExplorationStateModel(BatchSizeBase):
 
     round_number: int = Field(ge=1)
     state: State = State.Exploring
-    cost: float | None = None
+    cost: Optional[float] = None
 
     class Config:
         orm_mode = True

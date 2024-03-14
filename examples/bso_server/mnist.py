@@ -17,7 +17,7 @@ from zeus.optimizer import GlobalPowerLimitOptimizer
 WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
 
 monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
-# plo = GlobalPowerLimitOptimizer(monitor)
+plo = GlobalPowerLimitOptimizer(monitor)
 
 
 class Net(nn.Module):
@@ -39,9 +39,10 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(args, model, device, train_loader, optimizer, epoch, writer):
+def train(args, model, device, train_loader, optimizer, epoch, writer, plo):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
+        plo.on_step_begin()
         monitor.begin_window("step")
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -63,6 +64,7 @@ def train(args, model, device, train_loader, optimizer, epoch, writer):
             niter = epoch * len(train_loader) + batch_idx
             writer.add_scalar("loss", loss.item(), niter)
         result = monitor.end_window("step")
+        plo.on_step_end()
 
 
 def test(args, model, device, test_loader, writer, epoch):
@@ -84,6 +86,8 @@ def test(args, model, device, test_loader, writer, epoch):
     test_loss /= len(test_loader.dataset)
     print("\naccuracy={:.4f}\n".format(float(correct) / len(test_loader.dataset)))
     writer.add_scalar("accuracy", float(correct) / len(test_loader.dataset), epoch)
+
+    ## ON evaluate
 
 
 def should_distribute():
@@ -181,6 +185,8 @@ def main():
         dist.init_process_group(backend=args.backend)
 
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
+
+    # TODO: Set bs here
     train_loader = torch.utils.data.DataLoader(
         datasets.FashionMNIST(
             "../data",
@@ -220,9 +226,11 @@ def main():
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
     for epoch in range(1, args.epochs + 1):
+        plo.on_epoch_begin()
         monitor.begin_window("epoch")
-        train(args, model, device, train_loader, optimizer, epoch, writer)
+        train(args, model, device, train_loader, optimizer, epoch, writer, plo)
         eres = monitor.end_window("epoch")
+        plo.on_epoch_end()
         print(f"Epoch {epoch} consumed {eres.time} s and {eres.total_energy} J.")
         test(args, model, device, test_loader, writer, epoch)
 
