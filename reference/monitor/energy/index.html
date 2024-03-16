@@ -1,0 +1,3942 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Deep learning energy measurement and optimization">
+      
+      
+        <meta name="author" content="Jae-Won Chung">
+      
+      
+        <link rel="canonical" href="https://ml.energy/zeus/reference/monitor/energy/">
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../power/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/img/favicon.svg">
+      <meta name="generator" content="mkdocs-1.5.3, mkdocs-material-9.1.21+insiders-4.38.1">
+    
+    
+      
+        <title>energy - Zeus Project</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.3a36e643.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ecc776e4.min.css">
+      
+      
+
+    
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../assets/css/custom.css">
+    
+      <link rel="stylesheet" href="../../../assets/css/color.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+
+  <script id="__analytics">function __md_analytics(){function n(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],n("js",new Date),n("config","G-T3W21TQ7FJ"),document.addEventListener("DOMContentLoaded",function(){document.forms.search&&document.forms.search.query.addEventListener("blur",function(){this.value&&n("event","search",{search_term:this.value})}),document$.subscribe(function(){var a=document.forms.feedback;if(void 0!==a)for(var e of a.querySelectorAll("[type=submit]"))e.addEventListener("click",function(e){e.preventDefault();var t=document.location.pathname,e=this.getAttribute("data-md-value");n("event","feedback",{page:t,data:e}),a.firstElementChild.disabled=!0;e=a.querySelector(".md-feedback__note [data-md-value='"+e+"']");e&&(e.hidden=!1)}),a.hidden=!1}),location$.subscribe(function(e){n("config","G-T3W21TQ7FJ",{page_path:e.pathname})})});var e=document.createElement("script");e.async=!0,e.src="https://www.googletagmanager.com/gtag/js?id=G-T3W21TQ7FJ",document.getElementById("__analytics").insertAdjacentElement("afterEnd",e)}</script>
+
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  
+<meta property="og:type" content="website" />
+<meta property="og:title" content="energy - Zeus Project" />
+<meta property="og:description" content="Deep learning energy measurement and optimization" />
+<meta property="og:image" content="https://ml.energy/zeus/assets/img/social/reference/monitor/energy.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="https://ml.energy/zeus/reference/monitor/energy/" />
+<meta property="twitter:card" content="summary_large_image" />
+<meta property="twitter.title" content="energy - Zeus Project" />
+<meta property="twitter:description" content="Deep learning energy measurement and optimization" />
+<meta property="twitter:image" content="https://ml.energy/zeus/assets/img/social/reference/monitor/energy.png" />
+</head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="zeus" data-md-color-accent="zeus">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#zeus.monitor.energy" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+              <button class="md-banner__button md-icon" aria-label="Don't show this again">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+              </button>
+            
+            
+Join the Zeus 
+<span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 15a2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2h2v2m1 0a2 2 0 0 1 2-2 2 2 0 0 1 2 2v5a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-5m2-8a2 2 0 0 1-2-2 2 2 0 0 1 2-2 2 2 0 0 1 2 2v2H9m0 1a2 2 0 0 1 2 2 2 2 0 0 1-2 2H4a2 2 0 0 1-2-2 2 2 0 0 1 2-2h5m8 2a2 2 0 0 1 2-2 2 2 0 0 1 2 2 2 2 0 0 1-2 2h-2v-2m-1 0a2 2 0 0 1-2 2 2 2 0 0 1-2-2V5a2 2 0 0 1 2-2 2 2 0 0 1 2 2v5m-2 8a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2v-2h2m0-1a2 2 0 0 1-2-2 2 2 0 0 1 2-2h5a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-5Z"></path></svg></span>
+<a href="https://join.slack.com/t/zeus-ml/shared_invite/zt-1najba5mb-WExy7zoNTyaZZfTlUWoLLg">Slack workspace</a>
+to reach out to us!
+
+          </div>
+          
+            <script>var content,el=document.querySelector("[data-md-component=announce]");el&&(content=el.querySelector(".md-typeset"),__md_hash(content.innerHTML)===__md_get("__announce")&&(el.hidden=!0))</script>
+          
+        </aside>
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Zeus Project" class="md-header__button md-logo" aria-label="Zeus Project" data-md-component="logo">
+      
+  <img src="../../../assets/img/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Zeus Project
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              energy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+          
+            
+            
+            
+            <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="zeus" data-md-color-accent="zeus"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+            
+              <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M361.5 1.2c5 2.1 8.6 6.6 9.6 11.9L391 121l107.9 19.8c5.3 1 9.8 4.6 11.9 9.6s1.5 10.7-1.6 15.2L446.9 256l62.3 90.3c3.1 4.5 3.7 10.2 1.6 15.2s-6.6 8.6-11.9 9.6L391 391l-19.9 107.9c-1 5.3-4.6 9.8-9.6 11.9s-10.7 1.5-15.2-1.6L256 446.9l-90.3 62.3c-4.5 3.1-10.2 3.7-15.2 1.6s-8.6-6.6-9.6-11.9L121 391 13.1 371.1c-5.3-1-9.8-4.6-11.9-9.6s-1.5-10.7 1.6-15.2L65.1 256 2.8 165.7c-3.1-4.5-3.7-10.2-1.6-15.2s6.6-8.6 11.9-9.6L121 121l19.9-107.9c1-5.3 4.6-9.8 9.6-11.9s10.7-1.5 15.2 1.6L256 65.1l90.3-62.3c4.5-3.1 10.2-3.7 15.2-1.6zM160 256a96 96 0 1 1 192 0 96 96 0 1 1-192 0zm224 0a128 128 0 1 0-256 0 128 128 0 1 0 256 0z"/></svg>
+              </label>
+            
+          
+            
+            
+            
+            <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="zeus" data-md-color-accent="zeus"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+            
+              <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M144.7 98.7c-21 34.1-33.1 74.3-33.1 117.3 0 98 62.8 181.4 150.4 211.7-12.4 2.8-25.3 4.3-38.6 4.3C126.6 432 48 353.3 48 256c0-68.9 39.4-128.4 96.8-157.3zm62.1-66C91.1 41.2 0 137.9 0 256c0 123.7 100 224 223.5 224 47.8 0 92-15 128.4-40.6 1.9-1.3 3.7-2.7 5.5-4 4.8-3.6 9.4-7.4 13.9-11.4 2.7-2.4 5.3-4.8 7.9-7.3 5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-3.7.6-7.4 1.2-11.1 1.6-5 .5-10.1.9-15.3 1h-4c-96.8-.2-175.2-78.9-175.2-176 0-54.8 24.9-103.7 64.1-136 1-.9 2.1-1.7 3.2-2.6 4-3.2 8.2-6.2 12.5-9 3.1-2 6.3-4 9.6-5.8 6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-3.6-.3-7.1-.5-10.7-.6-2.7-.1-5.5-.1-8.2-.1-3.3 0-6.5.1-9.8.2-2.3.1-4.6.2-6.9.4z"/></svg>
+              </label>
+            
+          
+        </form>
+      
+    
+    
+      <script>var media,input,key,value,palette=__md_get("__palette");if(palette&&palette.color){"(prefers-color-scheme)"===palette.color.media&&(media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']"),palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent"));for([key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ml-energy/zeus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ml-energy/zeus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../overview/" class="md-tabs__link">
+        
+  
+    
+  
+  Overview
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../getting_started/" class="md-tabs__link">
+        
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../perseus/" class="md-tabs__link">
+        
+  
+    
+  
+  Perseus
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../extend/" class="md-tabs__link">
+        
+  
+    
+  
+  Extending Zeus
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      
+  
+  
+    
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../" class="md-tabs__link md-tabs__link--active">
+        
+  
+    
+  
+  Source Code Reference
+
+      </a>
+    </li>
+  
+
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Zeus Project" class="md-nav__button md-logo" aria-label="Zeus Project" data-md-component="logo">
+      
+  <img src="../../../assets/img/logo.svg" alt="logo">
+
+    </a>
+    Zeus Project
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ml-energy/zeus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ml-energy/zeus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../overview/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../getting_started/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_3">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting_started/environment/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting_started/installing_and_building/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    Installing and Building
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../perseus/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    Perseus
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_4">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Perseus
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../perseus/integrating/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../extend/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending Zeus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Source Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1" checked>
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Code Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Source Code Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../analyze/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    analyze
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../callback/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    callback
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../controller/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    controller
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../exception/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    exception
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../job/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    job
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1_6" checked>
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    monitor
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1_6">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_6_1_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    monitor
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    
+  
+    energy
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    energy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#zeus.monitor.energy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        energy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="energy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.Measurement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measurement
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Measurement">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.Measurement.total_energy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        total_energy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ZeusMonitor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ZeusMonitor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor--integration-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor._is_new_arch_flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _is_new_arch_flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __init__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor._is_new_arch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _is_new_arch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor._get_instant_power" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _get_instant_power
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor.begin_window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        begin_window
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor.end_window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        end_window
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../power/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    power
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1_7" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../optimizer/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    optimizer
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1_7">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_6_1_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    optimizer
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1_7_1" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../optimizer/perseus/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    perseus
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1_7_1">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_6_1_7_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1_7_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    perseus
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../optimizer/perseus/common/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    common
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../optimizer/perseus/frequency_controller/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    frequency_controller
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../optimizer/perseus/optimizer/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    optimizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1_7_1_4" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../optimizer/perseus/server/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    server
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1_7_1_4">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_6_1_7_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1_7_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    server
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../optimizer/perseus/server/job_manager/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    job_manager
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../optimizer/perseus/server/router/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    router
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../optimizer/perseus/server/scheduler/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    scheduler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../optimizer/power_limit/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    power_limit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1_8" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../policy/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    policy
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1_8">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_6_1_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    policy
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../policy/interface/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../policy/mab/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    mab
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../policy/optimizer/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    optimizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1_9" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../run/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    run
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1_9">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_6_1_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    run
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../run/dataloader/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    dataloader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../run/master/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    master
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../simulate/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    simulate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_1_11" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../util/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    
+  
+    util
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              <label class="md-nav__link " for="__nav_6_1_11">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_6_1_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_1_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    util
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/async_utils/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    async_utils
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/env/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    env
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/framework/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    framework
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/logging/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/lr_scaler/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    lr_scaler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/metric/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    metric
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/pydantic_v1/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    pydantic_v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../util/testing/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    
+  
+    testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#zeus.monitor.energy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        energy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="energy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.Measurement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measurement
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Measurement">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.Measurement.total_energy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        total_energy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ZeusMonitor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ZeusMonitor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor--integration-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor._is_new_arch_flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _is_new_arch_flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor.__init__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __init__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor._is_new_arch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _is_new_arch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor._get_instant_power" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _get_instant_power
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor.begin_window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        begin_window
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zeus.monitor.energy.ZeusMonitor.end_window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        end_window
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  <h1>energy</h1>
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="zeus.monitor.energy" class="doc doc-heading">
+          <span class="doc doc-object-name doc-module-name">zeus.monitor.energy</span>
+
+
+</h2>
+
+  <div class="doc doc-contents first">
+  
+      <p>Measure the GPU time and energy consumption of a block of code.</p>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="zeus.monitor.energy.Measurement" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">Measurement</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+  <div class="doc doc-contents ">
+
+  
+      <p>Measurement result of one window.</p>
+
+
+
+  <p><strong>Attributes:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code><span title="zeus.monitor.energy.Measurement.time">time</span></code></td>
+          <td>
+                <code>float</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Time elapsed (in seconds) during the measurement window.</p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><code><span title="zeus.monitor.energy.Measurement.energy">energy</span></code></td>
+          <td>
+                <code>dict[int, float]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Maps GPU indices to the energy consumed (in Joules) during the
+measurement window. GPU indices are from the DL framework's perspective
+after applying <code>CUDA_VISIBLE_DEVICES</code>.</p>
+            </div>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+            <details class="quote">
+              <summary>Source code in <code>zeus/monitor/energy.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">Measurement</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Measurement result of one window.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        time: Time elapsed (in seconds) during the measurement window.</span>
+<span class="sd">        energy: Maps GPU indices to the energy consumed (in Joules) during the</span>
+<span class="sd">            measurement window. GPU indices are from the DL framework&#39;s perspective</span>
+<span class="sd">            after applying `CUDA_VISIBLE_DEVICES`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">time</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">energy</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span> <span class="nf">total_energy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Total energy consumed (in Joules) during the measurement window.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">energy</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="zeus.monitor.energy.Measurement.total_energy" class="doc doc-heading">
+          <span class="doc doc-object-name doc-attribute-name">total_energy</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-cached"><code>cached</code></small>
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">total_energy</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Total energy consumed (in Joules) during the measurement window.</p>
+  </div>
+
+</div>
+
+
+
+
+
+  </div>
+
+  </div>
+
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="zeus.monitor.energy.ZeusMonitor" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">ZeusMonitor</span>
+
+
+</h3>
+
+
+  <div class="doc doc-contents ">
+
+  
+      <p>Measure the GPU energy and time consumption of a block of code.</p>
+<p>Works for multi-GPU and heterogeneous GPU types. Aware of <code>CUDA_VISIBLE_DEVICES</code>.
+For instance, if <code>CUDA_VISIBLE_DEVICES=2,3</code>, GPU index <code>1</code> passed into <code>gpu_indices</code>
+will be interpreted as CUDA device <code>3</code>.</p>
+<p>You can mark the beginning and end of a measurement window, during which the GPU
+energy and time consumed will be recorded. Multiple concurrent measurement windows
+are supported.</p>
+<p>For Volta or newer GPUs, energy consumption is measured very cheaply with the
+<code>nvmlDeviceGetTotalEnergyConsumption</code> API. On older architectures, this API is
+not supported, so a separate Python process is used to poll <code>nvmlDeviceGetPowerUsage</code>
+to get power samples over time, which are integrated to compute energy consumption.</p>
+<h5 id="zeus.monitor.energy.ZeusMonitor--integration-example">Integration Example</h5>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">zeus.monitor</span> <span class="kn">import</span> <span class="n">ZeusMontior</span>
+
+<span class="c1"># Time/Energy measurements for four GPUs will begin and end at the same time.</span>
+<span class="n">gpu_indices</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">monitor</span> <span class="o">=</span> <span class="n">ZeusMonitor</span><span class="p">(</span><span class="n">gpu_indices</span><span class="p">)</span>
+
+<span class="c1"># Mark the beginning of a measurement window. You can use any string</span>
+<span class="c1"># as the window name, but make sure it&#39;s unique.</span>
+<span class="n">monitor</span><span class="o">.</span><span class="n">begin_window</span><span class="p">(</span><span class="s2">&quot;entire_training&quot;</span><span class="p">)</span>
+
+<span class="c1"># Actual work</span>
+<span class="n">training</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+
+<span class="c1"># Mark the end of a measurement window and retrieve the measurment result.</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">monitor</span><span class="o">.</span><span class="n">end_window</span><span class="p">(</span><span class="s2">&quot;entire_training&quot;</span><span class="p">)</span>
+
+<span class="c1"># Print the measurement result.</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Training took </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">time</span><span class="si">}</span><span class="s2"> seconds.&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Training consumed </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">total_energy</span><span class="si">}</span><span class="s2"> Joules.&quot;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">gpu_idx</span><span class="p">,</span> <span class="n">gpu_energy</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">energy</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;GPU </span><span class="si">{</span><span class="n">gpu_idx</span><span class="si">}</span><span class="s2"> consumed </span><span class="si">{</span><span class="n">gpu_energy</span><span class="si">}</span><span class="s2"> Joules.&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+
+
+  <p><strong>Attributes:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code><span title="zeus.monitor.energy.ZeusMonitor.gpu_indices">gpu_indices</span></code></td>
+          <td>
+                <code>`list[int]`</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Indices of all the CUDA devices to monitor, from the
+DL framework's perspective after applying <code>CUDA_VISIBLE_DEVICES</code>.</p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><code><span title="zeus.monitor.energy.ZeusMonitor.nvml_gpu_indices">nvml_gpu_indices</span></code></td>
+          <td>
+                <code>`list[int]`</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Indices of all the CUDA devices to monitor, from
+NVML/system's perspective.</p>
+            </div>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+            <details class="quote">
+              <summary>Source code in <code>zeus/monitor/energy.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 56</span>
+<span class="normal"> 57</span>
+<span class="normal"> 58</span>
+<span class="normal"> 59</span>
+<span class="normal"> 60</span>
+<span class="normal"> 61</span>
+<span class="normal"> 62</span>
+<span class="normal"> 63</span>
+<span class="normal"> 64</span>
+<span class="normal"> 65</span>
+<span class="normal"> 66</span>
+<span class="normal"> 67</span>
+<span class="normal"> 68</span>
+<span class="normal"> 69</span>
+<span class="normal"> 70</span>
+<span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">ZeusMonitor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Measure the GPU energy and time consumption of a block of code.</span>
+
+<span class="sd">    Works for multi-GPU and heterogeneous GPU types. Aware of `CUDA_VISIBLE_DEVICES`.</span>
+<span class="sd">    For instance, if `CUDA_VISIBLE_DEVICES=2,3`, GPU index `1` passed into `gpu_indices`</span>
+<span class="sd">    will be interpreted as CUDA device `3`.</span>
+
+<span class="sd">    You can mark the beginning and end of a measurement window, during which the GPU</span>
+<span class="sd">    energy and time consumed will be recorded. Multiple concurrent measurement windows</span>
+<span class="sd">    are supported.</span>
+
+<span class="sd">    For Volta or newer GPUs, energy consumption is measured very cheaply with the</span>
+<span class="sd">    `nvmlDeviceGetTotalEnergyConsumption` API. On older architectures, this API is</span>
+<span class="sd">    not supported, so a separate Python process is used to poll `nvmlDeviceGetPowerUsage`</span>
+<span class="sd">    to get power samples over time, which are integrated to compute energy consumption.</span>
+
+<span class="sd">    ## Integration Example</span>
+
+<span class="sd">    ```python</span>
+<span class="sd">    from zeus.monitor import ZeusMontior</span>
+
+<span class="sd">    # Time/Energy measurements for four GPUs will begin and end at the same time.</span>
+<span class="sd">    gpu_indices = [0, 1, 2, 3]</span>
+<span class="sd">    monitor = ZeusMonitor(gpu_indices)</span>
+
+<span class="sd">    # Mark the beginning of a measurement window. You can use any string</span>
+<span class="sd">    # as the window name, but make sure it&#39;s unique.</span>
+<span class="sd">    monitor.begin_window(&quot;entire_training&quot;)</span>
+
+<span class="sd">    # Actual work</span>
+<span class="sd">    training(x, y)</span>
+
+<span class="sd">    # Mark the end of a measurement window and retrieve the measurment result.</span>
+<span class="sd">    result = monitor.end_window(&quot;entire_training&quot;)</span>
+
+<span class="sd">    # Print the measurement result.</span>
+<span class="sd">    print(f&quot;Training took {result.time} seconds.&quot;)</span>
+<span class="sd">    print(f&quot;Training consumed {result.total_energy} Joules.&quot;)</span>
+<span class="sd">    for gpu_idx, gpu_energy in result.energy.items():</span>
+<span class="sd">        print(f&quot;GPU {gpu_idx} consumed {gpu_energy} Joules.&quot;)</span>
+<span class="sd">    ```</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from the</span>
+<span class="sd">            DL framework&#39;s perspective after applying `CUDA_VISIBLE_DEVICES`.</span>
+<span class="sd">        nvml_gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from</span>
+<span class="sd">            NVML/system&#39;s perspective.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">gpu_indices</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">approx_instant_energy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">log_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Instantiate the monitor.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurements</span>
+<span class="sd">                will begin and end at the same time for these GPUs (i.e., synchronized).</span>
+<span class="sd">                If None, all the GPUs available will be used. `CUDA_VISIBLE_DEVICES`</span>
+<span class="sd">                is respected if set, e.g., GPU index `1` passed into `gpu_indices` when</span>
+<span class="sd">                `CUDA_VISIBLE_DEVICES=2,3` will be interpreted as CUDA device `3`.</span>
+<span class="sd">                `CUDA_VISIBLE_DEVICES`s formatted with comma-separated indices are supported.</span>
+<span class="sd">            approx_instant_energy: When the execution time of a measurement window is</span>
+<span class="sd">                shorter than the NVML energy counter&#39;s update period, energy consumption may</span>
+<span class="sd">                be observed as zero. In this case, if `approx_instant_energy` is True, the</span>
+<span class="sd">                window&#39;s energy consumption will be approximated by multiplying the current</span>
+<span class="sd">                instantaneous power consumption with the window&#39;s execution time. This should</span>
+<span class="sd">                be a better estimate than zero, but it&#39;s still an approximation.</span>
+<span class="sd">            log_file: Path to the log CSV file. If `None`, logging will be disabled.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Save arguments.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">approx_instant_energy</span> <span class="o">=</span> <span class="n">approx_instant_energy</span>
+
+        <span class="c1"># Initialize NVML.</span>
+        <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlInit</span><span class="p">()</span>
+        <span class="n">atexit</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlShutdown</span><span class="p">)</span>
+
+        <span class="c1"># CUDA GPU indices and NVML GPU indices are different if `CUDA_VISIBLE_DEVICES` is set.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvml_gpu_indices</span> <span class="o">=</span> <span class="n">resolve_gpu_indices</span><span class="p">(</span><span class="n">gpu_indices</span><span class="p">)</span>
+
+        <span class="c1"># Save all the NVML GPU handles. These should be called with system-level GPU indices.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">c_nvmlDevice_t</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">nvml_gpu_index</span><span class="p">,</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nvml_gpu_indices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">):</span>
+            <span class="n">handle</span> <span class="o">=</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetHandleByIndex</span><span class="p">(</span><span class="n">nvml_gpu_index</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="n">handle</span>
+
+        <span class="c1"># Initialize loggers.</span>
+        <span class="k">if</span> <span class="n">log_file</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">dir</span> <span class="o">:=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">log_file</span><span class="p">):</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="nb">dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">log_file</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing measurement logs to </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">log_file</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;start_time,window_name,elapsed_time,</span><span class="si">{</span><span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span><span class="w"> </span><span class="n">i</span><span class="p">:</span><span class="w"> </span><span class="sa">f</span><span class="s1">&#39;gpu</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">_energy&#39;</span><span class="p">,</span><span class="w"> </span><span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">))</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Monitoring GPU indices </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">)</span>
+
+        <span class="c1"># A dictionary that maps the string keys of active measurement windows to</span>
+        <span class="c1"># the state of the measurement window. Each element in the dictionary is a tuple of:</span>
+        <span class="c1">#     1) Time elapsed at the beginning of this window.</span>
+        <span class="c1">#     2) Total energy consumed by each &gt;= Volta GPU at the beginning of</span>
+        <span class="c1">#        this window (`None` for older GPUs).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Initialize power monitors for older architecture GPUs.</span>
+        <span class="n">old_gpu_indices</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">gpu_index</span>
+            <span class="k">for</span> <span class="n">gpu_index</span><span class="p">,</span> <span class="n">is_new</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_new_arch_flags</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">is_new</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">old_gpu_indices</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span> <span class="o">=</span> <span class="n">PowerMonitor</span><span class="p">(</span>
+                <span class="n">gpu_indices</span><span class="o">=</span><span class="n">old_gpu_indices</span><span class="p">,</span> <span class="n">update_period</span><span class="o">=</span><span class="kc">None</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nd">@lru_cache</span>
+    <span class="k">def</span> <span class="nf">_is_new_arch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gpu</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return whether the GPU is Volta or newer.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetArchitecture</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">[</span><span class="n">gpu</span><span class="p">])</span>
+            <span class="o">&gt;=</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">NVML_DEVICE_ARCH_VOLTA</span>
+        <span class="p">)</span>
+
+    <span class="nd">@cached_property</span>
+    <span class="k">def</span> <span class="nf">_is_new_arch_flags</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">bool</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A list of flags indicating whether each GPU is Volta or newer.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_is_new_arch</span><span class="p">(</span><span class="n">gpu</span><span class="p">)</span> <span class="k">for</span> <span class="n">gpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">_get_instant_power</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Measure the power consumption of all GPUs at the current time.&quot;&quot;&quot;</span>
+        <span class="n">power_measurement_start_time</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+        <span class="n">power</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">i</span><span class="p">:</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetPowerUsage</span><span class="p">(</span><span class="n">h</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1000.0</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">h</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span>
+        <span class="n">power_measurement_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">power_measurement_start_time</span>
+        <span class="k">return</span> <span class="n">power</span><span class="p">,</span> <span class="n">power_measurement_time</span>
+
+    <span class="k">def</span> <span class="nf">begin_window</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sync_cuda</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Begin a new measurement window.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            key: Unique name of the measurement window.</span>
+<span class="sd">            sync_cuda: Whether to synchronize CUDA before starting the measurement window.</span>
+<span class="sd">                (Default: `True`)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Make sure the key is unique.</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&#39; already exists&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Call cudaSynchronize to make sure we freeze at the right time.</span>
+        <span class="k">if</span> <span class="n">sync_cuda</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">:</span>
+                <span class="n">cuda_sync</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">)</span>
+
+        <span class="c1"># Freeze the start time of the profiling window.</span>
+        <span class="n">timestamp</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+        <span class="n">energy_state</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">gpu_index</span><span class="p">,</span> <span class="n">gpu_handle</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># Query energy directly if the GPU has newer architecture.</span>
+            <span class="c1"># Otherwise, the Zeus power monitor is running in the background to</span>
+            <span class="c1"># collect power consumption, so we just need to read the log file later.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_new_arch</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">):</span>
+                <span class="n">energy_state</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetTotalEnergyConsumption</span><span class="p">(</span><span class="n">gpu_handle</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1000.0</span>
+                <span class="p">)</span>
+
+        <span class="c1"># Add measurement state to dictionary.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">timestamp</span><span class="p">,</span> <span class="n">energy_state</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">%s</span><span class="s2">&#39; started.&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">end_window</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sync_cuda</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">cancel</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Measurement</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;End a measurement window and return the time and energy consumption.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            key: Name of an active measurement window.</span>
+<span class="sd">            sync_cuda: Whether to synchronize CUDA before ending the measurement window.</span>
+<span class="sd">                (default: `True`)</span>
+<span class="sd">            cancel: Whether to cancel the measurement window. If `True`, the measurement</span>
+<span class="sd">                window is assumed to be cancelled and discarded. Thus, an empty Measurement</span>
+<span class="sd">                object will be returned and the measurement window will not be recorded in</span>
+<span class="sd">                the log file either. `sync_cuda` is still respected.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Retrieve the start time and energy consumption of this window.</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">start_time</span><span class="p">,</span> <span class="n">start_energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&#39; does not exist&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="kc">None</span>
+
+        <span class="c1"># Take instant power consumption measurements.</span>
+        <span class="c1"># This, in theory, is introducing extra NVMLs call in the critical path</span>
+        <span class="c1"># even if computation time is not so short. However, it is reasonable to</span>
+        <span class="c1"># expect that computation time would be short if the user explicitly</span>
+        <span class="c1"># turned on the `approx_instant_energy` option. Calling this function</span>
+        <span class="c1"># as early as possible will lead to more accurate energy approximation.</span>
+        <span class="n">power</span><span class="p">,</span> <span class="n">power_measurement_time</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_get_instant_power</span><span class="p">()</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">approx_instant_energy</span> <span class="k">else</span> <span class="p">({},</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Call cudaSynchronize to make sure we freeze at the right time.</span>
+        <span class="k">if</span> <span class="n">sync_cuda</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">:</span>
+                <span class="n">cuda_sync</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">)</span>
+
+        <span class="c1"># If the measurement window is cancelled, return an empty Measurement object.</span>
+        <span class="k">if</span> <span class="n">cancel</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">%s</span><span class="s2">&#39; cancelled.&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">Measurement</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">energy</span><span class="o">=</span><span class="p">{</span><span class="n">gpu</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">gpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">})</span>
+
+        <span class="n">end_time</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+        <span class="n">time_consumption</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+        <span class="n">energy_consumption</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">gpu_index</span><span class="p">,</span> <span class="n">gpu_handle</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># Query energy directly if the GPU has newer architecture.</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_new_arch</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">):</span>
+                <span class="n">end_energy</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetTotalEnergyConsumption</span><span class="p">(</span><span class="n">gpu_handle</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1000.0</span>
+                <span class="p">)</span>
+                <span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_energy</span> <span class="o">-</span> <span class="n">start_energy</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span>
+
+        <span class="c1"># If there are older GPU architectures, the PowerMonitor will take care of those.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span><span class="o">.</span><span class="n">get_energy</span><span class="p">(</span><span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">)</span>
+            <span class="c1"># Fallback to the instant power measurement if the PowerMonitor does not</span>
+            <span class="c1"># have the power samples.</span>
+            <span class="k">if</span> <span class="n">energy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">energy</span> <span class="o">=</span> <span class="p">{</span><span class="n">gpu</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">gpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">}</span>
+            <span class="n">energy_consumption</span> <span class="o">|=</span> <span class="n">energy</span>
+
+        <span class="c1"># Approximate energy consumption if the measurement window is too short.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">approx_instant_energy</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+                    <span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="n">power</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span>
+                        <span class="n">time_consumption</span> <span class="o">-</span> <span class="n">power_measurement_time</span>
+                    <span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">%s</span><span class="s2">&#39; ended.&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+
+        <span class="c1"># Add to log file.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">start_time</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">time_consumption</span><span class="si">}</span><span class="s2">,&quot;</span>
+                <span class="o">+</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu</span><span class="p">])</span> <span class="k">for</span> <span class="n">gpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">)</span>
+                <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">Measurement</span><span class="p">(</span><span class="n">time_consumption</span><span class="p">,</span> <span class="n">energy_consumption</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="zeus.monitor.energy.ZeusMonitor._is_new_arch_flags" class="doc doc-heading">
+          <span class="doc doc-object-name doc-attribute-name">_is_new_arch_flags</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-cached"><code>cached</code></small>
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">_is_new_arch_flags</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>A list of flags indicating whether each GPU is Volta or newer.</p>
+  </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h4 id="zeus.monitor.energy.ZeusMonitor.__init__" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">__init__</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="fm">__init__</span><span class="p">(</span><span class="n">gpu_indices</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">approx_instant_energy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">log_file</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+
+
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>gpu_indices</code></td>
+          <td>
+                <code>list[int] | None</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Indices of all the CUDA devices to monitor. Time/Energy measurements
+will begin and end at the same time for these GPUs (i.e., synchronized).
+If None, all the GPUs available will be used. <code>CUDA_VISIBLE_DEVICES</code>
+is respected if set, e.g., GPU index <code>1</code> passed into <code>gpu_indices</code> when
+<code>CUDA_VISIBLE_DEVICES=2,3</code> will be interpreted as CUDA device <code>3</code>.
+<code>CUDA_VISIBLE_DEVICES</code>s formatted with comma-separated indices are supported.</p>
+            </div>
+          </td>
+          <td>
+                <code>None</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>approx_instant_energy</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>When the execution time of a measurement window is
+shorter than the NVML energy counter's update period, energy consumption may
+be observed as zero. In this case, if <code>approx_instant_energy</code> is True, the
+window's energy consumption will be approximated by multiplying the current
+instantaneous power consumption with the window's execution time. This should
+be a better estimate than zero, but it's still an approximation.</p>
+            </div>
+          </td>
+          <td>
+                <code>False</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>log_file</code></td>
+          <td>
+                <code>str | <span title="pathlib.Path">Path</span> | None</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Path to the log CSV file. If <code>None</code>, logging will be disabled.</p>
+            </div>
+          </td>
+          <td>
+                <code>None</code>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+          <details class="quote">
+            <summary>Source code in <code>zeus/monitor/energy.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">gpu_indices</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">approx_instant_energy</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">log_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Instantiate the monitor.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurements</span>
+<span class="sd">            will begin and end at the same time for these GPUs (i.e., synchronized).</span>
+<span class="sd">            If None, all the GPUs available will be used. `CUDA_VISIBLE_DEVICES`</span>
+<span class="sd">            is respected if set, e.g., GPU index `1` passed into `gpu_indices` when</span>
+<span class="sd">            `CUDA_VISIBLE_DEVICES=2,3` will be interpreted as CUDA device `3`.</span>
+<span class="sd">            `CUDA_VISIBLE_DEVICES`s formatted with comma-separated indices are supported.</span>
+<span class="sd">        approx_instant_energy: When the execution time of a measurement window is</span>
+<span class="sd">            shorter than the NVML energy counter&#39;s update period, energy consumption may</span>
+<span class="sd">            be observed as zero. In this case, if `approx_instant_energy` is True, the</span>
+<span class="sd">            window&#39;s energy consumption will be approximated by multiplying the current</span>
+<span class="sd">            instantaneous power consumption with the window&#39;s execution time. This should</span>
+<span class="sd">            be a better estimate than zero, but it&#39;s still an approximation.</span>
+<span class="sd">        log_file: Path to the log CSV file. If `None`, logging will be disabled.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Save arguments.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">approx_instant_energy</span> <span class="o">=</span> <span class="n">approx_instant_energy</span>
+
+    <span class="c1"># Initialize NVML.</span>
+    <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlInit</span><span class="p">()</span>
+    <span class="n">atexit</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlShutdown</span><span class="p">)</span>
+
+    <span class="c1"># CUDA GPU indices and NVML GPU indices are different if `CUDA_VISIBLE_DEVICES` is set.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvml_gpu_indices</span> <span class="o">=</span> <span class="n">resolve_gpu_indices</span><span class="p">(</span><span class="n">gpu_indices</span><span class="p">)</span>
+
+    <span class="c1"># Save all the NVML GPU handles. These should be called with system-level GPU indices.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">c_nvmlDevice_t</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">nvml_gpu_index</span><span class="p">,</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nvml_gpu_indices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">):</span>
+        <span class="n">handle</span> <span class="o">=</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetHandleByIndex</span><span class="p">(</span><span class="n">nvml_gpu_index</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="n">handle</span>
+
+    <span class="c1"># Initialize loggers.</span>
+    <span class="k">if</span> <span class="n">log_file</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">dir</span> <span class="o">:=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">log_file</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="nb">dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">log_file</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing measurement logs to </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">log_file</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;start_time,window_name,elapsed_time,</span><span class="si">{</span><span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span><span class="w"> </span><span class="n">i</span><span class="p">:</span><span class="w"> </span><span class="sa">f</span><span class="s1">&#39;gpu</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">_energy&#39;</span><span class="p">,</span><span class="w"> </span><span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">))</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Monitoring GPU indices </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">)</span>
+
+    <span class="c1"># A dictionary that maps the string keys of active measurement windows to</span>
+    <span class="c1"># the state of the measurement window. Each element in the dictionary is a tuple of:</span>
+    <span class="c1">#     1) Time elapsed at the beginning of this window.</span>
+    <span class="c1">#     2) Total energy consumed by each &gt;= Volta GPU at the beginning of</span>
+    <span class="c1">#        this window (`None` for older GPUs).</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Initialize power monitors for older architecture GPUs.</span>
+    <span class="n">old_gpu_indices</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">gpu_index</span>
+        <span class="k">for</span> <span class="n">gpu_index</span><span class="p">,</span> <span class="n">is_new</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_new_arch_flags</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_new</span>
+    <span class="p">]</span>
+    <span class="k">if</span> <span class="n">old_gpu_indices</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span> <span class="o">=</span> <span class="n">PowerMonitor</span><span class="p">(</span>
+            <span class="n">gpu_indices</span><span class="o">=</span><span class="n">old_gpu_indices</span><span class="p">,</span> <span class="n">update_period</span><span class="o">=</span><span class="kc">None</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h4 id="zeus.monitor.energy.ZeusMonitor._is_new_arch" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">_is_new_arch</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-cached"><code>cached</code></small>
+  </span>
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">_is_new_arch</span><span class="p">(</span><span class="n">gpu</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Return whether the GPU is Volta or newer.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>zeus/monitor/energy.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@lru_cache</span>
+<span class="k">def</span> <span class="nf">_is_new_arch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gpu</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return whether the GPU is Volta or newer.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetArchitecture</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">[</span><span class="n">gpu</span><span class="p">])</span>
+        <span class="o">&gt;=</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">NVML_DEVICE_ARCH_VOLTA</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h4 id="zeus.monitor.energy.ZeusMonitor._get_instant_power" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">_get_instant_power</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">_get_instant_power</span><span class="p">()</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Measure the power consumption of all GPUs at the current time.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>zeus/monitor/energy.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">_get_instant_power</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Measure the power consumption of all GPUs at the current time.&quot;&quot;&quot;</span>
+    <span class="n">power_measurement_start_time</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+    <span class="n">power</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">i</span><span class="p">:</span> <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetPowerUsage</span><span class="p">(</span><span class="n">h</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1000.0</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">h</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+    <span class="n">power_measurement_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">power_measurement_start_time</span>
+    <span class="k">return</span> <span class="n">power</span><span class="p">,</span> <span class="n">power_measurement_time</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h4 id="zeus.monitor.energy.ZeusMonitor.begin_window" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">begin_window</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">begin_window</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">sync_cuda</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Begin a new measurement window.</p>
+
+
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>key</code></td>
+          <td>
+                <code>str</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Unique name of the measurement window.</p>
+            </div>
+          </td>
+          <td>
+              <em>required</em>
+          </td>
+        </tr>
+        <tr>
+          <td><code>sync_cuda</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Whether to synchronize CUDA before starting the measurement window.
+(Default: <code>True</code>)</p>
+            </div>
+          </td>
+          <td>
+                <code>True</code>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+          <details class="quote">
+            <summary>Source code in <code>zeus/monitor/energy.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">begin_window</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sync_cuda</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Begin a new measurement window.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        key: Unique name of the measurement window.</span>
+<span class="sd">        sync_cuda: Whether to synchronize CUDA before starting the measurement window.</span>
+<span class="sd">            (Default: `True`)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Make sure the key is unique.</span>
+    <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&#39; already exists&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Call cudaSynchronize to make sure we freeze at the right time.</span>
+    <span class="k">if</span> <span class="n">sync_cuda</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">:</span>
+            <span class="n">cuda_sync</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">)</span>
+
+    <span class="c1"># Freeze the start time of the profiling window.</span>
+    <span class="n">timestamp</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+    <span class="n">energy_state</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">gpu_index</span><span class="p">,</span> <span class="n">gpu_handle</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="c1"># Query energy directly if the GPU has newer architecture.</span>
+        <span class="c1"># Otherwise, the Zeus power monitor is running in the background to</span>
+        <span class="c1"># collect power consumption, so we just need to read the log file later.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_new_arch</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">):</span>
+            <span class="n">energy_state</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetTotalEnergyConsumption</span><span class="p">(</span><span class="n">gpu_handle</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1000.0</span>
+            <span class="p">)</span>
+
+    <span class="c1"># Add measurement state to dictionary.</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">timestamp</span><span class="p">,</span> <span class="n">energy_state</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">%s</span><span class="s2">&#39; started.&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h4 id="zeus.monitor.energy.ZeusMonitor.end_window" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">end_window</span>
+
+
+</h4>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">end_window</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">sync_cuda</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cancel</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>End a measurement window and return the time and energy consumption.</p>
+
+
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>key</code></td>
+          <td>
+                <code>str</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Name of an active measurement window.</p>
+            </div>
+          </td>
+          <td>
+              <em>required</em>
+          </td>
+        </tr>
+        <tr>
+          <td><code>sync_cuda</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Whether to synchronize CUDA before ending the measurement window.
+(default: <code>True</code>)</p>
+            </div>
+          </td>
+          <td>
+                <code>True</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>cancel</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Whether to cancel the measurement window. If <code>True</code>, the measurement
+window is assumed to be cancelled and discarded. Thus, an empty Measurement
+object will be returned and the measurement window will not be recorded in
+the log file either. <code>sync_cuda</code> is still respected.</p>
+            </div>
+          </td>
+          <td>
+                <code>False</code>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+          <details class="quote">
+            <summary>Source code in <code>zeus/monitor/energy.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">end_window</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sync_cuda</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">cancel</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Measurement</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;End a measurement window and return the time and energy consumption.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        key: Name of an active measurement window.</span>
+<span class="sd">        sync_cuda: Whether to synchronize CUDA before ending the measurement window.</span>
+<span class="sd">            (default: `True`)</span>
+<span class="sd">        cancel: Whether to cancel the measurement window. If `True`, the measurement</span>
+<span class="sd">            window is assumed to be cancelled and discarded. Thus, an empty Measurement</span>
+<span class="sd">            object will be returned and the measurement window will not be recorded in</span>
+<span class="sd">            the log file either. `sync_cuda` is still respected.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Retrieve the start time and energy consumption of this window.</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">start_time</span><span class="p">,</span> <span class="n">start_energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_states</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&#39; does not exist&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="kc">None</span>
+
+    <span class="c1"># Take instant power consumption measurements.</span>
+    <span class="c1"># This, in theory, is introducing extra NVMLs call in the critical path</span>
+    <span class="c1"># even if computation time is not so short. However, it is reasonable to</span>
+    <span class="c1"># expect that computation time would be short if the user explicitly</span>
+    <span class="c1"># turned on the `approx_instant_energy` option. Calling this function</span>
+    <span class="c1"># as early as possible will lead to more accurate energy approximation.</span>
+    <span class="n">power</span><span class="p">,</span> <span class="n">power_measurement_time</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_get_instant_power</span><span class="p">()</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">approx_instant_energy</span> <span class="k">else</span> <span class="p">({},</span> <span class="mf">0.0</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Call cudaSynchronize to make sure we freeze at the right time.</span>
+    <span class="k">if</span> <span class="n">sync_cuda</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">:</span>
+            <span class="n">cuda_sync</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">)</span>
+
+    <span class="c1"># If the measurement window is cancelled, return an empty Measurement object.</span>
+    <span class="k">if</span> <span class="n">cancel</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">%s</span><span class="s2">&#39; cancelled.&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Measurement</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">energy</span><span class="o">=</span><span class="p">{</span><span class="n">gpu</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">gpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="p">})</span>
+
+    <span class="n">end_time</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+    <span class="n">time_consumption</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">end_time</span> <span class="o">-</span> <span class="n">start_time</span>
+    <span class="n">energy_consumption</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">gpu_index</span><span class="p">,</span> <span class="n">gpu_handle</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_handles</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="c1"># Query energy directly if the GPU has newer architecture.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_new_arch</span><span class="p">(</span><span class="n">gpu_index</span><span class="p">):</span>
+            <span class="n">end_energy</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">pynvml</span><span class="o">.</span><span class="n">nvmlDeviceGetTotalEnergyConsumption</span><span class="p">(</span><span class="n">gpu_handle</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1000.0</span>
+            <span class="p">)</span>
+            <span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="n">end_energy</span> <span class="o">-</span> <span class="n">start_energy</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span>
+
+    <span class="c1"># If there are older GPU architectures, the PowerMonitor will take care of those.</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span><span class="o">.</span><span class="n">get_energy</span><span class="p">(</span><span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="p">)</span>
+        <span class="c1"># Fallback to the instant power measurement if the PowerMonitor does not</span>
+        <span class="c1"># have the power samples.</span>
+        <span class="k">if</span> <span class="n">energy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">energy</span> <span class="o">=</span> <span class="p">{</span><span class="n">gpu</span><span class="p">:</span> <span class="mf">0.0</span> <span class="k">for</span> <span class="n">gpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">power_monitor</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">}</span>
+        <span class="n">energy_consumption</span> <span class="o">|=</span> <span class="n">energy</span>
+
+    <span class="c1"># Approximate energy consumption if the measurement window is too short.</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">approx_instant_energy</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">gpu_index</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+                <span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">=</span> <span class="n">power</span><span class="p">[</span><span class="n">gpu_index</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span>
+                    <span class="n">time_consumption</span> <span class="o">-</span> <span class="n">power_measurement_time</span>
+                <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Measurement window &#39;</span><span class="si">%s</span><span class="s2">&#39; ended.&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span>
+
+    <span class="c1"># Add to log file.</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">start_time</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">time_consumption</span><span class="si">}</span><span class="s2">,&quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">energy_consumption</span><span class="p">[</span><span class="n">gpu</span><span class="p">])</span> <span class="k">for</span> <span class="n">gpu</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gpu_indices</span><span class="p">)</span>
+            <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">Measurement</span><span class="p">(</span><span class="n">time_consumption</span><span class="p">,</span> <span class="n">energy_consumption</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+
+  </div>
+
+  </div>
+
+
+</div>
+
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12Z"/></svg>
+            Back to top
+          </button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2023 Jae-Won Chung
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs Insiders
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/ml-energy/zeus" target="_blank" rel="noopener" title="Zeus GitHub repository" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://hub.docker.com/r/mlenergy/zeus" target="_blank" rel="noopener" title="Zeus Docker Hub registry" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M349.9 236.3h-66.1v-59.4h66.1v59.4zm0-204.3h-66.1v60.7h66.1V32zm78.2 144.8H362v59.4h66.1v-59.4zm-156.3-72.1h-66.1v60.1h66.1v-60.1zm78.1 0h-66.1v60.1h66.1v-60.1zm276.8 100c-14.4-9.7-47.6-13.2-73.1-8.4-3.3-24-16.7-44.9-41.1-63.7l-14-9.3-9.3 14c-18.4 27.8-23.4 73.6-3.7 103.8-8.7 4.7-25.8 11.1-48.4 10.7H2.4c-8.7 50.8 5.8 116.8 44 162.1 37.1 43.9 92.7 66.2 165.4 66.2 157.4 0 273.9-72.5 328.4-204.2 21.4.4 67.6.1 91.3-45.2 1.5-2.5 6.6-13.2 8.5-17.1l-13.3-8.9zm-511.1-27.9h-66v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1v-59.4zm78.1 0h-66.1v59.4h66.1v-59.4zm-78.1-72.1h-66.1v60.1h66.1v-60.1z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    <script id="__config" type="application/json">{"base": "../../..", "features": ["search.suggest", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.instant", "navigation.instant.prefetch", "content.tooltips", "announce.dismiss"], "search": "../../../assets/javascripts/workers/search.6c7302c4.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.7c5c0157.min.js"></script>
+      
+        
+          <script src="../../../assets/js/mathjax.js"></script>
+        
+      
+        
+          <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+        
+      
+        
+          <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+        
+      
+    
+  </body>
+</html>
