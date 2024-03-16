@@ -1,12 +1,6 @@
 # Getting Started
 
-Zeus automatically tunes the **batch size** and **GPU power limit** of a recurring DNN training job.
-
-!!! Important
-    Zeus can optimize the batch size of **recurring** jobs, i.e. training jobs that re-run multiple times over time. However, Zeus can still optimize the GPU power limit even if your jobs does not recur.
-
-!!! Info
-    Zeus currently supports **single GPU training** and **single node data parallel training**. Support for distributed data parallel training will be added soon.
+Zeus is an energy measurement and optimization toolbox for deep learning.
 
 ## How it works
 
@@ -124,11 +118,11 @@ Refer to our [HuggingFace 🤗 example integration](https://github.com/ml-energy
 - Transformers [`Trainer`](https://huggingface.co/docs/transformers/main_classes/trainer) integration for **causal langauge modeling** (i.e., pre-training)
 - TRL [`SFTTrainer`](https://huggingface.co/docs/trl/main/en/sft_trainer) integration for **Gemma 7b supervised fine-tuning with QLoRA**
 
-## Recurring jobs
+## Large model training jobs
 
-!!! Info
-    We plan to integrate [`ZeusMaster`][zeus.run.ZeusMaster] with an MLOps platform like [KubeFlow](https://www.kubeflow.org/).
-    Let us know about your preferences, use cases, and expectations by [posting an issue](https://github.com/ml-energy/zeus/issues/new?assignees=&labels=&template=feature_request.md&title=Regarding%20Integration%20with%20MLOps%20Platroms)!
+We created [Perseus](../perseus/index.md), which can optimize the energy consumption of large model training with practically no slowdown!
+
+## Recurring jobs
 
 The cost-optimal batch size is located *across* multiple job runs using a Multi-Armed Bandit algorithm.
 First, go through the steps for non-recurring jobs. 
