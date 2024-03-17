@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobSpec, JobSpecIn
+from zeus.optimizer.batch_size.common import JobConfig, JobSpec
 from zeus.optimizer.batch_size.server.database.db_connection import (
     DatabaseSessionManager,
     get_db_session,
@@ -100,21 +100,19 @@ def mock_monitor(mocker: MockerFixture):
     return zeus_monitor_mock_instance
 
 
-@pytest.mark.anyio
 def test_register_job(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
-    job = JobSpecIn.parse_obj(fake_job)
+    job = JobSpec.parse_obj(fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
 
 
-@pytest.mark.anyio
 def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
-    job = JobSpecIn.parse_obj(fake_job)
+    job = JobSpec.parse_obj(fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
 
@@ -146,11 +144,10 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     assert bs == 2048 and bso_client.current_batch_size == 2048
 
 
-@pytest.mark.anyio
 def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
-    job = JobSpecIn.parse_obj(fake_job)
+    job = JobSpec.parse_obj(fake_job)
     job.job_id = uuid4()
     job.beta_knob = -1  # disable early stop
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)

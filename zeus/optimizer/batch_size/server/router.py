@@ -8,11 +8,11 @@ from zeus.optimizer.batch_size.common import (
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
     REPORT_RESULT_URL,
-    JobSpec,
+    JobConfig,
     ReportResponse,
     TrainingResult,
 )
-from zeus.optimizer.batch_size.server.config import ZeusBsoSettings
+from zeus.optimizer.batch_size.server.config import settings
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerBaseError
 from zeus.optimizer.batch_size.server.optimizer import ZeusBatchSizeOptimizer
@@ -20,9 +20,8 @@ from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.logging import get_logger
 
 app = FastAPI()
-
-settings = ZeusBsoSettings()
-logger = get_logger(__name__, level=settings.log_level)
+logger = get_logger(__name__)
+logging.basicConfig(level=logging.getLevelName(settings.log_level))
 
 
 @app.on_event("startup")
@@ -37,13 +36,13 @@ def startup_hook():
         200: {"description": "Job is already registered"},
         201: {"description": "Job is successfully registered"},
     },
-    response_model=JobSpec,
+    response_model=JobConfig,
 )
 async def register_job(
-    job: JobSpec,
+    job: JobConfig,
     response: Response,
     db_session: AsyncSession = Depends(get_db_session),
-) -> JobSpec:
+) -> JobConfig:
     """Endpoint for users to register a new job."""
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:

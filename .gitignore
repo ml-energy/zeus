@@ -12,9 +12,7 @@ dist/
 **/.DS_Store
 .cache/
 .env
-test.db
 env/
 test.db
 .pytest_cache/
 /envs
-/zeus/optimizer/batch_size/migrations/versions/*.py

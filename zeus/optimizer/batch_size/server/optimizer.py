@@ -3,10 +3,10 @@ from __future__ import annotations
 from uuid import UUID
 
 import numpy as np
-from zeus.optimizer.batch_size.common import JobSpec, ReportResponse, TrainingResult
+from zeus.optimizer.batch_size.common import JobConfig, ReportResponse, TrainingResult
 from zeus.optimizer.batch_size.server.batch_size_state.models import MeasurementOfBs
 from zeus.optimizer.batch_size.server.exceptions import (
-    ZeusBSOJobSpecMismatchError,
+    ZeusBSOJobConfigMismatchError,
     ZeusBSOValueError,
 )
 from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
@@ -33,17 +33,17 @@ class ZeusBatchSizeOptimizer:
         """Name of the batch size optimizer."""
         return "ZeusBatchSizeOptimizer"
 
-    async def register_job(self, job: JobSpec) -> bool:
+    async def register_job(self, job: JobConfig) -> bool:
         """Register a user-submitted job. Return number of newly created job. Return the number of job that is registered"""
         registered_job = await self.service.get_job(job.job_id)
 
         if registered_job is not None:
             # Job exists
             logger.info(f"Job({job.job_id}) already exists")
-            registerd_job_spec = JobSpec.parse_obj(registered_job.dict())
+            registerd_job_spec = JobConfig.parse_obj(registered_job.dict())
 
             if registerd_job_spec != job:
-                raise ZeusBSOJobSpecMismatchError(
+                raise ZeusBSOJobConfigMismatchError(
                     "JobSpec doesn't match with existing jobSpec. Use a new job_id for different configuration"
                 )
             return False
@@ -123,14 +123,15 @@ class ZeusBatchSizeOptimizer:
             job.max_power,
         )
 
+        within_cost_range = cost_ub >= reported_cost
         converged = (
             job.high_is_better_metric and job.target_metric <= result.metric
         ) or (not job.high_is_better_metric and job.target_metric >= result.metric)
 
         if (
-            cost_ub >= reported_cost
+            within_cost_range
             and result.current_epoch < job.max_epochs
-            and converged == False
+            and not converged
         ):
             # If it's not converged but below cost upper bound and haven't reached max_epochs, keep training
 
@@ -175,7 +176,7 @@ class ZeusBatchSizeOptimizer:
                 current_meausurement, reported_cost < cost_ub, reported_cost
             )
 
-        if cost_ub < reported_cost:
+        if cost_ub <= reported_cost:
             message = f"""Batch Size({result.batch_size}) exceeded the cost upper bound: current cost({reported_cost}) >
                     beta_knob({job.beta_knob})*min_cost({job.min_cost})"""
 

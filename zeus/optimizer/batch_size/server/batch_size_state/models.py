@@ -78,12 +78,12 @@ class ExplorationsPerBs(BatchSizeBase):
         validate_assignment = True
         frozen = True
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
-        bs: int = values.get("batch_size")
-        job_id: UUID = values.get("job_id")
-        exps: list[ExplorationStateModel] = values.get("explorations")
-        exps = list(reversed(sorted(exps, key=lambda exp: exp.round_number)))
+        bs: int = values["batch_size"]
+        job_id: UUID = values["job_id"]
+        exps: list[ExplorationStateModel] = values["explorations"]
+        exps = sorted(exps, key=lambda exp: exp.round_number, reverse=True)
 
         round_number = -1
         for exp in exps:
@@ -108,11 +108,11 @@ class MeasurementsPerBs(BatchSizeBase):
     measurements: list[MeasurementOfBs]
 
     # Validate if job_id and bs are consistent
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
-        bs: int = values.get("batch_size")
-        job_id: UUID = values.get("job_id")
-        ms: list[MeasurementOfBs] = values.get("measurements")
+        bs: int = values["batch_size"]
+        job_id: UUID = values["job_id"]
+        ms: list[MeasurementOfBs] = values["measurements"]
 
         for m in ms:
             if job_id != m.job_id:
@@ -132,10 +132,10 @@ class ExplorationsPerJob(BaseModel):
     explorations_per_bs: dict[int, ExplorationsPerBs]  # BS -> Explorations
 
     # Check bs and job_id corresponds to explorations_per_bs
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
-        job_id: UUID = values.get("job_id")
-        exps_per_bs: dict[int, ExplorationsPerBs] = values.get("explorations_per_bs")
+        job_id: UUID = values["job_id"]
+        exps_per_bs: dict[int, ExplorationsPerBs] = values["explorations_per_bs"]
 
         for bs, exps in exps_per_bs.items():
             if job_id != exps.job_id:

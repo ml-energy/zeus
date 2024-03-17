@@ -1,3 +1,7 @@
+"""
+Based on https://github.com/kubeflow/pytorch-operator/blob/master/examples/mnist/mnist.py
+"""
+
 from __future__ import print_function
 
 import argparse
@@ -13,7 +17,7 @@ import torch.optim as optim
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobSpecIn
+from zeus.optimizer.batch_size.common import JobSpec
 
 
 WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
@@ -42,7 +46,7 @@ plo = GlobalPowerLimitOptimizer(monitor)
 bso = BatchSizeOptimizer(
     monitor=monitor,
     server_url="http://127.0.0.1:8000",
-    job_in=JobSpecIn.parse_obj(job),
+    job=JobSpec.parse_obj(job),
 )
 
 

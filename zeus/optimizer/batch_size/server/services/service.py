@@ -23,7 +23,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.repository import (
     BatchSizeStateRepository,
 )
 from zeus.optimizer.batch_size.server.exceptions import (
-    ZeusBSOServiceBadRequestError,
+    ZeusBSOServiceBadOperationError,
     ZeusBSOValueError,
 )
 from zeus.optimizer.batch_size.server.job.commands import (
@@ -221,7 +221,7 @@ class ZeusService:
     def _get_job(self, job_id: UUID) -> JobState:
         res = self.job_repo.get_job_from_session(job_id)
         if res == None:
-            raise ZeusBSOServiceBadRequestError(
+            raise ZeusBSOServiceBadOperationError(
                 f"Should have fetched the job first or job does not exist(job_id = {job_id})"
             )
         return res

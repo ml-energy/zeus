@@ -10,7 +10,7 @@ from typing import Any, Optional
 import numpy as np
 from pydantic.class_validators import root_validator
 from pydantic.utils import GetterDict
-from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.common import JobConfig
 
 
 class Stage(Enum):
@@ -26,7 +26,7 @@ class JobGetter(GetterDict):
         return super().get(key, default)
 
 
-class JobState(JobSpec):
+class JobState(JobConfig):
     exp_default_batch_size: int
 
     min_cost: Optional[float] = None
@@ -39,10 +39,10 @@ class JobState(JobSpec):
         orm_mode = True
         getter_dict = JobGetter
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _validate_mab(cls, values: dict[str, Any]) -> dict[str, Any]:
-        state: str | None = values.get("mab_random_generator_state")
-        mab_seed: int | None = values.get("mab_seed")
+        state: str | None = values["mab_random_generator_state"]
+        mab_seed: int | None = values["mab_seed"]
 
         if mab_seed != None:
             if state == None:

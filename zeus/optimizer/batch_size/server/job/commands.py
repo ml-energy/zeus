@@ -7,7 +7,7 @@ import numpy as np
 from pydantic.class_validators import root_validator, validator
 from pydantic.fields import Field
 from pydantic.main import BaseModel
-from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.common import JobConfig
 from zeus.optimizer.batch_size.server.database.schema import BatchSize, Job
 from zeus.optimizer.batch_size.server.job.models import Stage
 
@@ -41,7 +41,7 @@ class UpdateJobMinCost(BaseModel):
     min_batch_size: int = Field(gt=0)
 
 
-class CreateJob(JobSpec):
+class CreateJob(JobConfig):
     exp_default_batch_size: int
     min_cost: None = Field(None, const=True)
     min_batch_size: int
@@ -52,14 +52,14 @@ class CreateJob(JobSpec):
         frozen = True
         validate_assignment = True
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _validate_mab_states(cls, values: dict[str, Any]) -> dict[str, Any]:
-        state: str | None = values.get("mab_random_generator_state")
-        mab_seed: int | None = values.get("mab_seed")
-        bss: list[int] = values.get("batch_sizes")
-        dbs: int = values.get("default_batch_size")
-        ebs: int = values.get("exp_default_batch_size")
-        mbs: int = values.get("min_batch_size")
+        state: str | None = values["mab_random_generator_state"]
+        mab_seed: int | None = values["mab_seed"]
+        bss: list[int] = values["batch_sizes"]
+        dbs: int = values["default_batch_size"]
+        ebs: int = values["exp_default_batch_size"]
+        mbs: int = values["min_batch_size"]
 
         if mab_seed != None:
             if state == None:
@@ -81,7 +81,7 @@ class CreateJob(JobSpec):
 
         return values
 
-    def from_jobSpec(js: JobSpec) -> "CreateJob":
+    def from_jobSpec(js: JobConfig) -> "CreateJob":
         d = js.dict()
         d["exp_default_batch_size"] = js.default_batch_size
         if js.mab_seed != None:

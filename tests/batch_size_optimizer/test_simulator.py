@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import sys
 from typing import AsyncIterator
 import pytest
 from examples.trace_driven.run_single import read_trace
@@ -95,7 +94,6 @@ def arm_state_parser(output):
     return d
 
 
-@pytest.mark.anyio
 def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)

@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
-from zeus.optimizer.batch_size.common import JobSpec, TrainingResult
+from zeus.optimizer.batch_size.common import JobConfig, TrainingResult
 from zeus.policy import PowerLimitOptimizer
 from zeus.util import zeus_cost
 
@@ -34,16 +34,16 @@ class BatchSizeOptimizerDummyClient:
     def __init__(self):
         return
 
-    def register_job(self, job: JobSpec):
+    def register_job(self, job: JobConfig):
         httpx.post("/jobs", content=job.json())
 
-    def predict(self, job: JobSpec):
+    def predict(self, job: JobConfig):
         res = httpx.get("/jobs/batch_size", params={"job_id": job.job_id})
         return res.json()
 
     def observe(
         self,
-        job: JobSpec,
+        job: JobConfig,
         batch_size: int,
         total_energy: float,
         time: float,
@@ -149,7 +149,7 @@ class SimulatorWithServer:
         # Copy all internal state so that simulation does not modify any
         # internal state and is deterministic w.r.t. the random seed.
         # A new job. Profile the feasible batch size range.
-        jobSpec = JobSpec(
+        jobSpec = JobConfig(
             job_id=uuid.uuid4(),
             batch_sizes=self._profile_batch_size_range(job),
             default_batch_size=job.default_bs,

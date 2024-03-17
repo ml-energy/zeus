@@ -13,7 +13,7 @@ GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
 REPORT_RESULT_URL = "/jobs/report"
 
 
-class JobSpecIn(BaseModel):
+class JobSpec(BaseModel):
     """Job specification that user inputs."""
 
     job_id: UUID
@@ -59,21 +59,21 @@ class JobSpecIn(BaseModel):
 
     @validator("default_batch_size", "max_epochs")
     def _check_positivity(cls, n: int) -> int:
-        if n > 0:
+        if n != None and n > 0:
             return n
         else:
             raise ValueError(f"{n} should be larger than 0")
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _check_default_batch_size(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        bs = values.get("default_batch_size")
-        bss = values.get("batch_sizes")
+        bs = values["default_batch_size"]
+        bss = values["batch_sizes"]
         if bs not in bss:
             raise ValueError(f"Default BS({bs}) not in batch_sizes({bss}).")
         return values
 
 
-class JobSpec(JobSpecIn):
+class JobConfig(JobSpec):
     """Specification of a job submitted by users."""
 
     max_power: float

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import httpx
 import pynvml
+
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer.batch_size.common import (
+    GET_NEXT_BATCH_SIZE_URL,
+    REGISTER_JOB_URL,
+    REPORT_RESULT_URL,
+    JobConfig,
     JobSpec,
-    JobSpecIn,
     ReportResponse,
     TrainingResult,
 )
@@ -14,6 +18,7 @@ from zeus.optimizer.batch_size.exceptions import (
     ZeusBSOConfigError,
     ZeusBSOOperationOrderError,
     ZeusBSORuntimError,
+    ZeusBSOTrainFailError,
 )
 from zeus.util.logging import get_logger
 
@@ -21,9 +26,7 @@ logger = get_logger(__name__)
 
 
 class BatchSizeOptimizer(Callback):
-    def __init__(
-        self, monitor: ZeusMonitor, server_url: str, job_in: JobSpecIn
-    ) -> None:
+    def __init__(self, monitor: ZeusMonitor, server_url: str, job_in: JobSpec) -> None:
 
         self.monitor = monitor
         self.server_url = server_url
@@ -37,11 +40,13 @@ class BatchSizeOptimizer(Callback):
         pls = []
         for index in self.monitor.nvml_gpu_indices:
             device = pynvml.nvmlDeviceGetHandleByIndex(index)
+            # name = pynvml.nvmlDeviceGetName(device)
+            # TODO: CHECK DEVICE ALL EQUAL AND SET JOB.GPU_MODEL
             pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
         if not all(pls[0] == pl for pl in pls):
             raise ZeusBSOConfigError("Power limits ranges are not uniform across GPUs.")
 
-        self.job = JobSpec(
+        self.job = JobConfig(
             **job_in.dict(),
             max_power=(pls[0][1] // 1000) * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
@@ -49,7 +54,7 @@ class BatchSizeOptimizer(Callback):
         self.current_batch_size = 0
 
         # Register job
-        res = httpx.post(self.server_url + "/jobs", content=self.job.json())
+        res = httpx.post(self.server_url + REGISTER_JOB_URL, content=self.job.json())
         self._handle_response(res)
 
         logger.info(f"Job is registered: {self.job}")
@@ -62,7 +67,8 @@ class BatchSizeOptimizer(Callback):
 
         self.cur_epoch = 0
         res = httpx.get(
-            self.server_url + "/jobs/batch_size", params={"job_id": self.job.job_id}
+            self.server_url + GET_NEXT_BATCH_SIZE_URL,
+            params={"job_id": self.job.job_id},
         )
         self._handle_response(res)
 
@@ -111,19 +117,21 @@ class BatchSizeOptimizer(Callback):
 
         # report to the server about the result of this training
         res = httpx.post(
-            self.server_url + "/jobs/report", content=training_result.json()
+            self.server_url + REPORT_RESULT_URL, content=training_result.json()
         )
         self._handle_response(res)
 
         parsedResposne = ReportResponse.parse_obj(res.json())
 
         print(f"Result: {parsedResposne}")
-        if parsedResposne.stop_train == False:
+        if not parsedResposne.stop_train:
             self.monitor.begin_window("BatciSizeOptimizerClient")
         else:
             self.train_end = True
-            if parsedResposne.converged == False:
-                raise ZeusBSORuntimError(f"Train failed: {parsedResposne.message}")
+            if not parsedResposne.converged:
+                raise ZeusBSOTrainFailError(
+                    f"Train failed: {parsedResposne.message}. This batch size will not be selected again. Please re-launch the training"
+                )
 
     def _handle_response(self, res: httpx.Response) -> None:
         if not (200 <= (code := res.status_code) < 300):

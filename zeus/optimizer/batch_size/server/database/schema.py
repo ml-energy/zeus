@@ -21,7 +21,7 @@ from sqlalchemy.sql.sqltypes import VARCHAR
 from zeus.optimizer.batch_size.server.job.models import Stage
 
 
-class Base(AsyncAttrs, DeclarativeBase):
+class Base(DeclarativeBase):
     pass
 
 

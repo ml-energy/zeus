@@ -13,10 +13,10 @@ class CreateArms(BaseModel):
     explorations_per_bs: dict[int, ExplorationsPerBs]
     job_id: UUID
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _validate(cls, values: dict[str, Any]) -> dict[str, Any]:
-        exps: dict[int, ExplorationsPerBs] = values.get("explorations_per_bs")
-        job_id: UUID = values.get("job_id")
+        exps: dict[int, ExplorationsPerBs] = values["explorations_per_bs"]
+        job_id: UUID = values["job_id"]
 
         for bs, exp_list_per_bs in exps.items():
             for exp in exp_list_per_bs.explorations:
@@ -40,7 +40,7 @@ class CreateArms(BaseModel):
 
                 if bs != exp.batch_size:
                     raise ValueError(f"Batch size should be consistent in explorations")
-        if any_at_num_pruning_rounds == False:
+        if not any_at_num_pruning_rounds:
             raise ValueError(
                 f"At least one exploration should have {num_pruning_rounds} number of trials"
             )

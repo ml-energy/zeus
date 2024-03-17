@@ -1,4 +1,5 @@
 from pydantic.env_settings import BaseSettings
+from dotenv import find_dotenv
 
 
 class ZeusBsoSettings(BaseSettings):
@@ -11,7 +12,7 @@ class ZeusBsoSettings(BaseSettings):
 
     class Config:
         env_prefix = "ZEUS_"
-        env_file = ".env"
+        env_file = find_dotenv(filename=".env")
         env_file_encoding = "utf-8"
 
 

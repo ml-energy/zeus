@@ -72,7 +72,6 @@ def client():
         yield c
 
 
-@pytest.mark.anyio
 def test_register_job(client):
     response = client.post("/jobs", json=fake_job)
     print(response.text)
@@ -84,13 +83,6 @@ def test_register_job(client):
     assert response.status_code == 200
 
 
-# @pytest.mark.anyio
-# def test_play(client):
-#     response = client.get("/test", params={"job_id": fake_job["job_id"]})
-#     print(response.text)
-
-
-@pytest.mark.anyio
 def test_register_job_with_diff_config(client):
     fake_job_diff = deepcopy(fake_job)
     fake_job_diff["default_batch_size"] = 512
@@ -100,7 +92,6 @@ def test_register_job_with_diff_config(client):
     assert response.status_code == 409
 
 
-@pytest.mark.anyio
 def test_register_job_validation_error(client):
     temp = deepcopy(fake_job)
     temp["default_batch_size"] = 128
@@ -132,7 +123,6 @@ def test_register_job_validation_error(client):
     assert response.status_code == 422
 
 
-@pytest.mark.anyio
 def test_predict(client):
     cur_default_bs = fake_job["default_batch_size"]
     response = client.get(
@@ -153,7 +143,6 @@ def test_predict(client):
     assert response.json() == cur_default_bs
 
 
-@pytest.mark.anyio
 def test_report(client):
     # Converged within max epoch => successful training
     response = client.post(
@@ -194,7 +183,6 @@ def test_report(client):
     )
 
 
-@pytest.mark.anyio
 def test_predict_report_sequence(client):
     cur_default_bs = fake_job["default_batch_size"]
 
@@ -266,7 +254,6 @@ def test_predict_report_sequence(client):
         cur_default_bs = 512
 
 
-@pytest.mark.anyio
 def test_mab_stage(client):
     bs_seq = []
     # Previous default batch size is converged

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import sys
 import uuid
 from typing import AsyncIterator
 
@@ -19,15 +18,13 @@ from zeus.optimizer.batch_size.server.router import app
 fake_job = {
     "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "seed": 1,
-    "default_batch_size": 1024,
-    "batch_sizes": [32, 64, 256, 512, 1024, 4096, 2048],
     "eta_knob": 0.5,
-    "beta_knob": 2,
+    "beta_knob": -1,
     "target_metric": 0.5,
     "high_is_better_metric": True,
     "max_epochs": 100,
     "num_pruning_rounds": 2,
-    "window_size": 5,
+    "window_size": 0,
     "mab_prior_mean": 0,
     "mab_prior_precision": 0,
     "mab_seed": 123456,
@@ -99,7 +96,6 @@ class TestPruningExploreManager:
         )
 
     # 0.5 * energy + (1 - eta_knob) * max_power * time
-    @pytest.mark.anyio
     def register_job_with_default_bs(self, client, default_bs: int) -> str:
         job_id = str(uuid.uuid4())
         fake_job["job_id"] = job_id
@@ -111,7 +107,6 @@ class TestPruningExploreManager:
 
         return job_id
 
-    @pytest.mark.anyio
     def run_exploration(
         self,
         client,
@@ -121,6 +116,7 @@ class TestPruningExploreManager:
         result: list[int],
     ) -> None:
         """Drive the pruning explore manager and check results."""
+        caplog.set_level(logging.INFO)
         for exp in exploration:
             res = self.exploration_to_training_result(exp)
             response = client.get(
@@ -128,7 +124,9 @@ class TestPruningExploreManager:
                 params={"job_id": job_id},
             )
             assert response.status_code == 200
-            assert response.json() == exp[0]
+            assert (
+                response.json() == exp[0]
+            ), f"Expected {exp[0]} but got {response.json()} ({exp})"
 
             response = client.post(
                 "/jobs/report",
@@ -136,6 +134,7 @@ class TestPruningExploreManager:
             )
             assert response.status_code == 200
             assert response.json()["converged"] == exp[2]
+            print(response.json()["message"])
         # Now good_bs should be equal to result!
 
         # this will construct mab
@@ -154,9 +153,7 @@ class TestPruningExploreManager:
         else:
             assert False, "No output found from constructing Mab"
 
-    @pytest.mark.anyio
     def test_normal(self, client, caplog):
-        caplog.set_level(logging.INFO)
         """Test a typical case."""
         job_id = self.register_job_with_default_bs(client, 128)
 

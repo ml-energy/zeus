@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import joinedload
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import Job
-from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServiceBadRequestError
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServiceBadOperationError
 from zeus.optimizer.batch_size.server.job.commands import (
     CreateJob,
     UpdateExpDefaultBs,
@@ -20,6 +20,7 @@ from zeus.optimizer.batch_size.server.job.commands import (
 )
 from zeus.optimizer.batch_size.server.job.models import JobState
 from zeus.util.logging import get_logger
+
 
 logger = get_logger(__name__)
 
@@ -69,6 +70,6 @@ class JobStateRepository(DatabaseRepository):
 
     def check_job_fetched(self, job_id: UUID) -> None:
         if self.fetched_job == None or self.fetched_job.job_id != job_id:
-            raise ZeusBSOServiceBadRequestError(
+            raise ZeusBSOServiceBadOperationError(
                 f"check_job_fetched: {job_id} is not currently in the session"
             )
