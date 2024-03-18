@@ -1,3 +1,5 @@
+"""Zeus batch size optimizer client exceptions."""
+
 from zeus.exception import ZeusBaseError
 
 

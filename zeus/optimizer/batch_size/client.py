@@ -1,3 +1,5 @@
+"""Zeus batch size optimizer client that communicates with server."""
+
 from __future__ import annotations
 
 import httpx

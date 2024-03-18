@@ -1,3 +1,1 @@
-"""
-TODO: Descriptions 
-"""
+"""Batch size optimizer server and client."""

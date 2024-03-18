@@ -1,3 +1,5 @@
+"""Zeus batch size optimizer server FAST API router."""
+
 import logging
 from uuid import UUID
 

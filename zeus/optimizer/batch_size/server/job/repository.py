@@ -1,6 +1,4 @@
-"""
-Pydantic model(JobModel) -> DB operation(Job) -> result pydantic model(JobModel). 
-"""
+"""Repository for manipulating Job table"""
 
 from __future__ import annotations
 from uuid import UUID
@@ -10,7 +8,9 @@ from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import joinedload
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import Job
-from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServiceBadOperationError
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOValueError,
+)
 from zeus.optimizer.batch_size.server.job.commands import (
     CreateJob,
     UpdateExpDefaultBs,
@@ -26,14 +26,23 @@ logger = get_logger(__name__)
 
 
 class JobStateRepository(DatabaseRepository):
-    def __init__(self, session: AsyncSession):
-        super().__init__(session)
+    """Repository that provides basic interfaces to interact with Job table."""
 
-        # One job per session
+    def __init__(self, session: AsyncSession):
+        """Set db session and intialize job. We are working with only one job per session."""
+        super().__init__(session)
         self.fetched_job: Job | None = None
 
     async def get_job(self, job_id: UUID) -> JobState | None:
-        """Only parse jobSpec + batch_sizes: list[int], without specific states of each batch_size"""
+        """Get job State, which includes jobSpec + batch_sizes(list[int]), without specific states of each batch_size.
+
+        Args:
+            job_id: Job id.
+
+        Return:
+            set fetched_job and return `JobState` if we found a job, unless return None.
+        """
+
         stmt = (
             select(Job).where(Job.job_id == job_id).options(joinedload(Job.batch_sizes))
         )
@@ -47,29 +56,89 @@ class JobStateRepository(DatabaseRepository):
         return JobState.from_orm(job)
 
     def get_job_from_session(self, job_id: UUID) -> JobState | None:
-        """Get a job that was fetched from this session"""
+        """Get a job that was fetched from this session.
+
+        Args:
+            job_id: Job id.
+
+        Return:
+            Corresponding `JobState`. If none was found, return None.
+        """
         if self.fetched_job == None or self.fetched_job.job_id != job_id:
             return None
         return self.fetched_job
 
-    def update_exp_default_bs(self, updated_bs: UpdateExpDefaultBs):
-        self.fetched_job.exp_default_batch_size = updated_bs.exp_default_batch_size
+    def update_exp_default_bs(self, updated_bs: UpdateExpDefaultBs) -> None:
+        """Update exploration default batch size on fetched job.
 
-    def update_stage(self, updated_stage: UpdateJobStage):
-        self.fetched_job.stage = updated_stage.stage
+        Args:
+            updated_bs: Job Id and new batch size.
+        """
+        if updated_bs.job_id == self.fetched_job.job_id:
+            self.fetched_job.exp_default_batch_size = updated_bs.exp_default_batch_size
+        else:
+            raise ZeusBSOValueError(
+                f"Unknown job_id ({updated_bs.job_id}). Expecting {self.fetched_job.job_id}"
+            )
 
-    def update_min(self, updated_min: UpdateJobMinCost):
-        self.fetched_job.min_cost = updated_min.min_cost
-        self.fetched_job.min_batch_size = updated_min.min_batch_size
+    def update_stage(self, updated_stage: UpdateJobStage) -> None:
+        """Update stage on fetched job.
 
-    def update_generator_state(self, updated_state: UpdateGeneratorState):
-        self.fetched_job.mab_random_generator_state = updated_state.state
+        Args:
+            updated_stage: Job Id and new stage.
+        """
+        if self.fetched_job.job_id == updated_stage.job_id:
+            self.fetched_job.stage = updated_stage.stage
+        else:
+            raise ZeusBSOValueError(
+                f"Unknown job_id ({updated_stage.job_id}). Expecting {self.fetched_job.job_id}"
+            )
+
+    def update_min(self, updated_min: UpdateJobMinCost) -> None:
+        """Update exploration min training cost and corresponding batch size on fetched job.
+
+        Args:
+            updated_stage: Job Id, new min cost and batch size.
+        """
+        if self.fetched_job.job_id == updated_min.job_id:
+            self.fetched_job.min_cost = updated_min.min_cost
+            self.fetched_job.min_batch_size = updated_min.min_batch_size
+        else:
+            raise ZeusBSOValueError(
+                f"Unknown job_id ({updated_min.job_id}). Expecting {self.fetched_job.job_id}"
+            )
+
+    def update_generator_state(self, updated_state: UpdateGeneratorState) -> None:
+        """Update generator state on fetched job.
+
+        Args:
+            updated_state: Job Id and new generator state.
+        """
+        if self.fetched_job.job_id == updated_state.job_id:
+            self.fetched_job.mab_random_generator_state = updated_state.state
+        else:
+            raise ZeusBSOValueError(
+                f"Unknown job_id ({updated_state.job_id}). Expecting {self.fetched_job.job_id}"
+            )
 
     def create_job(self, new_job: CreateJob) -> None:
+        """Create a new job by adding a new job to the session.
+
+        Args:
+            new_job: Job configuration for a new job.
+        """
         self.session.add(new_job.to_orm())
 
-    def check_job_fetched(self, job_id: UUID) -> None:
+    def check_job_fetched(self, job_id: UUID) -> bool:
+        """Check if this job is already fetched before.
+
+        Args:
+            job_id: Job id.
+
+        Return:
+            True if this job was fetched and in session. Otherwise, return false.
+        """
         if self.fetched_job == None or self.fetched_job.job_id != job_id:
-            raise ZeusBSOServiceBadOperationError(
-                f"check_job_fetched: {job_id} is not currently in the session"
-            )
+            return False
+        else:
+            return True

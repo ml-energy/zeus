@@ -1,3 +1,5 @@
+"""Batch size optimizer top-most layer that provides register/report/predict."""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -61,7 +63,7 @@ class ZeusBatchSizeOptimizer:
                 )
             return False
 
-        self.service.create_job(CreateJob.from_jobSpec(job))
+        self.service.create_job(CreateJob.from_jobConfig(job))
         logger.info(f"Registered {job.job_id}")
 
         return True

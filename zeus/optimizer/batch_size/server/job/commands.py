@@ -1,4 +1,7 @@
+"""Commands to use `JobStateRepository`."""
+
 from __future__ import annotations
+
 import json
 from typing import Any, Optional
 from uuid import UUID
@@ -13,21 +16,43 @@ from zeus.optimizer.batch_size.server.job.models import Stage
 
 
 class UpdateExpDefaultBs(BaseModel):
+    """Parameters to update the exploration default batch size.
+
+    Attributes:
+        job_id: Job Id.
+        exp_default_batch_size: new default batch size to use.
+    """
+
     job_id: UUID
     exp_default_batch_size: int = Field(gt=0)
 
 
 class UpdateJobStage(BaseModel):
+    """Parameters to update the job stage.
+
+    Attributes:
+        job_id: Job Id.
+        stage: Set it to MAB since we only go from Pruning to MAB.
+    """
+
     job_id: UUID
     stage: Stage = Field(Stage.MAB, const=True)
 
 
 class UpdateGeneratorState(BaseModel):
+    """Parameters to update the generator state.
+
+    Attributes:
+        job_id: Job Id.
+        state: Generator state.
+    """
+
     job_id: UUID
     state: str
 
     @validator("state")
     def _validate_state(cls, state: str) -> str:
+        """Validate the sanity of state."""
         try:
             np.random.default_rng(1).__setstate__(json.loads(state))
             return state
@@ -36,12 +61,32 @@ class UpdateGeneratorState(BaseModel):
 
 
 class UpdateJobMinCost(BaseModel):
+    """Parameters to update the min training cost and corresponding batch size.
+
+    Attributes:
+        job_id: Job Id.
+        min_cost: Min training cost.
+        min_batch_size: Corresponding batch size.
+    """
+
     job_id: UUID
     min_cost: float = Field(ge=0)
     min_batch_size: int = Field(gt=0)
 
 
 class CreateJob(JobConfig):
+    """Parameters to create a new job.
+
+    Attributes:
+        exp_default_batch_size: Exploration default batch size that is used during Pruning stage.
+        min_cost: Min training cost observed. Initially, None.
+        min_batch_size: Batch size that has minimum training cost observed.
+        stage: Stage of the job.
+        mab_random_generator_state: Generator state if mab_seed is not None. Otherwise, None.
+
+        For the rest of attributes, refer to `JobConfig`[zeus.optimizer.batch_size.common.JobConfig]
+    """
+
     exp_default_batch_size: int
     min_cost: None = Field(None, const=True)
     min_batch_size: int
@@ -53,7 +98,15 @@ class CreateJob(JobConfig):
         validate_assignment = True
 
     @root_validator(skip_on_failure=True)
-    def _validate_mab_states(cls, values: dict[str, Any]) -> dict[str, Any]:
+    def _validate_states(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate Job states.
+
+        We are checking,
+            - If mab seed and generator state is matching.
+            - If default, exp_default, min batch sizes are correctly intialized.
+            - If default batch size is in the list of batch sizes.
+        """
+
         state: str | None = values["mab_random_generator_state"]
         mab_seed: int | None = values["mab_seed"]
         bss: list[int] = values["batch_sizes"]
@@ -81,7 +134,11 @@ class CreateJob(JobConfig):
 
         return values
 
-    def from_jobSpec(js: JobConfig) -> "CreateJob":
+    def from_jobConfig(js: JobConfig) -> "CreateJob":
+        """From JobConfig, instantiate `CreateJob`.
+
+        Initialize generator state, exp_default_batch_size, and min_batch_size.
+        """
         d = js.dict()
         d["exp_default_batch_size"] = js.default_batch_size
         if js.mab_seed != None:
@@ -91,7 +148,8 @@ class CreateJob(JobConfig):
         return CreateJob.parse_obj(d)
 
     def to_orm(self) -> Job:
-        # Only takes care of job state. Defer batch sizes to batchSizeState
+        """Convert pydantic model `CreateJob` to ORM object Job."""
+
         d = self.dict()
         job = Job()
         for k, v in d.items():

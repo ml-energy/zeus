@@ -1,3 +1,5 @@
+"""Thompson Sampling policy for Gaussian bandits. MAB related logic is implented here."""
+
 from __future__ import annotations
 
 from uuid import UUID

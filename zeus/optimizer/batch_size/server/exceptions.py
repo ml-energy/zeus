@@ -1,3 +1,5 @@
+"""Zeus server exceptions."""
+
 from zeus.exception import ZeusBaseError
 
 

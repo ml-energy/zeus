@@ -1,9 +1,18 @@
+"""App setting is read here."""
+
 from pydantic.env_settings import BaseSettings
 from dotenv import find_dotenv
 
 
 class ZeusBsoSettings(BaseSettings):
-    """App setting"""
+    """App setting
+
+    Attributes:
+        database_url: url of database for the server
+        database_password: password of database if any
+        echo_sql: log sql statements it executes
+        log_level: level of log
+    """
 
     database_url: str
     database_password: str = ""
