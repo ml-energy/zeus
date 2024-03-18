@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, root_validator, validator
+from pydantic.fields import Field
 
 
 REGISTER_JOB_URL = "/jobs"
@@ -14,16 +15,35 @@ REPORT_RESULT_URL = "/jobs/report"
 
 
 class JobSpec(BaseModel):
-    """Job specification that user inputs."""
+    """Job specification that user inputs.
+
+    Attributes:
+        job_id: unique ID for the job
+        batch_sizes: list of batch sizes to try
+        default_batch_size: first batch size to try
+        eta_knob: eta for computing `zeus_cost`
+        beta_knob: beta for early stopping. If min_cost*beta_knob < current_cost, job will be stopped by bso server.
+                    To disable, set it to -1.
+        target_metric: target metric to achieve for training.
+        high_is_better_metric: if the goal of training is achieving higher metric that `target_metric`
+        max_epochs: max_epochs to try if the train doesn't converge.
+        num_pruning_rounds: Number of rounds we are trying for pruning stage
+        window_size: For MAB, how many recent measurements to fetch for computing the arm states. If set to 0, fetch all measurements.
+
+        mab_prior_mean: Mean of the belief prior distribution.
+        mab_prior_precision: Precision of the belief prior distribution.
+        mab_num_exploration: How many static explorations to run when no observations are available.
+        mab_seed: The random seed to use.
+    """
 
     job_id: UUID
     batch_sizes: list[int] = []
-    default_batch_size: int = 1024
+    default_batch_size: int = Field(gt=0)
     eta_knob: float = 0.5
     beta_knob: float = 2.0
     target_metric: float = 0.50
     high_is_better_metric: bool = True
-    max_epochs: int = 100
+    max_epochs: int = Field(100, gt=0)
     num_pruning_rounds: int = 2
     window_size: int = 10
 
@@ -31,12 +51,11 @@ class JobSpec(BaseModel):
     mab_prior_precision: float = 0.0
     mab_num_exploration: int = 2
     mab_seed: Optional[int] = None
-    window_size: int = 10
     gpu_model: str  # TODO: Can I get the gpu_model from monitor?
 
     @validator("batch_sizes")
     def _validate_batch_sizes(cls, bs: list[int]) -> int:
-        if bs is None or len(bs) != 0:
+        if bs != None and len(bs) > 0:
             bs.sort()
             return bs
         else:
@@ -57,13 +76,6 @@ class JobSpec(BaseModel):
                 f"Invalid beta_knob({v}). To disable early stop, set beta_knob = -1 or positive value."
             )
 
-    @validator("default_batch_size", "max_epochs")
-    def _check_positivity(cls, n: int) -> int:
-        if n != None and n > 0:
-            return n
-        else:
-            raise ValueError(f"{n} should be larger than 0")
-
     @root_validator(skip_on_failure=True)
     def _check_default_batch_size(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         bs = values["default_batch_size"]
@@ -74,7 +86,12 @@ class JobSpec(BaseModel):
 
 
 class JobConfig(JobSpec):
-    """Specification of a job submitted by users."""
+    """Internal job configuration including gpu settigns.
+
+    Attributes:
+        max_power: sum of maximum power limit of all gpus we are using
+        number_of_gpus: number of gpus that are being used for training
+    """
 
     max_power: float
     number_of_gpus: int
@@ -82,7 +99,14 @@ class JobConfig(JobSpec):
 
 class TrainingResult(BaseModel):
     """Result of training for that job & batch size
-    current_epoch: For early stopping. Easier to just get current epoch from the client than server tracking it if there is a concurrency
+
+    Attributes:
+        job_id: unique Id of job
+        batch_size: batch size of this training
+        time: total time consumption so far
+        energy: total energy consumption so far
+        metric: current metric value after `current_epoch`
+        current_epoch: current epoch of training. Server can check if the train reached the `max_epochs`
     """
 
     job_id: UUID
@@ -94,7 +118,13 @@ class TrainingResult(BaseModel):
 
 
 class ReportResponse(BaseModel):
-    """Response format"""
+    """Response format from the server for client's training result report
+
+    Attributes:
+        stop_train: Whether we should stop training or not.
+        converged: converged or not.
+        message: message from the server regarding training. ex) why train should be stopped.
+    """
 
     stop_train: bool
     converged: bool

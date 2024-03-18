@@ -43,14 +43,17 @@ async def register_job(
     response: Response,
     db_session: AsyncSession = Depends(get_db_session),
 ) -> JobConfig:
-    """Endpoint for users to register a new job."""
+    """Endpoint for users to register a job or check if the job is registered and configuration is identical."""
+
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.register_job(job)
         await db_session.commit()
         if res:
+            # new job is created
             response.status_code = status.HTTP_201_CREATED
         else:
+            # job already exists
             response.status_code = status.HTTP_200_OK
         return job
     except ZeusBSOServerBaseError as err:
@@ -76,7 +79,8 @@ async def predict(
     job_id: UUID,
     db_session: AsyncSession = Depends(get_db_session),
 ) -> int:
-    """Endpoint for users receive batch size."""
+    """Endpoint for users to receive a batch size."""
+
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.predict(job_id)
@@ -103,6 +107,7 @@ async def report(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
     """Endpoint for users to report the training result."""
+
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.report(result)

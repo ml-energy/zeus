@@ -1,3 +1,5 @@
+"""Provides report/next_batch_size during pruning stage."""
+
 from __future__ import annotations
 from uuid import UUID
 
@@ -22,10 +24,10 @@ logger = get_logger(__name__)
 
 
 class PruningExploreManager:
-    """Helper class that generates batch sizes to explore and prune."""
+    """Pruning manager that manges the batch size states in pruning stage."""
 
     def __init__(self, service: ZeusService):
-        """Set up zeus service"""
+        """Set up zeus service."""
         self.service = service
 
     def next_batch_size(
@@ -36,8 +38,22 @@ class PruningExploreManager:
         default_exp_bs: int,
         batch_sizes: list[int],
     ) -> int | Stage:
-        """Return the next batch size to explore.
-        batch_sizes is already sorted from query (batch_size ASC)
+        """Find the next batch size to explore.
+
+        Args:
+            job_id: job id
+            exploration_history: all explorations that we have done for that job
+            num_pruning_rounds: maximum number of iteration over batch sizes for pruning
+            default_exp_bs: default batch size for exploration
+            batch_sizes: list of batch sizes to explore
+
+        Return:
+            If there is a batch size to explore, then return the integer indicating the batch size.
+            If it is a concurrent job submission, return Stage.pruning indicating that we are still waiting for the report for previously submitted batch size
+            If pruning stage was over, return Stage.MAB to indicate that we should create arms.
+
+        Raises:
+            `ZeusBSOValueError`: If the value is invalid. EX) default batch size is not in the converged batch size list.
         """
         # Explore round.
         round_number = 0
@@ -45,7 +61,7 @@ class PruningExploreManager:
 
         # Get which round we are in now by finding the max round: it is possible that exploring current round is over
         # We can detect this case by iterating batch_sizes and check all possible batch sizes already have that round number (will be done after)
-        for bs, exps in exploration_history.explorations_per_bs.items():
+        for _, exps in exploration_history.explorations_per_bs.items():
             latest_round_of_bs = max(
                 exps.explorations, key=lambda exp: exp.round_number, default=None
             )
@@ -71,11 +87,9 @@ class PruningExploreManager:
                 if converged_from_last_round != None:
                     bs_list.append(bs)
 
-        """
-        (a) If round is over, update default_bs and round 
-            How to update the default_bs? -> From explorationState.cost (from that round)!
-        (b) If round is not over, reconstruct default bs and keep going!
-        """
+        # Two cases below
+        # (a) If round is over, update default_bs to min cost batch size and round
+        # (b) If round is not over, reconstruct default bs and keep going
 
         next_batch_size = -1
         if round_number == 0:
@@ -108,7 +122,7 @@ class PruningExploreManager:
                                 current_round_exp = exp
 
                     if current_round_exp == None:
-                        # not explored this bs during this trial, return!
+                        # not explored this bs during this trial, should return this bs
                         next_batch_size = bs
                         break
                     elif current_round_exp.state == State.Unconverged:
@@ -119,6 +133,7 @@ class PruningExploreManager:
                         logger.info(f"Concurrent job submission. Waiting for {bs}")
                         return Stage.Pruning
                     else:
+                        # Track min_cost batch size
                         if min_cost > current_round_exp.cost:
                             min_cost = current_round_exp.cost
                             best_bs = current_round_exp.batch_size
@@ -135,15 +150,20 @@ class PruningExploreManager:
                     logger.info(f"Pruning over. go to MAB")
                     return Stage.MAB
 
+                # Go to next round
                 logger.info(f"Going to next round({round_number})")
                 if best_bs != default_exp_bs:
+                    # Should update the exploration default bs to min_cost batch size
                     logger.info(f"Update default_bs to {best_bs} from {default_exp_bs}")
+                    self.service.update_exp_default_bs(
+                        UpdateExpDefaultBs(
+                            job_id=job_id, exp_default_batch_size=best_bs
+                        ),
+                    )
+                # New round started. Always starting from exp_default_batch_size
                 next_batch_size = best_bs
 
-                self.service.update_exp_default_bs(
-                    UpdateExpDefaultBs(job_id=job_id, exp_default_batch_size=best_bs),
-                )
-        # Add exploration at the end
+        # Add exploration to database
         self.service.add_exploration(
             CreateExploration(
                 job_id=job_id, batch_size=next_batch_size, round_number=round_number
@@ -152,21 +172,20 @@ class PruningExploreManager:
 
         return next_batch_size
 
-    # Add measurement before calling this function and also should know this is for reporting to exploration!
     async def report_batch_size_result(
         self,
         current_meausurement: MeasurementOfBs,
-        within_cost_range: bool,
         cost: float,
     ) -> None:
         """Report whether the previous batch size reached the target metric.
-
-        Need to change the default_bs if the round was over.
+            Should be called only when we are in Pruining stage.
 
         Args:
-            batch_size: The batch size which this cost observation is from.
-            cost: The energy-time cost of running the job with this batch size.
-            reached: Whether the job reached the target metric.
+            current_meausurement: result of training, including time, energy and converged.
+            cost: cost of training
+
+        Raises:
+            `ZeusBSOValueError`: When we couldn't find any explorations for that batch size.
         """
 
         explorations_per_bs = await self.service.get_explorations_of_bs(
@@ -196,9 +215,7 @@ class PruningExploreManager:
             self.service.report_concurrent_job(current_meausurement)
         else:
             state = (
-                State.Converged
-                if current_meausurement.converged and within_cost_range
-                else State.Unconverged
+                State.Converged if current_meausurement.converged else State.Unconverged
             )
             logger.info(
                 f"Update exploration for {current_meausurement.batch_size} with state({state})."

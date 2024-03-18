@@ -1,3 +1,1 @@
-"""
-batch_size server
-"""
+"""Models, commands, and repositry for job states"""

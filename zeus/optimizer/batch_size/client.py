@@ -26,11 +26,21 @@ logger = get_logger(__name__)
 
 
 class BatchSizeOptimizer(Callback):
-    def __init__(self, monitor: ZeusMonitor, server_url: str, job_in: JobSpec) -> None:
+    """Batch size optimizer client that talks to server. One batch size optimizer per one training session of the job."""
+
+    def __init__(self, monitor: ZeusMonitor, server_url: str, job: JobSpec) -> None:
+        """Initialize the optimizer, and register the job to the server.
+        If job is already registered, check if the job configuration is identical with previously registered config.
+
+        Args:
+            monitor: zeus monitor
+            server_url: url of batch size optimizer server
+            job: job specification. Refer to `JobSpec` for job specifcatio parameters.
+        """
 
         self.monitor = monitor
         self.server_url = server_url
-        self.cur_epoch = 0
+        self.cur_epoch = 0  # 0-indexed
         self.running_time = 0.0
         self.consumed_energy = 0.0
         self.train_end = False
@@ -46,11 +56,14 @@ class BatchSizeOptimizer(Callback):
         if not all(pls[0] == pl for pl in pls):
             raise ZeusBSOConfigError("Power limits ranges are not uniform across GPUs.")
 
+        # set gpu configurations(max_power, number of gpus, and gpu model)
         self.job = JobConfig(
-            **job_in.dict(),
+            **job.dict(),
             max_power=(pls[0][1] // 1000) * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
         )
+
+        # Track the batch size of current job
         self.current_batch_size = 0
 
         # Register job
@@ -60,8 +73,16 @@ class BatchSizeOptimizer(Callback):
         logger.info(f"Job is registered: {self.job}")
 
     def get_batch_size(self) -> int:
-        """Get batch size to use from the BSO server"""
+        """Get batch size to use from the BSO server
 
+        Return:
+            return a batch size to use for current job
+
+        Raises:
+            `ZeusBSORuntimError`: if the batch size we receive is invalid
+        """
+
+        # If train is already over, should not re-send the request to the server. Typically, re-launch the script for another training
         if self.train_end == True:
             return self.current_batch_size
 
@@ -83,6 +104,7 @@ class BatchSizeOptimizer(Callback):
         return batch_size
 
     def on_train_begin(self) -> None:
+        """Start the monitor window and mark training is started"""
         self.train_end = False
         self.monitor.begin_window("BatciSizeOptimizerClient")
 
@@ -90,7 +112,23 @@ class BatchSizeOptimizer(Callback):
         self,
         metric: float,
     ) -> None:
-        """If converged or max_epoch is reached, report the result to BSO server"""
+        """Determine whether or not to stop training after evaluation.
+
+        Training stops when
+        - `max_epochs` was reached, or
+        - the target metric was reached. or
+        - Cost exceeded the early stop threshold
+
+        Args:
+            metric: Validation metric of this epoch. See also `higher_metric_is_better` in
+            [`JobSpec`][zeus.optimizer.batch_size.common.JobSpec].
+
+        Raises:
+            `ZeusBSOOperationOrderError`: When `get_batch_size` was not called first.
+            `ZeusBSOTrainFailError`: When train failed for a chosen batch size and should be stopped.
+                                    This batch size will not be tried again. To proceed training, re-launch the training then bso will select another batch size
+            `ZeusBSORuntimError`: When the server returns an error
+        """
 
         if self.current_batch_size == 0:
             raise ZeusBSOOperationOrderError(
@@ -103,6 +141,7 @@ class BatchSizeOptimizer(Callback):
         self.cur_epoch += 1
         measurement = self.monitor.end_window("BatciSizeOptimizerClient")
 
+        # Accumulate time and energy
         self.running_time += measurement.time
         self.consumed_energy += measurement.total_energy
 
@@ -123,10 +162,11 @@ class BatchSizeOptimizer(Callback):
 
         parsedResposne = ReportResponse.parse_obj(res.json())
 
-        print(f"Result: {parsedResposne}")
         if not parsedResposne.stop_train:
+            # Should keep training. Re-open the window
             self.monitor.begin_window("BatciSizeOptimizerClient")
         else:
+            # Train is over. If not converged, raise an error
             self.train_end = True
             if not parsedResposne.converged:
                 raise ZeusBSOTrainFailError(
@@ -134,6 +174,11 @@ class BatchSizeOptimizer(Callback):
                 )
 
     def _handle_response(self, res: httpx.Response) -> None:
+        """Check if the response is success. Otherwise raise an error with error message from the server
+
+        Args:
+            res: response from the server
+        """
         if not (200 <= (code := res.status_code) < 300):
             raise ZeusBSORuntimError(
                 f"Zeus server returned status code {code}: {res.text}"

@@ -1,22 +1,5 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Multi-Armed Bandit implementations."""
-
 from __future__ import annotations
 
-import warnings
 from uuid import UUID
 
 import numpy as np
@@ -31,7 +14,7 @@ from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.job.commands import UpdateJobStage
 from zeus.optimizer.batch_size.server.job.models import JobState, Stage
 from zeus.optimizer.batch_size.server.services.commands import (
-    CreateArms,
+    CompletedExplorations,
     GetNormal,
     GetRandomChoices,
 )
@@ -50,11 +33,11 @@ class GaussianTS:
     """
 
     def __init__(self, service: ZeusService):
-        """Set up zeus service"""
+        """Set up zeus service to interact with database"""
         self.service = service
         self.name = "GaussianTS"
 
-    def fit_arm(
+    def _fit_arm(
         self,
         bs_base: BatchSizeBase,
         prior_mean: float,
@@ -66,8 +49,13 @@ class GaussianTS:
         Reference: <https://en.wikipedia.org/wiki/Conjugate_prior>
 
         Args:
-            arm: Arm to fit.
+            bs_base: job id and batch size tha represents this arm
+            prior_mean: Mean of the belief prior distribution.
+            prior_precision: Precision of the belief prior distribution.
             rewards: Array of rewards observed by pulling that arm.
+
+        Return:
+            Updated arm state
         """
         if len(rewards) == 0:
             return
@@ -90,7 +78,7 @@ class GaussianTS:
             new_prec = prec + len(rewards) * reward_prec
             new_mean = (prec * mean + reward_prec * rewards.sum()) / new_prec
 
-        # Update state.
+        # Updated state.
         return GaussianTsArmStateModel(
             job_id=bs_base.job_id,
             batch_size=bs_base.batch_size,
@@ -107,7 +95,17 @@ class GaussianTS:
         num_exploration: int,
         arms: list[GaussianTsArmStateModel],
     ) -> int:
-        """Return the arm with the largest sampled expected reward."""
+        """Return the arm with the largest sampled expected reward.
+
+        Args:
+            job_id: job id
+            prior_precision: Precision of the belief prior distribution.
+            num_exploration: How many static explorations to run when no observations are available.
+            arms: list of arms
+
+        Return:
+            batch size to use
+        """
         arm_dict = {arm.batch_size: arm for arm in arms}
 
         # Exploration-only phase.
@@ -121,17 +119,15 @@ class GaussianTS:
                 logger.info(f"[{self.name}] Explore arm {arm}.")
                 return arm
 
-        """Thomopson Sampling phase.
+        # Thomopson Sampling phase.
+        # Sample the expected reward for each arm.
+        # Assumes that each arm has been explored at least once. Otherwise,
+        # a value will be sampled from the prior.
 
-        Sample the expected reward for each arm.
-        Assumes that each arm has been explored at least once. Otherwise,
-        a value will be sampled from the prior.
-
-        """
         expectations = {}  # A mapping from every arm to their sampled expected reward.
         for arm in arms:
             if arm.param_precision == prior_precision:
-                warnings.warn(
+                logger.warn(
                     f"predict_expectations called when arm '{arm.batch_size}' is cold.",
                     stacklevel=1,
                 )
@@ -155,21 +151,27 @@ class GaussianTS:
         return bs
 
     async def construct_mab(
-        self, job: JobState, arms: CreateArms
+        self, job: JobState, evidence: CompletedExplorations
     ) -> list[GaussianTsArmStateModel]:
-        """
-        construct arms for mab
-        1. From Explorations,
-        2. Get converged bs (good_bs)
-        3. get measurement of each of good_bs
-        4. create arms
-        5. update stage to MAB
-        """
-        arms.validate_exp_rounds(job.num_pruning_rounds)
+        """Construct arms and initialize them.
 
+        Args:
+            job: state of job.
+            evidence: Completed explorations. We create arms based on the explorations we have done during pruning stage.
+
+        Return:
+            list of arms that we created
+
+        Raises:
+            `ValueError`: If exploration states is invalid (ex. number of pruning rounds doesn't corresponds)
+            `ZeusBSOValueError`: No converged batch sizes from pruning stage.
+        """
+        evidence.validate_exp_rounds(job.num_pruning_rounds)
+
+        # list of converged batch sizes from last pruning rounds
         good_bs: list[ExplorationStateModel] = []
 
-        for bs, exps_per_bs in arms.explorations_per_bs.items():
+        for bs, exps_per_bs in evidence.explorations_per_bs.items():
             for exp in exps_per_bs.explorations:
                 if (
                     exp.round_number == job.num_pruning_rounds
@@ -184,14 +186,13 @@ class GaussianTS:
         logger.info(
             f"Construct MAB for {job.job_id} with arms {[exp.batch_size for exp in good_bs]}"
         )
-        print(
-            f"Construct MAB for {job.job_id} with arms {[exp.batch_size for exp in good_bs]}"
-        )
 
         new_arms: list[GaussianTsArmStateModel] = []
 
         # Fit the arm for each good batch size.
         for i, exp in enumerate(good_bs):
+
+            # Get windowed measurements
             history = await self.service.get_measurements_of_bs(
                 BatchSizeBase(job_id=job.job_id, batch_size=exp.batch_size)
             )
@@ -204,7 +205,8 @@ class GaussianTS:
                 )
 
             new_arms.append(
-                self.fit_arm(
+                # create an arm
+                self._fit_arm(
                     BatchSizeBase(job_id=exp.job_id, batch_size=exp.batch_size),
                     job.mab_prior_mean,
                     job.mab_prior_precision,
@@ -212,16 +214,34 @@ class GaussianTS:
                 )
             )
 
+        # submit new arms to db
         self.service.create_arms(new_arms)
+        # update job stage from pruning to mab since we created arms
         self.service.update_job_stage(
             UpdateJobStage(job_id=job.job_id, stage=Stage.MAB)
         )
         return new_arms
 
-    async def report(self, job: JobState, current_meausurement: MeasurementOfBs):
+    async def report(
+        self, job: JobState, current_meausurement: MeasurementOfBs
+    ) -> None:
         """
         Based on the measurement, update the arm state.
+
+        Args:
+            job: state of the job
+            current_measurement: result of training (job id, batch_size)
+
+        Raises:
+            `ZeusBSOValueError`: When the arm (job id, batch_size) doesn't exist
         """
+
+        # Since we're learning the reward precision, we need to
+        # 1. re-compute the precision of this arm based on the reward history,
+        # 2. update the arm's reward precision
+        # 3. and `fit` the new MAB instance on all the reward history.
+        # Note that `arm_rewards` always has more than one entry (and hence a
+        # non-zero variance) because we've been through pruning exploration.
         batch_size_key = BatchSizeBase(
             job_id=job.job_id, batch_size=current_meausurement.batch_size
         )
@@ -229,13 +249,14 @@ class GaussianTS:
         # Get measurements of this bs in descending order. At most window_size length
         history = await self.service.get_measurements_of_bs(batch_size_key)
 
-        # Add current measurement to the window
-        if len(history.measurements) > job.window_size and job.window_size > 0:
-            # if the history is already above the window size, pop the last one.
+        if len(history.measurements) >= job.window_size and job.window_size > 0:
+            # if the history is already above the window size, pop the last one to leave the spot for the current measurement.
             history.measurements.pop()
             history.measurements.reverse()  # Now ascending order.
 
+        # Add current measurement to the window
         history.measurements.append(current_meausurement)
+
         arm_rewards = np.array(
             [
                 -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
@@ -249,10 +270,13 @@ class GaussianTS:
             raise ZeusBSOValueError(
                 f"MAB stage but Arm for batch size({current_meausurement.batch_size}) is not found."
             )
-        new_arm = self.fit_arm(
+
+        # Get a new arm state based on observation
+        new_arm = self._fit_arm(
             batch_size_key, job.mab_prior_mean, job.mab_prior_precision, arm_rewards
         )
 
+        # update the new arm state in db
         await self.service.update_arm_state(current_meausurement, new_arm)
 
         arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])

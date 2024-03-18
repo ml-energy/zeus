@@ -1,3 +1,0 @@
-"""
-batch_size server
-"""

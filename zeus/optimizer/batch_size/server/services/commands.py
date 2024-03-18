@@ -9,7 +9,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.models import (
 )
 
 
-class CreateArms(BaseModel):
+class CompletedExplorations(BaseModel):
     explorations_per_bs: dict[int, ExplorationsPerBs]
     job_id: UUID
 
