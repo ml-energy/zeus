@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Generator, Literal, ClassVar
 import numpy as np
 
-import pynvml
+# import pynvml
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
@@ -35,7 +35,7 @@ from zeus.monitor import ZeusMonitor, Measurement
 from zeus.util.env import get_env
 from zeus.util.metric import ZeusCostThresholdExceededError, zeus_cost
 from zeus.util.logging import get_logger
-from zeus.device import GPUManager
+from zeus.device import gpus
 
 
 # JIT profiling states
@@ -418,19 +418,12 @@ class ZeusDataLoader(DataLoader):
                 shape=(self.world_size, self.max_epochs), dtype=np.float64
             )
 
-        # Initialize NVML and get GPU handle or each GPU at the master process.
-        self.gpu_handles = []
-        pynvml.nvmlInit()
         for index in range(self.world_size):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(index)
             # Set persistent mode.
-            # TODO(JW): Check SYS_ADMIN permissions and error with an explanation.
-            pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
-            self.gpu_handles.append(handle)
+            gpus.setPersistenceMode(index)
+            
         # Query NVML for the possible power limit range. Unit is mW.
-        min_pl, self.max_pl = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(
-            self.gpu_handles[0]
-        )
+        min_pl, self.max_pl = gpus.getPowerManagementLimitConstraints(0) # TODO: assume 0?
         self.power_limits = list(range(self.max_pl, min_pl - 25_000, -25_000))
         if self._is_train:
             self._log(f"Power limit range: {self.power_limits}")
@@ -453,10 +446,6 @@ class ZeusDataLoader(DataLoader):
             if not should_profile:
                 self._load_power_results()
                 self._set_gpu_steady_power_limit()
-
-        # Make sure NVML is shutdown when the training script exits.
-        if self._is_train:
-            atexit.register(pynvml.nvmlShutdown)
 
     def epochs(self) -> Generator[int, None, None]:
         """Yield the current epoch number from 0 until when training should stop.
@@ -683,14 +672,12 @@ class ZeusDataLoader(DataLoader):
         # Sanity check.
         # Only set power limit at master process.
         assert self.rank == 0
-        assert len(self.gpu_handles) == self.world_size
+        assert len(gpus) == self.world_size
 
         # Set power limit for all GPUs.
         if self.current_gpu_pl != power_limit:
             for index in range(self.world_size):
-                pynvml.nvmlDeviceSetPowerManagementLimit(
-                    self.gpu_handles[index], power_limit
-                )
+                gpus.setPowerManagementLimit(index, power_limit, default=False)
                 self._log(f"[GPU_{index}] Set GPU power limit to {power_limit//1000}W.")
             ZeusDataLoader.current_gpu_pl = power_limit
 

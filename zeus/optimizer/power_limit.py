@@ -40,13 +40,12 @@ import atexit
 from pathlib import Path
 from abc import ABC, abstractmethod
 
-import pynvml
-
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 from zeus.util.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
+from zeus.device import gpus
 
 from typing import TYPE_CHECKING
 
@@ -271,13 +270,9 @@ class GlobalPowerLimitOptimizer(Callback):
 
         # Set the range of power limits to explore.
         # Assert that supported power limits ranges are uniform across GPUs.
-        pynvml.nvmlInit()
         pls = []
-        self.handles = []
         for index in monitor.nvml_gpu_indices:
-            device = pynvml.nvmlDeviceGetHandleByIndex(index)
-            self.handles.append(device)
-            pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
+            pls.append(gpus.getPowerManagementLimitConstraints(index))
         if not all(pls[0] == pl for pl in pls):
             raise ValueError("Power limits ranges are not uniform across GPUs.")
         self.power_limits = list(
@@ -286,9 +281,9 @@ class GlobalPowerLimitOptimizer(Callback):
 
         # Turn on persistence mode and set to the highest power limit.
         try:
-            for handle in self.handles:
-                pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
-        except pynvml.NVMLError_NoPermission:  # type: ignore
+            for index in monitor.nvml_gpu_indices:
+                gpus.setPersistenceMode(index)
+        except pynvml.NVMLError_NoPermission:  # type: ignore #TODO: create generic zeus exception
             raise RuntimeError(
                 "SYS_ADMIN capability is required to modify GPU power limits. "
                 "Using --cap-add SYS_ADMIN when running the Docker container "
@@ -449,8 +444,8 @@ class GlobalPowerLimitOptimizer(Callback):
         self.logger.info("Setting power limit to %d W.", power_limit // 1000)
         if self.current_power_limit == power_limit:
             return
-        for handle in self.handles:
-            pynvml.nvmlDeviceSetPowerManagementLimit(handle, power_limit)
+        for index in self.monitor.nvml_gpu_indices:
+            gpus.setPowerManagementLimit(index, power_limit)
         self.current_power_limit = power_limit
 
     def _compute_optimal_power_limit(self) -> int:

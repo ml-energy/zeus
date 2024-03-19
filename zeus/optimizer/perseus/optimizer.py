@@ -23,7 +23,6 @@ the frequency of the CPU of the current process.
 from __future__ import annotations
 
 import httpx
-import pynvml
 import torch
 import torch.distributed as dist
 
@@ -39,6 +38,7 @@ from zeus.optimizer.perseus.common import (
 )
 from zeus.util.env import resolve_gpu_indices
 from zeus.util.framework import cuda_sync
+from zeus.device import gpus
 
 
 class PerseusOptimizer(Callback):
@@ -132,14 +132,11 @@ class PerseusOptimizer(Callback):
             raise RuntimeError("Failed to broadcast job ID to all ranks")
 
         # Query the list of available frequencies of the GPU.
-        pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(nvml_device_id)
-        max_mem_freq = max(pynvml.nvmlDeviceGetSupportedMemoryClocks(handle))
+        max_mem_freq = max(gpus.getSupportedMemoryClocks(nvml_device_id))
         freqs = sorted(
-            pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq),
+            gpus.getSupportedGraphicsClocks(nvml_device_id, max_mem_freq),
             reverse=True,
         )
-        pynvml.nvmlShutdown()
 
         # Each rank reports itself to the Perseus server with the job ID.
         rank_info = RankInfo(

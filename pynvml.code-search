@@ -233,6 +233,34 @@ zeus/monitor/power.py:
   264      finally:
   265:         pynvml.nvmlShutdown()
 
+
+
+
+
+
+
+
+
+
+
+zeus/util/env.py:
+  21  
+  22: import pynvml
+  23  
+
+  56      # Initialize NVML.
+  57:     pynvml.nvmlInit()
+  58  
+
+  66      else:
+  67:         nvml_visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
+  68  
+
+  79      # Deinitialize NVML.
+  80:     pynvml.nvmlShutdown()
+  81  
+
+---- TODO: create generic exceptions ----
 zeus/optimizer/power_limit.py:
    42  
    43: import pynvml
@@ -257,7 +285,6 @@ zeus/optimizer/power_limit.py:
   453:             pynvml.nvmlDeviceSetPowerManagementLimit(handle, power_limit)
   454          self.current_power_limit = power_limit
 
-TODO:
 zeus/optimizer/perseus/frequency_controller.py:
   22  
   23: import pynvml
@@ -294,6 +321,9 @@ zeus/optimizer/perseus/frequency_controller.py:
   87:             pynvml.nvmlDeviceResetMemoryLockedClocks(handle)
   88:         pynvml.nvmlDeviceResetGpuLockedClocks(handle)
   89:         pynvml.nvmlShutdown()
+
+
+------------- DONE --------------
 
 zeus/optimizer/perseus/optimizer.py:
    25  import httpx
@@ -336,7 +366,6 @@ zeus/run/dataloader.py:
   690:                 pynvml.nvmlDeviceSetPowerManagementLimit(
   691                      self.gpu_handles[index], power_limit
 
-DONE:
 zeus/run/master.py:
    27  import numpy as np
    28: import pynvml
@@ -352,20 +381,3 @@ zeus/run/master.py:
   112          )
   113:         pynvml.nvmlShutdown()
   114  
-
-zeus/util/env.py:
-  21  
-  22: import pynvml
-  23  
-
-  56      # Initialize NVML.
-  57:     pynvml.nvmlInit()
-  58  
-
-  66      else:
-  67:         nvml_visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
-  68  
-
-  79      # Deinitialize NVML.
-  80:     pynvml.nvmlShutdown()
-  81  

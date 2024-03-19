@@ -32,7 +32,7 @@ from zeus.analyze import HistoryEntry
 from zeus.job import Job
 from zeus.policy import BatchSizeOptimizer
 from zeus.util import zeus_cost
-from zeus.device import GPUManager
+from zeus.device import gpus
 
 
 class ZeusMaster:
@@ -104,10 +104,10 @@ class ZeusMaster:
         self.profile_measure_iters = profile_measure_iters
 
         # Query the max power limit of the GPU.
-        minmax = GPUManager.GetPowerManagementLimitConstraints(0) # unit: mW, assumes device 0
+        minmax = gpus.getPowerManagementLimitConstraints(0) # unit: mW, assumes device 0
         self.max_pl = minmax[1] // 1000  # unit: W
         print(
-            f"[Zeus Master] Max power limit of {GPUManager.GetName(0)}: {self.max_pl}W"
+            f"[Zeus Master] Max power limit of {gpus.getName(0)}: {self.max_pl}W"
         )
 
     def build_logdir(

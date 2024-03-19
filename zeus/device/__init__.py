@@ -1,1 +1,1 @@
-from zeus.device.gpu import GPUManager
+from zeus.device.gpu import gpus

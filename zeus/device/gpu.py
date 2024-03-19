@@ -31,7 +31,8 @@ import abc
 import pynvml
 import os
 
-from exception import ZeusBaseGPUError
+# from exception import ZeusBaseGPUError
+import contextlib
 
 
 # import amdsmi
@@ -43,46 +44,53 @@ class GPU(abc.ABC):
 
 """ NVIDIA GPUs """
 
-class NativeNVIDIAGPU(GPU):
+class NVIDIAGPU(GPU):
     """Alternatve names: DirectNVIDIAGPU, LocalNVIDIAGPU, NativeNVIDIAGPU, IntegratedNVIDIAGPU"""
     def __init__(self, gpu_index: int) -> None:
         super().__init__(gpu_index)
+        self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
     
-    def GetPowerManagementLimitConstraints(self) -> tuple[int, int]:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        return pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
+    def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
+        return pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
 
-    def SetPersistenceMode(self) -> None:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
+    def setPersistenceMode(self) -> None:
+        # TODO(JW): Check SYS_ADMIN permissions and error with an explanation.
+        pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_ENABLED)
 
-    def SetPowerManagementLimit(self, value: int, default: bool = False) -> None:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        if default:
-            pynvml.nvmlDeviceSetPowerManagementLimit(handle, pynvml.nvmlDeviceGetPowerManagementDefaultLimit(handle))
+    def setPowerManagementLimit(self, value: int = None) -> None:
+        """if defualt is True, set to default value, else set to value"""
+        if value is None:
+            pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle))
         else:
-            pynvml.nvmlDeviceSetPowerManagementLimit(handle, value)
+            pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, value)
     
-    def SetMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        with contextlib.suppress(pynvml.NVMLError_NotSupported):
-            pynvml.nvmlDeviceSetMemoryLockedClocks(handle, minMemClockMHz, maxMemClockMHz)
+    def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        pynvml.nvmlDeviceSetMemoryLockedClocks(self.handle, minMemClockMHz, maxMemClockMHz)
     
-    def GetName(self) -> str:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        return pynvml.nvmlDeviceGetName(handle)
+    def getName(self) -> str:
+        return pynvml.nvmlDeviceGetName(self.handle)
     
-    def GetSupportedMemoryClocks() -> list[int]:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        return pynvml.nvmlDeviceGetSupportedMemoryClocks(handle)
+    def getSupportedMemoryClocks(self) -> list[int]:
+        return pynvml.nvmlDeviceGetSupportedMemoryClocks(self.handle)
     
-    def GetSupportedGraphicsClocks(freq: int) -> list[int]:
-        handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        return pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, freq)
+    def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
+        return pynvml.nvmlDeviceGetSupportedGraphicsClocks(self.handle, freq)
+    
+    def setGpuLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, minMemClockMHz, maxMemClockMHz)
+    
+    def resetMemoryLockedClocks(self) -> None:
+        pynvml.nvmlDeviceResetMemoryLockedClocks(self.handle)
+    
+    def resetGpuLockedClocks(self) -> None:
+        pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
+    
+    def getPowerUsage(self) -> int:
+        return pynvml.nvmlDeviceGetPowerUsage(self.handle)
 
 
-
-class RemoteNVIDIAGPU(NativeNVIDIAGPU):
+#unpriv nvidia privel
+class UnprivilegedNVIDIAGPU(NVIDIAGPU):
     def __init__(self, gpu_index: int, server_address: str) -> None:
         super().__init__(gpu_index)
         self.server_address = server_address
@@ -100,54 +108,61 @@ class RemoteNVIDIAGPU(NativeNVIDIAGPU):
 
 """ AMD GPUs """
 
-class NativeAMDGPU(GPU):
+class AMDGPU(GPU):
     def __init__(self, gpu_index: int) -> None:
         super().__init__(gpu_index)
+        self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
     
-    def GetPowerManagementLimitConstraints(self) -> tuple[int, int]:
-        handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
-        info = amdsmi.amdsmi_get_power_cap_info(handle)
-        return (info.min_power_cap, info.max_power_cap) 
+    def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)
+        return (info.min_power_cap, info.max_power_cap)  
 
-    def SetPersistenceMode(self) -> None:
-        handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
+    def setPersistenceMode(self) -> None:
         profile = ... # TODO: find out correct profile, need deep dive on docs
-        amdsmi.amdsmi_set_gpu_power_profile(handle, 0, profile)
+        amdsmi.amdsmi_set_gpu_power_profile(self.handle, 0, profile)
     
-    def SetPowerManagementLimit(self, value: int, default : bool = False) -> None:
-        handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
+    def setPowerManagementLimit(self, value: int = None) -> None:
         """
         Input parameters:
         processor_handle handle for the given device
         sensor_ind a 0-based sensor index. Normally, this will be 0. If a device has more than one sensor, it could be greater than 0
         cap int that indicates the desired power cap, in microwatts
         """
-        if default:
-            info = amdsmi.amdsmi_get_power_cap_info(handle)
-            amdsmi.amdsmi_set_power_cap(handle, sensor_id=0, cap=info.default_power_cap)
-        amdsmi.amdsmi_set_power_cap(handle, sensor_id=0, cap=value)
+        if value is None:
+            info = amdsmi.amdsmi_get_power_cap_info(self.handle)
+            amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=info.default_power_cap)
+        else:
+            amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=value)
     
-    def SetMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
-        handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
-        amdsmi.amdsmi_set_gpu_clk_range(handle, minMemClockMHz, maxMemClockMHz, clk_type= amdsmi.AMDSMI_CLK_TYPE_SYS)
+    def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        amdsmi.amdsmi_set_gpu_clk_range(self.handle, minMemClockMHz, maxMemClockMHz, clk_type= amdsmi.AMDSMI_CLK_TYPE_SYS)
 
-    def GetName(self) -> str:
-        handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
-        market_name, vendor_id, device_id, rev_id, asic_serial = amdsmi.amdsmi_get_gpu_asic_info(handle) #TODO: Does this return correct string
+    def getName(self) -> str:
+        market_name, vendor_id, device_id, rev_id, asic_serial = amdsmi.amdsmi_get_gpu_asic_info(self.handle) #TODO: Does this return correct string
         return market_name
     
-    def GetSupportedMemoryClocks() -> list[int]:
-        handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
-        num_supported, current, frequency = amdsmi.amdsmi_get_clk_freq(handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS) #TODO: Figure out correct clk_type
+    def getSupportedMemoryClocks(self) -> list[int]:
+        num_supported, current, frequency = amdsmi.amdsmi_get_clk_freq(self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS) #TODO: Figure out correct clk_type
         """ frequency; List of frequencies, only the first num_supported frequencies are valid"""
         return frequency[:num_supported]
 
-    def GetSupportedGraphicsClocks(freq: int) -> list[int]:
+    def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
         # TODO: what does 137-140 in optimizer.py do?
-        handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
-        
+        pass
 
-class RemoteAMDGPU(NativeAMDGPU):
+    def setGpuLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        amdsmi.amdsmi_set_gpu_clk_range(self.handle, minMemClockMHz, maxMemClockMHz, clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX)
+
+    def resetMemoryLockedClocks(self) -> None:
+        amdsmi.amdsmi_reset_gpu_clk(self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS) # TODO: check docs
+
+    def resetGpuLockedClocks(self) -> None:
+        amdsmi.amdsmi_reset_gpu_clk(self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX) # TODO: check docs
+    
+    def getPowerUsage(self) -> int:
+        return None # TODO: figure out how to get power usage
+
+class UnprivilegedAMDGPU(AMDGPU):
     pass
 
 
@@ -163,15 +178,15 @@ class GPUs(abc.ABC):
     def __del__(self) -> None:
         pass
 
-    def GetPowerManagementLimitConstraints(self, index: int) -> tuple[int, int]:
+    def getPowerManagementLimitConstraints(self, index: int) -> tuple[int, int]:
         """ 
         zeus/run/master.pu line 106
         
         Analogous to handle = pynvml.nvmlDeviceGetHandleByIndex(0)
         minmax = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)  # unit: mW"""
-        return self.gpus[index].GetPowerManagementLimitConstraints()
+        return self.gpus[index].getPowerManagementLimitConstraints()
 
-    def SetPersistenceMode(self, index: int) -> None:
+    def setPersistenceMode(self, index: int) -> None:
 
         """
         Can be changed to take more than one index
@@ -185,22 +200,38 @@ class GPUs(abc.ABC):
             self.gpu_handles.append(handle)
         
         """
-        self.gpus[index].SetPersistenceMode()
+        self.gpus[index].setPersistenceMode()
     
-    def SetPowerManagementLimit(self, index: int, value: int, default: bool = False) -> None:
-        self.gpus[index].SetPowerManagementLimit(value, default)
+    def setPowerManagementLimit(self, index: int, value: int = None) -> None:
+        """Sets the power management limit to a specified value or to the default if no value is provided."""
+        self.gpus[index].setPowerManagementLimit(value)
     
-    def SetMemoryLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
-        self.gpus[index].SetMemoryLockedClocks(minMemClockMHz, maxMemClockMHz)
+    def setMemoryLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        self.gpus[index].setMemoryLockedClocks(minMemClockMHz, maxMemClockMHz)
 
-    def GetSupportedMemoryClocks(self, index: int) -> list[int]:
-        self.gpus[index].GetSupportedMemoryClocks()
+    def getSupportedMemoryClocks(self, index: int) -> list[int]:
+        self.gpus[index].getSupportedMemoryClocks()
 
-    def GetSupportedGraphicsClocks(self, index: int, freq: int) -> list[int]:
-        self.gpus[index].GetSupportedGraphicsClocks(freq)
+    def getSupportedGraphicsClocks(self, index: int, freq: int) -> list[int]:
+        self.gpus[index].getSupportedGraphicsClocks(freq)
     
-    def GetName(self, index: int) -> str:
-        return self.gpus[index].GetName()
+    def getName(self, index: int) -> str:
+        return self.gpus[index].getName()
+    
+    def __len__(self) -> int:
+        return len(self.gpus)
+    
+    def setGpuLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        self.gpus[index].setGpuLockedClocks(minMemClockMHz, maxMemClockMHz)
+    
+    def resetMemoryLockedClocks(self, index: int) -> None:
+        self.gpus[index].resetMemoryLockedClocks()
+
+    def resetGpuLockedClocks(self, index: int) -> None:
+        self.gpus[index].resetGpuLockedClocks()
+    
+    def getPowerUsage(self, index: int) -> int:
+        return self.gpus[index].getPowerUsage()
 
 
 """
@@ -208,11 +239,8 @@ class GPUs(abc.ABC):
 should NVIDIAGPUs track all GPUs or only the ones visible to CUDA? I don't see the need
 to track all GPUs, but maybe there are some edge cases where it's useful.
 
-should AMD GPUs look at CUDA_VISIBLE_DEVICES? no just ROCM_VISIBLE_DEVICES right?
-
 in the code there is a lot of self.gpu_handles. Should be removed and abstracted away?
 
-why is nvmlDeviceSetPersistenceMode necessary?
 
 no throw destructor?
 
@@ -225,6 +253,12 @@ GPU manager classes have the same impl, except for the init and shutdown methods
 why is with contextlib.suppress(pynvml.NVMLError_NotSupported):
             pynvml.nvmlDeviceSetMemoryLockedClocks(handle, minMemClockMHz, maxMemClockMHz)
 the with needed? something similar needed for amd?
+
+
+
+style for methods? snake case
+
+__len__ -> returns number of gpus
 """
 
 # NVIDIA GPUs
@@ -232,16 +266,15 @@ class NVIDIAGPUs(GPUs):
     def __init__(self, ensure_homogeneuous: bool = True) -> None:
         
         pynvml.nvmlInit()
-        
 
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
             self.visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
-            
+
         # initialize all GPUs
-        self.gpus = [NativeNVIDIAGPU(index) for index in self.visible_indices]
+        self.gpus = [NVIDIAGPU(index) for index in self.visible_indices]
 
     def __del__(self) -> None:
         pynvml.nvmlShutdown()
@@ -260,7 +293,7 @@ class AMDGPUs(GPUs):
             self.visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
             
         # initialize all GPUs
-        self.gpus = [NativeAMDGPU(index) for index in self.visible_indices]
+        self.gpus = [AMDGPU(index) for index in self.visible_indices]
 
     def __del__(self) -> None:
         amdsmi.amdsmi_shut_down()
@@ -269,9 +302,9 @@ class AMDGPUs(GPUs):
 
 # Ensure only one instance of GPUs is created
 def get_gpus() -> GPUs:
-    return NVIDIAGPUs() if pynvml.is_initialized() else AMDGPUs()
+    return NVIDIAGPUs()
 
-GPUManager = get_gpus()
+gpus = get_gpus()
 
 
 
