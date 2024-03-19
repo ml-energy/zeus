@@ -26,13 +26,15 @@ with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 
 import abc
 import pynvml
 import os
 
 # from exception import ZeusBaseGPUError
-import contextlib
+if TYPE_CHECKING:
+    import pynvml
 
 
 # import amdsmi
