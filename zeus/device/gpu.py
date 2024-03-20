@@ -29,13 +29,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import abc
-import pynvml
 import os
 
 # from exception import ZeusBaseGPUError
 if TYPE_CHECKING:
     import pynvml
 
+import pynvml
+
+from zeus.util import cuda_sync
 
 # import amdsmi
 
@@ -89,6 +91,16 @@ class NVIDIAGPU(GPU):
     
     def getPowerUsage(self) -> int:
         return pynvml.nvmlDeviceGetPowerUsage(self.handle)
+    
+    def supportsGetTotalEnergyConsumption(self) -> bool:
+        # NVIDIA GPUs Volta or newer support this method
+        return (
+            pynvml.nvmlDeviceGetArchitecture(self.handle)
+            >= pynvml.NVML_DEVICE_ARCH_VOLTA
+        )
+    
+    def getTotalEnergyConsumption(self) -> int:
+        return pynvml.nvmlDeviceGetTotalEnergyConsumption(self.handle)
 
 
 #unpriv nvidia privel
@@ -234,6 +246,15 @@ class GPUs(abc.ABC):
     
     def getPowerUsage(self, index: int) -> int:
         return self.gpus[index].getPowerUsage()
+    
+    def supportsGetTotalEnergyConsumption(self, index: int) -> bool:
+        return self.gpus[index].supportsGetTotalEnergyConsumption()
+    
+    def getTotalEnergyConsumption(self, index: int) -> int:
+        return self.gpus[index].getTotalEnergyConsumption()
+    
+    def sync(self, index: int) -> None:
+        cuda_sync(index) # cuda_sync takes in re-indexed cuda index, not nvml index
 
 
 """
@@ -265,10 +286,7 @@ __len__ -> returns number of gpus
 
 # NVIDIA GPUs
 class NVIDIAGPUs(GPUs):
-    def __init__(self, ensure_homogeneuous: bool = True) -> None:
-        
-        pynvml.nvmlInit()
-
+    def init_GPUs(self) -> None:
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
@@ -278,16 +296,21 @@ class NVIDIAGPUs(GPUs):
         # initialize all GPUs
         self.gpus = [NVIDIAGPU(index) for index in self.visible_indices]
 
+    def __init__(self, ensure_homogeneuous: bool = True) -> None:
+        pynvml.nvmlInit()
+        self.init_GPUs()
+
     def __del__(self) -> None:
-        pynvml.nvmlShutdown()
+        try:
+            pynvml.nvmlShutdown()
+        except:
+            pass
 
 
 #AMD GPUs
 
 class AMDGPUs(GPUs):
-    def __init__(self, ensure_homogeneuous: bool = True) -> None:
-        amdsmi.amdsmi_init()
-
+    def init_GPUs(self) -> None:
         # Must respect `ROCR_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("ROCR_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
@@ -297,31 +320,37 @@ class AMDGPUs(GPUs):
         # initialize all GPUs
         self.gpus = [AMDGPU(index) for index in self.visible_indices]
 
+    def __init__(self, ensure_homogeneuous: bool = True) -> None:
+        amdsmi.amdsmi_init()
+
     def __del__(self) -> None:
         amdsmi.amdsmi_shut_down()
 
 
-
 # Ensure only one instance of GPUs is created
+_gpus = None
 def get_gpus() -> GPUs:
-    return NVIDIAGPUs()
-
-gpus = get_gpus()
-
+    # try to import pynvml and pynvml.nvmlInit()
+    # if it fails, try to import amdsmi and amdsmi.amdsmi_init()
+    # if it fails, return None
+    global _gpus
+    if _gpus is None:
+        _gpus = NVIDIAGPUs()
+    return _gpus
 
 
 """ EXCEPTION WRAPPERS """
 
-class ZeusGPUErrorUninit(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for NVML_ERROR_UNINITIALIZED."""
+# class ZeusGPUErrorUninit(ZeusBaseGPUError):
+#     """Zeus GPU exception class Wrapper for NVML_ERROR_UNINITIALIZED."""
 
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
+#     def __init__(self, message: str) -> None:
+#         """Initialize Zeus Exception."""
+#         super().__init__(message)
 
-class ZeusGPUErrorInvalidArg(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for NVML_ERROR_UNINITIALIZED."""
+# class ZeusGPUErrorInvalidArg(ZeusBaseGPUError):
+#     """Zeus GPU exception class Wrapper for NVML_ERROR_UNINITIALIZED."""
 
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
+#     def __init__(self, message: str) -> None:
+#         """Initialize Zeus Exception."""
+#         super().__init__(message)

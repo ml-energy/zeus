@@ -38,7 +38,7 @@ from zeus.optimizer.perseus.common import (
 )
 from zeus.util.env import resolve_gpu_indices
 from zeus.util.framework import cuda_sync
-from zeus.device import gpus
+from zeus.device import get_gpus
 
 
 class PerseusOptimizer(Callback):
@@ -132,6 +132,7 @@ class PerseusOptimizer(Callback):
             raise RuntimeError("Failed to broadcast job ID to all ranks")
 
         # Query the list of available frequencies of the GPU.
+        gpus = get_gpus()
         max_mem_freq = max(gpus.getSupportedMemoryClocks(nvml_device_id))
         freqs = sorted(
             gpus.getSupportedGraphicsClocks(nvml_device_id, max_mem_freq),

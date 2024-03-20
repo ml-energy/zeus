@@ -45,7 +45,7 @@ from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 from zeus.util.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
-from zeus.device import gpus
+from zeus.device import get_gpus
 
 from typing import TYPE_CHECKING
 
@@ -270,6 +270,7 @@ class GlobalPowerLimitOptimizer(Callback):
 
         # Set the range of power limits to explore.
         # Assert that supported power limits ranges are uniform across GPUs.
+        gpus = get_gpus()
         pls = []
         for index in monitor.nvml_gpu_indices:
             pls.append(gpus.getPowerManagementLimitConstraints(index))
@@ -441,6 +442,7 @@ class GlobalPowerLimitOptimizer(Callback):
         Args:
             power_limit: The power limit to set, in milliWatts.
         """
+        gpus = get_gpus()
         self.logger.info("Setting power limit to %d W.", power_limit // 1000)
         if self.current_power_limit == power_limit:
             return

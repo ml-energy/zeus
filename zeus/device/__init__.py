@@ -1,1 +1,1 @@
-from zeus.device.gpu import gpus
+from zeus.device.gpu import get_gpus

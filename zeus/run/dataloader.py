@@ -35,7 +35,7 @@ from zeus.monitor import ZeusMonitor, Measurement
 from zeus.util.env import get_env
 from zeus.util.metric import ZeusCostThresholdExceededError, zeus_cost
 from zeus.util.logging import get_logger
-from zeus.device import gpus
+from zeus.device import get_gpus
 
 
 # JIT profiling states
@@ -418,6 +418,7 @@ class ZeusDataLoader(DataLoader):
                 shape=(self.world_size, self.max_epochs), dtype=np.float64
             )
 
+        gpus = get_gpus()
         for index in range(self.world_size):
             # Set persistent mode.
             gpus.setPersistenceMode(index)
@@ -671,6 +672,7 @@ class ZeusDataLoader(DataLoader):
         """
         # Sanity check.
         # Only set power limit at master process.
+        gpus = get_gpus()
         assert self.rank == 0
         assert len(gpus) == self.world_size
 

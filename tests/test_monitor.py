@@ -41,14 +41,15 @@ ARCHS = [
 @pytest.fixture
 def pynvml_mock(mocker: MockerFixture):
     """Mock the entire pynvml module."""
-    mock = mocker.patch("zeus.monitor.energy.pynvml", autospec=True)
+    # mock = mocker.patch("zeus.monitor.energy.pynvml", autospec=True)
+    mock = mocker.patch("zeus.device.gpu.pynvml", autospec=True)
     
     # Except for the arch constants.
     mock.NVML_DEVICE_ARCH_PASCAL = pynvml.NVML_DEVICE_ARCH_PASCAL
     mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
     mock.NVML_DEVICE_ARCH_AMPERE = pynvml.NVML_DEVICE_ARCH_AMPERE
 
-    mocker.patch("zeus.util.env.pynvml", mock)
+    mocker.patch("zeus.util.env.pynvml", mock) # only called by zeus.optimizer.perseus.optimizer.py
 
     return mock
 
@@ -155,7 +156,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
     old_gpu_torch_indices = [index for index, is_old in is_old_torch.items() if is_old]
 
-    mocker.patch("zeus.monitor.energy.atexit.register")
+    # mocker.patch("zeus.monitor.energy.atexit.register")
 
     class MockPowerMonitor:
         def __init__(self, gpu_indices: list[int] | None, update_period: float | None) -> None:
