@@ -19,11 +19,10 @@ class Stage(Enum):
 
 
 class JobGetter(GetterDict):
-    """Getter for batch size to convert ORM batch size object to integer"""
+    """Getter for batch size to convert ORM batch size object to integer."""
 
     def get(self, key: str, default: Any) -> Any:
         """Get value from dict."""
-
         if key in {"batch_sizes"}:
             # If the key is batch_sizes, parse the integer from object.
             return [bs.batch_size for bs in self._obj.batch_sizes]
@@ -53,6 +52,11 @@ class JobState(JobConfig):
     mab_random_generator_state: Optional[str] = None
 
     class Config:
+        """Model configuration.
+
+        Allow instantiating the model from an ORM object.
+        """
+
         orm_mode = True
         getter_dict = JobGetter
 
@@ -62,14 +66,14 @@ class JobState(JobConfig):
         state: str | None = values["mab_random_generator_state"]
         mab_seed: int | None = values["mab_seed"]
 
-        if mab_seed != None:
-            if state == None:
+        if mab_seed is not None:
+            if state is None:
                 raise ValueError("mab_seed is not none, but generator state is none")
             else:
                 try:
                     # Check sanity of the generator state.
                     np.random.default_rng(1).__setstate__(json.loads(state))
-                except (TypeError, ValueError):
-                    raise ValueError(f"Invalid generator state ({state})")
+                except (TypeError, ValueError) as err:
+                    raise ValueError(f"Invalid generator state ({state})") from err
 
         return values

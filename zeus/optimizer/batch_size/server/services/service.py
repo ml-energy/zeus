@@ -53,50 +53,50 @@ class ZeusService:
     """
 
     def __init__(self, db_session: AsyncSession):
-        """Set up repositories to use to talk to database"""
+        """Set up repositories to use to talk to database."""
         self.bs_repo = BatchSizeStateRepository(db_session)
         self.job_repo = JobStateRepository(db_session)
 
     async def get_arms(self, job_id: UUID) -> list[GaussianTsArmStateModel]:
-        """Get GaussianTs arm states for all arms(job_id, batch size)
+        """Get GaussianTs arm states for all arms(job_id, batch size).
 
         Args:
             job_id: Job id
 
-        Return:
+        Returns:
             list of arms
         """
         return await self.bs_repo.get_arms(job_id)
 
     async def get_arm(self, bs: BatchSizeBase) -> GaussianTsArmStateModel | None:
-        """Get arm state for one arm
+        """Get arm state for one arm.
 
         Args:
             bs: (job_id, batch size) pair that represents one arm
 
-        Return:
+        Returns:
             Result arm state or None if we cannot find that arm
         """
         return await self.bs_repo.get_arm(bs)
 
     async def get_explorations_of_job(self, job_id: UUID) -> ExplorationsPerJob:
-        """Get all explorations we have done for that job
+        """Get all explorations we have done for that job.
 
         Args:
             job_id: Job id
 
-        Return:
+        Returns:
             list of explorations per each batch size
         """
         return await self.bs_repo.get_explorations_of_job(job_id)
 
     async def get_explorations_of_bs(self, bs: BatchSizeBase) -> ExplorationsPerBs:
-        """Get explorations for one batch size
+        """Get explorations for one batch size.
 
         Args:
             bs: (job_id, batch size) that represents one arm
 
-        Return:
+        Returns:
             List of explorations for that batch size
         """
         return await self.bs_repo.get_explorations_of_bs(bs)
@@ -106,8 +106,11 @@ class ZeusService:
         measurement: MeasurementOfBs,
         updated_exp: UpdateExploration,
     ) -> None:
-        """Update exploration state. (1) add measurement which is an evidence of updating the exploration,
-        (2) update the exploration, (3) we update the min training cost observed so far if we have to.
+        """Update exploration state.
+
+        (1) add measurement which is an evidence of updating the exploration.
+        (2) update the exploration.
+        (3) we update the min training cost observed so far if we have to.
 
         Args:
             measurement: Result of training that batch size
@@ -127,7 +130,10 @@ class ZeusService:
         measurement: MeasurementOfBs,
         updated_arm: GaussianTsArmStateModel,
     ) -> None:
-        """Update arm state. (1) add measurement which is the evidence of updating the arm state, (2) update arm state
+        """Update arm state.
+
+        (1) add measurement which is the evidence of updating the arm state.
+        (2) update arm state.
         (3) update the min training cost observed so far if we have to.
 
         Args:
@@ -144,7 +150,7 @@ class ZeusService:
         self._update_min_if_needed(measurement, job)
 
     def report_concurrent_job(self, measurement: MeasurementOfBs) -> None:
-        """Report concurrent job submission. (1) add measurement and (2) update the min training cost observed so far
+        """Report concurrent job submission. (1) add measurement and (2) update the min training cost observed so far.
 
         Args:
             measurement: Result of training that batch size
@@ -158,7 +164,7 @@ class ZeusService:
         self._update_min_if_needed(measurement, job)
 
     def update_exp_default_bs(self, updated_default_bs: UpdateExpDefaultBs) -> None:
-        """Update the default batch size for exploration
+        """Update the default batch size for exploration.
 
         Args:
             updated_default_bs: Job Id and new default batch size
@@ -167,12 +173,11 @@ class ZeusService:
             `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
                     fetched the job first.
         """
-
         self._check_job_fetched(updated_default_bs.job_id)
         self.job_repo.update_exp_default_bs(updated_default_bs)
 
     def add_exploration(self, exp: CreateExploration) -> None:
-        """Add new exploration
+        """Add new exploration.
 
         Args:
             exp: New exploration state to create
@@ -185,20 +190,21 @@ class ZeusService:
         self.bs_repo.add_exploration(exp)
 
     def get_random_choices(self, choice: GetRandomChoices) -> np.ndarray[Any, Any]:
-        """Get randome choices based on job's seed. If seed is not None (set by the user) we get the random choices from the
-        generator that is stored in the database. Otherwise, we get random choices based on random seed.
+        """Get randome choices based on job's seed.
+
+        If seed is not None (set by the user) we get the random choices from the generator that is stored in the database.
+        Otherwise, we get random choices based on random seed.
 
         Args:
             choice: Job id and list of choices
 
-        Return:
+        Returns:
             reuslt random choices
 
         Raises:
             `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
                     fetched the job first.
         """
-
         arr = np.array(choice.choices)
         ret = self._get_generator(choice.job_id)
         should_update = ret[1]
@@ -215,19 +221,18 @@ class ZeusService:
         return res
 
     def get_normal(self, arg: GetNormal) -> float:
-        """Sample from normal distribution and update the generator state if seed was set
+        """Sample from normal distribution and update the generator state if seed was set.
 
         Args:
             arg: args for `numpy.random.normal`, which is loc(mean of distribution) and scale(stdev of distribution)
 
-        Return:
+        Returns:
             Drawn sample.
 
         Raises:
             `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
                     fetched the job first.
         """
-
         ret = self._get_generator(arg.job_id)
         res = ret[0].normal(arg.loc, arg.scale)
         should_update = ret[1]
@@ -243,12 +248,12 @@ class ZeusService:
         return res
 
     async def get_job(self, job_id: UUID) -> JobState | None:
-        """Get job from database
+        """Get job from database.
 
         Args:
             job_id: Job Id
 
-        Return:
+        Returns:
             JobState if we found one, None if we couldn't find a job matching the job id.
         """
         return await self.job_repo.get_job(job_id)
@@ -262,13 +267,12 @@ class ZeusService:
         return self.job_repo.create_job(new_job)
 
     async def get_measurements_of_bs(self, bs: BatchSizeBase) -> MeasurementsPerBs:
-        """Get a windowed list of measurement for that batch size. If job's window size is not set(= 0),
-        get all measurements
+        """Get a windowed list of measurement for that batch size. If job's window size is not set(= 0), get all measurements.
 
         Args:
             bs: (job_id, batch size) pair.
 
-        Return:
+        Returns:
             list of windowed measurements in descending order for that (job_id, batch size)
 
         Raises:
@@ -282,7 +286,7 @@ class ZeusService:
         )
 
     def create_arms(self, new_arms: list[GaussianTsArmStateModel]) -> None:
-        """Create GuassianTs arms for the job
+        """Create GuassianTs arms for the job.
 
         Args:
             new_arms: List of new arm states
@@ -317,7 +321,7 @@ class ZeusService:
         cur_cost = zeus_cost(
             measurement.energy, measurement.time, job.eta_knob, job.max_power
         )
-        if job.min_cost == None or job.min_cost > cur_cost:
+        if job.min_cost is None or job.min_cost > cur_cost:
             self.job_repo.update_min(
                 UpdateJobMinCost(
                     job_id=job.job_id,
@@ -327,23 +331,23 @@ class ZeusService:
             )
 
     def _get_generator(self, job_id: UUID) -> Tuple[np_Generator, bool]:
-        """Get generator based on job_id. If mab_seed is not none, we should update the state after using generator
+        """Get generator based on job_id. If mab_seed is not none, we should update the state after using generator.
 
-        Return:
+        Returns:
             Tuple of [Generator, if we should update state]
         """
-        jobState = self._get_job(job_id)
+        job_state = self._get_job(job_id)
 
         rng = np.random.default_rng(int(datetime.now().timestamp()))
 
-        should_update = jobState.mab_seed != None
-        if jobState.mab_seed != None:
-            if jobState.mab_random_generator_state == None:
+        should_update = job_state.mab_seed is not None
+        if job_state.mab_seed is not None:
+            if job_state.mab_random_generator_state is None:
                 raise ZeusBSOValueError(
-                    f"Seed is set but generator state is none. Should be impossible"
+                    "Seed is set but generator state is none. Should be impossible"
                 )
 
-            state = json.loads(jobState.mab_random_generator_state)
+            state = json.loads(job_state.mab_random_generator_state)
             rng.__setstate__(state)
 
         return (rng, should_update)
@@ -351,7 +355,7 @@ class ZeusService:
     def _get_job(self, job_id: UUID) -> JobState:
         """Get the job from the session. If we couldn't find the job, raise a `ZeusBSOServiceBadOperationError`."""
         res = self.job_repo.get_job_from_session(job_id)
-        if res == None:
+        if res is None:
             raise ZeusBSOServiceBadOperationError(
                 f"Should have fetched the job first or job does not exist(job_id = {job_id})"
             )

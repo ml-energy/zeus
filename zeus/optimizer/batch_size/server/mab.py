@@ -35,7 +35,7 @@ class GaussianTS:
     """
 
     def __init__(self, service: ZeusService):
-        """Set up zeus service to interact with database"""
+        """Set up zeus service to interact with database."""
         self.service = service
         self.name = "GaussianTS"
 
@@ -56,7 +56,7 @@ class GaussianTS:
             prior_precision: Precision of the belief prior distribution.
             rewards: Array of rewards observed by pulling that arm.
 
-        Return:
+        Returns:
             Updated arm state
         """
         if len(rewards) == 0:
@@ -105,7 +105,7 @@ class GaussianTS:
             num_exploration: How many static explorations to run when no observations are available.
             arms: list of arms
 
-        Return:
+        Returns:
             batch size to use
         """
         arm_dict = {arm.batch_size: arm for arm in arms}
@@ -118,7 +118,7 @@ class GaussianTS:
 
         for arm in choices:
             if arm_dict[arm].num_observations < num_exploration:
-                logger.info(f"[{self.name}] Explore arm {arm}.")
+                logger.info("[%s] Explore arm %s.", self.name, str(arm))
                 return arm
 
         # Thomopson Sampling phase.
@@ -129,8 +129,9 @@ class GaussianTS:
         expectations = {}  # A mapping from every arm to their sampled expected reward.
         for arm in arms:
             if arm.param_precision == prior_precision:
-                logger.warn(
-                    f"predict_expectations called when arm '{arm.batch_size}' is cold.",
+                logger.warning(
+                    "predict_expectations called when arm '%d' is cold.",
+                    arm.batch_size,
                     stacklevel=1,
                 )
             expectations[arm.batch_size] = self.service.get_normal(
@@ -141,15 +142,21 @@ class GaussianTS:
                 )
             )
 
-        logger.info(f"[{self.name}] Sampled mean rewards:")
+        logger.info("[%s] Sampled mean rewards:", self.name)
         for arm, sample in expectations.items():
             logger.info(
-                f"[{self.name}] Arm {arm:4d}: mu ~ N({arm_dict[arm].param_mean:.2f}, "
-                f"{1/arm_dict[arm].param_precision:.2f}) -> {sample:.2f}"
+                "[%s] Arm %d: mu ~ N(%.2f, %.2f) -> %.2f",
+                self.name,
+                arm,
+                arm_dict[arm].param_mean,
+                1 / arm_dict[arm].param_precision,
+                sample,
             )
 
         bs = max(expectations, key=expectations.get)
-        logger.info(f"{job_id} in Thompson Sampling stage -> \033[31mBS = {bs}\033[0m")
+        logger.info(
+            "%s in Thompson Sampling stage -> \033[31mBS = %d\033[0m", job_id, bs
+        )
         return bs
 
     async def construct_mab(
@@ -161,7 +168,7 @@ class GaussianTS:
             job: state of job.
             evidence: Completed explorations. We create arms based on the explorations we have done during pruning stage.
 
-        Return:
+        Returns:
             list of arms that we created
 
         Raises:
@@ -173,7 +180,7 @@ class GaussianTS:
         # list of converged batch sizes from last pruning rounds
         good_bs: list[ExplorationStateModel] = []
 
-        for bs, exps_per_bs in evidence.explorations_per_bs.items():
+        for _, exps_per_bs in evidence.explorations_per_bs.items():
             for exp in exps_per_bs.explorations:
                 if (
                     exp.round_number == job.num_pruning_rounds
@@ -186,14 +193,15 @@ class GaussianTS:
             raise ZeusBSOValueError("While creating arms, no batch size is selected")
 
         logger.info(
-            f"Construct MAB for {job.job_id} with arms {[exp.batch_size for exp in good_bs]}"
+            "Construct MAB for %s with arms %s",
+            job.job_id,
+            str([exp.batch_size for exp in good_bs]),
         )
 
         new_arms: list[GaussianTsArmStateModel] = []
 
         # Fit the arm for each good batch size.
-        for i, exp in enumerate(good_bs):
-
+        for _, exp in enumerate(good_bs):
             # Get windowed measurements
             history = await self.service.get_measurements_of_bs(
                 BatchSizeBase(job_id=job.job_id, batch_size=exp.batch_size)
@@ -227,17 +235,15 @@ class GaussianTS:
     async def report(
         self, job: JobState, current_meausurement: MeasurementOfBs
     ) -> None:
-        """
-        Based on the measurement, update the arm state.
+        """Based on the measurement, update the arm state.
 
         Args:
             job: state of the job
-            current_measurement: result of training (job id, batch_size)
+            current_meausurement: result of training (job id, batch_size)
 
         Raises:
             `ZeusBSOValueError`: When the arm (job id, batch_size) doesn't exist
         """
-
         # Since we're learning the reward precision, we need to
         # 1. re-compute the precision of this arm based on the reward history,
         # 2. update the arm's reward precision
@@ -265,10 +271,10 @@ class GaussianTS:
                 for m in history.measurements
             ]
         )
-        logger.info(f"Arm_rewards: {arm_rewards}")
+        logger.info("Arm_rewards: %s", str(arm_rewards))
         arm = await self.service.get_arm(batch_size_key)
 
-        if arm == None:
+        if arm is None:
             raise ZeusBSOValueError(
                 f"MAB stage but Arm for batch size({current_meausurement.batch_size}) is not found."
             )
@@ -283,6 +289,9 @@ class GaussianTS:
 
         arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])
         logger.info(
-            f"{job.job_id} @ {current_meausurement.batch_size}: "
-            f"arm_rewards = [{arm_rewards_repr}], reward_prec = {new_arm.reward_precision}"
+            "%s @ %d: arm_rewards = [%s], reward_prec = %.2f",
+            job.job_id,
+            current_meausurement.batch_size,
+            arm_rewards_repr,
+            new_arm.reward_precision,
         )

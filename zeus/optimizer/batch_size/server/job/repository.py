@@ -1,4 +1,4 @@
-"""Repository for manipulating Job table"""
+"""Repository for manipulating Job table."""
 
 from __future__ import annotations
 from uuid import UUID
@@ -39,16 +39,15 @@ class JobStateRepository(DatabaseRepository):
         Args:
             job_id: Job id.
 
-        Return:
+        Returns:
             set fetched_job and return `JobState` if we found a job, unless return None.
         """
-
         stmt = (
             select(Job).where(Job.job_id == job_id).options(joinedload(Job.batch_sizes))
         )
         job = await self.session.scalar(stmt)
 
-        if job == None:
+        if job is None:
             logger.info("get_job: NoResultFound")
             return None
 
@@ -61,10 +60,10 @@ class JobStateRepository(DatabaseRepository):
         Args:
             job_id: Job id.
 
-        Return:
+        Returns:
             Corresponding `JobState`. If none was found, return None.
         """
-        if self.fetched_job == None or self.fetched_job.job_id != job_id:
+        if self.fetched_job is None or self.fetched_job.job_id != job_id:
             return None
         return self.fetched_job
 
@@ -98,7 +97,7 @@ class JobStateRepository(DatabaseRepository):
         """Update exploration min training cost and corresponding batch size on fetched job.
 
         Args:
-            updated_stage: Job Id, new min cost and batch size.
+            updated_min: Job Id, new min cost and batch size.
         """
         if self.fetched_job.job_id == updated_min.job_id:
             self.fetched_job.min_cost = updated_min.min_cost
@@ -135,10 +134,7 @@ class JobStateRepository(DatabaseRepository):
         Args:
             job_id: Job id.
 
-        Return:
+        Returns:
             True if this job was fetched and in session. Otherwise, return false.
         """
-        if self.fetched_job == None or self.fetched_job.job_id != job_id:
-            return False
-        else:
-            return True
+        return not (self.fetched_job is None or self.fetched_job.job_id != job_id)

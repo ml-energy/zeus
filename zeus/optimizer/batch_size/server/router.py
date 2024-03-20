@@ -46,7 +46,6 @@ async def register_job(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> JobConfig:
     """Endpoint for users to register a job or check if the job is registered and configuration is identical."""
-
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.register_job(job)
@@ -66,7 +65,7 @@ async def register_job(
         )
     except Exception as err:
         await db_session.rollback()
-        logger.error(f"Commit Failed: {str(err)}")
+        logger.error("Commit Failed: %s", str(err))
         return JSONResponse(
             status_code=500,
             content={"message": str(err)},
@@ -82,7 +81,6 @@ async def predict(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> int:
     """Endpoint for users to receive a batch size."""
-
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.predict(job_id)
@@ -96,7 +94,7 @@ async def predict(
         )
     except Exception as err:
         await db_session.rollback()
-        logger.error(f"Commit Failed: {str(err)}")
+        logger.error("Commit Failed: %s", str(err))
         return JSONResponse(
             status_code=500,
             content={"message": str(err)},
@@ -109,7 +107,6 @@ async def report(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
     """Endpoint for users to report the training result."""
-
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
         res = await optimizer.report(result)
@@ -123,7 +120,7 @@ async def report(
         )
     except Exception as err:
         await db_session.rollback()
-        logger.error(f"Commit Failed: {str(err)}")
+        logger.error("Commit Failed: %s", str(err))
         return JSONResponse(
             status_code=500,
             content={"message": str(err)},

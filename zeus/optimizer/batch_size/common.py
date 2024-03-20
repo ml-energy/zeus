@@ -55,7 +55,7 @@ class JobSpec(BaseModel):
 
     @validator("batch_sizes")
     def _validate_batch_sizes(cls, bs: list[int]) -> int:
-        if bs != None and len(bs) > 0:
+        if bs is not None and len(bs) > 0:
             bs.sort()
             return bs
         else:
@@ -64,7 +64,7 @@ class JobSpec(BaseModel):
     @validator("eta_knob")
     def _validate_eta_knob(cls, v: float) -> int:
         if v < 0 or v > 1:
-            raise ValueError(f"eta_knob should be in range [0,1]")
+            raise ValueError("eta_knob should be in range [0,1]")
         return v
 
     @validator("beta_knob")
@@ -98,7 +98,7 @@ class JobConfig(JobSpec):
 
 
 class TrainingResult(BaseModel):
-    """Result of training for that job & batch size
+    """Result of training for that job & batch size.
 
     Attributes:
         job_id: unique Id of job
@@ -118,7 +118,7 @@ class TrainingResult(BaseModel):
 
 
 class ReportResponse(BaseModel):
-    """Response format from the server for client's training result report
+    """Response format from the server for client's training result report.
 
     Attributes:
         stop_train: Whether we should stop training or not.

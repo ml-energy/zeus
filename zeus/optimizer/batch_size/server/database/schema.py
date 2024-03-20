@@ -1,4 +1,7 @@
+"""Database schema."""
+
 from __future__ import annotations
+
 import enum
 from datetime import datetime
 from typing import Optional
@@ -14,7 +17,6 @@ from sqlalchemy import (
     Integer,
     Uuid,
 )
-from sqlalchemy.ext.asyncio.session import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.sql.sqltypes import VARCHAR
@@ -22,10 +24,17 @@ from zeus.optimizer.batch_size.server.job.models import Stage
 
 
 class Base(DeclarativeBase):
+    """Base class for schemas."""
+
     pass
 
 
 class Job(Base):
+    """Job table schema.
+
+    Refer to `JobState`[zeus.optimizer.batch_size.server.job.models] for attributes.
+    """
+
     __tablename__ = "Job"
 
     job_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -59,14 +68,21 @@ class Job(Base):
     batch_sizes: Mapped[list["BatchSize"]] = relationship(
         order_by="BatchSize.batch_size.asc()",
         back_populates="job",
-        lazy="joined",
-        # https://stackoverflow.com/questions/74252768/missinggreenlet-greenlet-spawn-has-not-been-called
+        # always fetch batch size(int) whenever we fetch the job.
         # https://docs.sqlalchemy.org/en/14/orm/loading_relationships.html#relationship-loading-techniques
+        lazy="joined",
     )
 
 
 class BatchSize(Base):
+    """Batch size states table schema. Represents one batch size of a job.
+
+    (job_id, batch_size) as a pk, and have three states(exploration, measurement, GaussianTs arm state) as fk.
+    For explorations and measurements, one-to-many relationship. For arm_state, one-to-(zero or one) relationship.
+    """
+
     __tablename__ = "BatchSize"
+
     job_id: Mapped[UUID] = mapped_column(ForeignKey("Job.job_id"), primary_key=True)
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
 
@@ -88,13 +104,25 @@ class BatchSize(Base):
 
 
 class State(enum.Enum):
+    """Exploration state.
+
+    Exploring means we issued this batch size and waiting for the report.
+    Converged/Unconverged means the result of training with that batch size.
+    """
+
     Exploring = "Exploring"
     Converged = "Converged"
     Unconverged = "Unconverged"
 
 
 class ExplorationState(Base):
+    """Exploration state table schema with (job_id, batch_size, round_number) as a pk. Represents an exploration state of a batch size.
+
+    Refer to `ExplorationStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.ExplorationStateModel] for attributes.
+    """
+
     __tablename__ = "ExplorationState"
+
     job_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
     round_number: Mapped[int] = mapped_column(Integer, nullable=False, primary_key=True)
@@ -111,7 +139,13 @@ class ExplorationState(Base):
 
 
 class GaussianTsArmState(Base):
+    """Gaussian arm state schema. Represents a gaussian thompson arm states of a batch size.
+
+    Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
+    """
+
     __tablename__ = "GaussianTsArmState"
+
     job_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)  # arm
 
@@ -130,7 +164,13 @@ class GaussianTsArmState(Base):
 
 
 class Measurement(Base):
+    """Measurement schema. Represents the training result of the batch size.
+
+    Refer to `MeasurementOfBs`[zeus.optimizer.batch_size.server.batch_size_state.models.MeasurementOfBs] for attributes.
+    """
+
     __tablename__ = "Measurement"
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     job_id: Mapped[UUID] = mapped_column(Uuid)
     batch_size: Mapped[int] = mapped_column(Integer)

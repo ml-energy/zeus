@@ -1,3 +1,9 @@
+"""Managing database connection.
+
+Heavily inspired by https://praciano.com.br/fastapi-and-async-sqlalchemy-20-with-pytest-done-right.html
+and https://medium.com/@tclaitken/setting-up-a-fastapi-app-with-async-sqlalchemy-2-0-pydantic-v2-e6c540be4308
+"""
+
 import contextlib
 from typing import Any, AsyncIterator
 
@@ -9,16 +15,19 @@ from sqlalchemy.ext.asyncio import (
 )
 from zeus.optimizer.batch_size.server.config import settings
 
-# Heavily inspired by https://praciano.com.br/fastapi-and-async-sqlalchemy-20-with-pytest-done-right.html
-# https://medium.com/@tclaitken/setting-up-a-fastapi-app-with-async-sqlalchemy-2-0-pydantic-v2-e6c540be4308
-
 
 class DatabaseSessionManager:
-    def __init__(self, host: str, engine_kwargs: dict[str, Any] = {}):
+    """Session manager class."""
+
+    def __init__(self, host: str, engine_kwargs: dict[str, Any] = None):
+        """Create async engine and session maker."""
+        if engine_kwargs is None:
+            engine_kwargs = {}
         self._engine = create_async_engine(host, **engine_kwargs)
         self._sessionmaker = async_sessionmaker(autocommit=False, bind=self._engine)
 
     async def close(self):
+        """Close connection."""
         if self._engine is None:
             raise Exception("DatabaseSessionManager is not initialized")
         await self._engine.dispose()
@@ -28,6 +37,7 @@ class DatabaseSessionManager:
 
     @contextlib.asynccontextmanager
     async def connect(self) -> AsyncIterator[AsyncConnection]:
+        """Connect to db."""
         if self._engine is None:
             raise Exception("DatabaseSessionManager is not initialized")
 
@@ -40,6 +50,7 @@ class DatabaseSessionManager:
 
     @contextlib.asynccontextmanager
     async def session(self) -> AsyncIterator[AsyncSession]:
+        """Get session from session maker."""
         if self._sessionmaker is None:
             raise Exception("DatabaseSessionManager is not initialized")
 
@@ -53,11 +64,13 @@ class DatabaseSessionManager:
             await session.close()
 
 
+# Initialize session manager. #TODO: support more arguments from setting
 sessionmanager = DatabaseSessionManager(
     settings.database_url, {"echo": settings.echo_sql}
 )
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
+    """Get db session from session manager. Used with fastapi dependency injection."""
     async with sessionmanager.session() as session:
         yield session

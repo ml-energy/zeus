@@ -56,8 +56,8 @@ class UpdateGeneratorState(BaseModel):
         try:
             np.random.default_rng(1).__setstate__(json.loads(state))
             return state
-        except (TypeError, ValueError):
-            raise ValueError(f"Invalid generator state ({state})")
+        except (TypeError, ValueError) as err:
+            raise ValueError(f"Invalid generator state ({state})") from err
 
 
 class UpdateJobMinCost(BaseModel):
@@ -94,8 +94,12 @@ class CreateJob(JobConfig):
     mab_random_generator_state: Optional[str] = None
 
     class Config:
+        """Model configuration.
+
+        Make it immutable after creation.
+        """
+
         frozen = True
-        validate_assignment = True
 
     @root_validator(skip_on_failure=True)
     def _validate_states(cls, values: dict[str, Any]) -> dict[str, Any]:
@@ -106,7 +110,6 @@ class CreateJob(JobConfig):
             - If default, exp_default, min batch sizes are correctly intialized.
             - If default batch size is in the list of batch sizes.
         """
-
         state: str | None = values["mab_random_generator_state"]
         mab_seed: int | None = values["mab_seed"]
         bss: list[int] = values["batch_sizes"]
@@ -114,14 +117,14 @@ class CreateJob(JobConfig):
         ebs: int = values["exp_default_batch_size"]
         mbs: int = values["min_batch_size"]
 
-        if mab_seed != None:
-            if state == None:
+        if mab_seed is not None:
+            if state is None:
                 raise ValueError("mab_seed is not none, but generator state is none")
             else:
                 try:
                     np.random.default_rng(1).__setstate__(json.loads(state))
-                except (TypeError, ValueError):
-                    raise ValueError(f"Invalid generator state ({state})")
+                except (TypeError, ValueError) as err:
+                    raise ValueError(f"Invalid generator state ({state})") from err
 
         if not (dbs == ebs == mbs):
             raise ValueError(
@@ -134,14 +137,14 @@ class CreateJob(JobConfig):
 
         return values
 
-    def from_jobConfig(js: JobConfig) -> "CreateJob":
+    def from_job_config(js: JobConfig) -> "CreateJob":
         """From JobConfig, instantiate `CreateJob`.
 
         Initialize generator state, exp_default_batch_size, and min_batch_size.
         """
         d = js.dict()
         d["exp_default_batch_size"] = js.default_batch_size
-        if js.mab_seed != None:
+        if js.mab_seed is not None:
             rng = np.random.default_rng(js.mab_seed)
             d["mab_random_generator_state"] = json.dumps(rng.__getstate__())
         d["min_batch_size"] = js.default_batch_size
@@ -149,7 +152,6 @@ class CreateJob(JobConfig):
 
     def to_orm(self) -> Job:
         """Convert pydantic model `CreateJob` to ORM object Job."""
-
         d = self.dict()
         job = Job()
         for k, v in d.items():

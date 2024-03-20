@@ -1,1 +1,1 @@
-"""Manage database connection and define schema"""
+"""Manage database connection and define schema."""

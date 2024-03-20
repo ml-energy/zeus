@@ -1,11 +1,10 @@
-"""Commands on how to use some methods from the `ZeusService`"""
+"""Commands on how to use some methods from the `ZeusService`."""
 
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
 from pydantic.class_validators import root_validator
-from pydantic.fields import Field
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     ExplorationsPerBs,
 )
@@ -31,9 +30,9 @@ class CompletedExplorations(BaseModel):
         for bs, exp_list_per_bs in exps.items():
             for exp in exp_list_per_bs.explorations:
                 if bs != exp.batch_size:
-                    raise ValueError(f"Batch size should be consistent in explorations")
+                    raise ValueError("Batch size should be consistent in explorations")
                 if job_id != exp.job_id:
-                    raise ValueError(f"Job_id should be consistent in explorations")
+                    raise ValueError("Job_id should be consistent in explorations")
 
         return values
 

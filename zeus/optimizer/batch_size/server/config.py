@@ -5,7 +5,7 @@ from dotenv import find_dotenv
 
 
 class ZeusBsoSettings(BaseSettings):
-    """App setting
+    """App setting.
 
     Attributes:
         database_url: url of database for the server
@@ -20,6 +20,11 @@ class ZeusBsoSettings(BaseSettings):
     log_level: str = "DEBUG"
 
     class Config:
+        """Model configuration.
+
+        Set how to find the env variables and how to parse it.
+        """
+
         env_prefix = "ZEUS_"
         env_file = find_dotenv(filename=".env")
         env_file_encoding = "utf-8"

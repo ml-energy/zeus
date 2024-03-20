@@ -84,6 +84,13 @@ pydocstyle.convention = "google"
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
 "zeus/util/pydantic_v1.py" = ["F403"]
+"zeus/optimizer/batch_size/server/batch_size_state/commands.py" = ["N805"]
+"zeus/optimizer/batch_size/server/batch_size_state/models.py" = ["N805"]
+"zeus/optimizer/batch_size/server/job/commands.py" = ["N805"]
+"zeus/optimizer/batch_size/server/job/models.py" = ["N805"]
+"zeus/optimizer/batch_size/server/services/commands.py" = ["N805"]
+"zeus/optimizer/batch_size/server/router.py" = ["B008"]
+"zeus/optimizer/batch_size/common.py" = ["N805"]
 
 #[tool.pytest.ini_options]
 #addopts = "--numprocesses auto"

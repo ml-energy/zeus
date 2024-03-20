@@ -27,7 +27,7 @@ class ZeusBatchSizeOptimizer:
     """Batch size optimizer server. Manages which stage the job is in and call corresponding manager (pruning or mab)."""
 
     def __init__(self, service: ZeusService) -> None:
-        """Initialize the server. Set the service, pruning manager, and mab
+        """Initialize the server. Set the service, pruning manager, and mab.
 
         Args:
             service: ZeusService for interacting with database
@@ -38,12 +38,12 @@ class ZeusBatchSizeOptimizer:
         self.name = "ZeusBatchSizeOptimizer"
 
     async def register_job(self, job: JobConfig) -> bool:
-        """Register a job that user submitted. If the job id already exists, check if it is identical with previously registered configuration
+        """Register a job that user submitted. If the job id already exists, check if it is identical with previously registered configuration.
 
         Args:
             job: job configuration
 
-        Return:
+        Returns:
             True if a job is regiested, False if a job already exists and identical with previous configuration
 
         Raises:
@@ -53,7 +53,7 @@ class ZeusBatchSizeOptimizer:
 
         if registered_job is not None:
             # Job exists
-            logger.info(f"Job({job.job_id}) already exists")
+            logger.info("Job(%s) already exists", job.job_id)
             registerd_job_spec = JobConfig.parse_obj(registered_job.dict())
 
             # check if it is identical
@@ -63,8 +63,8 @@ class ZeusBatchSizeOptimizer:
                 )
             return False
 
-        self.service.create_job(CreateJob.from_jobConfig(job))
-        logger.info(f"Registered {job.job_id}")
+        self.service.create_job(CreateJob.from_job_config(job))
+        logger.info("Registered %s", job.job_id)
 
         return True
 
@@ -74,7 +74,7 @@ class ZeusBatchSizeOptimizer:
         Args:
             job_id: Id of job
 
-        Return:
+        Returns:
             batch size to use
 
         Raises:
@@ -82,7 +82,7 @@ class ZeusBatchSizeOptimizer:
         """
         job = await self.service.get_job(job_id)
 
-        if job == None:
+        if job is None:
             raise ZeusBSOValueError(
                 f"Unknown job({job_id}). Please register the job first"
             )
@@ -110,9 +110,7 @@ class ZeusBatchSizeOptimizer:
                 return job.min_batch_size
             elif isinstance(next_batch_size, Stage):
                 # MAB stage: construct MAB and update the job stage to MAB. Return the batch size from MAB
-                logger.info(
-                    f"Constructing a MAB {explorations.explorations_per_bs == None}"
-                )
+                logger.info("Constructing a MAB")
                 arms = await self.mab.construct_mab(
                     job,
                     CompletedExplorations(
@@ -128,19 +126,17 @@ class ZeusBatchSizeOptimizer:
                 return next_batch_size
 
     async def report(self, result: TrainingResult) -> ReportResponse:
-        """
-        Report the training result. Stop train if the train is converged or reached max epochs or reached early stop threshold.
-        Otherwise, keep training.
+        """Report the training result. Stop train if the train is converged or reached max epochs or reached early stop threshold. Otherwise, keep training.
 
         Args:
             result: result of training [`TrainingResult`][zeus.optimizer.batch_size.common.TrainingResult].
 
-        Return:
+        Returns:
             Decision on training [`ReportResponse`][zeus.optimizer.batch_size.common.ReportResponse].
         """
         cost_ub = np.inf
         job = await self.service.get_job(result.job_id)
-        if job.beta_knob > 0 and job.min_cost != None:  # Early stop enabled
+        if job.beta_knob > 0 and job.min_cost is not None:  # Early stop enabled
             cost_ub = job.beta_knob * job.min_cost
 
         reported_cost = zeus_cost(
@@ -193,7 +189,10 @@ class ZeusBatchSizeOptimizer:
         else:
             # Pruning stage
             logger.info(
-                f"{result.job_id} in pruning stage, Current BS {result.batch_size} that did {'not ' * (not converged)}converge."
+                "%s in pruning stage, Current BS %s that did %s converge.",
+                result.job_id,
+                result.batch_size,
+                "not" * (not converged),
             )
 
             await self.pruning_manager.report_batch_size_result(

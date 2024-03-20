@@ -1,1 +1,1 @@
-"""Models, commands, and repository for job states"""
+"""Models, commands, and repository for job states."""
