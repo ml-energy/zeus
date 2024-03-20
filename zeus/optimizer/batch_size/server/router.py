@@ -48,9 +48,9 @@ async def register_job(
     """Endpoint for users to register a job or check if the job is registered and configuration is identical."""
     optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
     try:
-        res = await optimizer.register_job(job)
+        created = await optimizer.register_job(job)
         await db_session.commit()
-        if res:
+        if created:
             # new job is created
             response.status_code = status.HTTP_201_CREATED
         else:
