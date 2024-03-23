@@ -6,7 +6,7 @@ from uuid import UUID
 
 import numpy as np
 from zeus.optimizer.batch_size.common import JobConfig, ReportResponse, TrainingResult
-from zeus.optimizer.batch_size.server.batch_size_state.models import MeasurementOfBs
+from zeus.optimizer.batch_size.server.batch_size_state.models import Measurement
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOJobConfigMismatchError,
     ZeusBSOValueError,
@@ -15,7 +15,7 @@ from zeus.optimizer.batch_size.server.explorer import PruningExploreManager
 from zeus.optimizer.batch_size.server.job.commands import CreateJob
 from zeus.optimizer.batch_size.server.job.models import Stage
 from zeus.optimizer.batch_size.server.mab import GaussianTS
-from zeus.optimizer.batch_size.server.services.commands import CompletedExplorations
+from zeus.optimizer.batch_size.server.services.commands import ConstructMAB
 from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
@@ -35,7 +35,6 @@ class ZeusBatchSizeOptimizer:
         self.service = service
         self.pruning_manager = PruningExploreManager(service)
         self.mab = GaussianTS(service)
-        self.name = "ZeusBatchSizeOptimizer"
 
     async def register_job(self, job: JobConfig) -> bool:
         """Register a job that user submitted. If the job id already exists, check if it is identical with previously registered configuration.
@@ -58,6 +57,7 @@ class ZeusBatchSizeOptimizer:
 
             # check if it is identical
             if registerd_job_spec != job:
+                print(registerd_job_spec)
                 raise ZeusBSOJobConfigMismatchError(
                     "JobSpec doesn't match with existing jobSpec. Use a new job_id for different configuration"
                 )
@@ -91,7 +91,7 @@ class ZeusBatchSizeOptimizer:
             # If we are in MAB stage, use mab to get the next batch size
             arms = await self.service.get_arms(job_id)
             return self.mab.predict(
-                job_id, job.mab_prior_precision, job.mab_num_exploration, arms
+                job_id, job.mab_prior_precision, job.mab_num_explorations, arms
             )
         else:
             # Pruning stage
@@ -113,13 +113,14 @@ class ZeusBatchSizeOptimizer:
                 logger.info("Constructing a MAB")
                 arms = await self.mab.construct_mab(
                     job,
-                    CompletedExplorations(
+                    ConstructMAB(
                         job_id=job_id,
                         explorations_per_bs=explorations.explorations_per_bs,
+                        num_pruning_rounds=job.num_pruning_rounds,
                     ),
                 )
                 return self.mab.predict(
-                    job_id, job.mab_prior_precision, job.mab_num_exploration, arms
+                    job_id, job.mab_prior_precision, job.mab_num_explorations, arms
                 )
             else:
                 # Exploration stage and got the next available batch size to explore from the explore manager
@@ -136,7 +137,7 @@ class ZeusBatchSizeOptimizer:
         """
         cost_ub = np.inf
         job = await self.service.get_job(result.job_id)
-        if job.beta_knob > 0 and job.min_cost is not None:  # Early stop enabled
+        if job.beta_knob is not None and job.min_cost is not None:  # Early stop enabled
             cost_ub = job.beta_knob * job.min_cost
 
         reported_cost = zeus_cost(
@@ -148,8 +149,8 @@ class ZeusBatchSizeOptimizer:
 
         within_cost_range = cost_ub >= reported_cost
         converged = (
-            job.high_is_better_metric and job.target_metric <= result.metric
-        ) or (not job.high_is_better_metric and job.target_metric >= result.metric)
+            job.higher_is_better_metric and job.target_metric <= result.metric
+        ) or (not job.higher_is_better_metric and job.target_metric >= result.metric)
 
         if (
             within_cost_range
@@ -176,7 +177,7 @@ class ZeusBatchSizeOptimizer:
             # not converged
             message = f"Train failed to converge within max_epoch({job.max_epochs})"
 
-        current_meausurement = MeasurementOfBs(
+        current_meausurement = Measurement(
             job_id=result.job_id,
             batch_size=result.batch_size,
             time=result.time,
@@ -202,6 +203,3 @@ class ZeusBatchSizeOptimizer:
         return ReportResponse(
             stop_train=True, converged=current_meausurement.converged, message=message
         )
-
-
-## End of class ZeusBatchSizeOptimizer

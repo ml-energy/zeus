@@ -8,8 +8,8 @@ from pydantic.class_validators import root_validator
 from pydantic.fields import Field
 from pydantic.main import BaseModel
 from zeus.optimizer.batch_size.server.database.schema import (
-    GaussianTsArmState,
-    Measurement,
+    GaussianTsArmStateTable,
+    MeasurementTable,
     State,
 )
 
@@ -34,7 +34,7 @@ class BatchSizeBase(BaseModel):
         frozen = True
 
 
-class GaussianTsArmStateModel(BatchSizeBase):
+class GaussianTsArmState(BatchSizeBase):
     """Model representing Gaussian Thompson Sampling arm state.
 
     Attributes:
@@ -58,20 +58,20 @@ class GaussianTsArmStateModel(BatchSizeBase):
         orm_mode = True
         frozen = True
 
-    def to_orm(self) -> GaussianTsArmState:
+    def to_orm(self) -> GaussianTsArmStateTable:
         """Convert pydantic model to ORM object.
 
         Returns:
             GaussianTsArmState: The ORM object of Gaussian Arm State.
         """
         d = self.dict()
-        g = GaussianTsArmState()
+        g = GaussianTsArmStateTable()
         for k, v in d.items():
             setattr(g, k, v)
         return g
 
 
-class MeasurementOfBs(BatchSizeBase):
+class Measurement(BatchSizeBase):
     """Model representing a measurement(result) of training the batch size of the job. Immutable after it's created.
 
     Attributes:
@@ -93,20 +93,20 @@ class MeasurementOfBs(BatchSizeBase):
         orm_mode = True
         frozen = True
 
-    def to_orm(self) -> Measurement:
+    def to_orm(self) -> MeasurementTable:
         """Convert it to ORM object.
 
         Returns:
             Measurement: The ORM object of Measruement.
         """
         d = self.dict()
-        m = Measurement()
+        m = MeasurementTable()
         for k, v in d.items():
             setattr(m, k, v)
         return m
 
 
-class ExplorationStateModel(BatchSizeBase):
+class ExplorationState(BatchSizeBase):
     """Model representing the state of one exploration. Immutable after it's created.
 
     Attributes:
@@ -136,7 +136,7 @@ class ExplorationsPerBs(BatchSizeBase):
         explorations (list[ExplorationStateModel]): List of exploration states for this batch size and job id.
     """
 
-    explorations: list[ExplorationStateModel]
+    explorations: list[ExplorationState]
 
     class Config:
         """Model configuration.
@@ -156,7 +156,7 @@ class ExplorationsPerBs(BatchSizeBase):
         """
         bs: int = values["batch_size"]
         job_id: UUID = values["job_id"]
-        exps: list[ExplorationStateModel] = values["explorations"]
+        exps: list[ExplorationState] = values["explorations"]
         exps = sorted(exps, key=lambda exp: exp.round_number, reverse=True)
 
         round_number = -1
@@ -185,14 +185,14 @@ class MeasurementsPerBs(BatchSizeBase):
         measurements (list[MeasurementOfBs]): List of measurements per batch size.
     """
 
-    measurements: list[MeasurementOfBs]
+    measurements: list[Measurement]
 
     @root_validator(skip_on_failure=True)
     def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate if job_id and bs are consistent across all items in measurements."""
         bs: int = values["batch_size"]
         job_id: UUID = values["job_id"]
-        ms: list[MeasurementOfBs] = values["measurements"]
+        ms: list[Measurement] = values["measurements"]
 
         for m in ms:
             if job_id != m.job_id:

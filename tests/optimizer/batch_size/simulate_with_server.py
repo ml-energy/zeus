@@ -25,20 +25,28 @@ import numpy as np
 import pandas as pd
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
-from zeus.optimizer.batch_size.common import JobConfig, TrainingResult
+from zeus.optimizer.batch_size.common import (
+    GET_NEXT_BATCH_SIZE_URL,
+    REGISTER_JOB_URL,
+    REPORT_RESULT_URL,
+    JobConfig,
+    TrainingResult,
+)
 from zeus.policy import PowerLimitOptimizer
 from zeus.util import zeus_cost
 
 
 class BatchSizeOptimizerDummyClient:
-    def __init__(self):
-        return
+    def __init__(self, url=""):
+        self.url = url
 
     def register_job(self, job: JobConfig):
-        httpx.post("/jobs", content=job.json())
+        httpx.post(self.url + REGISTER_JOB_URL, content=job.json())
 
     def predict(self, job: JobConfig):
-        res = httpx.get("/jobs/batch_size", params={"job_id": job.job_id})
+        res = httpx.get(
+            self.url + GET_NEXT_BATCH_SIZE_URL, params={"job_id": job.job_id}
+        )
         return res.json()
 
     def observe(
@@ -62,7 +70,7 @@ class BatchSizeOptimizerDummyClient:
         )
 
         # report to the server about the result of this training
-        res = httpx.post("/jobs/report", content=training_result.json())
+        res = httpx.post(self.url + REPORT_RESULT_URL, content=training_result.json())
 
 
 # ruff: noqa: PLR0912, PLR0915

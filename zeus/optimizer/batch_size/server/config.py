@@ -16,7 +16,7 @@ class ZeusBsoSettings(BaseSettings):
 
     database_url: str
     database_password: str = ""
-    echo_sql: bool = True
+    echo_sql: bool = False
     log_level: str = "DEBUG"
 
     class Config:

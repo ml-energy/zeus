@@ -37,3 +37,12 @@ class ZeusBSOServiceBadOperationError(ZeusBSOServerBaseError):
         """Set status code."""
         super().__init__(msg)
         self.status_code = 400
+
+
+class ZeusBSOServerRuntimeError(ZeusBaseError):
+    """Initialization or other errors during runtime."""
+
+    def __init__(self, msg: str):
+        """Set status code."""
+        super().__init__(msg)
+        self.status_code = 500

@@ -29,7 +29,7 @@ class Base(DeclarativeBase):
     pass
 
 
-class Job(Base):
+class JobTable(Base):
     """Job table schema.
 
     Refer to `JobState`[zeus.optimizer.batch_size.server.job.models] for attributes.
@@ -39,9 +39,9 @@ class Job(Base):
 
     job_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     default_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
-    high_is_better_metric: Mapped[bool] = mapped_column(Boolean, default=True)
+    higher_is_better_metric: Mapped[bool] = mapped_column(Boolean, default=True)
     eta_knob: Mapped[float] = mapped_column(Float, default=0.5)
-    beta_knob: Mapped[float] = mapped_column(Float, default=2.0)
+    beta_knob: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     target_metric: Mapped[float] = mapped_column(Float, default=0.5)
     max_epochs: Mapped[int] = mapped_column(Integer, default=100)
     num_pruning_rounds: Mapped[int] = mapped_column(Integer, default=2)
@@ -53,11 +53,11 @@ class Job(Base):
 
     mab_prior_mean: Mapped[float] = mapped_column(Float, default=0.0)
     mab_prior_precision: Mapped[float] = mapped_column(Float, default=0.0)
-    mab_num_exploration: Mapped[int] = mapped_column(Integer, default=2)
+    mab_num_explorations: Mapped[int] = mapped_column(Integer, default=2)
     mab_seed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     mab_random_generator_state: Mapped[Optional[str]] = mapped_column(
-        VARCHAR(length=300), nullable=True
+        VARCHAR(length=10000), nullable=True
     )
     exp_default_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -65,8 +65,8 @@ class Job(Base):
     min_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     min_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    batch_sizes: Mapped[list["BatchSize"]] = relationship(
-        order_by="BatchSize.batch_size.asc()",
+    batch_sizes: Mapped[list["BatchSizeTable"]] = relationship(
+        order_by="BatchSizeTable.batch_size.asc()",
         back_populates="job",
         # always fetch batch size(int) whenever we fetch the job.
         # https://docs.sqlalchemy.org/en/14/orm/loading_relationships.html#relationship-loading-techniques
@@ -74,7 +74,7 @@ class Job(Base):
     )
 
 
-class BatchSize(Base):
+class BatchSizeTable(Base):
     """Batch size states table schema. Represents one batch size of a job.
 
     (job_id, batch_size) as a pk, and have three states(exploration, measurement, GaussianTs arm state) as fk.
@@ -86,21 +86,21 @@ class BatchSize(Base):
     job_id: Mapped[UUID] = mapped_column(ForeignKey("Job.job_id"), primary_key=True)
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    explorations: Mapped[list["ExplorationState"]] = relationship(
+    explorations: Mapped[list["ExplorationStateTable"]] = relationship(
         back_populates="batch_size_state",
-        order_by="ExplorationState.round_number.asc()",
+        order_by="ExplorationStateTable.round_number.asc()",
     )
-    measurements: Mapped[list["Measurement"]] = relationship(
-        back_populates="batch_size_state", order_by="Measurement.timestamp.asc()"
+    measurements: Mapped[list["MeasurementTable"]] = relationship(
+        back_populates="batch_size_state", order_by="MeasurementTable.timestamp.asc()"
     )
 
-    arm_state: Mapped[Optional["GaussianTsArmState"]] = relationship(
+    arm_state: Mapped[Optional["GaussianTsArmStateTable"]] = relationship(
         back_populates="batch_size_state",  # populates GaussianTsArmState->BatchSize
         # https://stackoverflow.com/questions/398697
-        # 93/when-do-i-need-to-use-sqlalchemy-back-populates#:~:text=didn%27t%20provide%20a-,back_populates,-argument%2C%20modifying%20one
+        # 93/when-do-i-need-to-use-sqlalchemy-back-populates
     )
 
-    job: Mapped["Job"] = relationship(back_populates="batch_sizes")
+    job: Mapped["JobTable"] = relationship(back_populates="batch_sizes")
 
 
 class State(enum.Enum):
@@ -115,7 +115,7 @@ class State(enum.Enum):
     Unconverged = "Unconverged"
 
 
-class ExplorationState(Base):
+class ExplorationStateTable(Base):
     """Exploration state table schema with (job_id, batch_size, round_number) as a pk. Represents an exploration state of a batch size.
 
     Refer to `ExplorationStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.ExplorationStateModel] for attributes.
@@ -129,16 +129,18 @@ class ExplorationState(Base):
     state: Mapped[State] = mapped_column(Enum(State), default=State.Exploring)
     cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
-    batch_size_state: Mapped["BatchSize"] = relationship(back_populates="explorations")
+    batch_size_state: Mapped["BatchSizeTable"] = relationship(
+        back_populates="explorations"
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(
-            [job_id, batch_size], [BatchSize.job_id, BatchSize.batch_size]
+            [job_id, batch_size], [BatchSizeTable.job_id, BatchSizeTable.batch_size]
         ),
     )
 
 
-class GaussianTsArmState(Base):
+class GaussianTsArmStateTable(Base):
     """Gaussian arm state schema. Represents a gaussian thompson arm states of a batch size.
 
     Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
@@ -154,16 +156,18 @@ class GaussianTsArmState(Base):
     reward_precision: Mapped[float] = mapped_column(Float, default=0.0)
     num_observations: Mapped[int] = mapped_column(Integer, default=0)
 
-    batch_size_state: Mapped["BatchSize"] = relationship(back_populates="arm_state")
+    batch_size_state: Mapped["BatchSizeTable"] = relationship(
+        back_populates="arm_state"
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(
-            [job_id, batch_size], [BatchSize.job_id, BatchSize.batch_size]
+            [job_id, batch_size], [BatchSizeTable.job_id, BatchSizeTable.batch_size]
         ),
     )
 
 
-class Measurement(Base):
+class MeasurementTable(Base):
     """Measurement schema. Represents the training result of the batch size.
 
     Refer to `MeasurementOfBs`[zeus.optimizer.batch_size.server.batch_size_state.models.MeasurementOfBs] for attributes.
@@ -182,10 +186,12 @@ class Measurement(Base):
         DateTime, default=func.now(), nullable=False
     )
 
-    batch_size_state: Mapped["BatchSize"] = relationship(back_populates="measurements")
+    batch_size_state: Mapped["BatchSizeTable"] = relationship(
+        back_populates="measurements"
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(
-            [job_id, batch_size], [BatchSize.job_id, BatchSize.batch_size]
+            [job_id, batch_size], [BatchSizeTable.job_id, BatchSizeTable.batch_size]
         ),
     )

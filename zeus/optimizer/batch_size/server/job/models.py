@@ -23,7 +23,7 @@ class JobGetter(GetterDict):
 
     def get(self, key: str, default: Any) -> Any:
         """Get value from dict."""
-        if key in {"batch_sizes"}:
+        if key == "batch_sizes":
             # If the key is batch_sizes, parse the integer from object.
             return [bs.batch_size for bs in self._obj.batch_sizes]
 

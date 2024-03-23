@@ -1,75 +1,11 @@
-import asyncio
-from typing import AsyncIterator
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
-from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobConfig, JobSpec
-from zeus.optimizer.batch_size.server.database.db_connection import (
-    DatabaseSessionManager,
-    get_db_session,
-)
-from zeus.optimizer.batch_size.server.database.schema import Base
-from zeus.optimizer.batch_size.server.router import app
-
-fake_job = {
-    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    "seed": 1,
-    "default_batch_size": 1024,
-    "batch_sizes": [32, 64, 256, 512, 1024, 4096, 2048],
-    "eta_knob": 0.5,
-    "beta_knob": 2,
-    "target_metric": 0.5,
-    "high_is_better_metric": True,
-    "max_epochs": 100,
-    "num_pruning_rounds": 2,
-    "window_size": 5,
-    "mab_prior_mean": 0,
-    "mab_prior_precision": 0,
-    "mab_seed": 123456,
-    "mab_num_exploration": 2,
-    "gpu_model": "A100",
-}
-
-sessionmanager = DatabaseSessionManager("sqlite+aiosqlite:///test.db", {"echo": False})
-
-
-async def override_db_session() -> AsyncIterator[AsyncSession]:
-    async with sessionmanager.session() as session:
-        yield session
-
-
-app.dependency_overrides[get_db_session] = override_db_session
-
-
-async def create():
-    print("Create tables")
-    async with sessionmanager._engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-
-async def clean():
-    print("Clean")
-    async with sessionmanager._engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def database_setup():
-    asyncio.run(clean())
-    asyncio.run(create())
-    yield
-
-
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
+from zeus.optimizer.batch_size.common import JobSpec
 
 
 @pytest.fixture
@@ -92,6 +28,7 @@ def mock_monitor(mocker: MockerFixture):
     mocker.patch(
         "zeus.monitor.energy.ZeusMonitor", return_value=zeus_monitor_mock_instance
     )
+    mocker.patch("pynvml.nvmlDeviceGetName").return_value = "Tesla V100"
     mocker.patch("pynvml.nvmlDeviceGetHandleByIndex").return_value = 0
     mocker.patch("pynvml.nvmlDeviceGetPowerManagementLimitConstraints").return_value = [
         100000,
@@ -102,7 +39,7 @@ def mock_monitor(mocker: MockerFixture):
 
 def test_register_job(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
-    job = JobSpec.parse_obj(fake_job)
+    job = JobSpec.parse_obj(pytest.fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
@@ -112,7 +49,7 @@ def test_register_job(client, mock_monitor, mocker: MockerFixture):
 def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
-    job = JobSpec.parse_obj(fake_job)
+    job = JobSpec.parse_obj(pytest.fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
 
@@ -147,9 +84,9 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
 def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
-    job = JobSpec.parse_obj(fake_job)
+    job = JobSpec.parse_obj(pytest.fake_job)
     job.job_id = uuid4()
-    job.beta_knob = -1  # disable early stop
+    job.beta_knob = None  # disable early stop
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bso_client.on_train_begin()
     bs = bso_client.get_batch_size()

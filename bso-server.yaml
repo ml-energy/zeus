@@ -1,0 +1,68 @@
+version: '3.9'
+
+services:
+  server: 
+    image: bso-server
+    container_name: bso
+    restart: always
+    environment:
+      ZEUS_DATABASE_URL: mysql+asyncmy://me:secret@zeus_db:3306/Zeus
+      ZEUS_DATABASE_PASSWORD: secret
+      ZEUS_LOG_LEVEL: INFO
+      ZEUS_ECHO_SQL: "False" 
+    ports:
+      # open 80 to outside
+      - 80:80 
+    networks:
+      - servernet
+    depends_on:
+      migration:
+        # start running when migration is done.
+        condition: service_completed_successfully
+
+  db:
+    image: mysql
+    container_name: zeus_db
+    restart: always
+    environment:
+      MYSQL_DATABASE: Zeus
+      MYSQL_USER: me
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_PASSWORD: secret
+    expose:
+      # Opens port 3306 on the container
+      - '3306'
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    networks:
+      - servernet
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+      start_interval: 1s
+
+  migration:
+    image: zeus_migration
+    restart: on-failure:3
+    depends_on: 
+      db:
+        # wait until db is ready to accept connection
+        condition: service_healthy
+    # Generate revision and upgrade database. Change message of revision as you want
+    command: >
+      bash -c 'cd /workspace/zeus/optimizer/batch_size && alembic revision --autogenerate -m "Baseline: create tables" && alembic upgrade head'
+    environment:
+      ZEUS_DATABASE_URL: mysql+asyncmy://me:secret@zeus_db:3306/Zeus
+      ZEUS_DATABASE_PASSWORD: secret
+    networks:
+      - servernet
+    volumes:
+      # mount version scripts we generated.
+      - ./zeus/optimizer/batch_size/migrations/versions:/workspace/zeus/optimizer/batch_size/migrations/versions
+      
+
+networks:
+  servernet:  
+    driver: bridge

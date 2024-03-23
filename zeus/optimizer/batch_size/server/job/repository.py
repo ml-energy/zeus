@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import joinedload
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
-from zeus.optimizer.batch_size.server.database.schema import Job
+from zeus.optimizer.batch_size.server.database.schema import JobTable
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOValueError,
 )
@@ -31,7 +31,7 @@ class JobStateRepository(DatabaseRepository):
     def __init__(self, session: AsyncSession):
         """Set db session and intialize job. We are working with only one job per session."""
         super().__init__(session)
-        self.fetched_job: Job | None = None
+        self.fetched_job: JobTable | None = None
 
     async def get_job(self, job_id: UUID) -> JobState | None:
         """Get job State, which includes jobSpec + batch_sizes(list[int]), without specific states of each batch_size.
@@ -43,7 +43,9 @@ class JobStateRepository(DatabaseRepository):
             set fetched_job and return `JobState` if we found a job, unless return None.
         """
         stmt = (
-            select(Job).where(Job.job_id == job_id).options(joinedload(Job.batch_sizes))
+            select(JobTable)
+            .where(JobTable.job_id == job_id)
+            .options(joinedload(JobTable.batch_sizes))
         )
         job = await self.session.scalar(stmt)
 

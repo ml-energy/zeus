@@ -11,7 +11,7 @@ from pydantic.class_validators import root_validator, validator
 from pydantic.fields import Field
 from pydantic.main import BaseModel
 from zeus.optimizer.batch_size.common import JobConfig
-from zeus.optimizer.batch_size.server.database.schema import BatchSize, Job
+from zeus.optimizer.batch_size.server.database.schema import BatchSizeTable, JobTable
 from zeus.optimizer.batch_size.server.job.models import Stage
 
 
@@ -150,14 +150,14 @@ class CreateJob(JobConfig):
         d["min_batch_size"] = js.default_batch_size
         return CreateJob.parse_obj(d)
 
-    def to_orm(self) -> Job:
+    def to_orm(self) -> JobTable:
         """Convert pydantic model `CreateJob` to ORM object Job."""
         d = self.dict()
-        job = Job()
+        job = JobTable()
         for k, v in d.items():
             if k != "batch_sizes":
                 setattr(job, k, v)
         job.batch_sizes = [
-            BatchSize(job_id=self.job_id, batch_size=bs) for bs in self.batch_sizes
+            BatchSizeTable(job_id=self.job_id, batch_size=bs) for bs in self.batch_sizes
         ]
         return job

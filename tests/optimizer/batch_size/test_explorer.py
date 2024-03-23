@@ -1,78 +1,19 @@
-import asyncio
+from copy import deepcopy
 import logging
 import re
 import uuid
-from typing import AsyncIterator
 
 import pytest
 from zeus.optimizer.batch_size.common import TrainingResult
-from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession
-from zeus.optimizer.batch_size.server.database.db_connection import (
-    DatabaseSessionManager,
-    get_db_session,
-)
-from zeus.optimizer.batch_size.server.database.schema import Base
-from zeus.optimizer.batch_size.server.router import app
-
-fake_job = {
-    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    "seed": 1,
-    "eta_knob": 0.5,
-    "beta_knob": -1,
-    "target_metric": 0.5,
-    "high_is_better_metric": True,
-    "max_epochs": 100,
-    "num_pruning_rounds": 2,
-    "window_size": 0,
-    "mab_prior_mean": 0,
-    "mab_prior_precision": 0,
-    "mab_seed": 123456,
-    "mab_num_exploration": 2,
-    "max_power": 3000,
-    "number_of_gpus": 4,
-    "gpu_model": "A100",
-}
-
-sessionmanager = DatabaseSessionManager("sqlite+aiosqlite:///test.db", {"echo": False})
-
-
-async def override_db_session() -> AsyncIterator[AsyncSession]:
-    async with sessionmanager.session() as session:
-        yield session
-
-
-app.dependency_overrides[get_db_session] = override_db_session
-
-
-async def create():
-    print("Create tables")
-    async with sessionmanager._engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-
-async def clean():
-    print("Clean")
-    async with sessionmanager._engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def database_setup():
+def logger_setup():
     logger = logging.getLogger(
         "zeus.optimizer.batch_size.server.mab"
     )  # for testing, propagate the log to the root logger so that caplog can capture
     logger.propagate = True
-
-    asyncio.run(clean())
-    asyncio.run(create())
     yield
-
-
-@pytest.fixture
-def client():
-    with TestClient(app=app) as c:
-        yield c
 
 
 @pytest.mark.usefixtures("client")
@@ -83,10 +24,10 @@ class TestPruningExploreManager:
     batch_sizes: list[int] = [8, 16, 32, 64, 128, 256]
 
     def exploration_to_training_result(
-        self, exploration: tuple[int, float, bool]
+        self, exploration: tuple[int, float, bool], job_id: uuid.UUID
     ) -> TrainingResult:
         return TrainingResult(
-            job_id=fake_job["job_id"],
+            job_id=job_id,
             batch_size=exploration[0],
             time=2 * (exploration[1] - 1),
             energy=2,
@@ -98,6 +39,8 @@ class TestPruningExploreManager:
     # 0.5 * energy + (1 - eta_knob) * max_power * time
     def register_job_with_default_bs(self, client, default_bs: int) -> str:
         job_id = str(uuid.uuid4())
+        fake_job = deepcopy(pytest.fake_job_config)
+        fake_job["beta_knob"] = None
         fake_job["job_id"] = job_id
         fake_job["batch_sizes"] = self.batch_sizes
         fake_job["default_batch_size"] = default_bs
@@ -118,7 +61,7 @@ class TestPruningExploreManager:
         """Drive the pruning explore manager and check results."""
         caplog.set_level(logging.INFO)
         for exp in exploration:
-            res = self.exploration_to_training_result(exp)
+            res = self.exploration_to_training_result(exp, job_id)
             response = client.get(
                 "/jobs/batch_size",
                 params={"job_id": job_id},

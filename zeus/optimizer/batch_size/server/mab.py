@@ -7,16 +7,16 @@ from uuid import UUID
 import numpy as np
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
-    ExplorationStateModel,
-    GaussianTsArmStateModel,
-    MeasurementOfBs,
+    ExplorationState,
+    GaussianTsArmState,
+    Measurement,
 )
 from zeus.optimizer.batch_size.server.database.schema import State
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
 from zeus.optimizer.batch_size.server.job.commands import UpdateJobStage
 from zeus.optimizer.batch_size.server.job.models import JobState, Stage
 from zeus.optimizer.batch_size.server.services.commands import (
-    CompletedExplorations,
+    ConstructMAB,
     GetNormal,
     GetRandomChoices,
 )
@@ -45,7 +45,7 @@ class GaussianTS:
         prior_mean: float,
         prior_precision: float,
         rewards: np.ndarray,
-    ) -> GaussianTsArmStateModel:
+    ) -> GaussianTsArmState:
         """Update the parameter distribution for one arm.
 
         Reference: <https://en.wikipedia.org/wiki/Conjugate_prior>
@@ -81,7 +81,7 @@ class GaussianTS:
             new_mean = (prec * mean + reward_prec * rewards.sum()) / new_prec
 
         # Updated state.
-        return GaussianTsArmStateModel(
+        return GaussianTsArmState(
             job_id=bs_base.job_id,
             batch_size=bs_base.batch_size,
             param_mean=new_mean,
@@ -95,7 +95,7 @@ class GaussianTS:
         job_id: UUID,
         prior_precision: float,
         num_exploration: int,
-        arms: list[GaussianTsArmStateModel],
+        arms: list[GaussianTsArmState],
     ) -> int:
         """Return the arm with the largest sampled expected reward.
 
@@ -154,14 +154,12 @@ class GaussianTS:
             )
 
         bs = max(expectations, key=expectations.get)
-        logger.info(
-            "%s in Thompson Sampling stage -> \033[31mBS = %d\033[0m", job_id, bs
-        )
+        logger.info("%s in Thompson Sampling stage -> BS = %d", job_id, bs)
         return bs
 
     async def construct_mab(
-        self, job: JobState, evidence: CompletedExplorations
-    ) -> list[GaussianTsArmStateModel]:
+        self, job: JobState, evidence: ConstructMAB
+    ) -> list[GaussianTsArmState]:
         """Construct arms and initialize them.
 
         Args:
@@ -175,10 +173,8 @@ class GaussianTS:
             `ValueError`: If exploration states is invalid (ex. number of pruning rounds doesn't corresponds)
             `ZeusBSOValueError`: No converged batch sizes from pruning stage.
         """
-        evidence.validate_exp_rounds(job.num_pruning_rounds)
-
         # list of converged batch sizes from last pruning rounds
-        good_bs: list[ExplorationStateModel] = []
+        good_bs: list[ExplorationState] = []
 
         for _, exps_per_bs in evidence.explorations_per_bs.items():
             for exp in exps_per_bs.explorations:
@@ -198,7 +194,7 @@ class GaussianTS:
             str([exp.batch_size for exp in good_bs]),
         )
 
-        new_arms: list[GaussianTsArmStateModel] = []
+        new_arms: list[GaussianTsArmState] = []
 
         # Fit the arm for each good batch size.
         for _, exp in enumerate(good_bs):
@@ -232,9 +228,7 @@ class GaussianTS:
         )
         return new_arms
 
-    async def report(
-        self, job: JobState, current_meausurement: MeasurementOfBs
-    ) -> None:
+    async def report(self, job: JobState, current_meausurement: Measurement) -> None:
         """Based on the measurement, update the arm state.
 
         Args:

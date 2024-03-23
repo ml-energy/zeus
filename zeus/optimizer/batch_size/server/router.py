@@ -1,5 +1,7 @@
 """Zeus batch size optimizer server FAST API router."""
 
+import asyncio
+from collections import defaultdict
 import logging
 from uuid import UUID
 
@@ -22,6 +24,10 @@ from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.logging import get_logger
 
 app = FastAPI()
+# Global variable across different requests: https://github.com/tiangolo/fastapi/issues/592
+# We lock the job before we make any modification to prevent any concurrent bugs.
+app.job_locks = defaultdict(asyncio.Lock)
+
 logger = get_logger(__name__)
 logging.basicConfig(level=logging.getLevelName(settings.log_level))
 
@@ -81,24 +87,25 @@ async def predict(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> int:
     """Endpoint for users to receive a batch size."""
-    optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
-    try:
-        res = await optimizer.predict(job_id)
-        await db_session.commit()
-        return res
-    except ZeusBSOServerBaseError as err:
-        await db_session.rollback()
-        return JSONResponse(
-            status_code=err.status_code,
-            content={"message": err.message},
-        )
-    except Exception as err:
-        await db_session.rollback()
-        logger.error("Commit Failed: %s", str(err))
-        return JSONResponse(
-            status_code=500,
-            content={"message": str(err)},
-        )
+    async with app.job_locks[job_id]:
+        optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
+        try:
+            res = await optimizer.predict(job_id)
+            await db_session.commit()
+            return res
+        except ZeusBSOServerBaseError as err:
+            await db_session.rollback()
+            return JSONResponse(
+                status_code=err.status_code,
+                content={"message": err.message},
+            )
+        except Exception as err:
+            await db_session.rollback()
+            logger.error("Commit Failed: %s", str(err))
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )
 
 
 @app.post(REPORT_RESULT_URL, response_model=ReportResponse)
@@ -107,21 +114,22 @@ async def report(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ReportResponse:
     """Endpoint for users to report the training result."""
-    optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
-    try:
-        res = await optimizer.report(result)
-        await db_session.commit()
-        return res
-    except ZeusBSOServerBaseError as err:
-        await db_session.rollback()
-        return JSONResponse(
-            status_code=err.status_code,
-            content={"message": err.message},
-        )
-    except Exception as err:
-        await db_session.rollback()
-        logger.error("Commit Failed: %s", str(err))
-        return JSONResponse(
-            status_code=500,
-            content={"message": str(err)},
-        )
+    async with app.job_locks[result.job_id]:
+        optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
+        try:
+            res = await optimizer.report(result)
+            await db_session.commit()
+            return res
+        except ZeusBSOServerBaseError as err:
+            await db_session.rollback()
+            return JSONResponse(
+                status_code=err.status_code,
+                content={"message": err.message},
+            )
+        except Exception as err:
+            await db_session.rollback()
+            logger.error("Commit Failed: %s", str(err))
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )

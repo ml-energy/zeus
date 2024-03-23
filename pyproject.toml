@@ -40,7 +40,8 @@ Documentation = "https://ml.energy/zeus"
 # One day FastAPI will drop support for Pydantic V1. Then fastapi has to be pinned as well.
 perseus = ["fastapi[all]", "pydantic<2", "lowtime", "aiofiles", "httpx"]
 bso = ["pydantic<2", "httpx"]
-bso-server = ["fastapi[all]","sqlalchemy","pydantic<2","alembic", "asyncpg"]
+bso-server = ["fastapi[all]","sqlalchemy","pydantic<2"]
+migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv", "cryptography"]
 lint = ["ruff", "black==22.6.0"]
 test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0"]
 dev = ["zeus-ml[perseus,lint,test]", "greenlet"]
@@ -84,11 +85,8 @@ pydocstyle.convention = "google"
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
 "zeus/util/pydantic_v1.py" = ["F403"]
-"zeus/optimizer/batch_size/server/batch_size_state/commands.py" = ["N805"]
-"zeus/optimizer/batch_size/server/batch_size_state/models.py" = ["N805"]
-"zeus/optimizer/batch_size/server/job/commands.py" = ["N805"]
-"zeus/optimizer/batch_size/server/job/models.py" = ["N805"]
-"zeus/optimizer/batch_size/server/services/commands.py" = ["N805"]
+"**/commands.py" = ["N805"]
+"**/models.py" = ["N805"]
 "zeus/optimizer/batch_size/server/router.py" = ["B008"]
 "zeus/optimizer/batch_size/common.py" = ["N805"]
 

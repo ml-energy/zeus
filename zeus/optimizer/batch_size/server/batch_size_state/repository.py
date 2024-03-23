@@ -14,16 +14,16 @@ from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
     ExplorationsPerBs,
     ExplorationsPerJob,
-    ExplorationStateModel,
-    GaussianTsArmStateModel,
-    MeasurementOfBs,
+    ExplorationState,
+    GaussianTsArmState,
+    Measurement,
     MeasurementsPerBs,
 )
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import (
-    ExplorationState,
-    GaussianTsArmState,
-    Measurement,
+    ExplorationStateTable,
+    GaussianTsArmStateTable,
+    MeasurementTable,
 )
 
 
@@ -43,14 +43,14 @@ class BatchSizeStateRepository(DatabaseRepository):
             MeasurementsPerBs: Measurements for the given batch size.
         """
         stmt = (
-            select(Measurement)
+            select(MeasurementTable)
             .where(
                 and_(
-                    Measurement.job_id == batch_size.job_id,
-                    Measurement.batch_size == batch_size.batch_size,
+                    MeasurementTable.job_id == batch_size.job_id,
+                    MeasurementTable.batch_size == batch_size.batch_size,
                 )
             )
-            .order_by(Measurement.timestamp.desc())
+            .order_by(MeasurementTable.timestamp.desc())
         )
         if window_size > 0:
             stmt = stmt.limit(window_size)
@@ -59,7 +59,7 @@ class BatchSizeStateRepository(DatabaseRepository):
         return MeasurementsPerBs(
             job_id=batch_size.job_id,
             batch_size=batch_size.batch_size,
-            measurements=[MeasurementOfBs.from_orm(m) for m in res],
+            measurements=[Measurement.from_orm(m) for m in res],
         )
 
     async def get_explorations_of_job(self, job_id: UUID) -> ExplorationsPerJob:
@@ -72,21 +72,21 @@ class BatchSizeStateRepository(DatabaseRepository):
             ExplorationsPerJob: Explorations for the given job.
         """
         stmt = (
-            select(ExplorationState)
+            select(ExplorationStateTable)
             .where(
                 and_(
-                    ExplorationState.job_id == job_id,
+                    ExplorationStateTable.job_id == job_id,
                 )
             )
-            .order_by(ExplorationState.batch_size.asc())
+            .order_by(ExplorationStateTable.batch_size.asc())
         )
         res = (await self.session.scalars(stmt)).all()
 
         explorations_per_bs: dict[int, ExplorationsPerBs] = {}
-        exps: list[ExplorationStateModel] = []
+        exps: list[ExplorationState] = []
         for exp in res:
             if len(exps) == 0 or exps[0].batch_size == exp.batch_size:
-                exps.append(ExplorationStateModel.from_orm(exp))
+                exps.append(ExplorationState.from_orm(exp))
             else:
                 explorations_per_bs[exps[0].batch_size] = ExplorationsPerBs(
                     job_id=job_id,
@@ -94,7 +94,7 @@ class BatchSizeStateRepository(DatabaseRepository):
                     explorations=deepcopy(exps),
                 )
 
-                exps = [ExplorationStateModel.from_orm(exp)]
+                exps = [ExplorationState.from_orm(exp)]
         if len(exps) != 0:
             explorations_per_bs[exps[0].batch_size] = ExplorationsPerBs(
                 job_id=job_id,
@@ -106,7 +106,7 @@ class BatchSizeStateRepository(DatabaseRepository):
             job_id=job_id, explorations_per_bs=explorations_per_bs
         )
 
-    async def get_arms(self, job_id: UUID) -> list[GaussianTsArmStateModel]:
+    async def get_arms(self, job_id: UUID) -> list[GaussianTsArmState]:
         """Retrieve Gaussian Thompson Sampling arms for a given job.
 
         Args:
@@ -116,11 +116,13 @@ class BatchSizeStateRepository(DatabaseRepository):
             List[GaussianTsArmStateModel]: List of Gaussian Thompson Sampling arms. These arms are all "good" arms (converged during pruning stage).
             Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
         """
-        stmt = select(GaussianTsArmState).where(GaussianTsArmState.job_id == job_id)
+        stmt = select(GaussianTsArmStateTable).where(
+            GaussianTsArmStateTable.job_id == job_id
+        )
         res = (await self.session.scalars(stmt)).all()
-        return [GaussianTsArmStateModel.from_orm(arm) for arm in res]
+        return [GaussianTsArmState.from_orm(arm) for arm in res]
 
-    async def get_arm(self, bs: BatchSizeBase) -> GaussianTsArmStateModel | None:
+    async def get_arm(self, bs: BatchSizeBase) -> GaussianTsArmState | None:
         """Retrieve Gaussian Thompson Sampling arm for a given job id and batch size.
 
         Args:
@@ -130,16 +132,16 @@ class BatchSizeStateRepository(DatabaseRepository):
             Optional[GaussianTsArmStateModel]: Gaussian Thompson Sampling arm if found, else None.
             Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
         """
-        stmt = select(GaussianTsArmState).where(
+        stmt = select(GaussianTsArmStateTable).where(
             and_(
-                GaussianTsArmState.job_id == bs.job_id,
-                GaussianTsArmState.batch_size == bs.batch_size,
+                GaussianTsArmStateTable.job_id == bs.job_id,
+                GaussianTsArmStateTable.batch_size == bs.batch_size,
             )
         )
         arm = await self.session.scalar(stmt)
         if arm is None:
             return None
-        return GaussianTsArmStateModel.from_orm(arm)
+        return GaussianTsArmState.from_orm(arm)
 
     def add_exploration(self, exploration: CreateExploration) -> None:
         """Add an exploration to the data base.
@@ -159,19 +161,19 @@ class BatchSizeStateRepository(DatabaseRepository):
             Refer to `UpdateExploration`[zeus.optimizer.batch_size.server.batch_size_state.models.UpdateExploration] for attributes.
         """
         stmt = (
-            update(ExplorationState)
+            update(ExplorationStateTable)
             .where(
                 and_(
-                    ExplorationState.job_id == updated_exp.job_id,
-                    ExplorationState.batch_size == updated_exp.batch_size,
-                    ExplorationState.round_number == updated_exp.round_number,
+                    ExplorationStateTable.job_id == updated_exp.job_id,
+                    ExplorationStateTable.batch_size == updated_exp.batch_size,
+                    ExplorationStateTable.round_number == updated_exp.round_number,
                 )
             )
             .values(state=updated_exp.state, cost=updated_exp.cost)
         )
         await self.session.execute(stmt)
 
-    def create_arms(self, new_arms: list[GaussianTsArmStateModel]) -> None:
+    def create_arms(self, new_arms: list[GaussianTsArmState]) -> None:
         """Create Gaussian Thompson Sampling arms in the database.
 
         Args:
@@ -180,9 +182,7 @@ class BatchSizeStateRepository(DatabaseRepository):
         """
         self.session.add_all([arm.to_orm() for arm in new_arms])
 
-    async def update_arm_state(
-        self, updated_mab_state: GaussianTsArmStateModel
-    ) -> None:
+    async def update_arm_state(self, updated_mab_state: GaussianTsArmState) -> None:
         """Update Gaussian Thompson Sampling arm state in db.
 
         Args:
@@ -190,11 +190,11 @@ class BatchSizeStateRepository(DatabaseRepository):
             Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
         """
         stmt = (
-            update(GaussianTsArmState)
+            update(GaussianTsArmStateTable)
             .where(
                 and_(
-                    GaussianTsArmState.job_id == updated_mab_state.job_id,
-                    GaussianTsArmState.batch_size == updated_mab_state.batch_size,
+                    GaussianTsArmStateTable.job_id == updated_mab_state.job_id,
+                    GaussianTsArmStateTable.batch_size == updated_mab_state.batch_size,
                 )
             )
             .values(
@@ -217,24 +217,24 @@ class BatchSizeStateRepository(DatabaseRepository):
             Refer to `ExplorationsPerBs`[zeus.optimizer.batch_size.server.batch_size_state.models.ExplorationsPerBs] for attributes.
         """
         stmt = (
-            select(ExplorationState)
+            select(ExplorationStateTable)
             .where(
                 and_(
-                    ExplorationState.job_id == bs.job_id,
-                    ExplorationState.batch_size == bs.batch_size,
+                    ExplorationStateTable.job_id == bs.job_id,
+                    ExplorationStateTable.batch_size == bs.batch_size,
                 )
             )
-            .order_by(ExplorationState.round_number.desc())
+            .order_by(ExplorationStateTable.round_number.desc())
         )
 
         explorations = (await self.session.scalars(stmt)).all()
         return ExplorationsPerBs(
             job_id=bs.job_id,
             batch_size=bs.batch_size,
-            explorations=[ExplorationStateModel.from_orm(exp) for exp in explorations],
+            explorations=[ExplorationState.from_orm(exp) for exp in explorations],
         )
 
-    def add_measurement(self, measurement: MeasurementOfBs) -> None:
+    def add_measurement(self, measurement: Measurement) -> None:
         """Add a measurement to db.
 
         Args:

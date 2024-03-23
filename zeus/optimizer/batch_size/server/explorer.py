@@ -11,7 +11,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.commands import (
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
     ExplorationsPerJob,
-    MeasurementOfBs,
+    Measurement,
 )
 from zeus.optimizer.batch_size.server.database.schema import State
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
@@ -61,7 +61,7 @@ class PruningExploreManager:
 
         # Get which round we are in now by finding the max round: it is possible that exploring current round is over
         # We can detect this case by iterating batch_sizes and check all possible batch sizes already have that round number (will be done after)
-        for _, exps in exploration_history.explorations_per_bs.items():
+        for exps in exploration_history.explorations_per_bs.values():
             latest_round_of_bs = max(
                 exps.explorations, key=lambda exp: exp.round_number, default=None
             )
@@ -174,7 +174,7 @@ class PruningExploreManager:
 
     async def report_batch_size_result(
         self,
-        current_meausurement: MeasurementOfBs,
+        current_meausurement: Measurement,
         cost: float,
     ) -> None:
         """Report whether the previous batch size reached the target metric.

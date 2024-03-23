@@ -18,8 +18,8 @@ from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
     ExplorationsPerBs,
     ExplorationsPerJob,
-    GaussianTsArmStateModel,
-    MeasurementOfBs,
+    GaussianTsArmState,
+    Measurement,
     MeasurementsPerBs,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.repository import (
@@ -42,7 +42,7 @@ from zeus.optimizer.batch_size.server.services.commands import (
     GetNormal,
     GetRandomChoices,
 )
-from zeus.util import zeus_cost
+from zeus.util.metric import zeus_cost
 
 
 class ZeusService:
@@ -57,7 +57,7 @@ class ZeusService:
         self.bs_repo = BatchSizeStateRepository(db_session)
         self.job_repo = JobStateRepository(db_session)
 
-    async def get_arms(self, job_id: UUID) -> list[GaussianTsArmStateModel]:
+    async def get_arms(self, job_id: UUID) -> list[GaussianTsArmState]:
         """Get GaussianTs arm states for all arms(job_id, batch size).
 
         Args:
@@ -68,7 +68,7 @@ class ZeusService:
         """
         return await self.bs_repo.get_arms(job_id)
 
-    async def get_arm(self, bs: BatchSizeBase) -> GaussianTsArmStateModel | None:
+    async def get_arm(self, bs: BatchSizeBase) -> GaussianTsArmState | None:
         """Get arm state for one arm.
 
         Args:
@@ -103,7 +103,7 @@ class ZeusService:
 
     async def update_exploration(
         self,
-        measurement: MeasurementOfBs,
+        measurement: Measurement,
         updated_exp: UpdateExploration,
     ) -> None:
         """Update exploration state.
@@ -127,8 +127,8 @@ class ZeusService:
 
     async def update_arm_state(
         self,
-        measurement: MeasurementOfBs,
-        updated_arm: GaussianTsArmStateModel,
+        measurement: Measurement,
+        updated_arm: GaussianTsArmState,
     ) -> None:
         """Update arm state.
 
@@ -149,7 +149,7 @@ class ZeusService:
         await self.bs_repo.update_arm_state(updated_arm)
         self._update_min_if_needed(measurement, job)
 
-    def report_concurrent_job(self, measurement: MeasurementOfBs) -> None:
+    def report_concurrent_job(self, measurement: Measurement) -> None:
         """Report concurrent job submission. (1) add measurement and (2) update the min training cost observed so far.
 
         Args:
@@ -206,15 +206,14 @@ class ZeusService:
                     fetched the job first.
         """
         arr = np.array(choice.choices)
-        ret = self._get_generator(choice.job_id)
-        should_update = ret[1]
-        res = ret[0].choice(arr, len(arr), replace=False)
+        rng, should_update = self._get_generator(choice.job_id)
+        res = rng.choice(arr, len(arr), replace=False)
 
         if should_update:
             # If we used the generator from database, should update the generator state after using it
             self.job_repo.update_generator_state(
                 UpdateGeneratorState(
-                    job_id=choice.job_id, state=json.dumps(ret[0].__getstate__())
+                    job_id=choice.job_id, state=json.dumps(rng.__getstate__())
                 )
             )
 
@@ -233,15 +232,14 @@ class ZeusService:
             `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
                     fetched the job first.
         """
-        ret = self._get_generator(arg.job_id)
-        res = ret[0].normal(arg.loc, arg.scale)
-        should_update = ret[1]
+        rng, should_update = self._get_generator(arg.job_id)
+        res = rng.normal(arg.loc, arg.scale)
 
         if should_update:
             # If we used the generator from database, should update the generator state after using it
             self.job_repo.update_generator_state(
                 UpdateGeneratorState(
-                    job_id=arg.job_id, state=json.dumps(ret[0].__getstate__())
+                    job_id=arg.job_id, state=json.dumps(rng.__getstate__())
                 )
             )
 
@@ -285,7 +283,7 @@ class ZeusService:
             job.window_size,
         )
 
-    def create_arms(self, new_arms: list[GaussianTsArmStateModel]) -> None:
+    def create_arms(self, new_arms: list[GaussianTsArmState]) -> None:
         """Create GuassianTs arms for the job.
 
         Args:
@@ -314,7 +312,7 @@ class ZeusService:
 
     def _update_min_if_needed(
         self,
-        measurement: MeasurementOfBs,
+        measurement: Measurement,
         job: JobState,
     ):
         """Update the min training cost and corresponding batch size based on the trianing result."""

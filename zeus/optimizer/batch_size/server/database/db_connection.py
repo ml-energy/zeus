@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from zeus.optimizer.batch_size.server.config import settings
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerRuntimeError
 
 
 class DatabaseSessionManager:
@@ -29,7 +30,7 @@ class DatabaseSessionManager:
     async def close(self):
         """Close connection."""
         if self._engine is None:
-            raise Exception("DatabaseSessionManager is not initialized")
+            raise ZeusBSOServerRuntimeError("DatabaseSessionManager is not initialized")
         await self._engine.dispose()
 
         self._engine = None
@@ -39,7 +40,7 @@ class DatabaseSessionManager:
     async def connect(self) -> AsyncIterator[AsyncConnection]:
         """Connect to db."""
         if self._engine is None:
-            raise Exception("DatabaseSessionManager is not initialized")
+            raise ZeusBSOServerRuntimeError("DatabaseSessionManager is not initialized")
 
         async with self._engine.begin() as connection:
             try:
@@ -52,14 +53,14 @@ class DatabaseSessionManager:
     async def session(self) -> AsyncIterator[AsyncSession]:
         """Get session from session maker."""
         if self._sessionmaker is None:
-            raise Exception("DatabaseSessionManager is not initialized")
+            raise ZeusBSOServerRuntimeError("DatabaseSessionManager is not initialized")
 
         session = self._sessionmaker()
         try:
             yield session
-        except Exception as err:
+        except Exception:
             await session.rollback()
-            raise err
+            raise
         finally:
             await session.close()
 

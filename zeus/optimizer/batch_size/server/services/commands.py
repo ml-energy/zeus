@@ -5,12 +5,13 @@ from uuid import UUID
 
 from pydantic import BaseModel
 from pydantic.class_validators import root_validator
+from pydantic.fields import Field
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     ExplorationsPerBs,
 )
 
 
-class CompletedExplorations(BaseModel):
+class ConstructMAB(BaseModel):
     """Pydantic model for completed explorations.
 
     Attributes:
@@ -19,33 +20,29 @@ class CompletedExplorations(BaseModel):
     """
 
     explorations_per_bs: dict[int, ExplorationsPerBs]
+    num_pruning_rounds: int = Field(gt=0)
     job_id: UUID
 
     @root_validator(skip_on_failure=True)
     def _validate(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Check the sanity of exploration_per_bs. Each exploration state should be consistent in terms of job_id and batch size."""
+        """Check the sanity of exploration_per_bs.
+
+        This function validates:
+            - Each exploration state should be consistent in terms of job_id and batch size.
+            - If there is a batch size that have more than num_pruning_rounds number of rounds.
+            - If at least one batch size has num_pruning_rounds number of rounds.
+        """
         exps: dict[int, ExplorationsPerBs] = values["explorations_per_bs"]
         job_id: UUID = values["job_id"]
+        num_pruning_rounds: int = values["num_pruning_rounds"]
 
+        any_at_num_pruning_rounds = False
         for bs, exp_list_per_bs in exps.items():
             for exp in exp_list_per_bs.explorations:
                 if bs != exp.batch_size:
                     raise ValueError("Batch size should be consistent in explorations")
                 if job_id != exp.job_id:
                     raise ValueError("Job_id should be consistent in explorations")
-
-        return values
-
-    def validate_exp_rounds(self, num_pruning_rounds: int):
-        """Validate explorations in terms of job's pruning rounds configuration.
-
-        This function validates:
-            - If there is a batch size that have more than num_pruning_rounds number of rounds.
-            - If at least one batch size has num_pruning_rounds number of rounds.
-        """
-        any_at_num_pruning_rounds = False
-        for _, exp_list_per_bs in self.explorations_per_bs.items():
-            for exp in exp_list_per_bs.explorations:
                 if exp.round_number > num_pruning_rounds:
                     raise ValueError(
                         f"Cannot have more than num_pruning_rounds({num_pruning_rounds}) of rounds"
@@ -57,6 +54,8 @@ class CompletedExplorations(BaseModel):
             raise ValueError(
                 f"At least one exploration should have {num_pruning_rounds} number of rounds"
             )
+
+        return values
 
 
 class GetRandomChoices(BaseModel):

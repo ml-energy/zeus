@@ -45,24 +45,32 @@ class BatchSizeOptimizer(Callback):
         self.cur_epoch = 0  # 0-indexed
         self.running_time = 0.0
         self.consumed_energy = 0.0
-        self.train_end = False
+        self.training_finished = False
 
         # Get max PL
         pynvml.nvmlInit()
         pls = []
+        name = ""
         for index in self.monitor.nvml_gpu_indices:
             device = pynvml.nvmlDeviceGetHandleByIndex(index)
-            # name = pynvml.nvmlDeviceGetName(device)
-            # TODO: CHECK DEVICE ALL EQUAL AND SET JOB.GPU_MODEL
+            device_name = str(pynvml.nvmlDeviceGetName(device))
+            if name == "":
+                name = device_name
+            elif name != device_name:
+                raise ZeusBSOConfigError(
+                    f"Should use the same GPUs for training: detected({name},{device_name})"
+                )
             pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
-        if not all(pls[0] == pl for pl in pls):
-            raise ZeusBSOConfigError("Power limits ranges are not uniform across GPUs.")
+
+        if name == "":
+            raise ZeusBSOConfigError("No GPUs detected.")
 
         # set gpu configurations(max_power, number of gpus, and gpu model)
         self.job = JobConfig(
             **job.dict(),
             max_power=(pls[0][1] // 1000) * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
+            gpu_model=name,
         )
 
         # Track the batch size of current job
@@ -83,7 +91,7 @@ class BatchSizeOptimizer(Callback):
         Raises:
             `ZeusBSORuntimError`: if the batch size we receive is invalid
         """
-        if self.train_end is True:
+        if self.training_finished:
             # If train is already over, should not re-send the request to the server. Typically, re-launch the script for another training
             return self.current_batch_size
 
@@ -106,7 +114,7 @@ class BatchSizeOptimizer(Callback):
 
     def on_train_begin(self) -> None:
         """Start the monitor window and mark training is started."""
-        self.train_end = False
+        self.training_finished = False
         self.monitor.begin_window("BatciSizeOptimizerClient")
 
     def on_evaluate(
@@ -135,7 +143,7 @@ class BatchSizeOptimizer(Callback):
                 "Call get_batch_size to set the batch size first"
             )
 
-        if self.train_end is True:
+        if self.training_finished:
             return
 
         self.cur_epoch += 1
@@ -167,7 +175,7 @@ class BatchSizeOptimizer(Callback):
             self.monitor.begin_window("BatciSizeOptimizerClient")
         else:
             # Train is over. If not converged, raise an error
-            self.train_end = True
+            self.training_finished = True
             if not parsed_response.converged:
                 raise ZeusBSOTrainFailError(
                     f"Train failed: {parsed_response.message}. This batch size will not be selected again. Please re-launch the training"

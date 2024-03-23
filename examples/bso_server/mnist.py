@@ -30,7 +30,7 @@ job = {
     "eta_knob": 0.5,
     "beta_knob": 2,
     "target_metric": 0.5,
-    "high_is_better_metric": True,
+    "higher_is_better_metric": True,
     "max_epochs": 100,
     "num_pruning_rounds": 2,
     "window_size": 5,
@@ -46,7 +46,11 @@ plo = GlobalPowerLimitOptimizer(monitor)
 bso = BatchSizeOptimizer(
     monitor=monitor,
     server_url="http://127.0.0.1:8000",
-    job=JobSpec.parse_obj(job),
+    job=JobSpec(
+        job_id="3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        default_batch_size=256,
+        batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
+    ),
 )
 
 
