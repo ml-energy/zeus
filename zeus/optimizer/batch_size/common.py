@@ -37,6 +37,7 @@ class JobSpec(BaseModel):
     """
 
     job_id: UUID
+    # job_id_prefix: str = Field(max_length=100)
     batch_sizes: list[int]
     default_batch_size: int = Field(gt=0)
     eta_knob: float = 0.5
@@ -74,6 +75,14 @@ class JobSpec(BaseModel):
             raise ValueError(
                 f"Invalid beta_knob({v}). To disable early stop, set beta_knob = None to disable or positive value."
             )
+
+    # @root_validator(skip_on_failure=True)
+    # def _check_job_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    #     bs = values["job_id"]
+    #     bss = values["job_id_prefix"]
+    #     if bs not in bss:
+    #         raise ValueError(f"Default BS({bs}) not in batch_sizes({bss}).")
+    #     return values
 
     @root_validator(skip_on_failure=True)
     def _check_default_batch_size(cls, values: Dict[str, Any]) -> Dict[str, Any]:
