@@ -127,7 +127,7 @@ class ZeusMonitor:
         self.approx_instant_energy = approx_instant_energy
 
         # Get gpus
-        self.gpus = get_gpus()
+        self.gpus = get_gpus(gpu_indices)
 
         # Get GPU indices:
         # if gpu_indices is not None, we can directly use these indices in the gpu class, 

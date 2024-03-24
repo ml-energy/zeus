@@ -24,6 +24,7 @@ import pytest
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.util.testing import ReplayZeusMonitor
+import zeus.device.gpu
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -36,6 +37,12 @@ ARCHS = [
     pynvml.NVML_DEVICE_ARCH_VOLTA,
     pynvml.NVML_DEVICE_ARCH_AMPERE,
 ]
+
+# reset gpus to None after every unit test
+@pytest.fixture(autouse=True, scope="function")
+def reset_gpus() -> None:
+    print("Resetting _gpus to None")
+    zeus.device.gpu._gpus = None
 
 
 @pytest.fixture

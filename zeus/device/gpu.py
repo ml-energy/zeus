@@ -1,29 +1,4 @@
-# Abstracting away the GPU
-
-"""
-- Changing PL or freq requires SYS_ADMIN, and in production clusters, you can't give a ranndom application SYS_ADMIN
-- Create a local server process w/ SYS_ADMIN, and have the application talk to the server. Only SYS_ADMIN-required methods
-
-First step: Abstracting away the GPU
-- Current state: Call NVML directly (won't work in production)
-
-Usages of pynvml:
-pynvml.nvmlInit()
-handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-minmax = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
-pynvml.nvmlShutdown()
-pynvml.nvmlDeviceGetCount()
-pynvml.nvmlDeviceSetPowerManagementLimit(
-pynvml.nvmlDeviceSetPersistenceMode(handle, pynvml.NVML_FEATURE_ENABLED)
-pynvml.nvmlDeviceGetHandleByIndex(index)
-pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq)
-pynvml.nvmlDeviceGetSupportedMemoryClocks(handle)
-
-with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
-  87:             pynvml.nvmlDeviceResetMemoryLockedClocks(handle)
-  88:         pynvml.nvmlDeviceResetGpuLockedClocks(handle)
-
-"""
+"""GPU management module for Zeus."""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -34,12 +9,17 @@ import os
 # from exception import ZeusBaseGPUError
 if TYPE_CHECKING:
     import pynvml
+    import amdsmi
 
-import pynvml
+import sys
+
+UNIT_TESTING = 'pytest' in sys.modules
+if UNIT_TESTING:
+    import pynvml
+
+# import pynvml
 
 from zeus.util import cuda_sync
-
-# import amdsmi
 
 class GPU(abc.ABC):
     def __init__(self, gpu_index: int) -> None:
@@ -103,21 +83,9 @@ class NVIDIAGPU(GPU):
         return pynvml.nvmlDeviceGetTotalEnergyConsumption(self.handle)
 
 
-#unpriv nvidia privel
 class UnprivilegedNVIDIAGPU(NVIDIAGPU):
-    def __init__(self, gpu_index: int, server_address: str) -> None:
+    def __init__(self, gpu_index: int) -> None:
         super().__init__(gpu_index)
-        self.server_address = server_address
-
-    def set_power_limit(self, value: int) -> None:
-        # Call server since SYS_ADMIN is required
-        pass
-    def set_freq_mem(self, value: int) -> None:
-        # Call server since SYS_ADMIN is required
-        pass
-    def set_freq_core(self, value: int) -> None:
-        # Call server since SYS_ADMIN is required
-        pass
 
 
 """ AMD GPUs """
@@ -256,37 +224,9 @@ class GPUs(abc.ABC):
     def sync(self, index: int) -> None:
         cuda_sync(index) # cuda_sync takes in re-indexed cuda index, not nvml index
 
-
-"""
-
-should NVIDIAGPUs track all GPUs or only the ones visible to CUDA? I don't see the need
-to track all GPUs, but maybe there are some edge cases where it's useful.
-
-in the code there is a lot of self.gpu_handles. Should be removed and abstracted away?
-
-
-no throw destructor?
-
-different subclasses for different types of GPUs? ex. NVIDIA volta vs ampere?
-
-what does 137-140 in optimizer.py do?
-
-GPU manager classes have the same impl, except for the init and shutdown methods.
-
-why is with contextlib.suppress(pynvml.NVMLError_NotSupported):
-            pynvml.nvmlDeviceSetMemoryLockedClocks(handle, minMemClockMHz, maxMemClockMHz)
-the with needed? something similar needed for amd?
-
-
-
-style for methods? snake case
-
-__len__ -> returns number of gpus
-"""
-
 # NVIDIA GPUs
 class NVIDIAGPUs(GPUs):
-    def init_GPUs(self) -> None:
+    def init_GPUs(self, gpus_to_track: list[int] = None) -> None:
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
@@ -294,11 +234,17 @@ class NVIDIAGPUs(GPUs):
             self.visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
 
         # initialize all GPUs
-        self.gpus = [NVIDIAGPU(index) for index in self.visible_indices]
+        self.gpus = {}
+        if gpus_to_track is not None:
+            for gpu_num in gpus_to_track:
+                self.gpus[gpu_num] = NVIDIAGPU(self.visible_indices[gpu_num])
+        else:
+            for index, gpu_num in enumerate(self.visible_indices):
+                self.gpus[index] = NVIDIAGPU(gpu_num)
 
-    def __init__(self, ensure_homogeneuous: bool = True) -> None:
+    def __init__(self, gpus_to_track: list[int] = None, ensure_homogeneuous: bool = True) -> None:
         pynvml.nvmlInit()
-        self.init_GPUs()
+        self.init_GPUs(gpus_to_track)
 
     def __del__(self) -> None:
         try:
@@ -327,17 +273,40 @@ class AMDGPUs(GPUs):
         amdsmi.amdsmi_shut_down()
 
 
-# Ensure only one instance of GPUs is created
-_gpus = None
-def get_gpus() -> GPUs:
-    # try to import pynvml and pynvml.nvmlInit()
-    # if it fails, try to import amdsmi and amdsmi.amdsmi_init()
-    # if it fails, return None
-    global _gpus
-    if _gpus is None:
-        _gpus = NVIDIAGPUs()
-    return _gpus
+def get_gpus(gpus_to_track: list[int] = None) -> GPUs:
 
+    """
+    Initialize and return a singleton GPU monitoring object for NVIDIA or AMD GPUs.
+
+    This function attempts to initialize GPU monitoring using the pynvml library for NVIDIA GPUs
+    first. If pynvml is not available or fails to initialize, it then tries to use the amdsmi 
+    library for AMD GPUs. If both attempts fail, it raises a ZeusErrorInit exception.
+    
+    This function supports tracking specific GPUs by passing their indices in `gpus_to_track`. 
+
+    Args:
+        gpus_to_track (Optional[list[int]]): A list of integers representing the GPU indices
+                                             to track. If None, all GPUs are tracked.
+
+    Returns:
+        GPUs: An instance of NVIDIAGPUs or AMDGPUs depending on the system's GPU.
+    """
+    global _gpus
+    if _gpus is not None:
+        return _gpus
+
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        _gpus = NVIDIAGPUs(gpus_to_track)
+    except ImportError:
+        try:
+            import amdsmi
+            amdsmi.amdsmi_init()
+            _gpus = AMDGPUs()
+        except ImportError:
+            return None
+    return _gpus
 
 """ EXCEPTION WRAPPERS """
 

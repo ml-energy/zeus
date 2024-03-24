@@ -272,7 +272,7 @@ class GlobalPowerLimitOptimizer(Callback):
         # Assert that supported power limits ranges are uniform across GPUs.
         gpus = get_gpus()
         pls = []
-        for index in monitor.nvml_gpu_indices:
+        for index in monitor.gpu_indices:
             pls.append(gpus.getPowerManagementLimitConstraints(index))
         if not all(pls[0] == pl for pl in pls):
             raise ValueError("Power limits ranges are not uniform across GPUs.")
@@ -282,7 +282,7 @@ class GlobalPowerLimitOptimizer(Callback):
 
         # Turn on persistence mode and set to the highest power limit.
         try:
-            for index in monitor.nvml_gpu_indices:
+            for index in monitor.gpu_indices:
                 gpus.setPersistenceMode(index)
         except pynvml.NVMLError_NoPermission:  # type: ignore #TODO: create generic zeus exception
             raise RuntimeError(
@@ -446,7 +446,7 @@ class GlobalPowerLimitOptimizer(Callback):
         self.logger.info("Setting power limit to %d W.", power_limit // 1000)
         if self.current_power_limit == power_limit:
             return
-        for index in self.monitor.nvml_gpu_indices:
+        for index in self.monitor.gpu_indices:
             gpus.setPowerManagementLimit(index, power_limit)
         self.current_power_limit = power_limit
 
