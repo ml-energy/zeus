@@ -1,8 +1,8 @@
 """Zeus batch size optimizer server FAST API router."""
 
 import asyncio
-from collections import defaultdict
 import logging
+from collections import defaultdict
 
 from fastapi import Depends, FastAPI, Response, status
 from fastapi.responses import JSONResponse

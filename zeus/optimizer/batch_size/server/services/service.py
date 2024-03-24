@@ -9,7 +9,6 @@ from typing import Any, Tuple
 import numpy as np
 from numpy.random import Generator as np_Generator
 from sqlalchemy.ext.asyncio.session import AsyncSession
-
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateConcurrentTrial,
     CreateExplorationTrial,

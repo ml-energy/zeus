@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import defaultdict
 
 from sqlalchemy import and_, select
-
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateTrial,
@@ -27,9 +26,7 @@ from zeus.optimizer.batch_size.server.database.schema import (
     TrialTable,
     TrialType,
 )
-from zeus.optimizer.batch_size.server.exceptions import (
-    ZeusBSOValueError,
-)
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
 from zeus.util.logging import get_logger
 
 logger = get_logger(__name__)

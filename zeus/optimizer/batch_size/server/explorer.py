@@ -9,9 +9,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.commands import (
 )
 from zeus.optimizer.batch_size.server.batch_size_state.models import ExplorationsPerJob
 from zeus.optimizer.batch_size.server.database.schema import TrialStatus
-from zeus.optimizer.batch_size.server.exceptions import (
-    ZeusBSOServerRuntimeError,
-)
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerRuntimeError
 from zeus.optimizer.batch_size.server.job.models import JobState
 from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.logging import get_logger

@@ -21,7 +21,6 @@ from zeus.optimizer.batch_size.server.job.commands import (
 from zeus.optimizer.batch_size.server.job.models import JobState
 from zeus.util.logging import get_logger
 
-
 logger = get_logger(__name__)
 
 

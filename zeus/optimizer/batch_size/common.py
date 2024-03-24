@@ -8,7 +8,6 @@ from uuid import uuid4
 from pydantic import BaseModel, root_validator, validator
 from pydantic.fields import Field
 
-
 REGISTER_JOB_URL = "/jobs"
 GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
 REPORT_RESULT_URL = "/jobs/report"

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import httpx
 import pynvml
-
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer.batch_size.common import (

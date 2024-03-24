@@ -1,7 +1,7 @@
 """App setting is read here."""
 
-from pydantic.env_settings import BaseSettings
 from dotenv import find_dotenv
+from pydantic.env_settings import BaseSettings
 
 
 class ZeusBsoSettings(BaseSettings):

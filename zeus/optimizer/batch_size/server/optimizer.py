@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from zeus.optimizer.batch_size.common import (
     JobConfig,
     PredictResponse,
