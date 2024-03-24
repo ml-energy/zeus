@@ -1,10 +1,16 @@
 from copy import deepcopy
 import logging
+from math import isclose
 import re
 import uuid
 
 import pytest
-from zeus.optimizer.batch_size.common import TrainingResult
+from zeus.optimizer.batch_size.common import (
+    GET_NEXT_BATCH_SIZE_URL,
+    PredictResponse,
+    TrainingResult,
+)
+from zeus.util.metric import zeus_cost
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -24,21 +30,28 @@ class TestPruningExploreManager:
     batch_sizes: list[int] = [8, 16, 32, 64, 128, 256]
 
     def exploration_to_training_result(
-        self, exploration: tuple[int, float, bool], job_id: uuid.UUID
+        self, exploration: tuple[int, float, bool], job_id: str, trial_number: int
     ) -> TrainingResult:
-        return TrainingResult(
+        energy = 1
+        res = TrainingResult(
             job_id=job_id,
             batch_size=exploration[0],
-            time=2 * (exploration[1] - 1),
-            energy=2,
-            max_power=1,
+            trial_number=trial_number,
+            error=False,
+            time=(2 * exploration[1] - energy) / pytest.fake_job_config["max_power"],
+            energy=energy,
             metric=0.55 if exploration[2] else 0.4,
             current_epoch=100,
         )
+        assert isclose(
+            zeus_cost(res.energy, res.time, 0.5, pytest.fake_job_config["max_power"]),
+            exploration[1],
+        )
+        return res
 
     # 0.5 * energy + (1 - eta_knob) * max_power * time
     def register_job_with_default_bs(self, client, default_bs: int) -> str:
-        job_id = str(uuid.uuid4())
+        job_id = pytest.fake_job_config["job_id_prefix"] + str(uuid.uuid4())
         fake_job = deepcopy(pytest.fake_job_config)
         fake_job["beta_knob"] = None
         fake_job["job_id"] = job_id
@@ -60,22 +73,26 @@ class TestPruningExploreManager:
     ) -> None:
         """Drive the pruning explore manager and check results."""
         caplog.set_level(logging.INFO)
+
         for exp in exploration:
-            res = self.exploration_to_training_result(exp, job_id)
             response = client.get(
-                "/jobs/batch_size",
+                GET_NEXT_BATCH_SIZE_URL,
                 params={"job_id": job_id},
             )
             assert response.status_code == 200
+            parsed_res = PredictResponse.parse_obj(response.json())
             assert (
-                response.json() == exp[0]
-            ), f"Expected {exp[0]} but got {response.json()} ({exp})"
+                parsed_res.batch_size == exp[0]
+            ), f"Expected {exp[0]} but got {parsed_res.batch_size} ({exp})"
 
+            training_result = self.exploration_to_training_result(
+                exp, job_id, parsed_res.trial_number
+            )
             response = client.post(
                 "/jobs/report",
-                content=res.json(),
+                content=training_result.json(),
             )
-            assert response.status_code == 200
+            assert response.status_code == 200, response.text
             assert response.json()["converged"] == exp[2]
             print(response.json()["message"])
         # Now good_bs should be equal to result!
@@ -92,6 +109,7 @@ class TestPruningExploreManager:
 
         if matches:
             arms = [int(x) for x in matches.group(1).split(",")]
+            arms.sort()
             assert arms == result
         else:
             assert False, "No output found from constructing Mab"

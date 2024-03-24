@@ -17,7 +17,8 @@ def pytest_configure():
     # Test wide global variable.
     # https://docs.pytest.org/en/latest/deprecations.html#pytest-namespace
     pytest.fake_job = {
-        "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "job_id": "test-dev",
+        "job_id_prefix": "test",
         "seed": 1,
         "default_batch_size": 1024,
         "batch_sizes": [32, 64, 256, 512, 1024, 4096, 2048],
@@ -35,7 +36,8 @@ def pytest_configure():
     }
 
     pytest.fake_job_config = {
-        "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "job_id": "test-dev",
+        "job_id_prefix": "test",
         "seed": 1,
         "default_batch_size": 1024,
         "batch_sizes": [32, 64, 256, 512, 1024, 4096, 2048],

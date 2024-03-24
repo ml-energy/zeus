@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from uuid import UUID
+from uuid import uuid4
 
 from pydantic import BaseModel, root_validator, validator
 from pydantic.fields import Field
+from zeus.optimizer.batch_size.exceptions import ZeusBSOConfigError
 
 
 REGISTER_JOB_URL = "/jobs"
@@ -14,8 +15,8 @@ GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
 REPORT_RESULT_URL = "/jobs/report"
 
 
-class JobSpec(BaseModel):
-    """Job specification that user inputs.
+class JobParams(BaseModel):
+    """Job parameters.
 
     Attributes:
         job_id: unique ID for the job
@@ -36,8 +37,7 @@ class JobSpec(BaseModel):
         mab_seed: The random seed to use.
     """
 
-    job_id: UUID
-    # job_id_prefix: str = Field(max_length=100)
+    job_id: str
     batch_sizes: list[int]
     default_batch_size: int = Field(gt=0)
     eta_knob: float = 0.5
@@ -76,14 +76,6 @@ class JobSpec(BaseModel):
                 f"Invalid beta_knob({v}). To disable early stop, set beta_knob = None to disable or positive value."
             )
 
-    # @root_validator(skip_on_failure=True)
-    # def _check_job_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-    #     bs = values["job_id"]
-    #     bss = values["job_id_prefix"]
-    #     if bs not in bss:
-    #         raise ValueError(f"Default BS({bs}) not in batch_sizes({bss}).")
-    #     return values
-
     @root_validator(skip_on_failure=True)
     def _check_default_batch_size(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         bs = values["default_batch_size"]
@@ -93,7 +85,32 @@ class JobSpec(BaseModel):
         return values
 
 
-class JobConfig(JobSpec):
+class JobSpec(JobParams):
+    """Job specification that user inputs.
+
+    Attributes:
+        job_id: ID of job
+        job_id_prefix: Prefix of job.
+
+    Refer [`JobParams`][`zeus.optimizer.batch_size.common.JobParams`] for other attributes.
+    """
+
+    job_id: Optional[str]
+    job_id_prefix: str
+
+    @root_validator(skip_on_failure=True)
+    def _check_job_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        job_id: str | None = values.get("job_id")
+        prefix: str = values["job_id_prefix"]
+
+        if job_id is not None and not job_id.startswith(prefix):
+            raise ValueError(f"Job_id({job_id}) does not start with prefix({prefix}).")
+        elif job_id is None:
+            values["job_id"] = f"{prefix}-{uuid4()}"
+        return values
+
+
+class JobConfig(JobParams):
     """Internal job configuration including gpu settigns.
 
     Attributes:
@@ -113,24 +130,49 @@ class JobConfig(JobSpec):
             return v
 
 
-class TrainingResult(BaseModel):
+class PredictResponse(BaseModel):
+    """Response format from the server for getting a batch size to use.
+
+    Attributes:
+        job_id: ID of job
+        batch_size: batch size to use.
+        trial_number: trial number of current training.
+    """
+
+    job_id: str
+    batch_size: int
+    trial_number: int
+
+
+class TrainingResult(PredictResponse):
     """Result of training for that job & batch size.
 
     Attributes:
-        job_id: unique Id of job
-        batch_size: batch size of this training
+        error: True if there was an error while training, otherwise False.
         time: total time consumption so far
         energy: total energy consumption so far
         metric: current metric value after `current_epoch`
         current_epoch: current epoch of training. Server can check if the train reached the `max_epochs`
     """
 
-    job_id: UUID
-    batch_size: int
-    time: float
-    energy: float
-    metric: float
+    error: bool
+    time: Optional[float]
+    energy: Optional[float]
+    metric: Optional[float]
     current_epoch: int
+
+    @root_validator(skip_on_failure=True)
+    def _check_sanity(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        error: bool = values["error"]
+        if not error and (
+            values.get("time") is None
+            or values.get("energy") is None
+            or values.get("metric") is None
+        ):
+            raise ValueError(
+                f'All fields should be populated: time({values.get("time")}), energy({values.get("energy")}), metric({values.get("metric")})'
+            )
+        return values
 
 
 class ReportResponse(BaseModel):

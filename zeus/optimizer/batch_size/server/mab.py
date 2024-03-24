@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
-from uuid import UUID
-
 import numpy as np
+from zeus.optimizer.batch_size.server.batch_size_state.commands import (
+    ReadTrial,
+    UpdateTrial,
+)
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
-    ExplorationState,
+    ExplorationsPerJob,
     GaussianTsArmState,
-    Measurement,
 )
-from zeus.optimizer.batch_size.server.database.schema import State
-from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOServiceBadOperationError,
+    ZeusBSOValueError,
+)
 from zeus.optimizer.batch_size.server.job.commands import UpdateJobStage
 from zeus.optimizer.batch_size.server.job.models import JobState, Stage
 from zeus.optimizer.batch_size.server.services.commands import (
-    ConstructMAB,
     GetNormal,
     GetRandomChoices,
+    UpdateArm,
 )
 from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.logging import get_logger
@@ -92,7 +95,7 @@ class GaussianTS:
 
     def predict(
         self,
-        job_id: UUID,
+        job_id: str,
         prior_precision: float,
         num_exploration: int,
         arms: list[GaussianTsArmState],
@@ -158,13 +161,14 @@ class GaussianTS:
         return bs
 
     async def construct_mab(
-        self, job: JobState, evidence: ConstructMAB
+        self, job: JobState, evidence: ExplorationsPerJob, good_bs: list[int]
     ) -> list[GaussianTsArmState]:
         """Construct arms and initialize them.
 
         Args:
             job: state of job.
             evidence: Completed explorations. We create arms based on the explorations we have done during pruning stage.
+            good_bs: Converged batch size list.
 
         Returns:
             list of arms that we created
@@ -173,17 +177,10 @@ class GaussianTS:
             `ValueError`: If exploration states is invalid (ex. number of pruning rounds doesn't corresponds)
             `ZeusBSOValueError`: No converged batch sizes from pruning stage.
         """
-        # list of converged batch sizes from last pruning rounds
-        good_bs: list[ExplorationState] = []
-
-        for _, exps_per_bs in evidence.explorations_per_bs.items():
-            for exp in exps_per_bs.explorations:
-                if (
-                    exp.round_number == job.num_pruning_rounds
-                    and exp.state == State.Converged
-                ):
-                    good_bs.append(exp)
-                    break
+        if job.job_id != evidence.job_id:
+            raise ZeusBSOServiceBadOperationError(
+                f"Job Id is not consistent: job({job.job_id}) != explorations({evidence.job_id})"
+            )
 
         if len(good_bs) == 0:
             raise ZeusBSOValueError("While creating arms, no batch size is selected")
@@ -191,29 +188,24 @@ class GaussianTS:
         logger.info(
             "Construct MAB for %s with arms %s",
             job.job_id,
-            str([exp.batch_size for exp in good_bs]),
+            str(good_bs),
         )
 
         new_arms: list[GaussianTsArmState] = []
 
         # Fit the arm for each good batch size.
-        for _, exp in enumerate(good_bs):
-            # Get windowed measurements
-            history = await self.service.get_measurements_of_bs(
-                BatchSizeBase(job_id=job.job_id, batch_size=exp.batch_size)
-            )
-
+        for _, bs in enumerate(good_bs):
             rewards = []
             # Collect rewards starting from the most recent ones and backwards.
-            for m in history.measurements:
+            for trial in evidence.explorations_per_bs[bs]:
                 rewards.append(
-                    -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
+                    -zeus_cost(trial.energy, trial.time, job.eta_knob, job.max_power)
                 )
 
             new_arms.append(
                 # create an arm
                 self._fit_arm(
-                    BatchSizeBase(job_id=exp.job_id, batch_size=exp.batch_size),
+                    BatchSizeBase(job_id=job.job_id, batch_size=bs),
                     job.mab_prior_mean,
                     job.mab_prior_precision,
                     np.array(rewards),
@@ -228,12 +220,12 @@ class GaussianTS:
         )
         return new_arms
 
-    async def report(self, job: JobState, current_meausurement: Measurement) -> None:
+    async def report(self, job: JobState, trial_result: UpdateTrial) -> None:
         """Based on the measurement, update the arm state.
 
         Args:
             job: state of the job
-            current_meausurement: result of training (job id, batch_size)
+            trial_result: result of training (job id, batch_size, trial_number)
 
         Raises:
             `ZeusBSOValueError`: When the arm (job id, batch_size) doesn't exist
@@ -245,32 +237,37 @@ class GaussianTS:
         # Note that `arm_rewards` always has more than one entry (and hence a
         # non-zero variance) because we've been through pruning exploration.
         batch_size_key = BatchSizeBase(
-            job_id=job.job_id, batch_size=current_meausurement.batch_size
+            job_id=job.job_id, batch_size=trial_result.batch_size
         )
 
         # Get measurements of this bs in descending order. At most window_size length
-        history = await self.service.get_measurements_of_bs(batch_size_key)
+        history = await self.service.get_trial_results_of_bs(batch_size_key)
 
-        if len(history.measurements) >= job.window_size and job.window_size > 0:
+        if len(history.results) >= job.window_size and job.window_size > 0:
             # if the history is already above the window size, pop the last one to leave the spot for the current measurement.
-            history.measurements.pop()
-            history.measurements.reverse()  # Now ascending order.
+            history.results.pop()
+            history.results.reverse()  # Now ascending order.
 
-        # Add current measurement to the window
-        history.measurements.append(current_meausurement)
-
-        arm_rewards = np.array(
-            [
-                -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
-                for m in history.measurements
-            ]
+        costs = [
+            -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
+            for m in history.results
+        ]
+        # Add current measurement to the costs
+        costs.append(
+            -zeus_cost(
+                trial_result.energy, trial_result.time, job.eta_knob, job.max_power
+            )
         )
+        arm_rewards = np.array(costs)
+
         logger.info("Arm_rewards: %s", str(arm_rewards))
+
+        # Get current arm.
         arm = await self.service.get_arm(batch_size_key)
 
         if arm is None:
             raise ZeusBSOValueError(
-                f"MAB stage but Arm for batch size({current_meausurement.batch_size}) is not found."
+                f"MAB stage but Arm for batch size({trial_result.batch_size}) is not found."
             )
 
         # Get a new arm state based on observation
@@ -279,13 +276,24 @@ class GaussianTS:
         )
 
         # update the new arm state in db
-        await self.service.update_arm_state(current_meausurement, new_arm)
+        self.service.update_arm_state(
+            UpdateArm(
+                trial=ReadTrial(
+                    job_id=trial_result.job_id,
+                    batch_size=trial_result.batch_size,
+                    trial_number=trial_result.trial_number,
+                ),
+                updated_arm=new_arm,
+            )
+        )
+        # update corresponding trial
+        self.service.update_trial(trial_result)
 
         arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])
         logger.info(
             "%s @ %d: arm_rewards = [%s], reward_prec = %.2f",
             job.job_id,
-            current_meausurement.batch_size,
+            trial_result.batch_size,
             arm_rewards_repr,
             new_arm.reward_precision,
         )

@@ -1,61 +1,167 @@
 """Commands to use `BatchSizeStateRepository`."""
 
-from pydantic import Field
-from pydantic.class_validators import validator
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Optional
+from pydantic.class_validators import root_validator, validator
+from pydantic.fields import Field
 from zeus.optimizer.batch_size.server.batch_size_state.models import BatchSizeBase
 from zeus.optimizer.batch_size.server.database.schema import (
-    ExplorationStateTable,
-    State,
+    TrialStatus,
+    TrialTable,
+    TrialType,
 )
 
 
-class UpdateExploration(BatchSizeBase):
-    """Parameters to update exploration.
+class ReadTrial(BatchSizeBase):
+    """Command to read a trial.
+
+    Equivalent to primary key of Trial.
 
     Attributes:
         job_id: ID of job
-        batch_size: batch size of this exploration.
-        round_number: updated round number of exploration
-        state: updated state of exploration
-        cost: training cost of this exploration.
+        batch_size: batch size of a given trial
+        trial_number: number of trial
     """
 
-    round_number: int = Field(ge=1)
-    state: State
-    cost: float
-
-    @validator("state")
-    def _check_state(cls, s: State) -> State:
-        """Check if state is not Exploring. Since we are updating the state after observation, it should be eiter Converged or Unconverged."""
-        if s != State.Exploring:
-            return s
-        else:
-            raise ValueError(f"{s} shouldn't be exploring.")
+    trial_number: int = Field(gt=0)
 
 
-class CreateExploration(BatchSizeBase):
-    """Parameters to create a new exploration.
+class CreateTrialBase(BatchSizeBase):
+    """Base command to create trial."""
 
-    Attributes:
-        job_id: ID of job
-        batch_size: batch size of this exploration.
-        round_number: which round this exploration is in.
-        state: state of exploration. Should be Exploring since we are starting a new exploration (immutable).
-        cost: training cost of exploration. Cost should be None since we are issuing this exploration (immutable).
+    type: TrialType
+    start_timestamp: datetime = Field(datetime.now(), const=True)
+    status: TrialStatus = Field(TrialStatus.Dispatched, const=True)
+
+    class Config:
+        """Model configuration.
+
+        Make it immutable after it's created.
+        """
+
+        frozen = True
+
+
+class CreateTrial(CreateTrialBase):
+    """Internal command to create trial.
+
+    trial_number is populate within ZeusService.
     """
 
-    round_number: int = Field(ge=1)
-    state: State = Field(State.Exploring, const=True)
-    cost: None = Field(None, const=True)
+    trial_number: int = Field(gt=0)
 
-    def to_orm(self) -> ExplorationStateTable:
+    class Config:
+        """Model configuration.
+
+        Make it immutable after it's created.
+        """
+
+        frozen = True
+
+    def to_orm(self) -> TrialTable:
         """Create an ORM object from pydantic model.
 
         Returns:
-            `ExplorationState`: ORM object representing the exploration state.
+            `TrialTable`: ORM object representing the trial.
         """
         d = self.dict()
-        exp = ExplorationStateTable()
+        t = TrialTable()
         for k, v in d.items():
-            setattr(exp, k, v)
-        return exp
+            setattr(t, k, v)
+        return t
+
+
+class CreateExplorationTrial(CreateTrialBase):
+    """Create a exploration."""
+
+    type: TrialType = Field(TrialType.Exploration, const=True)
+
+    class Config:
+        """Model configuration.
+
+        Make it immutable after it's created.
+        """
+
+        frozen = True
+
+
+class CreateMabTrial(CreateTrialBase):
+    """Create a MAB trial."""
+
+    type: TrialType = Field(TrialType.MAB, const=True)
+
+    class Config:
+        """Model configuration.
+
+        Make it immutable after it's created.
+        """
+
+        frozen = True
+
+
+class CreateConcurrentTrial(CreateTrialBase):
+    """Create a exploration."""
+
+    type: TrialType = Field(TrialType.Concurrent, const=True)
+
+    class Config:
+        """Model configuration.
+
+        Make it immutable after it's created.
+        """
+
+        frozen = True
+
+
+class UpdateTrial(BatchSizeBase):
+    """Report the result of trial."""
+
+    trial_number: int = Field(gt=0)
+    end_timestamp: datetime = Field(datetime.now(), const=True)
+    status: TrialStatus
+    time: Optional[float] = Field(None, ge=0)
+    energy: Optional[float] = Field(None, ge=0)
+    converged: Optional[bool] = None
+
+    class Config:
+        """Model configuration.
+
+        Make it immutable after it's created.
+        """
+
+        frozen = True
+
+    @validator("status")
+    def _check_status(cls, s: TrialStatus) -> TrialStatus:
+        """Check if status is equal to Dispatched."""
+        if s != TrialStatus.Dispatched:
+            return s
+        else:
+            raise ValueError(
+                f"{s} shouldn't be Dispatched since this is reporting the result."
+            )
+
+    @root_validator(skip_on_failure=True)
+    def _validate_sanity(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate result.
+
+        We are checking
+            - if status == Failed, time/energy/converged == None.
+                else, time/energy/converged != None.
+        """
+        status: TrialStatus = values["status"]
+
+        time: float | None = values["time"]
+        energy: float | None = values["energy"]
+        converged: bool | None = values["converged"]
+
+        if status != TrialStatus.Failed and (
+            time is None or energy is None or converged is None
+        ):
+            raise ValueError(
+                f"Result is incomplete: time({time}), energy({energy}), converged({converged})"
+            )
+
+        return values

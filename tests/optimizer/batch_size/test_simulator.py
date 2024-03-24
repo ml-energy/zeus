@@ -1,7 +1,9 @@
+import logging
 import re
 from typing import Literal
 
 import pandas as pd
+import pytest
 from pytest_mock import MockerFixture
 from tests.optimizer.batch_size.simulate_with_server import SimulatorWithServer
 from zeus.job import Job
@@ -39,7 +41,7 @@ def arm_state_parser(output):
 
     for arm, mu, arrow in zip(arm_numbers, mu_numbers, arrow_numbers):
         d.append({"Arm": arm, "Mean": mu[0], "stdev": mu[1], "Arrow": arrow})
-
+    d.sort(key=lambda x: x["Arm"])
     return d
 
 
@@ -50,6 +52,14 @@ def read_trace(
     train_df = pd.DataFrame(pd.read_csv("../../../trace/summary_train.csv"))
     power_df = pd.DataFrame(pd.read_csv(f"../../../trace/summary_power_{gpu}.csv"))
     return train_df, power_df
+
+
+@pytest.fixture(scope="session", autouse=True)
+def database_setup():
+    logger = logging.getLogger(
+        "zeus.optimizer.batch_size.server.mab"
+    )  # for testing, propagate the log to the root logger so that caplog can capture
+    logger.propagate = True
 
 
 def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
@@ -115,5 +125,6 @@ def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
 
     # Compare arm states
     assert records == new_sim_records
+
     # Compare selected batch sizes
     assert selected_bs == org_selected_bs

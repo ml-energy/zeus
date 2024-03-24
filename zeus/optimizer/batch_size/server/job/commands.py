@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from typing import Any, Optional
-from uuid import UUID
 
 import numpy as np
 from pydantic.class_validators import root_validator, validator
@@ -23,7 +22,7 @@ class UpdateExpDefaultBs(BaseModel):
         exp_default_batch_size: new default batch size to use.
     """
 
-    job_id: UUID
+    job_id: str
     exp_default_batch_size: int = Field(gt=0)
 
 
@@ -35,7 +34,7 @@ class UpdateJobStage(BaseModel):
         stage: Set it to MAB since we only go from Pruning to MAB.
     """
 
-    job_id: UUID
+    job_id: str
     stage: Stage = Field(Stage.MAB, const=True)
 
 
@@ -47,7 +46,7 @@ class UpdateGeneratorState(BaseModel):
         state: Generator state.
     """
 
-    job_id: UUID
+    job_id: str
     state: str
 
     @validator("state")
@@ -69,7 +68,7 @@ class UpdateJobMinCost(BaseModel):
         min_batch_size: Corresponding batch size.
     """
 
-    job_id: UUID
+    job_id: str
     min_cost: float = Field(ge=0)
     min_batch_size: int = Field(gt=0)
 

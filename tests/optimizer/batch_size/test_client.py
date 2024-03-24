@@ -1,3 +1,4 @@
+from copy import deepcopy
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -45,6 +46,12 @@ def test_register_job(client, mock_monitor, mocker: MockerFixture):
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
 
+    no_job_id = deepcopy(pytest.fake_job)
+    no_job_id["job_id"] = None
+    bso_client = BatchSizeOptimizer(mock_monitor, "", JobSpec.parse_obj(no_job_id))
+    assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
+    assert bso_client.job.job_id.startswith(pytest.fake_job["job_id_prefix"])
+
 
 def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
@@ -85,7 +92,7 @@ def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
     job = JobSpec.parse_obj(pytest.fake_job)
-    job.job_id = uuid4()
+    job.job_id = "test-something"
     job.beta_knob = None  # disable early stop
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bso_client.on_train_begin()

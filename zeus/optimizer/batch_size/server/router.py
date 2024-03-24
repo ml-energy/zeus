@@ -3,7 +3,6 @@
 import asyncio
 from collections import defaultdict
 import logging
-from uuid import UUID
 
 from fastapi import Depends, FastAPI, Response, status
 from fastapi.responses import JSONResponse
@@ -13,6 +12,7 @@ from zeus.optimizer.batch_size.common import (
     REGISTER_JOB_URL,
     REPORT_RESULT_URL,
     JobConfig,
+    PredictResponse,
     ReportResponse,
     TrainingResult,
 )
@@ -81,11 +81,11 @@ async def register_job(
 # TODO: Add delete
 
 
-@app.get(GET_NEXT_BATCH_SIZE_URL)
+@app.get(GET_NEXT_BATCH_SIZE_URL, response_model=PredictResponse)
 async def predict(
-    job_id: UUID,
+    job_id: str,
     db_session: AsyncSession = Depends(get_db_session),
-) -> int:
+) -> PredictResponse:
     """Endpoint for users to receive a batch size."""
     async with app.job_locks[job_id]:
         optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
@@ -117,6 +117,7 @@ async def report(
     async with app.job_locks[result.job_id]:
         optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
         try:
+            logger.info("Report with result %s", str(result))
             res = await optimizer.report(result)
             await db_session.commit()
             return res

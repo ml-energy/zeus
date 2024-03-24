@@ -13,6 +13,7 @@ from zeus.optimizer.batch_size.common import (
     REPORT_RESULT_URL,
     JobConfig,
     JobSpec,
+    PredictResponse,
     ReportResponse,
     TrainingResult,
 )
@@ -46,6 +47,7 @@ class BatchSizeOptimizer(Callback):
         self.running_time = 0.0
         self.consumed_energy = 0.0
         self.training_finished = False
+        self.trial_number = 0
 
         # Get max PL
         pynvml.nvmlInit()
@@ -101,16 +103,21 @@ class BatchSizeOptimizer(Callback):
             params={"job_id": self.job.job_id},
         )
         self._handle_response(res)
+        parsed_response = PredictResponse.parse_obj(res.json())
 
-        batch_size = res.json()
-        if not isinstance(batch_size, int) or batch_size not in self.job.batch_sizes:
+        if parsed_response.batch_size not in self.job.batch_sizes:
             raise ZeusBSORuntimError(
-                f"Zeus server returned a strange batch_size: {batch_size}"
+                f"Zeus server returned a strange batch_size: {parsed_response.batch_size}"
             )
 
-        self.current_batch_size = batch_size
-        logger.info("[BatchSizeOptimizer] Chosen batch size: %s", batch_size)
-        return batch_size
+        self.current_batch_size = parsed_response.batch_size
+        self.trial_number = parsed_response.trial_number
+
+        logger.info(
+            "[BatchSizeOptimizer] Chosen batch size: %s", parsed_response.batch_size
+        )
+
+        return parsed_response.batch_size
 
     def on_train_begin(self) -> None:
         """Start the monitor window and mark training is started."""
@@ -156,6 +163,8 @@ class BatchSizeOptimizer(Callback):
         training_result = TrainingResult(
             job_id=self.job.job_id,
             batch_size=self.current_batch_size,
+            trial_number=self.trial_number,
+            error=False,
             time=self.running_time,
             energy=self.consumed_energy,
             metric=metric,

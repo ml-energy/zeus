@@ -30,6 +30,7 @@ from zeus.optimizer.batch_size.common import (
     REGISTER_JOB_URL,
     REPORT_RESULT_URL,
     JobConfig,
+    JobSpec,
     TrainingResult,
 )
 from zeus.policy import PowerLimitOptimizer
@@ -39,15 +40,16 @@ from zeus.util import zeus_cost
 class BatchSizeOptimizerDummyClient:
     def __init__(self, url=""):
         self.url = url
+        self.trial_number = 0
 
     def register_job(self, job: JobConfig):
         httpx.post(self.url + REGISTER_JOB_URL, content=job.json())
 
-    def predict(self, job: JobConfig):
-        res = httpx.get(
-            self.url + GET_NEXT_BATCH_SIZE_URL, params={"job_id": job.job_id}
-        )
-        return res.json()
+    def predict(self, job_id: str):
+        res = httpx.get(self.url + GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_id})
+        bs = res.json()["batch_size"]
+        self.trial_number = res.json()["trial_number"]
+        return bs
 
     def observe(
         self,
@@ -62,6 +64,8 @@ class BatchSizeOptimizerDummyClient:
         training_result = TrainingResult(
             job_id=job.job_id,
             batch_size=batch_size,
+            trial_number=self.trial_number,
+            error=False,
             time=time,
             energy=total_energy,
             max_power=max_power,
@@ -158,7 +162,7 @@ class SimulatorWithServer:
         # internal state and is deterministic w.r.t. the random seed.
         # A new job. Profile the feasible batch size range.
         jobSpec = JobConfig(
-            job_id=uuid.uuid4(),
+            job_id="Simulate_one_job",
             batch_sizes=self._profile_batch_size_range(job),
             default_batch_size=job.default_bs,
             target_metric=job.target_metric,
@@ -201,7 +205,7 @@ class SimulatorWithServer:
                 profiled_power = False
 
                 # Fetch knobs to use.
-                bs = self.bso.predict(jobSpec)
+                bs = self.bso.predict(jobSpec.job_id)
                 pl = plo.predict(job, bs)
 
                 # When the batch size is first explored, we need to profile power limit.

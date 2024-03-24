@@ -1,116 +1,107 @@
-"""Repository for batch size states(batch size, exploration, measurement, Gaussian Ts arm state)."""
+"""Repository for batch size states(Trial, Gaussian Ts arm state)."""
 
 from __future__ import annotations
 
-from copy import deepcopy
-from uuid import UUID
+from collections import defaultdict
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, select
+
+from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
-    CreateExploration,
-    UpdateExploration,
+    CreateTrial,
+    ReadTrial,
+    UpdateTrial,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
-    ExplorationsPerBs,
     ExplorationsPerJob,
-    ExplorationState,
     GaussianTsArmState,
-    Measurement,
-    MeasurementsPerBs,
+    Trial,
+    TrialResult,
+    TrialResultsPerBs,
 )
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import (
-    ExplorationStateTable,
     GaussianTsArmStateTable,
-    MeasurementTable,
+    TrialStatus,
+    TrialTable,
+    TrialType,
 )
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOValueError,
+)
+from zeus.util.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BatchSizeStateRepository(DatabaseRepository):
     """Repository for handling batch size related operations."""
 
-    async def get_measurements_of_bs(
+    def __init__(self, session: AsyncSession):
+        """Set db session and intialize fetched trial. We are only updating one trial per session."""
+        super().__init__(session)
+        self.fetched_trial: Trial | None = None
+        self.fetched_arm: GaussianTsArmState | None = None
+
+    async def get_next_trial_number(self, job_id: str) -> int:
+        """Get next trial number of a given job. Trial number starts from 1 and increase by 1 at a time."""
+        stmt = (
+            select(TrialTable)
+            .where(
+                and_(
+                    TrialTable.job_id == job_id,
+                )
+            )
+            .order_by(TrialTable.trial_number.desc())
+            .limit(1)
+        )
+        res = (await self.session.scalars(stmt)).all()
+        if len(res) == 0:
+            return 1
+        else:
+            return res[0].trial_number + 1
+
+    async def get_trial_results_of_bs(
         self, batch_size: BatchSizeBase, window_size: int
-    ) -> MeasurementsPerBs:
-        """Load window size amount of measurement for a given batch size. If window size <= 0, load all measurements.
+    ) -> TrialResultsPerBs:
+        """Load window size amount of results for a given batch size. If window size <= 0, load all of them.
+
+        From all trials, we filter succeeded one since failed/dispatched ones doesn't have a valid result.
 
         Args:
             batch_size (BatchSizeBase): The batch size object.
             window_size (int): The size of the measurement window.
 
         Returns:
-            MeasurementsPerBs: Measurements for the given batch size.
+            TrialResultsPerBs: trial results for the given batch size.
         """
         stmt = (
-            select(MeasurementTable)
+            select(TrialTable)
             .where(
                 and_(
-                    MeasurementTable.job_id == batch_size.job_id,
-                    MeasurementTable.batch_size == batch_size.batch_size,
+                    TrialTable.job_id == batch_size.job_id,
+                    TrialTable.batch_size == batch_size.batch_size,
+                    TrialTable.status == TrialStatus.Succeeded,
                 )
             )
-            .order_by(MeasurementTable.timestamp.desc())
+            .order_by(TrialTable.trial_number.desc())
         )
         if window_size > 0:
             stmt = stmt.limit(window_size)
 
         res = (await self.session.scalars(stmt)).all()
-        return MeasurementsPerBs(
+        return TrialResultsPerBs(
             job_id=batch_size.job_id,
             batch_size=batch_size.batch_size,
-            measurements=[Measurement.from_orm(m) for m in res],
+            results=[TrialResult.from_orm(t) for t in res],
         )
 
-    async def get_explorations_of_job(self, job_id: UUID) -> ExplorationsPerJob:
-        """Retrieve explorations for a given job.
-
-        Args:
-            job_id (UUID): The ID of the job.
-
-        Returns:
-            ExplorationsPerJob: Explorations for the given job.
-        """
-        stmt = (
-            select(ExplorationStateTable)
-            .where(
-                and_(
-                    ExplorationStateTable.job_id == job_id,
-                )
-            )
-            .order_by(ExplorationStateTable.batch_size.asc())
-        )
-        res = (await self.session.scalars(stmt)).all()
-
-        explorations_per_bs: dict[int, ExplorationsPerBs] = {}
-        exps: list[ExplorationState] = []
-        for exp in res:
-            if len(exps) == 0 or exps[0].batch_size == exp.batch_size:
-                exps.append(ExplorationState.from_orm(exp))
-            else:
-                explorations_per_bs[exps[0].batch_size] = ExplorationsPerBs(
-                    job_id=job_id,
-                    batch_size=exps[0].batch_size,
-                    explorations=deepcopy(exps),
-                )
-
-                exps = [ExplorationState.from_orm(exp)]
-        if len(exps) != 0:
-            explorations_per_bs[exps[0].batch_size] = ExplorationsPerBs(
-                job_id=job_id,
-                batch_size=exps[0].batch_size,
-                explorations=deepcopy(exps),
-            )
-
-        return ExplorationsPerJob(
-            job_id=job_id, explorations_per_bs=explorations_per_bs
-        )
-
-    async def get_arms(self, job_id: UUID) -> list[GaussianTsArmState]:
+    async def get_arms(self, job_id: str) -> list[GaussianTsArmState]:
         """Retrieve Gaussian Thompson Sampling arms for a given job.
 
         Args:
-            job_id (UUID): The ID of the job.
+            job_id (str): The ID of the job.
 
         Returns:
             List[GaussianTsArmStateModel]: List of Gaussian Thompson Sampling arms. These arms are all "good" arms (converged during pruning stage).
@@ -141,37 +132,77 @@ class BatchSizeStateRepository(DatabaseRepository):
         arm = await self.session.scalar(stmt)
         if arm is None:
             return None
+        self.fetched_arm = arm
         return GaussianTsArmState.from_orm(arm)
 
-    def add_exploration(self, exploration: CreateExploration) -> None:
-        """Add an exploration to the data base.
-
-        Refer to `CreateExploration`[zeus.optimizer.batch_size.server.batch_size_state.models.CreateExploration] for attributes.
+    async def get_trial(self, trial: ReadTrial) -> Trial | None:
+        """Get a corresponding trial.
 
         Args:
-            exploration (CreateExploration): The exploration to add.
-        """
-        self.session.add(exploration.to_orm())
+            trial: job_id, batch_size, trial_number.
 
-    async def update_exploration(self, updated_exp: UpdateExploration) -> None:
-        """Update an exploration in the database.
-
-        Args:
-            updated_exp (UpdateExploration): The updated exploration.
-            Refer to `UpdateExploration`[zeus.optimizer.batch_size.server.batch_size_state.models.UpdateExploration] for attributes.
+        Returns:
+            Found Trial. If none found, return None.
         """
-        stmt = (
-            update(ExplorationStateTable)
-            .where(
-                and_(
-                    ExplorationStateTable.job_id == updated_exp.job_id,
-                    ExplorationStateTable.batch_size == updated_exp.batch_size,
-                    ExplorationStateTable.round_number == updated_exp.round_number,
-                )
-            )
-            .values(state=updated_exp.state, cost=updated_exp.cost)
+        if self.fetched_trial is not None:
+            return self.fetched_trial
+
+        stmt = select(TrialTable).where(
+            TrialTable.job_id == trial.job_id,
+            TrialTable.batch_size == trial.batch_size,
+            TrialTable.trial_number == trial.trial_number,
         )
-        await self.session.execute(stmt)
+        fetched_trial = await self.session.scalar(stmt)
+
+        if fetched_trial is None:
+            logger.info("get_trial: NoResultFound")
+            return None
+
+        self.fetched_trial = fetched_trial
+        return Trial.from_orm(fetched_trial)
+
+    def get_trial_from_session(self, trial: ReadTrial) -> Trial | None:
+        """Fetch a trial from the session."""
+        if (
+            self.fetched_trial.job_id != trial.job_id
+            or self.fetched_trial.batch_size != trial.batch_size
+            or self.fetched_trial.trial_number != trial.trial_number
+        ):
+            return None
+        return self.fetched_trial
+
+    def create_trial(self, trial: CreateTrial) -> None:
+        """Create a trial in db.
+
+        Refer to `CreateTrial`[zeus.optimizer.batch_size.server.batch_size_state.models.CreateTrial] for attributes.
+
+        Args:
+            trial (CreateTrial): The trial to add.
+        """
+        self.session.add(trial.to_orm())
+
+    def update_trial(self, updated_trial: UpdateTrial) -> None:
+        """Update trial in the database (report the result of trial).
+
+        Args:
+            updated_trial (UpdateTrial): The updated trial.
+            Refer to `UpdateTrial`[zeus.optimizer.batch_size.server.batch_size_state.models.UpdateTrial] for attributes.
+        """
+        if self.fetched_trial is None:
+            raise ZeusBSOValueError("No trial is fetched.")
+
+        if (
+            self.fetched_trial.job_id != updated_trial.job_id
+            or self.fetched_trial.batch_size != updated_trial.batch_size
+            or self.fetched_trial.trial_number != updated_trial.trial_number
+        ):
+            raise ZeusBSOValueError("Trying to update invalid trial.")
+
+        self.fetched_trial.end_timestamp = updated_trial.end_timestamp
+        self.fetched_trial.status = updated_trial.status
+        self.fetched_trial.time = updated_trial.time
+        self.fetched_trial.energy = updated_trial.energy
+        self.fetched_trial.converged = updated_trial.converged
 
     def create_arms(self, new_arms: list[GaussianTsArmState]) -> None:
         """Create Gaussian Thompson Sampling arms in the database.
@@ -182,63 +213,53 @@ class BatchSizeStateRepository(DatabaseRepository):
         """
         self.session.add_all([arm.to_orm() for arm in new_arms])
 
-    async def update_arm_state(self, updated_mab_state: GaussianTsArmState) -> None:
+    def update_arm_state(self, updated_mab_state: GaussianTsArmState) -> None:
         """Update Gaussian Thompson Sampling arm state in db.
 
         Args:
             updated_mab_state (GaussianTsArmStateModel): The updated arm state.
             Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
         """
-        stmt = (
-            update(GaussianTsArmStateTable)
-            .where(
-                and_(
-                    GaussianTsArmStateTable.job_id == updated_mab_state.job_id,
-                    GaussianTsArmStateTable.batch_size == updated_mab_state.batch_size,
-                )
-            )
-            .values(
-                param_mean=updated_mab_state.param_mean,
-                param_precision=updated_mab_state.param_precision,
-                reward_precision=updated_mab_state.reward_precision,
-                num_observations=updated_mab_state.num_observations,
-            )
-        )
-        await self.session.execute(stmt)
+        if self.fetched_arm is None:
+            raise ZeusBSOValueError("No arm is fetched.")
 
-    async def get_explorations_of_bs(self, bs: BatchSizeBase) -> ExplorationsPerBs:
-        """Retrieve explorations for a given job id and batch size.
+        if (
+            self.fetched_arm.job_id != updated_mab_state.job_id
+            or self.fetched_arm.batch_size != updated_mab_state.batch_size
+        ):
+            raise ZeusBSOValueError(
+                "Fetch arm does not correspond with the arm trying to update."
+            )
+
+        self.fetched_arm.param_mean = updated_mab_state.param_mean
+        self.fetched_arm.param_precision = updated_mab_state.param_precision
+        self.fetched_arm.reward_precision = updated_mab_state.reward_precision
+        self.fetched_arm.num_observations = updated_mab_state.num_observations
+
+    async def get_explorations_of_job(self, job_id: str) -> ExplorationsPerJob:
+        """Retrieve explorations for a given job.
 
         Args:
-            bs (BatchSizeBase): Job id and batch size.
+            job_id: ID of the job
 
         Returns:
-            ExplorationsPerBs: Explorations for the given batch size.
-            Refer to `ExplorationsPerBs`[zeus.optimizer.batch_size.server.batch_size_state.models.ExplorationsPerBs] for attributes.
+            ExplorationsPerJob: Explorations for the given batch size.
+            Refer to `ExplorationsPerJob`[zeus.optimizer.batch_size.server.batch_size_state.models.ExplorationsPerJob] for attributes.
         """
         stmt = (
-            select(ExplorationStateTable)
+            select(TrialTable)
             .where(
                 and_(
-                    ExplorationStateTable.job_id == bs.job_id,
-                    ExplorationStateTable.batch_size == bs.batch_size,
+                    TrialTable.job_id == job_id,
+                    TrialTable.type == TrialType.Exploration,
                 )
             )
-            .order_by(ExplorationStateTable.round_number.desc())
+            .order_by(TrialTable.trial_number.asc())
         )
 
         explorations = (await self.session.scalars(stmt)).all()
-        return ExplorationsPerBs(
-            job_id=bs.job_id,
-            batch_size=bs.batch_size,
-            explorations=[ExplorationState.from_orm(exp) for exp in explorations],
-        )
+        exps_per_bs: defaultdict[int, list[Trial]] = defaultdict(list)
+        for exp in explorations:
+            exps_per_bs[exp.batch_size].append(Trial.from_orm(exp))
 
-    def add_measurement(self, measurement: Measurement) -> None:
-        """Add a measurement to db.
-
-        Args:
-            measurement (MeasurementOfBs): The measurement to add.
-            Refer to `MeasurementOfBs`[zeus.optimizer.batch_size.server.batch_size_state.models.MeasurementOfBs] for attributes.
-        """
-        self.session.add(measurement.to_orm())
+        return ExplorationsPerJob(job_id=job_id, explorations_per_bs=exps_per_bs)

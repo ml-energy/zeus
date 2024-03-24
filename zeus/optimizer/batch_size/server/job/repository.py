@@ -1,7 +1,6 @@
 """Repository for manipulating Job table."""
 
 from __future__ import annotations
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
@@ -9,6 +8,7 @@ from sqlalchemy.orm import joinedload
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import JobTable
 from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOServiceBadOperationError,
     ZeusBSOValueError,
 )
 from zeus.optimizer.batch_size.server.job.commands import (
@@ -33,7 +33,7 @@ class JobStateRepository(DatabaseRepository):
         super().__init__(session)
         self.fetched_job: JobTable | None = None
 
-    async def get_job(self, job_id: UUID) -> JobState | None:
+    async def get_job(self, job_id: str) -> JobState | None:
         """Get job State, which includes jobSpec + batch_sizes(list[int]), without specific states of each batch_size.
 
         Args:
@@ -56,7 +56,7 @@ class JobStateRepository(DatabaseRepository):
         self.fetched_job = job
         return JobState.from_orm(job)
 
-    def get_job_from_session(self, job_id: UUID) -> JobState | None:
+    def get_job_from_session(self, job_id: str) -> JobState | None:
         """Get a job that was fetched from this session.
 
         Args:
@@ -75,6 +75,9 @@ class JobStateRepository(DatabaseRepository):
         Args:
             updated_bs: Job Id and new batch size.
         """
+        if self.fetched_job is None:
+            raise ZeusBSOServiceBadOperationError("No job is fetched.")
+
         if updated_bs.job_id == self.fetched_job.job_id:
             self.fetched_job.exp_default_batch_size = updated_bs.exp_default_batch_size
         else:
@@ -88,6 +91,9 @@ class JobStateRepository(DatabaseRepository):
         Args:
             updated_stage: Job Id and new stage.
         """
+        if self.fetched_job is None:
+            raise ZeusBSOServiceBadOperationError("No job is fetched.")
+
         if self.fetched_job.job_id == updated_stage.job_id:
             self.fetched_job.stage = updated_stage.stage
         else:
@@ -101,6 +107,9 @@ class JobStateRepository(DatabaseRepository):
         Args:
             updated_min: Job Id, new min cost and batch size.
         """
+        if self.fetched_job is None:
+            raise ZeusBSOServiceBadOperationError("No job is fetched.")
+
         if self.fetched_job.job_id == updated_min.job_id:
             self.fetched_job.min_cost = updated_min.min_cost
             self.fetched_job.min_batch_size = updated_min.min_batch_size
@@ -115,6 +124,9 @@ class JobStateRepository(DatabaseRepository):
         Args:
             updated_state: Job Id and new generator state.
         """
+        if self.fetched_job is None:
+            raise ZeusBSOServiceBadOperationError("No job is fetched.")
+
         if self.fetched_job.job_id == updated_state.job_id:
             self.fetched_job.mab_random_generator_state = updated_state.state
         else:
@@ -130,7 +142,7 @@ class JobStateRepository(DatabaseRepository):
         """
         self.session.add(new_job.to_orm())
 
-    def check_job_fetched(self, job_id: UUID) -> bool:
+    def check_job_fetched(self, job_id: str) -> bool:
         """Check if this job is already fetched before.
 
         Args:

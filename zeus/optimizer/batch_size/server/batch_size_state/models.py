@@ -1,16 +1,16 @@
-"""Pydantic models for Batch size/Exploration/Measurement/GaussianTsArmState."""
+"""Pydantic models for Batch size/Trials/GaussianTsArmState."""
 
 from __future__ import annotations
-from typing import Any, Optional
-from uuid import UUID
 
-from pydantic.class_validators import root_validator
-from pydantic.fields import Field
+from datetime import datetime
+from typing import Any, Optional
+from pydantic import Field
+from pydantic.class_validators import root_validator, validator
 from pydantic.main import BaseModel
 from zeus.optimizer.batch_size.server.database.schema import (
     GaussianTsArmStateTable,
-    MeasurementTable,
-    State,
+    TrialStatus,
+    TrialType,
 )
 
 
@@ -18,11 +18,11 @@ class BatchSizeBase(BaseModel):
     """Base model for representing batch size.
 
     Attributes:
-        job_id (UUID): The ID of the job.
+        job_id (str): The ID of the job.
         batch_size (int): The size of the batch (greater than 0).
     """
 
-    job_id: UUID
+    job_id: str
     batch_size: int = Field(gt=0)
 
     class Config:
@@ -32,6 +32,75 @@ class BatchSizeBase(BaseModel):
         """
 
         frozen = True
+
+
+class Trial(BatchSizeBase):
+    """Pydantic model that represents Trial.
+
+    Attributes:
+        job_id (str): The ID of the job.
+        batch_size (int): The size of the batch (greater than 0).
+        trial_number (int): Number of trial.
+        start_timestamp (datetime): Start time of trial.
+        end_timestamp (datetime): End time of trial.
+        type (TrialType): Type of this trial, which means in which stage this trial was executed.
+        status (TrialStatus): Status of trial
+        time (Optional[float]): Total time consumption of this trial.
+        energy (Optional[float]): Total energy consumption of this trial.
+        converged (Optional[bool]): Whether this trial is converged or not.
+    """
+
+    trial_number: int = Field(gt=0)
+    start_timestamp: datetime
+    end_timestamp: Optional[datetime] = Field(None)
+    type: TrialType
+    status: TrialStatus
+    time: Optional[float] = Field(None, ge=0)
+    energy: Optional[float] = Field(None, ge=0)
+    converged: Optional[bool] = None
+
+    class Config:
+        """Model configuration.
+
+        Enable instantiating model from an ORM object, and make it immutable after it's created.
+        """
+
+        orm_mode = True
+        frozen = True
+
+    @root_validator(skip_on_failure=True)
+    def _validate_mab(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate trial.
+
+        We are checking
+            - start_timestamp <= end_timestamp
+            - if status == dispatched | Failed, time/energy/converged = None
+                else time/energy/converged != None
+        """
+        start_timestamp: datetime = values["start_timestamp"]
+        end_timestamp: datetime | None = values["end_timestamp"]
+        status: TrialStatus = values["status"]
+        time: float | None = values["time"]
+        energy: float | None = values["energy"]
+        converged: bool | None = values["converged"]
+
+        if end_timestamp is not None and start_timestamp > end_timestamp:
+            raise ValueError(
+                f"start is earlier than end: {start_timestamp} > {end_timestamp}"
+            )
+        if status in (TrialStatus.Dispatched, TrialStatus.Failed):
+            if not (time is None and energy is None and converged is None):
+                raise ValueError("Trial status and result is not matching.")
+            if status == TrialStatus.Failed and end_timestamp is None:
+                raise ValueError("Trial ended but end_timestamp is None.")
+        elif (
+            time is None or energy is None or converged is None or end_timestamp is None
+        ):
+            raise ValueError(
+                f"Trial ended but the result is incomplete: time({time}), energy({energy}), converged({converged}), end_timestamp({end_timestamp})"
+            )
+
+        return values
 
 
 class GaussianTsArmState(BatchSizeBase):
@@ -71,15 +140,17 @@ class GaussianTsArmState(BatchSizeBase):
         return g
 
 
-class Measurement(BatchSizeBase):
-    """Model representing a measurement(result) of training the batch size of the job. Immutable after it's created.
+# Helper models
 
-    Attributes:
-        time (float): The time measurement in second (greater than or equal to 0).
-        energy (float): The energy measurement in J (greater than or equal to 0).
-        converged (bool): Indicates if the training was converged.
+
+class TrialResult(BatchSizeBase):
+    """Model for reading the result of the trial.
+
+    Refer to [`Trial`][zeus.optimizer.batch_size.server.batch_size_state.models.Trial] for attributes.
     """
 
+    trial_number: int = Field(gt=0)
+    status: TrialStatus
     time: float = Field(ge=0)
     energy: float = Field(ge=0)
     converged: bool
@@ -93,130 +164,59 @@ class Measurement(BatchSizeBase):
         orm_mode = True
         frozen = True
 
-    def to_orm(self) -> MeasurementTable:
-        """Convert it to ORM object.
-
-        Returns:
-            Measurement: The ORM object of Measruement.
-        """
-        d = self.dict()
-        m = MeasurementTable()
-        for k, v in d.items():
-            setattr(m, k, v)
-        return m
+    @validator("status")
+    def _check_state(cls, s: TrialStatus) -> TrialStatus:
+        """Check if status is equal to succeeded."""
+        if s == TrialStatus.Succeeded:
+            return s
+        else:
+            raise ValueError(f"{s} should be succeeded to have a valid result.")
 
 
-class ExplorationState(BatchSizeBase):
-    """Model representing the state of one exploration. Immutable after it's created.
+class TrialResultsPerBs(BatchSizeBase):
+    """Model representing all succeeded results of trial for a given batch size.
 
     Attributes:
-        round_number (int): Which round we are in for exploring this batch size of the job.
-        state (State): The state of exploration (Exploring|Converged|Unconverged).
-        cost (Optional[float]): The result cost of training with this batch size.
+        results (list[TrialResult]): List of TrialResult per batch size.
     """
 
-    round_number: int = Field(ge=1)
-    state: State = State.Exploring
-    cost: Optional[float] = None
-
-    class Config:
-        """Model configuration.
-
-        Enable instantiating model from an ORM object, and make it immutable after it's created.
-        """
-
-        orm_mode = True
-        frozen = True
-
-
-class ExplorationsPerBs(BatchSizeBase):
-    """Model representing all explorations performed for that batch size and job. Immutable after it's created.
-
-    Attributes:
-        explorations (list[ExplorationStateModel]): List of exploration states for this batch size and job id.
-    """
-
-    explorations: list[ExplorationState]
-
-    class Config:
-        """Model configuration.
-
-        Make it immutable after it's created.
-        """
-
-        frozen = True
+    results: list[TrialResult]
 
     @root_validator(skip_on_failure=True)
     def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate the consistency of explorations.
-
-        We check if
-            - job Id and batch size are consistent across all elements in the explorations.
-            - round number is in descending order without any gaps between.
-        """
+        """Validate if job_id and bs are consistent across all items in results."""
         bs: int = values["batch_size"]
-        job_id: UUID = values["job_id"]
-        exps: list[ExplorationState] = values["explorations"]
-        exps = sorted(exps, key=lambda exp: exp.round_number, reverse=True)
-
-        round_number = -1
-        for exp in exps:
-            if job_id != exp.job_id:
-                raise ValueError(
-                    f"job_id doesn't correspond with explorations: {job_id} != {exp.job_id}"
-                )
-            if bs != exp.batch_size:
-                raise ValueError(
-                    f"Batch size doesn't correspond with explorations: {bs} != {exp.batch_size}"
-                )
-            if round_number != -1 and round_number - 1 != exp.round_number:
-                raise ValueError(
-                    f"Round number is not in order. Should be ordered in desc without any gaps: Expecting {round_number - 1} but got {exp.round_number}"
-                )
-            round_number = exp.round_number
-
-        return values
-
-
-class MeasurementsPerBs(BatchSizeBase):
-    """Model representing all measurements we observed per batch size and job.
-
-    Attributes:
-        measurements (list[MeasurementOfBs]): List of measurements per batch size.
-    """
-
-    measurements: list[Measurement]
-
-    @root_validator(skip_on_failure=True)
-    def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate if job_id and bs are consistent across all items in measurements."""
-        bs: int = values["batch_size"]
-        job_id: UUID = values["job_id"]
-        ms: list[Measurement] = values["measurements"]
+        job_id: str = values["job_id"]
+        ms: list[TrialResult] = values["results"]
+        ms.sort(key=lambda x: x.trial_number, reverse=True)
 
         for m in ms:
             if job_id != m.job_id:
                 raise ValueError(
-                    f"job_id doesn't correspond with explorations: {job_id} != {m.job_id}"
+                    f"job_id doesn't correspond with results: {job_id} != {m.job_id}"
                 )
             if bs != m.batch_size:
                 raise ValueError(
-                    f"Batch size doesn't correspond with explorations: {bs} != {m.batch_size}"
+                    f"Batch size doesn't correspond with results: {bs} != {m.batch_size}"
+                )
+            if m.status != TrialStatus.Succeeded:
+                raise ValueError(
+                    f"This list should only contain succeeded trials. Encounted trial({m.trial_number}) of status = {m.status}"
                 )
 
         return values
 
 
 class ExplorationsPerJob(BaseModel):
-    """Model representing all explorations we have done for a job. Immutable after it's created.
+    """Model representing all succeeded explorations we have done for a job. Immutable after it's created.
 
     Attributes:
-        job_id (UUID): The ID of the job.
-        explorations_per_bs (dict[int, ExplorationsPerBs]): Dictionary of explorations per batch size.
+        job_id (str): The ID of the job.
+        explorations_per_bs (dict[int, list[Trial]]): Dictionary of "succeeded" explorations per batch size in trial_number ascending order.
     """
 
-    job_id: UUID
-    explorations_per_bs: dict[int, ExplorationsPerBs]  # BS -> Explorations
+    job_id: str
+    explorations_per_bs: dict[int, list[Trial]]  # BS -> Trials with exploration type
 
     class Config:
         """Model configuration.
@@ -229,17 +229,24 @@ class ExplorationsPerJob(BaseModel):
     @root_validator(skip_on_failure=True)
     def _check_explorations(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Check bs and job_id corresponds to explorations_per_bs and batch size is consistent."""
-        job_id: UUID = values["job_id"]
-        exps_per_bs: dict[int, ExplorationsPerBs] = values["explorations_per_bs"]
+        job_id: str = values["job_id"]
+        exps_per_bs: dict[int, list[Trial]] = values["explorations_per_bs"]
 
         for bs, exps in exps_per_bs.items():
-            if job_id != exps.job_id:
-                raise ValueError(
-                    f"job_id doesn't correspond with explorations: {job_id} != {exps.job_id}"
-                )
-            if bs != exps.batch_size:
-                raise ValueError(
-                    f"Batch size doesn't correspond with explorations: {bs} != {exps.batch_size}"
-                )
+            # Sort ascending just in case. Sql will return asc order anyways.
+            exps.sort(key=lambda x: x.trial_number)
+            for exp in exps:
+                if job_id != exp.job_id:
+                    raise ValueError(
+                        f"job_id doesn't correspond with explorations: {job_id} != {exps.job_id}"
+                    )
+                if bs != exp.batch_size:
+                    raise ValueError(
+                        f"Batch size doesn't correspond with explorations: {bs} != {exps.batch_size}"
+                    )
+                if exp.type != TrialType.Exploration:
+                    raise ValueError("Trial type is not equal to Exploration.")
+                if exp.status == TrialStatus.Failed:
+                    raise ValueError("Should not include failed trial.")
 
         return values

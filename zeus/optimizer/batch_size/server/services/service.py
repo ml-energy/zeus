@@ -5,26 +5,30 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Any, Tuple
-from uuid import UUID
 
 import numpy as np
 from numpy.random import Generator as np_Generator
 from sqlalchemy.ext.asyncio.session import AsyncSession
+
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
-    CreateExploration,
-    UpdateExploration,
+    CreateConcurrentTrial,
+    CreateExplorationTrial,
+    CreateMabTrial,
+    CreateTrial,
+    ReadTrial,
+    UpdateTrial,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.models import (
     BatchSizeBase,
-    ExplorationsPerBs,
     ExplorationsPerJob,
     GaussianTsArmState,
-    Measurement,
-    MeasurementsPerBs,
+    Trial,
+    TrialResultsPerBs,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.repository import (
     BatchSizeStateRepository,
 )
+from zeus.optimizer.batch_size.server.database.schema import TrialStatus, TrialType
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOServiceBadOperationError,
     ZeusBSOValueError,
@@ -41,6 +45,7 @@ from zeus.optimizer.batch_size.server.job.repository import JobStateRepository
 from zeus.optimizer.batch_size.server.services.commands import (
     GetNormal,
     GetRandomChoices,
+    UpdateArm,
 )
 from zeus.util.metric import zeus_cost
 
@@ -57,7 +62,7 @@ class ZeusService:
         self.bs_repo = BatchSizeStateRepository(db_session)
         self.job_repo = JobStateRepository(db_session)
 
-    async def get_arms(self, job_id: UUID) -> list[GaussianTsArmState]:
+    async def get_arms(self, job_id: str) -> list[GaussianTsArmState]:
         """Get GaussianTs arm states for all arms(job_id, batch size).
 
         Args:
@@ -79,7 +84,7 @@ class ZeusService:
         """
         return await self.bs_repo.get_arm(bs)
 
-    async def get_explorations_of_job(self, job_id: UUID) -> ExplorationsPerJob:
+    async def get_explorations_of_job(self, job_id: str) -> ExplorationsPerJob:
         """Get all explorations we have done for that job.
 
         Args:
@@ -90,78 +95,62 @@ class ZeusService:
         """
         return await self.bs_repo.get_explorations_of_job(job_id)
 
-    async def get_explorations_of_bs(self, bs: BatchSizeBase) -> ExplorationsPerBs:
-        """Get explorations for one batch size.
+    def update_trial(self, updated_trial: UpdateTrial) -> None:
+        """Update trial.
+
+        (1) update the corresponding trial.
+        (2) we update the min training cost observed so far if we have to.
 
         Args:
-            bs: (job_id, batch size) that represents one arm
-
-        Returns:
-            List of explorations for that batch size
-        """
-        return await self.bs_repo.get_explorations_of_bs(bs)
-
-    async def update_exploration(
-        self,
-        measurement: Measurement,
-        updated_exp: UpdateExploration,
-    ) -> None:
-        """Update exploration state.
-
-        (1) add measurement which is an evidence of updating the exploration.
-        (2) update the exploration.
-        (3) we update the min training cost observed so far if we have to.
-
-        Args:
-            measurement: Result of training that batch size
-            updated_exp: Updated state of exploration
+            updated_trial: Result of training that batch size
+            type: Type of trial
 
         Raises:
-            `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
-                    fetched the job first.
+            `ZeusBSOServiceBadOperationError`: When we didn't fetch the job or trial during this session. This operation should have
+                    fetched the job and trial first. Also, check if trial type is matching with fetched trial's type.
         """
-        job = self._get_job(measurement.job_id)
-        self.bs_repo.add_measurement(measurement)
-        await self.bs_repo.update_exploration(updated_exp)
-        self._update_min_if_needed(measurement, job)
+        job = self._get_job(updated_trial.job_id)
+        trial = self._get_trial(
+            ReadTrial(
+                job_id=updated_trial.job_id,
+                batch_size=updated_trial.batch_size,
+                trial_number=updated_trial.trial_number,
+            )
+        )
+        if trial.status != TrialStatus.Dispatched:
+            raise ZeusBSOServiceBadOperationError("Trial already has a result.")
 
-    async def update_arm_state(
+        self.bs_repo.update_trial(updated_trial)
+
+        if updated_trial.status != TrialStatus.Failed:
+            self._update_min_if_needed(updated_trial, job)
+
+    def update_arm_state(
         self,
-        measurement: Measurement,
-        updated_arm: GaussianTsArmState,
+        arm: UpdateArm,
     ) -> None:
         """Update arm state.
 
-        (1) add measurement which is the evidence of updating the arm state.
-        (2) update arm state.
-        (3) update the min training cost observed so far if we have to.
-
         Args:
-            measurement: Result of training that batch size
-            updated_arm: Updated arm state
+            arm: Updated arm state.
 
         Raises:
-            `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
-                    fetched the job first.
+            `ZeusBSOServiceBadOperationError`: When we didn't fetch the job or trial during this session. This operation should have
+                    fetched the job and trial first. Also, check if trial type is matching with fetched trial's type.
         """
-        job = self._get_job(measurement.job_id)
-        self.bs_repo.add_measurement(measurement)
-        await self.bs_repo.update_arm_state(updated_arm)
-        self._update_min_if_needed(measurement, job)
-
-    def report_concurrent_job(self, measurement: Measurement) -> None:
-        """Report concurrent job submission. (1) add measurement and (2) update the min training cost observed so far.
-
-        Args:
-            measurement: Result of training that batch size
-
-        Raises:
-            `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
-                    fetched the job first.
-        """
-        job = self._get_job(measurement.job_id)
-        self.bs_repo.add_measurement(measurement)
-        self._update_min_if_needed(measurement, job)
+        self._check_job_fetched(arm.trial.job_id)
+        trial = self._get_trial(
+            ReadTrial(
+                job_id=arm.trial.job_id,
+                batch_size=arm.trial.batch_size,
+                trial_number=arm.trial.trial_number,
+            )
+        )
+        if trial.type != TrialType.MAB:
+            raise ZeusBSOServiceBadOperationError(
+                "Cannot update an arm since this trial is not issued from MAB stage."
+            )
+        self.bs_repo.update_arm_state(arm.updated_arm)
 
     def update_exp_default_bs(self, updated_default_bs: UpdateExpDefaultBs) -> None:
         """Update the default batch size for exploration.
@@ -176,18 +165,26 @@ class ZeusService:
         self._check_job_fetched(updated_default_bs.job_id)
         self.job_repo.update_exp_default_bs(updated_default_bs)
 
-    def add_exploration(self, exp: CreateExploration) -> None:
-        """Add new exploration.
+    async def create_trial(
+        self, trial: CreateExplorationTrial | CreateMabTrial | CreateConcurrentTrial
+    ) -> ReadTrial:
+        """Create a new trial.
 
         Args:
-            exp: New exploration state to create
+            trial: New trial to create.
 
         Raises:
             `ZeusBSOServiceBadOperationError`: When we didn't fetch the job during this session. This operation should have
                     fetched the job first.
         """
-        self._check_job_fetched(exp.job_id)
-        self.bs_repo.add_exploration(exp)
+        self._check_job_fetched(trial.job_id)
+        trial_number = await self.bs_repo.get_next_trial_number(trial.job_id)
+        self.bs_repo.create_trial(
+            CreateTrial(**trial.dict(), trial_number=trial_number)
+        )
+        return ReadTrial(
+            job_id=trial.job_id, batch_size=trial.batch_size, trial_number=trial_number
+        )
 
     def get_random_choices(self, choice: GetRandomChoices) -> np.ndarray[Any, Any]:
         """Get randome choices based on job's seed.
@@ -245,7 +242,7 @@ class ZeusService:
 
         return res
 
-    async def get_job(self, job_id: UUID) -> JobState | None:
+    async def get_job(self, job_id: str) -> JobState | None:
         """Get job from database.
 
         Args:
@@ -256,6 +253,17 @@ class ZeusService:
         """
         return await self.job_repo.get_job(job_id)
 
+    async def get_trial(self, trial: ReadTrial) -> Trial | None:
+        """Get a trial from database.
+
+        Args:
+            trial: (Job Id, batch size, trial_number) triplet.
+
+        Returns:
+            Trial if we found one, None if we couldn't find a job matching trial.
+        """
+        return await self.bs_repo.get_trial(trial)
+
     def create_job(self, new_job: CreateJob) -> None:
         """Create a new job.
 
@@ -264,8 +272,8 @@ class ZeusService:
         """
         return self.job_repo.create_job(new_job)
 
-    async def get_measurements_of_bs(self, bs: BatchSizeBase) -> MeasurementsPerBs:
-        """Get a windowed list of measurement for that batch size. If job's window size is not set(= 0), get all measurements.
+    async def get_trial_results_of_bs(self, bs: BatchSizeBase) -> TrialResultsPerBs:
+        """Load window size amount of results for a given batch size. If window size <= 0, load all of them.
 
         Args:
             bs: (job_id, batch size) pair.
@@ -278,7 +286,7 @@ class ZeusService:
                     fetched the job first.
         """
         job = self._get_job(bs.job_id)
-        return await self.bs_repo.get_measurements_of_bs(
+        return await self.bs_repo.get_trial_results_of_bs(
             BatchSizeBase(job_id=bs.job_id, batch_size=bs.batch_size),
             job.window_size,
         )
@@ -312,23 +320,23 @@ class ZeusService:
 
     def _update_min_if_needed(
         self,
-        measurement: Measurement,
+        updated_trial: UpdateTrial,
         job: JobState,
     ):
         """Update the min training cost and corresponding batch size based on the trianing result."""
         cur_cost = zeus_cost(
-            measurement.energy, measurement.time, job.eta_knob, job.max_power
+            updated_trial.energy, updated_trial.time, job.eta_knob, job.max_power
         )
         if job.min_cost is None or job.min_cost > cur_cost:
             self.job_repo.update_min(
                 UpdateJobMinCost(
                     job_id=job.job_id,
                     min_cost=cur_cost,
-                    min_batch_size=measurement.batch_size,
+                    min_batch_size=updated_trial.batch_size,
                 )
             )
 
-    def _get_generator(self, job_id: UUID) -> Tuple[np_Generator, bool]:
+    def _get_generator(self, job_id: str) -> Tuple[np_Generator, bool]:
         """Get generator based on job_id. If mab_seed is not none, we should update the state after using generator.
 
         Returns:
@@ -350,7 +358,7 @@ class ZeusService:
 
         return (rng, should_update)
 
-    def _get_job(self, job_id: UUID) -> JobState:
+    def _get_job(self, job_id: str) -> JobState:
         """Get the job from the session. If we couldn't find the job, raise a `ZeusBSOServiceBadOperationError`."""
         res = self.job_repo.get_job_from_session(job_id)
         if res is None:
@@ -359,7 +367,16 @@ class ZeusService:
             )
         return res
 
-    def _check_job_fetched(self, job_id: UUID) -> None:
+    def _get_trial(self, trial: ReadTrial) -> Trial:
+        """Get the job from the session. If we couldn't find the trial, raise a `ZeusBSOServiceBadOperationError`."""
+        res = self.bs_repo.get_trial_from_session(trial)
+        if res is None:
+            raise ZeusBSOServiceBadOperationError(
+                f"Should have fetched the trial first or trial does not exist(trial = {trial})"
+            )
+        return res
+
+    def _check_job_fetched(self, job_id: str) -> None:
         """Check if we fetched the job in the current session. If we didn't raise a `ZeusBSOServiceBadOperationError`."""
         if not self.job_repo.check_job_fetched(job_id):
             raise ZeusBSOServiceBadOperationError(
