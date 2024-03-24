@@ -65,6 +65,7 @@ def database_setup():
 def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
+    mocker.patch("httpx.patch", side_effect=client.patch)
 
     ## CONFIG
     gpu: Literal["a40", "v100", "p100", "rtx6000"] = config["gpu"]

@@ -108,7 +108,6 @@ class ZeusService:
             `ZeusBSOServiceBadOperationError`: When we didn't fetch the job or trial during this session. This operation should have
                     fetched the job and trial first. Also, check if trial type is matching with fetched trial's type.
         """
-        job = self._get_job(updated_trial.job_id)
         trial = self._get_trial(
             ReadTrial(
                 job_id=updated_trial.job_id,
@@ -122,6 +121,7 @@ class ZeusService:
         self.bs_repo.update_trial(updated_trial)
 
         if updated_trial.status != TrialStatus.Failed:
+            job = self._get_job(updated_trial.job_id)
             self._update_min_if_needed(updated_trial, job)
 
     def update_arm_state(

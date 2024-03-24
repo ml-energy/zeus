@@ -1,6 +1,7 @@
 """Zeus batch size optimizer client that communicates with server."""
 
 from __future__ import annotations
+import atexit
 
 import httpx
 import pynvml
@@ -9,10 +10,11 @@ from zeus.monitor import ZeusMonitor
 from zeus.optimizer.batch_size.common import (
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
+    REPORT_END_URL,
     REPORT_RESULT_URL,
     JobConfig,
     JobSpec,
-    PredictResponse,
+    TrialId,
     ReportResponse,
     TrainingResult,
 )
@@ -102,7 +104,7 @@ class BatchSizeOptimizer(Callback):
             params={"job_id": self.job.job_id},
         )
         self._handle_response(res)
-        parsed_response = PredictResponse.parse_obj(res.json())
+        parsed_response = TrialId.parse_obj(res.json())
 
         if parsed_response.batch_size not in self.job.batch_sizes:
             raise ZeusBSORuntimError(
@@ -116,6 +118,14 @@ class BatchSizeOptimizer(Callback):
             "[BatchSizeOptimizer] Chosen batch size: %s", parsed_response.batch_size
         )
 
+        def report_end() -> None:
+            # TODO: Double check capturing variable.
+            print(self.server_url + REPORT_END_URL, parsed_response.json())
+            httpx.patch(
+                self.server_url + REPORT_END_URL, content=parsed_response.json()
+            )
+
+        atexit.register(report_end)
         return parsed_response.batch_size
 
     def on_train_begin(self) -> None:
@@ -171,7 +181,7 @@ class BatchSizeOptimizer(Callback):
         )
 
         # report to the server about the result of this training
-        res = httpx.post(
+        res = httpx.patch(
             self.server_url + REPORT_RESULT_URL, content=training_result.json()
         )
         self._handle_response(res)

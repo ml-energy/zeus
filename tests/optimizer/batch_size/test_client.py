@@ -1,12 +1,19 @@
+import atexit
 from copy import deepcopy
+import sys
+from typing import Callable
+from unittest import mock
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import httpx
 import pytest
 from pytest_mock import MockerFixture
+from fastapi.testclient import TestClient
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
 from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.server.router import app
 
 
 @pytest.fixture
@@ -38,8 +45,17 @@ def mock_monitor(mocker: MockerFixture):
     return zeus_monitor_mock_instance
 
 
-def test_register_job(client, mock_monitor, mocker: MockerFixture):
+@pytest.fixture(autouse=True)
+def mock_http_call(client, mocker: MockerFixture):
     mocker.patch("httpx.post", side_effect=client.post)
+    mocker.patch("httpx.get", side_effect=client.get)
+    mocker.patch("httpx.patch", side_effect=client.patch)
+
+    mocker.patch("atexit.register")
+    # TODO: How to patch the httpx.patch in exit handler? Since it goes out of pytest scope, patch doesn't get applied
+
+
+def test_register_job(mock_monitor):
     job = JobSpec.parse_obj(pytest.fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
@@ -53,9 +69,7 @@ def test_register_job(client, mock_monitor, mocker: MockerFixture):
     assert bso_client.job.job_id.startswith(pytest.fake_job["job_id_prefix"])
 
 
-def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
-    mocker.patch("httpx.post", side_effect=client.post)
-    mocker.patch("httpx.get", side_effect=client.get)
+def test_batch_sizes(mock_monitor):
     job = JobSpec.parse_obj(pytest.fake_job)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
@@ -88,9 +102,7 @@ def test_batch_sizes(client, mock_monitor, mocker: MockerFixture):
     assert bs == 2048 and bso_client.current_batch_size == 2048
 
 
-def test_converge_fail(client, mock_monitor, mocker: MockerFixture):
-    mocker.patch("httpx.post", side_effect=client.post)
-    mocker.patch("httpx.get", side_effect=client.get)
+def test_converge_fail(mock_monitor):
     job = JobSpec.parse_obj(pytest.fake_job)
     job.job_id = "test-something"
     job.beta_knob = None  # disable early stop

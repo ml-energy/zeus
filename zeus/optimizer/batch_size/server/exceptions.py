@@ -30,6 +30,15 @@ class ZeusBSOValueError(ZeusBSOServerBaseError):
         self.status_code = 400
 
 
+class ZeusBSOServerNotFound(ZeusBaseError):
+    """Resource we are looking for is not found."""
+
+    def __init__(self, msg: str):
+        """Set status code."""
+        super().__init__(msg)
+        self.status_code = 404
+
+
 class ZeusBSOServiceBadOperationError(ZeusBSOServerBaseError):
     """When the operation doesn't meet requirements. ex) fetching measurements before fetching a job."""
 

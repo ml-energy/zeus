@@ -10,7 +10,8 @@ from pydantic.fields import Field
 
 REGISTER_JOB_URL = "/jobs"
 GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
-REPORT_RESULT_URL = "/jobs/report"
+REPORT_RESULT_URL = "/trial/report"
+REPORT_END_URL = "/trial/end"
 
 
 class JobParams(BaseModel):
@@ -128,8 +129,8 @@ class JobConfig(JobParams):
             return v
 
 
-class PredictResponse(BaseModel):
-    """Response format from the server for getting a batch size to use.
+class TrialId(BaseModel):
+    """Response format from the server for getting a batch size to use, which is an unique idnetifier of trial.
 
     Attributes:
         job_id: ID of job
@@ -142,35 +143,20 @@ class PredictResponse(BaseModel):
     trial_number: int
 
 
-class TrainingResult(PredictResponse):
+class TrainingResult(TrialId):
     """Result of training for that job & batch size.
 
     Attributes:
-        error: True if there was an error while training, otherwise False.
         time: total time consumption so far
         energy: total energy consumption so far
         metric: current metric value after `current_epoch`
         current_epoch: current epoch of training. Server can check if the train reached the `max_epochs`
     """
 
-    error: bool
-    time: Optional[float]
-    energy: Optional[float]
-    metric: Optional[float]
+    time: float
+    energy: float
+    metric: float
     current_epoch: int
-
-    @root_validator(skip_on_failure=True)
-    def _check_sanity(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        error: bool = values["error"]
-        if not error and (
-            values.get("time") is None
-            or values.get("energy") is None
-            or values.get("metric") is None
-        ):
-            raise ValueError(
-                f'All fields should be populated: time({values.get("time")}), energy({values.get("energy")}), metric({values.get("metric")})'
-            )
-        return values
 
 
 class ReportResponse(BaseModel):

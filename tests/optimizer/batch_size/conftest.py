@@ -3,6 +3,7 @@ from typing import AsyncIterator
 from fastapi.testclient import TestClient
 import pytest
 
+from pytest_mock.plugin import MockerFixture
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from zeus.optimizer.batch_size.server.database.db_connection import (
@@ -81,6 +82,7 @@ async def clean():
         await conn.run_sync(Base.metadata.drop_all)
 
 
+# Run this for each module(file)
 @pytest.fixture(scope="module", autouse=True)
 def database_setup():
     asyncio.run(clean())

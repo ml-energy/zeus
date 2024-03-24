@@ -5,9 +5,10 @@ from __future__ import annotations
 import numpy as np
 from zeus.optimizer.batch_size.common import (
     JobConfig,
-    PredictResponse,
+    TrialId,
     ReportResponse,
     TrainingResult,
+    TrialId,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateMabTrial,
@@ -17,6 +18,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.commands import (
 from zeus.optimizer.batch_size.server.database.schema import TrialStatus
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOJobConfigMismatchError,
+    ZeusBSOServerNotFound,
     ZeusBSOServiceBadOperationError,
     ZeusBSOValueError,
 )
@@ -75,7 +77,7 @@ class ZeusBatchSizeOptimizer:
 
         return True
 
-    async def predict(self, job_id: str) -> PredictResponse:
+    async def predict(self, job_id: str) -> TrialId:
         """Return a batch size to use.
 
         Args:
@@ -129,7 +131,7 @@ class ZeusBatchSizeOptimizer:
             else:
                 trial_pk = res
 
-        return PredictResponse(
+        return TrialId(
             job_id=trial_pk.job_id,
             batch_size=trial_pk.batch_size,
             trial_number=trial_pk.trial_number,
@@ -156,18 +158,6 @@ class ZeusBatchSizeOptimizer:
 
         if trial is None:
             raise ZeusBSOServiceBadOperationError(f"Unknown trial {result}")
-
-        if result.error:
-            # Report failure
-            self.service.update_trial(
-                UpdateTrial(
-                    job_id=result.job_id,
-                    batch_size=result.batch_size,
-                    trial_number=result.trial_number,
-                    status=TrialStatus.Failed,
-                )
-            )
-            return
 
         if job.beta_knob is not None and job.min_cost is not None:  # Early stop enabled
             cost_ub = job.beta_knob * job.min_cost
@@ -235,3 +225,27 @@ class ZeusBatchSizeOptimizer:
         return ReportResponse(
             stop_train=True, converged=trial_result.converged, message=message
         )
+
+    async def end_trial(self, trial_id: TrialId) -> None:
+        """Mark the trial as finished. If status is still `Dispatched` make the trial as `Failed`.
+
+        Args:
+            trial_id: Unique identifier of trial
+
+        Raises:
+            `ZeusBSOServerNotFound` if there is no corresponding trial.
+        """
+        trial = await self.service.get_trial(ReadTrial(**trial_id.dict()))
+
+        if trial is not None:
+            if trial.status == TrialStatus.Dispatched:
+                self.service.update_trial(
+                    UpdateTrial(
+                        job_id=trial_id.job_id,
+                        batch_size=trial_id.batch_size,
+                        trial_number=trial_id.trial_number,
+                        status=TrialStatus.Failed,
+                    )
+                )
+        else:
+            raise ZeusBSOServerNotFound(f"Could not find the trial: {trial_id}")

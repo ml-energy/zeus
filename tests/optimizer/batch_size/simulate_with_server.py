@@ -74,7 +74,7 @@ class BatchSizeOptimizerDummyClient:
         )
 
         # report to the server about the result of this training
-        res = httpx.post(self.url + REPORT_RESULT_URL, content=training_result.json())
+        res = httpx.patch(self.url + REPORT_RESULT_URL, content=training_result.json())
 
 
 # ruff: noqa: PLR0912, PLR0915

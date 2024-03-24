@@ -7,7 +7,9 @@ import uuid
 import pytest
 from zeus.optimizer.batch_size.common import (
     GET_NEXT_BATCH_SIZE_URL,
-    PredictResponse,
+    REGISTER_JOB_URL,
+    REPORT_RESULT_URL,
+    TrialId,
     TrainingResult,
 )
 from zeus.util.metric import zeus_cost
@@ -58,7 +60,7 @@ class TestPruningExploreManager:
         fake_job["batch_sizes"] = self.batch_sizes
         fake_job["default_batch_size"] = default_bs
 
-        response = client.post("/jobs", json=fake_job)
+        response = client.post(REGISTER_JOB_URL, json=fake_job)
         assert response.status_code == 201
 
         return job_id
@@ -80,7 +82,7 @@ class TestPruningExploreManager:
                 params={"job_id": job_id},
             )
             assert response.status_code == 200
-            parsed_res = PredictResponse.parse_obj(response.json())
+            parsed_res = TrialId.parse_obj(response.json())
             assert (
                 parsed_res.batch_size == exp[0]
             ), f"Expected {exp[0]} but got {parsed_res.batch_size} ({exp})"
@@ -88,8 +90,8 @@ class TestPruningExploreManager:
             training_result = self.exploration_to_training_result(
                 exp, job_id, parsed_res.trial_number
             )
-            response = client.post(
-                "/jobs/report",
+            response = client.patch(
+                REPORT_RESULT_URL,
                 content=training_result.json(),
             )
             assert response.status_code == 200, response.text
@@ -99,7 +101,7 @@ class TestPruningExploreManager:
 
         # this will construct mab
         response = client.get(
-            "/jobs/batch_size",
+            GET_NEXT_BATCH_SIZE_URL,
             params={"job_id": job_id},
         )
         assert response.status_code == 200

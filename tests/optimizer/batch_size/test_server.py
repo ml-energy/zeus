@@ -2,19 +2,24 @@ import random
 from copy import deepcopy
 
 import pytest
-from zeus.optimizer.batch_size.common import TrainingResult
+from zeus.optimizer.batch_size.common import (
+    GET_NEXT_BATCH_SIZE_URL,
+    REGISTER_JOB_URL,
+    REPORT_END_URL,
+    REPORT_RESULT_URL,
+)
 
 
 # https://fastapi.tiangolo.com/tutorial/testing/
 
 
 def test_register_job(client):
-    response = client.post("/jobs", json=pytest.fake_job_config)
+    response = client.post(REGISTER_JOB_URL, json=pytest.fake_job_config)
     print(response.text)
     print(str(response))
     assert response.status_code == 201
 
-    response = client.post("/jobs", json=pytest.fake_job_config)
+    response = client.post(REGISTER_JOB_URL, json=pytest.fake_job_config)
     print(response.text)
     assert response.status_code == 200
 
@@ -23,7 +28,7 @@ def test_register_job_with_diff_config(client):
     fake_job_config_diff = deepcopy(pytest.fake_job_config)
     fake_job_config_diff["default_batch_size"] = 512
 
-    response = client.post("/jobs", json=fake_job_config_diff)
+    response = client.post(REGISTER_JOB_URL, json=fake_job_config_diff)
     print(response.text)
     assert response.status_code == 409
 
@@ -31,38 +36,38 @@ def test_register_job_with_diff_config(client):
 def test_register_job_validation_error(client):
     temp = deepcopy(pytest.fake_job_config)
     temp["default_batch_size"] = 128
-    response = client.post("/jobs", json=temp)
+    response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
     temp["default_batch_size"] = 0
-    response = client.post("/jobs", json=temp)
+    response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
     temp = deepcopy(pytest.fake_job_config)
     temp["max_epochs"] = 0
-    response = client.post("/jobs", json=temp)
+    response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
     temp = deepcopy(pytest.fake_job_config)
     temp["batch_sizes"] = []
-    response = client.post("/jobs", json=temp)
+    response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
     temp = deepcopy(pytest.fake_job_config)
     temp["eta_knob"] = 1.1
-    response = client.post("/jobs", json=temp)
+    response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
     temp = deepcopy(pytest.fake_job_config)
     temp["beta_knob"] = 0
-    response = client.post("/jobs", json=temp)
+    response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
 
 def test_predict(client):
     cur_default_bs = pytest.fake_job_config["default_batch_size"]
     response = client.get(
-        "/jobs/batch_size",
+        GET_NEXT_BATCH_SIZE_URL,
         params={"job_id": pytest.fake_job_config["job_id"]},
     )
     print(response.text)
@@ -72,7 +77,7 @@ def test_predict(client):
 
     # concurrent job submission
     response = client.get(
-        "/jobs/batch_size",
+        GET_NEXT_BATCH_SIZE_URL,
         params={"job_id": pytest.fake_job_config["job_id"]},
     )
     print(response.text)
@@ -83,8 +88,8 @@ def test_predict(client):
 
 def test_report(client):
     # Converged within max epoch => successful training
-    response = client.post(
-        "/jobs/report",
+    response = client.patch(
+        REPORT_RESULT_URL,
         json={
             "job_id": pytest.fake_job_config["job_id"],
             "batch_size": 1024,
@@ -102,8 +107,8 @@ def test_report(client):
         and response.json()["stop_train"] == True
     )
     # NO update in exploration state since this was a concurrent job submission
-    response = client.post(
-        "/jobs/report",
+    response = client.patch(
+        REPORT_RESULT_URL,
         json={
             "job_id": pytest.fake_job_config["job_id"],
             "batch_size": 1024,
@@ -146,7 +151,7 @@ def test_predict_report_sequence(client):
 
                 # Predict
                 response = client.get(
-                    "/jobs/batch_size",
+                    GET_NEXT_BATCH_SIZE_URL,
                     params={"job_id": pytest.fake_job_config["job_id"]},
                 )
                 assert response.status_code == 200
@@ -156,7 +161,7 @@ def test_predict_report_sequence(client):
 
                 # Concurrent job
                 response = client.get(
-                    "/jobs/batch_size",
+                    GET_NEXT_BATCH_SIZE_URL,
                     params={"job_id": pytest.fake_job_config["job_id"]},
                 )
                 assert response.status_code == 200
@@ -178,8 +183,8 @@ def test_predict_report_sequence(client):
                 if converged:
                     new_bss.append(bs)
 
-                response = client.post(
-                    "/jobs/report",
+                response = client.patch(
+                    REPORT_RESULT_URL,
                     json={
                         "job_id": pytest.fake_job_config["job_id"],
                         "batch_size": bs,
@@ -208,7 +213,7 @@ def test_mab_stage(client):
     for _ in range(10):
         # Predict
         response = client.get(
-            "/jobs/batch_size",
+            GET_NEXT_BATCH_SIZE_URL,
             params={"job_id": pytest.fake_job_config["job_id"]},
         )
         assert response.status_code == 200
@@ -217,14 +222,14 @@ def test_mab_stage(client):
         bs_seq.append(response.json()["batch_size"])
         # Concurrent job
         response = client.get(
-            "/jobs/batch_size",
+            GET_NEXT_BATCH_SIZE_URL,
             params={"job_id": pytest.fake_job_config["job_id"]},
         )
         assert response.status_code == 200
         bs_seq.append(response.json()["batch_size"])
 
-        response = client.post(
-            "/jobs/report",
+        response = client.patch(
+            REPORT_RESULT_URL,
             json={
                 "job_id": pytest.fake_job_config["job_id"],
                 "batch_size": bs,
@@ -243,3 +248,61 @@ def test_mab_stage(client):
             and response.json()["stop_train"] == True
         )
     print(bs_seq)
+
+
+def test_end_trial(client):
+    # Start trial
+    response = client.get(
+        GET_NEXT_BATCH_SIZE_URL,
+        params={"job_id": pytest.fake_job_config["job_id"]},
+    )
+    assert response.status_code == 200
+    trial_number = response.json()["trial_number"]
+    bs = response.json()["batch_size"]
+
+    # End Trial.
+    response = client.patch(
+        REPORT_END_URL,
+        json={
+            "job_id": pytest.fake_job_config["job_id"],
+            "batch_size": bs,
+            "trial_number": trial_number,
+        },
+    )
+    assert response.status_code == 200
+
+    # Start trial
+    response = client.get(
+        GET_NEXT_BATCH_SIZE_URL,
+        params={"job_id": pytest.fake_job_config["job_id"]},
+    )
+    assert response.status_code == 200
+    trial_number = response.json()["trial_number"]
+    bs = response.json()["batch_size"]
+
+    # Report result.
+    response = client.patch(
+        REPORT_RESULT_URL,
+        json={
+            "job_id": pytest.fake_job_config["job_id"],
+            "batch_size": bs,
+            "trial_number": trial_number,
+            "error": False,
+            "time": 15.123,
+            "energy": 3000.123,
+            "max_power": 300,
+            "metric": 0.55,
+            "current_epoch": 98,
+        },
+    )
+
+    # End Trial.
+    response = client.patch(
+        REPORT_END_URL,
+        json={
+            "job_id": pytest.fake_job_config["job_id"],
+            "batch_size": bs,
+            "trial_number": trial_number,
+        },
+    )
+    assert response.status_code == 200
