@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from pydantic import BaseModel, root_validator, validator
 from pydantic.fields import Field
-from zeus.optimizer.batch_size.exceptions import ZeusBSOConfigError
 
 
 REGISTER_JOB_URL = "/jobs"

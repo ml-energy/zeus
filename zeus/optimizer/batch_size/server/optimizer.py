@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time, hashlib
 import numpy as np
 
 from zeus.optimizer.batch_size.common import (

@@ -1,7 +1,6 @@
 """Pydantic models for Job."""
 
 from __future__ import annotations
-from dataclasses import Field
 import json
 from enum import Enum
 from typing import Any, Optional
