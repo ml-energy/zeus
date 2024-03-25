@@ -6,20 +6,159 @@ from typing import TYPE_CHECKING
 import abc
 import os
 
-# from exception import ZeusBaseGPUError
+from zeus.device.exception import ZeusBaseGPUError
 if TYPE_CHECKING:
     import pynvml
     import amdsmi
 
 import sys
 
-UNIT_TESTING = 'pytest' in sys.modules
-if UNIT_TESTING:
-    import pynvml
-
-# import pynvml
+import pynvml
 
 from zeus.util import cuda_sync
+
+""" EXCEPTION WRAPPERS """
+
+class ZeusInitGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for ImportError or Failed to Initialize GPU libraries."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusInvalidArgGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Invalid Argument."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusNotSupportedGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Not Supported Operation on GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusNoPermissionGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for No Permission to perform GPU operation."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusAlreadyInitializedGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Already Initialized GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusNotFoundGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Not Found GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusInsufficientSizeGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Insufficient Size of GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusInsufficientPowerGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Insufficient Power of GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusDriverErrorGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Driver Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusTimeoutGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Timeout Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusIRQErrorGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for IRQ Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusLibraryNotFoundGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Library Not Found Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusFunctionNotFoundGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Function Not Found Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusCorruptedInfoROMGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Corrupted Info ROM Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusLostGPUGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Lost GPU Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusResetRequiredGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Reset Required Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusOperatingSystemGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Operating System Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusLibRMVersionMismatchGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for LibRM Version Mismatch Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusMemoryGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Insufficient Memory Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+class ZeusUnknownGPUError(ZeusBaseGPUError):
+    """Zeus GPU exception class Wrapper for Unknown Error."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
 
 class GPU(abc.ABC):
     def __init__(self, gpu_index: int) -> None:
@@ -28,11 +167,40 @@ class GPU(abc.ABC):
 
 """ NVIDIA GPUs """
 
+
 class NVIDIAGPU(GPU):
     """Alternatve names: DirectNVIDIAGPU, LocalNVIDIAGPU, NativeNVIDIAGPU, IntegratedNVIDIAGPU"""
+    exception_map = {
+            pynvml.NVML_ERROR_UNINITIALIZED : ZeusInitGPUError,
+            pynvml.NVML_ERROR_INVALID_ARGUMENT : ZeusInvalidArgGPUError,
+            pynvml.NVML_ERROR_NOT_SUPPORTED : ZeusNotSupportedGPUError,
+            pynvml.NVML_ERROR_NO_PERMISSION : ZeusNoPermissionGPUError,
+            pynvml.NVML_ERROR_ALREADY_INITIALIZED : ZeusAlreadyInitializedGPUError,
+            pynvml.NVML_ERROR_NOT_FOUND : ZeusNotFoundGPUError,
+            pynvml.NVML_ERROR_INSUFFICIENT_SIZE : ZeusInsufficientSizeGPUError,
+            pynvml.NVML_ERROR_INSUFFICIENT_POWER : ZeusInsufficientPowerGPUError,
+            pynvml.NVML_ERROR_DRIVER_NOT_LOADED : ZeusDriverErrorGPUError,
+            pynvml.NVML_ERROR_TIMEOUT : ZeusTimeoutGPUError,
+            pynvml.NVML_ERROR_IRQ_ISSUE : ZeusIRQErrorGPUError,
+            pynvml.NVML_ERROR_LIBRARY_NOT_FOUND : ZeusLibraryNotFoundGPUError,
+            pynvml.NVML_ERROR_FUNCTION_NOT_FOUND : ZeusFunctionNotFoundGPUError,
+            pynvml.NVML_ERROR_CORRUPTED_INFOROM : ZeusCorruptedInfoROMGPUError,
+            pynvml.NVML_ERROR_GPU_IS_LOST : ZeusLostGPUGPUError,
+            pynvml.NVML_ERROR_RESET_REQUIRED : ZeusResetRequiredGPUError,
+            pynvml.NVML_ERROR_OPERATING_SYSTEM : ZeusOperatingSystemGPUError,
+            pynvml.NVML_ERROR_LIB_RM_VERSION_MISMATCH : ZeusLibRMVersionMismatchGPUError,
+            pynvml.NVML_ERROR_MEMORY : ZeusMemoryGPUError,
+            pynvml.NVML_ERROR_UNKNOWN : ZeusUnknownGPUError
+    }
+
     def __init__(self, gpu_index: int) -> None:
         super().__init__(gpu_index)
-        self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
+        try:
+            self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
+        except pynvml.NVMLError as e:
+            # Get the custom exception class, defaulting to a general one if not found
+            exception_class = self.exception_map.get(e.value, ZeusBaseGPUError)
+            raise exception_class(e.msg) from e
     
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         return pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
@@ -241,6 +409,10 @@ class NVIDIAGPUs(GPUs):
         else:
             for index, gpu_num in enumerate(self.visible_indices):
                 self.gpus[index] = NVIDIAGPU(gpu_num)
+    
+    def exception_setup(self) -> None:
+        # Create a dictionary mapping between pynvml errors and Zeus exceptions
+        
 
     def __init__(self, gpus_to_track: list[int] = None, ensure_homogeneuous: bool = True) -> None:
         pynvml.nvmlInit()
@@ -272,9 +444,8 @@ class AMDGPUs(GPUs):
     def __del__(self) -> None:
         amdsmi.amdsmi_shut_down()
 
-
+_gpus = None
 def get_gpus(gpus_to_track: list[int] = None) -> GPUs:
-
     """
     Initialize and return a singleton GPU monitoring object for NVIDIA or AMD GPUs.
 
@@ -296,30 +467,18 @@ def get_gpus(gpus_to_track: list[int] = None) -> GPUs:
         return _gpus
 
     try:
-        import pynvml
         pynvml.nvmlInit()
         _gpus = NVIDIAGPUs(gpus_to_track)
-    except ImportError:
+    except (ImportError, pynvml.NVMLError) as nvidia_error:
         try:
             import amdsmi
             amdsmi.amdsmi_init()
             _gpus = AMDGPUs()
-        except ImportError:
-            return None
+        except (ImportError, amdsmi.AmdSmiLibraryException) as amd_error:
+            raise ZeusInitGPUError(
+                f"Failed to initialize GPU monitoring for NVIDIA and AMD GPUs.\n"
+                f"NVIDIA Error: {nvidia_error}\n"
+                f"AMD Error: {amd_error}"
+            ) from None
     return _gpus
 
-""" EXCEPTION WRAPPERS """
-
-# class ZeusGPUErrorUninit(ZeusBaseGPUError):
-#     """Zeus GPU exception class Wrapper for NVML_ERROR_UNINITIALIZED."""
-
-#     def __init__(self, message: str) -> None:
-#         """Initialize Zeus Exception."""
-#         super().__init__(message)
-
-# class ZeusGPUErrorInvalidArg(ZeusBaseGPUError):
-#     """Zeus GPU exception class Wrapper for NVML_ERROR_UNINITIALIZED."""
-
-#     def __init__(self, message: str) -> None:
-#         """Initialize Zeus Exception."""
-#         super().__init__(message)
