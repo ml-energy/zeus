@@ -118,7 +118,7 @@ class ZeusService:
         if trial.status != TrialStatus.Dispatched:
             raise ZeusBSOServiceBadOperationError("Trial already has a result.")
 
-        self.bs_repo.update_trial(updated_trial)
+        self.bs_repo.updated_current_trial(updated_trial)
 
         if updated_trial.status != TrialStatus.Failed:
             job = self._get_job(updated_trial.job_id)
@@ -317,6 +317,17 @@ class ZeusService:
         self._check_job_fetched(updated_stage.job_id)
         self.job_repo.update_stage(updated_stage)
 
+    async def delete_job(self, job_id: str) -> bool:
+        """Delete the job.
+
+        Args:
+            job_id: ID of the job.
+
+        Returns:
+            True if the job is deleted. False if none was deleted
+        """
+        return await self.job_repo.delete_job(job_id)
+
     def _update_min_if_needed(
         self,
         updated_trial: UpdateTrial,
@@ -331,7 +342,7 @@ class ZeusService:
                 UpdateJobMinCost(
                     job_id=job.job_id,
                     min_cost=cur_cost,
-                    min_batch_size=updated_trial.batch_size,
+                    min_cost_batch_size=updated_trial.batch_size,
                 )
             )
 

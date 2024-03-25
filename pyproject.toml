@@ -85,8 +85,8 @@ pydocstyle.convention = "google"
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
 "zeus/util/pydantic_v1.py" = ["F403"]
-"**/commands.py" = ["N805"]
-"**/models.py" = ["N805"]
+"zeus/optimizer/batch_size/**/commands.py" = ["N805"]
+"zeus/optimizer/batch_size/**/models.py" = ["N805"]
 "zeus/optimizer/batch_size/server/router.py" = ["B008"]
 "zeus/optimizer/batch_size/common.py" = ["N805"]
 

@@ -30,7 +30,7 @@ class ZeusBSOValueError(ZeusBSOServerBaseError):
         self.status_code = 400
 
 
-class ZeusBSOServerNotFound(ZeusBaseError):
+class ZeusBSOServerNotFound(ZeusBSOServerBaseError):
     """Resource we are looking for is not found."""
 
     def __init__(self, msg: str):
@@ -48,7 +48,7 @@ class ZeusBSOServiceBadOperationError(ZeusBSOServerBaseError):
         self.status_code = 400
 
 
-class ZeusBSOServerRuntimeError(ZeusBaseError):
+class ZeusBSOServerRuntimeError(ZeusBSOServerBaseError):
     """Initialization or other errors during runtime."""
 
     def __init__(self, msg: str):

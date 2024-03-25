@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.sqltypes import VARCHAR
 from zeus.optimizer.batch_size.server.job.models import Stage
 
@@ -60,7 +61,7 @@ class JobTable(Base):
 
     stage: Mapped[Stage] = mapped_column(Enum(Stage), default=Stage.Pruning)
     min_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    min_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_cost_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
     batch_sizes: Mapped[list["BatchSizeTable"]] = relationship(
         order_by="BatchSizeTable.batch_size.asc()",
@@ -68,6 +69,9 @@ class JobTable(Base):
         # always fetch batch size(int) whenever we fetch the job.
         # https://docs.sqlalchemy.org/en/14/orm/loading_relationships.html#relationship-loading-techniques
         lazy="joined",
+        # Delete all children if the job gets deleted.
+        # https://docs.sqlalchemy.org/en/20/orm/cascades.html
+        cascade="all, delete-orphan",
     )
 
 
@@ -80,14 +84,23 @@ class BatchSizeTable(Base):
 
     __tablename__ = "BatchSize"
 
-    job_id: Mapped[str] = mapped_column(ForeignKey("Job.job_id"), primary_key=True)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey(
+            "Job.job_id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    trials: Mapped[list["TrialTable"]] = relationship(back_populates="batch_size_state")
+    trials: Mapped[list["TrialTable"]] = relationship(
+        back_populates="batch_size_state", cascade="all, delete-orphan"
+    )
 
     arm_state: Mapped[Optional["GaussianTsArmStateTable"]] = relationship(
         back_populates="batch_size_state",  # populates GaussianTsArmState->BatchSize
         # https://stackoverflow.com/questions/39869793/when-do-i-need-to-use-sqlalchemy-back-populates
+        cascade="all, delete-orphan",
     )
 
     job: Mapped["JobTable"] = relationship(back_populates="batch_sizes")
@@ -115,7 +128,9 @@ class GaussianTsArmStateTable(Base):
 
     __table_args__ = (
         ForeignKeyConstraint(
-            [job_id, batch_size], [BatchSizeTable.job_id, BatchSizeTable.batch_size]
+            [job_id, batch_size],
+            [BatchSizeTable.job_id, BatchSizeTable.batch_size],
+            ondelete="CASCADE",
         ),
     )
 
@@ -154,9 +169,9 @@ class TrialTable(Base):
 
     __tablename__ = "Trial"
 
-    job_id: Mapped[str] = mapped_column(VARCHAR(300), primary_key=True)
-    batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
-    trial_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str] = mapped_column(VARCHAR(300), primary_key=True, nullable=False)
+    batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    trial_number: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
     start_timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     type: Mapped[TrialType] = mapped_column(Enum(TrialType), nullable=False)
     status: Mapped[TrialStatus] = mapped_column(Enum(TrialStatus), nullable=False)
@@ -170,6 +185,8 @@ class TrialTable(Base):
 
     __table_args__ = (
         ForeignKeyConstraint(
-            [job_id, batch_size], [BatchSizeTable.job_id, BatchSizeTable.batch_size]
+            [job_id, batch_size],
+            [BatchSizeTable.job_id, BatchSizeTable.batch_size],
+            ondelete="CASCADE",
         ),
     )

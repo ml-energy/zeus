@@ -99,7 +99,7 @@ class ZeusBatchSizeOptimizer:
         if job.stage == Stage.MAB:
             # If we are in MAB stage, use mab to get the next batch size
             arms = await self.service.get_arms(job_id)
-            trial_pk = await self.service.create_trial(
+            next_trial = await self.service.create_trial(
                 CreateMabTrial(
                     job_id=job_id,
                     batch_size=self.mab.predict(
@@ -117,7 +117,7 @@ class ZeusBatchSizeOptimizer:
                 # MAB stage: construct MAB and update the job stage to MAB. Return the batch size from MAB
                 logger.info("Constructing a MAB")
                 arms = await self.mab.construct_mab(job, explorations, res)
-                trial_pk = await self.service.create_trial(
+                next_trial = await self.service.create_trial(
                     CreateMabTrial(
                         job_id=job_id,
                         batch_size=self.mab.predict(
@@ -129,12 +129,12 @@ class ZeusBatchSizeOptimizer:
                     )
                 )
             else:
-                trial_pk = res
+                next_trial = res
 
         return TrialId(
-            job_id=trial_pk.job_id,
-            batch_size=trial_pk.batch_size,
-            trial_number=trial_pk.trial_number,
+            job_id=next_trial.job_id,
+            batch_size=next_trial.batch_size,
+            trial_number=next_trial.trial_number,
         )
 
     async def report(self, result: TrainingResult) -> ReportResponse:
@@ -249,3 +249,15 @@ class ZeusBatchSizeOptimizer:
                 )
         else:
             raise ZeusBSOServerNotFound(f"Could not find the trial: {trial_id}")
+
+    async def delete_job(self, job_id: str) -> None:
+        """Delete a job.
+
+        Args:
+            job_id: ID of a job.
+
+        Returns:
+            True if the job is deleted. False if none was deleted
+        """
+        if not (await self.service.delete_job(job_id)):
+            raise ZeusBSOServerNotFound("No job was deleted.")

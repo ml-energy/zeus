@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from zeus.optimizer.batch_size.common import (
+    DELETE_JOB_URL,
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
     REPORT_END_URL,
@@ -20,7 +21,9 @@ from zeus.optimizer.batch_size.common import (
 )
 from zeus.optimizer.batch_size.server.config import settings
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
-from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerBaseError
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOServerBaseError,
+)
 from zeus.optimizer.batch_size.server.optimizer import ZeusBatchSizeOptimizer
 from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.util.logging import get_logger
@@ -80,6 +83,33 @@ async def register_job(
         )
 
 
+@app.delete(DELETE_JOB_URL)
+async def delete_job(
+    job_id: str, db_session: AsyncSession = Depends(get_db_session)
+) -> None:
+    """Endpoint for users to delete a job."""
+    async with app.job_locks[job_id]:
+        try:
+            optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
+            await optimizer.delete_job(job_id)
+            await db_session.commit()
+        except ZeusBSOServerBaseError as err:
+            await db_session.rollback()
+            return JSONResponse(
+                status_code=err.status_code,
+                content={"message": err.message},
+            )
+        except Exception as err:
+            await db_session.rollback()
+            logger.error("Commit Failed: %s", str(err))
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )
+        finally:
+            app.job_locks.pop(job_id)
+
+
 @app.patch(REPORT_END_URL)
 async def end_trial(
     trial: TrialId, db_session: AsyncSession = Depends(get_db_session)
@@ -132,7 +162,7 @@ async def predict(
             )
 
 
-@app.patch(REPORT_RESULT_URL, response_model=ReportResponse)
+@app.post(REPORT_RESULT_URL, response_model=ReportResponse)
 async def report(
     result: TrainingResult,
     db_session: AsyncSession = Depends(get_db_session),

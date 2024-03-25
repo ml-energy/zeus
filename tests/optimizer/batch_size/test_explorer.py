@@ -90,7 +90,7 @@ class TestPruningExploreManager:
             training_result = self.exploration_to_training_result(
                 exp, job_id, parsed_res.trial_number
             )
-            response = client.patch(
+            response = client.post(
                 REPORT_RESULT_URL,
                 content=training_result.json(),
             )

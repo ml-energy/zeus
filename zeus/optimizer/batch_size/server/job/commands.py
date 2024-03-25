@@ -6,9 +6,7 @@ import json
 from typing import Any, Optional
 
 import numpy as np
-from pydantic.class_validators import root_validator, validator
-from pydantic.fields import Field
-from pydantic.main import BaseModel
+from zeus.util.pydantic_v1 import root_validator, validator, Field, BaseModel
 from zeus.optimizer.batch_size.common import JobConfig
 from zeus.optimizer.batch_size.server.database.schema import BatchSizeTable, JobTable
 from zeus.optimizer.batch_size.server.job.models import Stage
@@ -65,12 +63,12 @@ class UpdateJobMinCost(BaseModel):
     Attributes:
         job_id: Job Id.
         min_cost: Min training cost.
-        min_batch_size: Corresponding batch size.
+        min_cost_batch_size: Corresponding batch size.
     """
 
     job_id: str
     min_cost: float = Field(ge=0)
-    min_batch_size: int = Field(gt=0)
+    min_cost_batch_size: int = Field(gt=0)
 
 
 class CreateJob(JobConfig):
@@ -79,7 +77,7 @@ class CreateJob(JobConfig):
     Attributes:
         exp_default_batch_size: Exploration default batch size that is used during Pruning stage.
         min_cost: Min training cost observed. Initially, None.
-        min_batch_size: Batch size that has minimum training cost observed.
+        min_cost_batch_size: Batch size that has minimum training cost observed.
         stage: Stage of the job.
         mab_random_generator_state: Generator state if mab_seed is not None. Otherwise, None.
 
@@ -88,7 +86,7 @@ class CreateJob(JobConfig):
 
     exp_default_batch_size: int
     min_cost: None = Field(None, const=True)
-    min_batch_size: int
+    min_cost_batch_size: int
     stage: Stage = Field(Stage.Pruning, const=True)
     mab_random_generator_state: Optional[str] = None
 
@@ -114,7 +112,7 @@ class CreateJob(JobConfig):
         bss: list[int] = values["batch_sizes"]
         dbs: int = values["default_batch_size"]
         ebs: int = values["exp_default_batch_size"]
-        mbs: int = values["min_batch_size"]
+        mbs: int = values["min_cost_batch_size"]
 
         if mab_seed is not None:
             if state is None:
@@ -139,14 +137,14 @@ class CreateJob(JobConfig):
     def from_job_config(js: JobConfig) -> "CreateJob":
         """From JobConfig, instantiate `CreateJob`.
 
-        Initialize generator state, exp_default_batch_size, and min_batch_size.
+        Initialize generator state, exp_default_batch_size, and min_cost_batch_size.
         """
         d = js.dict()
         d["exp_default_batch_size"] = js.default_batch_size
         if js.mab_seed is not None:
             rng = np.random.default_rng(js.mab_seed)
             d["mab_random_generator_state"] = json.dumps(rng.__getstate__())
-        d["min_batch_size"] = js.default_batch_size
+        d["min_cost_batch_size"] = js.default_batch_size
         return CreateJob.parse_obj(d)
 
     def to_orm(self) -> JobTable:

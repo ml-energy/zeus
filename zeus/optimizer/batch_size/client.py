@@ -104,29 +104,25 @@ class BatchSizeOptimizer(Callback):
             params={"job_id": self.job.job_id},
         )
         self._handle_response(res)
-        parsed_response = TrialId.parse_obj(res.json())
+        trial_id = TrialId.parse_obj(res.json())
 
-        if parsed_response.batch_size not in self.job.batch_sizes:
+        if trial_id.batch_size not in self.job.batch_sizes:
             raise ZeusBSORuntimError(
-                f"Zeus server returned a strange batch_size: {parsed_response.batch_size}"
+                f"Zeus server returned a strange batch_size: {trial_id.batch_size}"
             )
 
-        self.current_batch_size = parsed_response.batch_size
-        self.trial_number = parsed_response.trial_number
+        self.current_batch_size = trial_id.batch_size
+        self.trial_number = trial_id.trial_number
 
-        logger.info(
-            "[BatchSizeOptimizer] Chosen batch size: %s", parsed_response.batch_size
-        )
+        logger.info("[BatchSizeOptimizer] Chosen batch size: %s", trial_id.batch_size)
 
         def report_end() -> None:
             # TODO: Double check capturing variable.
-            print(self.server_url + REPORT_END_URL, parsed_response.json())
-            httpx.patch(
-                self.server_url + REPORT_END_URL, content=parsed_response.json()
-            )
+            print(self.server_url + REPORT_END_URL, trial_id.json())
+            httpx.patch(self.server_url + REPORT_END_URL, content=trial_id.json())
 
         atexit.register(report_end)
-        return parsed_response.batch_size
+        return trial_id.batch_size
 
     def on_train_begin(self) -> None:
         """Start the monitor window and mark training is started."""
@@ -173,7 +169,6 @@ class BatchSizeOptimizer(Callback):
             job_id=self.job.job_id,
             batch_size=self.current_batch_size,
             trial_number=self.trial_number,
-            error=False,
             time=self.running_time,
             energy=self.consumed_energy,
             metric=metric,
@@ -181,7 +176,7 @@ class BatchSizeOptimizer(Callback):
         )
 
         # report to the server about the result of this training
-        res = httpx.patch(
+        res = httpx.post(
             self.server_url + REPORT_RESULT_URL, content=training_result.json()
         )
         self._handle_response(res)

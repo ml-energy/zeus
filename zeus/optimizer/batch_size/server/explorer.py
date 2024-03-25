@@ -77,7 +77,7 @@ class PruningExploreManager:
                             return await self.service.create_trial(
                                 CreateConcurrentTrial(
                                     job_id=job.job_id,
-                                    batch_size=job.min_batch_size,
+                                    batch_size=job.min_cost_batch_size,
                                 )
                             )
 

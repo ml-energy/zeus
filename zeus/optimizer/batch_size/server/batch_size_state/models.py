@@ -5,9 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import Field
-from pydantic.class_validators import root_validator, validator
-from pydantic.main import BaseModel
+from zeus.util.pydantic_v1 import Field, root_validator, validator, BaseModel
 from zeus.optimizer.batch_size.server.database.schema import (
     GaussianTsArmStateTable,
     TrialStatus,

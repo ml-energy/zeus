@@ -1,7 +1,7 @@
 """Server global configurations."""
 
 from dotenv import find_dotenv
-from pydantic.env_settings import BaseSettings
+from zeus.util.pydantic_v1 import BaseSettings
 
 
 class ZeusBsoSettings(BaseSettings):

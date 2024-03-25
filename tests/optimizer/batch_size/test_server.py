@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import pytest
 from zeus.optimizer.batch_size.common import (
+    DELETE_JOB_URL,
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
     REPORT_END_URL,
@@ -88,7 +89,7 @@ def test_predict(client):
 
 def test_report(client):
     # Converged within max epoch => successful training
-    response = client.patch(
+    response = client.post(
         REPORT_RESULT_URL,
         json={
             "job_id": pytest.fake_job_config["job_id"],
@@ -107,7 +108,7 @@ def test_report(client):
         and response.json()["stop_train"] == True
     )
     # NO update in exploration state since this was a concurrent job submission
-    response = client.patch(
+    response = client.post(
         REPORT_RESULT_URL,
         json={
             "job_id": pytest.fake_job_config["job_id"],
@@ -183,7 +184,7 @@ def test_predict_report_sequence(client):
                 if converged:
                     new_bss.append(bs)
 
-                response = client.patch(
+                response = client.post(
                     REPORT_RESULT_URL,
                     json={
                         "job_id": pytest.fake_job_config["job_id"],
@@ -228,7 +229,7 @@ def test_mab_stage(client):
         assert response.status_code == 200
         bs_seq.append(response.json()["batch_size"])
 
-        response = client.patch(
+        response = client.post(
             REPORT_RESULT_URL,
             json={
                 "job_id": pytest.fake_job_config["job_id"],
@@ -281,7 +282,7 @@ def test_end_trial(client):
     bs = response.json()["batch_size"]
 
     # Report result.
-    response = client.patch(
+    response = client.post(
         REPORT_RESULT_URL,
         json={
             "job_id": pytest.fake_job_config["job_id"],
@@ -306,3 +307,38 @@ def test_end_trial(client):
         },
     )
     assert response.status_code == 200
+
+
+def test_delete_job(client):
+    random_job = deepcopy(pytest.fake_job_config)
+    random_job["job_id"] = "test-random-job"
+
+    response = client.post(REGISTER_JOB_URL, json=random_job)
+    print(response.text)
+    assert response.status_code == 201
+
+    response = client.delete(
+        DELETE_JOB_URL,
+        params={"job_id": random_job["job_id"]},
+    )
+    print(response.text)
+    assert response.status_code == 200
+
+    response = client.post(REGISTER_JOB_URL, json=random_job)
+    print(response.text)
+    assert response.status_code == 201
+
+    response = client.delete(
+        DELETE_JOB_URL,
+        params={"job_id": pytest.fake_job_config["job_id"]},
+    )
+    print(response.text)
+    assert response.status_code == 200
+
+    # Job doesn't exists
+    response = client.delete(
+        DELETE_JOB_URL,
+        params={"job_id": "UNKNOWN"},
+    )
+    print(response.text)
+    assert response.status_code == 404

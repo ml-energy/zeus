@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, func
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateTrial,
@@ -26,7 +26,10 @@ from zeus.optimizer.batch_size.server.database.schema import (
     TrialTable,
     TrialType,
 )
-from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOServerRuntimeError,
+    ZeusBSOValueError,
+)
 from zeus.util.logging import get_logger
 
 logger = get_logger(__name__)
@@ -43,21 +46,15 @@ class BatchSizeStateRepository(DatabaseRepository):
 
     async def get_next_trial_number(self, job_id: str) -> int:
         """Get next trial number of a given job. Trial number starts from 1 and increase by 1 at a time."""
-        stmt = (
-            select(TrialTable)
-            .where(
-                and_(
-                    TrialTable.job_id == job_id,
-                )
+        stmt = select(func.max(TrialTable.trial_number)).where(
+            and_(
+                TrialTable.job_id == job_id,
             )
-            .order_by(TrialTable.trial_number.desc())
-            .limit(1)
         )
-        res = (await self.session.scalars(stmt)).all()
-        if len(res) == 0:
+        res = await self.session.scalar(stmt)
+        if res is None:
             return 1
-        else:
-            return res[0].trial_number + 1
+        return res + 1
 
     async def get_trial_results_of_bs(
         self, batch_size: BatchSizeBase, window_size: int
@@ -141,9 +138,6 @@ class BatchSizeStateRepository(DatabaseRepository):
         Returns:
             Found Trial. If none found, return None.
         """
-        if self.fetched_trial is not None:
-            return self.fetched_trial
-
         stmt = select(TrialTable).where(
             TrialTable.job_id == trial.job_id,
             TrialTable.batch_size == trial.batch_size,
@@ -178,7 +172,7 @@ class BatchSizeStateRepository(DatabaseRepository):
         """
         self.session.add(trial.to_orm())
 
-    def update_trial(self, updated_trial: UpdateTrial) -> None:
+    def updated_current_trial(self, updated_trial: UpdateTrial) -> None:
         """Update trial in the database (report the result of trial).
 
         Args:

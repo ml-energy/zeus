@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, root_validator, validator
-from pydantic.fields import Field
+from zeus.util.pydantic_v1 import BaseModel, root_validator, validator, Field
 
 REGISTER_JOB_URL = "/jobs"
+DELETE_JOB_URL = "/jobs"
 GET_NEXT_BATCH_SIZE_URL = "/jobs/batch_size"
-REPORT_RESULT_URL = "/trial/report"
-REPORT_END_URL = "/trial/end"
+REPORT_RESULT_URL = "/report"
+REPORT_END_URL = "/trials"
 
 
 class JobParams(BaseModel):
@@ -88,7 +88,7 @@ class JobSpec(JobParams):
     """Job specification that user inputs.
 
     Attributes:
-        job_id: ID of job
+        job_id: Prefix of job Id.
         job_id_prefix: Prefix of job.
 
     Refer [`JobParams`][`zeus.optimizer.batch_size.common.JobParams`] for other attributes.

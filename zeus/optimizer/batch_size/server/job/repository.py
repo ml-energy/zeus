@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import joinedload
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
@@ -41,11 +41,7 @@ class JobStateRepository(DatabaseRepository):
         Returns:
             set fetched_job and return `JobState` if we found a job, unless return None.
         """
-        stmt = (
-            select(JobTable)
-            .where(JobTable.job_id == job_id)
-            .options(joinedload(JobTable.batch_sizes))
-        )
+        stmt = select(JobTable).where(JobTable.job_id == job_id)
         job = await self.session.scalar(stmt)
 
         if job is None:
@@ -111,7 +107,7 @@ class JobStateRepository(DatabaseRepository):
 
         if self.fetched_job.job_id == updated_min.job_id:
             self.fetched_job.min_cost = updated_min.min_cost
-            self.fetched_job.min_batch_size = updated_min.min_batch_size
+            self.fetched_job.min_cost_batch_size = updated_min.min_cost_batch_size
         else:
             raise ZeusBSOValueError(
                 f"Unknown job_id ({updated_min.job_id}). Expecting {self.fetched_job.job_id}"
@@ -151,3 +147,24 @@ class JobStateRepository(DatabaseRepository):
             True if this job was fetched and in session. Otherwise, return false.
         """
         return not (self.fetched_job is None or self.fetched_job.job_id != job_id)
+
+    async def delete_job(self, job_id: str) -> bool:
+        """Delete the job of a given job_Id.
+
+        Args:
+            job_id: Job id.
+
+        Returns:
+            True if the job got deleted.
+        """
+
+        stmt = select(JobTable).where(JobTable.job_id == job_id)
+        job = await self.session.scalar(stmt)
+
+        if job == None:
+            return False
+
+        # We can't straight delete using a query, since some db such as sqlite
+        # Foreign Key is default to OFF, so "on delete = cascade" will not be fired.
+        await self.session.delete(job)
+        return True

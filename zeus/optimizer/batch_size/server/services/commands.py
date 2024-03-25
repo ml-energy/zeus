@@ -1,6 +1,6 @@
 """Commands on how to use some methods from the `ZeusService`."""
 
-from pydantic import BaseModel
+from zeus.util.pydantic_v1 import BaseModel
 from zeus.optimizer.batch_size.server.batch_size_state.commands import ReadTrial
 from zeus.optimizer.batch_size.server.batch_size_state.models import GaussianTsArmState
 

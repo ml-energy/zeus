@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, Optional
 
 import numpy as np
-from pydantic.class_validators import root_validator
+from zeus.util.pydantic_v1 import root_validator
 from pydantic.utils import GetterDict
 from zeus.optimizer.batch_size.common import JobConfig
 
@@ -37,7 +37,7 @@ class JobState(JobConfig):
     Attributes:
         exp_default_batch_size: Exploration default batch size that is used during Pruning stage.
         min_cost: Min training cost observed. Initially, None.
-        min_batch_size: Batch size that has minimum training cost observed.
+        min_cost_batch_size: Batch size that has minimum training cost observed.
         stage: Stage of the job.
         mab_random_generator_state: Generator state if mab_seed is not None. Otherwise, None.
 
@@ -47,7 +47,7 @@ class JobState(JobConfig):
     exp_default_batch_size: int
 
     min_cost: Optional[float] = None
-    min_batch_size: int
+    min_cost_batch_size: int
     stage: Stage = Stage.Pruning
 
     mab_random_generator_state: Optional[str] = None
