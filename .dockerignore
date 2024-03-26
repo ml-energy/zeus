@@ -10,3 +10,4 @@ zeus.egg-info/
 .git/
 
 **/data/
+**/versions/*.py

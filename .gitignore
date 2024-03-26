@@ -11,4 +11,8 @@ dist/
 *.json
 **/.DS_Store
 .cache/
+.env
 env/
+test.db
+.pytest_cache/
+/envs
