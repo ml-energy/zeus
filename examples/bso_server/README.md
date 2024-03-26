@@ -27,14 +27,20 @@ Batch size optimzer is composed of two parts: server and client. Client will be 
 
 Now server is good to go!
 
-### Remark
+### Remark about server
 
 Zeus Batch Size Optimizer server is using Sqlalchemy to support various type of database. However, you need to download the corresponding async connection driver.
 As a default, we are using Mysql. You can add installation code to `Dockerfile.migration` and `Dockerfile.server`. Refer to those files for reference.
 
 ## Use BSO in your training script (Client)
 
-1. Add `ZeusBatchSizeOptimizer` to your training script.
+1. Install Zeus package.
+
+    ```Shell
+    pip install zeus-ml[bso]
+    ```
+
+2. Add `ZeusBatchSizeOptimizer` to your training script.
 
     ```Python
     # Initialization
@@ -63,6 +69,11 @@ As a default, we are using Mysql. You can add installation code to `Dockerfile.m
     bso.on_evaluate(metric)
     ```
 
-### Remark
+### Remark about client
 
-    TODO: ADD STUFF ABOUT JOB_ID
+Training can fail if
+
+1. It failed to converge within configured max_epochs
+2. It exceeded the early stopping threshold which is configured by `beta_knob` in `JobSpec`
+
+In that case, optimizer will raise `ZeusBSOTrainFailError`. This means that chosen batch size was not useful, and bso server will not give this batch size again. However, the user ***should re-lanuch the job*** so that the bso server can give another batch size. The server will learn which batch size is useful and will converge to the batch size that causes the least cost as you lanch the job multiple times.
