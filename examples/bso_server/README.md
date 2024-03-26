@@ -1,70 +1,68 @@
 # Batch Size Optimizer in Zeus
 
-## What it is?
-
-Batch size optimizer(BSO) can choose the best batch size that minimizes the cost, where cost is defined as $cost = \eta \times \text{Energy consumption to accuracy} + (1-\eta) \times \text{Max power}\times \text{Time to accuracy}$.
-
-## How does it work?
-
-Core of BSO is a multi-arm-bandit based on **recurrent** trainings. After each training, we feed the result cost to MAB and after certain number of trainings, MAB can converge to the best batch size. In addition to MAB, we employed early-stopping and pruning to handle stragglers. For more detail, refer to [paper](https://www.usenix.org/conference/nsdi23/presentation/you).
-
-## Should I use this?
-
-The key of BSO is recurrent training. If you are training your model periodically or repeatedly, BSO can be a great choice to reduce energy or time consumption.
-
-## Limitations
-
-We currently doesn't support heterogeneous GPUs or different configurations. Number of GPUs, gpu models, and other configurations in JobSpec should be identical in recurrent trainings. If you are running your training in a various environment each time, then it might not desirable to use BSO.
-
-## How to use?
-
 Batch size optimzer is composed of two parts: server and client. Client will be running in your training script just like power limit optimizer or monitor. This client will send training result to BSO server and server will give the client the best batch size to use.
 
-### Running a BSO server
+## Quick start (Server)
 
-1. Install zeus batch size optimizer dependencies
+1. Clone the repository
 
-    ```shell
-    pip install zeus-ml[bso]
+    ```Shell
+    git clone https://github.com/ml-energy/zeus/tree/master
     ```
 
-2. Install additional dependencies for a chosen database
-3. Install migration dependencies to use alembic for migration
-4. Follow readme under migration to set up tables
+2. Create `.env` under `/docker`. Example of `.env` is provided below.
 
-5. Set up environment. Should specify, database_url, and database_password. For example,
-
-    ```shell
-    # Example 
-    ZEUS_DATABASE_URL = "sqlite+aiosqlite:////home/Projects/zeus/test.db"
-    ZEUS_DATABASE_PASSWORD = "SECRET"
-    ZEUS_LOG_LEVEL = "INFO"
+    ```Shell
+    ZEUS_BSO_DB_USER="me" 
+    ZEUS_BSO_DB_PASSWORD="secret"
+    ZEUS_BSO_ROOT_PASSWORD="secret*"
+    ZEUS_BSO_SERVER_PORT=8000
     ```
 
-### Running
+3. Spawn containers. It will create database, perform migration, and spawn the server.
 
-1. Run server
-
-    ```shell
-    # /zeus/zeus/optimizer/batch_size/server
-    uvicorn router:app 
+    ```Shell
+    docker-compose -f ./docker/docker-compose.yaml up
     ```
 
-2. Run mnist example
+Now server is good to go!
 
-    ```shell
-    # /zeus/examples/bso_server
-    python mnist.py
+### Remark
+
+Zeus Batch Size Optimizer server is using Sqlalchemy to support various type of database. However, you need to download the corresponding async connection driver.
+As a default, we are using Mysql. You can add installation code to `Dockerfile.migration` and `Dockerfile.server`. Refer to those files for reference.
+
+## Use BSO in your training script (Client)
+
+1. Add `ZeusBatchSizeOptimizer` to your training script.
+
+    ```Python
+    # Initialization
+    bso = BatchSizeOptimizer(
+        monitor=monitor,
+        server_url="<server url>", # http://127.0.0.1:8000
+        job=JobParams(
+            job_id_prefix="mnist-dev",
+            default_batch_size=256,
+            batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
+        ),
+    )
+    # ... other codes 
+
+    # Get batch size to use from the server
+    batch_size = bso.get_batch_size()
+
+    # ... 
+
+    # beginning of the train
+    bso.on_train_begin()
+
+    # ...
+
+    # After evaluation
+    bso.on_evaluate(metric)
     ```
 
-### Using a BSO client
+### Remark
 
-In your training script, initialize batch size optimizer like below.
-
-```python
-bso = BatchSizeOptimizer(
-    monitor=monitor,
-    server_url="http://127.0.0.1:8000",
-    job_in=JobSpecIn(job_id="3fa85f64-5717-4562-b3fc-2c963f66afa6"),
-)
-```
+    TODO: ADD STUFF ABOUT JOB_ID

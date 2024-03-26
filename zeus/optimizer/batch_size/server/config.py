@@ -9,13 +9,11 @@ class ZeusBsoSettings(BaseSettings):
 
     Attributes:
         database_url: url of database for the server
-        database_password: password of database if any
         echo_sql: log sql statements it executes
         log_level: level of log
     """
 
     database_url: str
-    database_password: str = ""
     echo_sql: bool = False
     log_level: str = "DEBUG"
 

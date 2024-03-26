@@ -52,7 +52,7 @@ RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 --index-url http
 WORKDIR /workspace
 
 # Snapshot of Zeus
-ADD ../ /workspace/zeus
+ADD . /workspace/zeus
 
 # When an outside zeus directory is mounted, have it apply immediately.
 RUN cd /workspace/zeus && pip install --no-cache-dir -e .

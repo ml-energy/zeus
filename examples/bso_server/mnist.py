@@ -17,7 +17,7 @@ import torch.optim as optim
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobParams
+from zeus.optimizer.batch_size.common import JobParams, JobSpec
 
 
 WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
@@ -47,7 +47,8 @@ bso = BatchSizeOptimizer(
     monitor=monitor,
     server_url="http://127.0.0.1:8000",
     job=JobParams(
-        job_id="3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        job_id="1",
+        job_id_prefix="mnist-dev",
         default_batch_size=256,
         batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
     ),
