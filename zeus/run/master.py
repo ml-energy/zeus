@@ -25,7 +25,6 @@ from pathlib import Path
 from time import localtime, sleep, strftime
 
 import numpy as np
-#import pynvml
 import torch
 
 from zeus.analyze import HistoryEntry
@@ -105,11 +104,11 @@ class ZeusMaster:
 
         # Query the max power limit of the GPU.
         gpus = get_gpus()
-        minmax = gpus.getPowerManagementLimitConstraints(0) # unit: mW, assumes device 0
+        minmax = gpus.getPowerManagementLimitConstraints(
+            0
+        )  # unit: mW, assumes device 0
         self.max_pl = minmax[1] // 1000  # unit: W
-        print(
-            f"[Zeus Master] Max power limit of {gpus.getName(0)}: {self.max_pl}W"
-        )
+        print(f"[Zeus Master] Max power limit of {gpus.getName(0)}: {self.max_pl}W")
 
     def build_logdir(
         self,

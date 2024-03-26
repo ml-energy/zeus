@@ -22,12 +22,10 @@ import tempfile
 from time import time, sleep
 import multiprocessing as mp
 
-# import pynvml
 import pandas as pd
 from sklearn.metrics import auc
 
 from zeus.util.logging import get_logger
-from zeus.util.env import resolve_gpu_indices
 from zeus.device import get_gpus
 
 
@@ -40,7 +38,6 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     period detected. Then, it returns half the period to ensure that the
     counter is polled at least twice per update period.
     """
-
     logger = get_logger(__name__)
 
     # get gpus
@@ -132,16 +129,18 @@ class PowerMonitor:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
 
         # Get GPUs
-        gpus = get_gpus()
+        gpus = get_gpus(gpu_indices)
 
         # Set up logging.
         self.logger = get_logger(type(self).__name__)
 
         # Get GPU indices:
-        # if gpu_indices is not None, we can directly use these indices in the gpu class, 
+        # if gpu_indices is not None, we can directly use these indices in the gpu class,
         # since the class only tracks all CUDA_VISIBLE_DEVICES gpus, or all gpus if CUDA_VISIBLE_DEVICES is not set
         # if gpu_indices is None, we must track all GPUs visible under CUDA_VISIBLE_DEVICES (which the gpus class keeps track of)
-        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(gpus)))
+        self.gpu_indices = (
+            gpu_indices if gpu_indices is not None else list(range(len(gpus)))
+        )
         self.logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
 
         # Infer the update period if necessary.

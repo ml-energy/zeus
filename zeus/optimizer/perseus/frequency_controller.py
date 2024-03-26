@@ -52,10 +52,11 @@ class FrequencyController:
 
     def _controller_process(self, device_id: int) -> None:
         """Receive frequency values through a queue and apply it."""
-
         gpus = get_gpus()
         # Return the power limit to the default.
-        gpus.setPowerManagementLimit(device_id, value=None) # value set to None for default power limit
+        gpus.setPowerManagementLimit(
+            device_id, value=None
+        )  # value set to None for default power limit
 
         # Set the memory frequency to be the highest.
         max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))
@@ -63,9 +64,7 @@ class FrequencyController:
             gpus.setMemoryLockedClocks(device_id, max_mem_freq, max_mem_freq)
 
         # Set the SM frequency to be the highest.
-        max_freq = max(
-            gpus.getSupportedGraphicsClocks(device_id, max_mem_freq)
-        )
+        max_freq = max(gpus.getSupportedGraphicsClocks(device_id, max_mem_freq))
         gpus.setGpuLockedClocks(device_id, max_freq, max_freq)
         current_freq = max_freq
 

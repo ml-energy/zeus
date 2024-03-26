@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import atexit
 import json
 import os
 import logging
@@ -25,7 +24,6 @@ from pathlib import Path
 from typing import Generator, Literal, ClassVar
 import numpy as np
 
-# import pynvml
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
@@ -422,9 +420,11 @@ class ZeusDataLoader(DataLoader):
         for index in range(self.world_size):
             # Set persistent mode.
             gpus.setPersistenceMode(index)
-            
+
         # Query NVML for the possible power limit range. Unit is mW.
-        min_pl, self.max_pl = gpus.getPowerManagementLimitConstraints(0) # TODO: assume 0?
+        min_pl, self.max_pl = gpus.getPowerManagementLimitConstraints(
+            0
+        )  # TODO: assume 0?
         self.power_limits = list(range(self.max_pl, min_pl - 25_000, -25_000))
         if self._is_train:
             self._log(f"Power limit range: {self.power_limits}")

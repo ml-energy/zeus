@@ -25,7 +25,6 @@ from functools import cached_property, lru_cache
 from zeus.monitor.power import PowerMonitor
 from zeus.util.logging import get_logger
 from zeus.util.framework import cuda_sync
-from zeus.util.env import resolve_gpu_indices
 from zeus.device import get_gpus
 
 logger = get_logger(__name__)
@@ -130,10 +129,12 @@ class ZeusMonitor:
         self.gpus = get_gpus(gpu_indices)
 
         # Get GPU indices:
-        # if gpu_indices is not None, we can directly use these indices in the gpu class, 
+        # if gpu_indices is not None, we can directly use these indices in the gpu class,
         # since the class only tracks all CUDA_VISIBLE_DEVICES gpus, or all gpus if CUDA_VISIBLE_DEVICES is not set
         # if gpu_indices is None, we must track all GPUs visible under CUDA_VISIBLE_DEVICES (which the gpus class keeps track of)
-        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
+        self.gpu_indices = (
+            gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
+        )
 
         # Initialize loggers.
         if log_file is None:
@@ -174,9 +175,7 @@ class ZeusMonitor:
     @lru_cache
     def _is_new_arch(self, gpu_index: int) -> bool:
         """Return whether the GPU supports `getTotalEnergyConsumption` API."""
-        return (
-            self.gpus.supportsGetTotalEnergyConsumption(gpu_index)
-        )
+        return self.gpus.supportsGetTotalEnergyConsumption(gpu_index)
 
     @cached_property
     def _is_new_arch_flags(self) -> list[bool]:
@@ -186,10 +185,7 @@ class ZeusMonitor:
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""
         power_measurement_start_time: float = time()
-        power = {
-            i: self.gpus.getPowerUsage(i) / 1000.0
-            for i in self.gpu_indices
-        }
+        power = {i: self.gpus.getPowerUsage(i) / 1000.0 for i in self.gpu_indices}
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
@@ -201,7 +197,6 @@ class ZeusMonitor:
             sync_cuda: Whether to synchronize CUDA before starting the measurement window.
                 (Default: `True`)
         """
-
         # Make sure the key is unique.
         if key in self.measurement_states:
             raise ValueError(f"Measurement window '{key}' already exists")
@@ -273,9 +268,7 @@ class ZeusMonitor:
         for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
             if self._is_new_arch(gpu_index):
-                end_energy = (
-                    self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
-                )
+                end_energy = self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
                 energy_consumption[gpu_index] = end_energy - start_energy[gpu_index]
 
         # If there are older GPU architectures, the PowerMonitor will take care of those.

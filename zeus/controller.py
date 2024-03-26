@@ -16,8 +16,6 @@
 
 from __future__ import annotations
 
-# import pynvml
-
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.util.metric import zeus_cost
@@ -87,8 +85,7 @@ class EarlyStopController(Callback):
             gpus = get_gpus()
             for gpu_index in self.monitor.gpu_indices:
                 self.max_power[gpu_index] = (
-                    gpus.getPowerManagementLimitConstraints(gpu_index)[1]
-                    // 1000
+                    gpus.getPowerManagementLimitConstraints(gpu_index)[1] // 1000
                 )
 
         # States.

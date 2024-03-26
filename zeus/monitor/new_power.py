@@ -26,7 +26,6 @@ import pandas as pd
 from sklearn.metrics import auc
 
 from zeus.util.logging import get_logger
-from zeus.util.env import resolve_gpu_indices
 from zeus.device import gpus
 
 
@@ -39,7 +38,6 @@ def infer_counter_update_period(gpu_indices: list[int]) -> float:
     period detected. Then, it returns half the period to ensure that the
     counter is polled at least twice per update period.
     """
-
     logger = get_logger(__name__)
 
     # For each unique GPU model, infer the update period.
@@ -129,7 +127,9 @@ class PowerMonitor:
         self.logger = get_logger(type(self).__name__)
 
         # Get GPU indices.
-        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(gpus)))
+        self.gpu_indices = (
+            gpu_indices if gpu_indices is not None else list(range(len(gpus)))
+        )
         self.logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
 
         # Infer the update period if necessary.
