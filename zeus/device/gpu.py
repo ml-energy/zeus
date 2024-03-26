@@ -1,22 +1,20 @@
 """GPU management module for Zeus."""
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
-import functools
-
 import abc
+import functools
 import os
-
-from zeus.device.exception import ZeusBaseGPUError
-if TYPE_CHECKING:
-    import pynvml
-    import amdsmi
-
 import sys
+from typing import TYPE_CHECKING
 
 import pynvml
 
+from zeus.device.exception import ZeusBaseGPUError
 from zeus.util import cuda_sync
+
+if TYPE_CHECKING:
+    import amdsmi
+    import pynvml
 
 """ EXCEPTION WRAPPERS """
 
@@ -160,16 +158,113 @@ class ZeusUnknownGPUError(ZeusBaseGPUError):
         """Initialize Zeus Exception."""
         super().__init__(message)
 
+""" SINGLE GPU MANAGEMENT OBJECTS """
 
 class GPU(abc.ABC):
+    """Abstract base class for GPU management. This class defines the interface for interacting with GPUs, including power management, clock settings, and information retrieval. Subclasses should implement the methods to interact with specific GPU libraries (e.g., NVML for NVIDIA GPUs)."""
     def __init__(self, gpu_index: int) -> None:
+        """Initialize the GPU with a specified index."""
         self.gpu_index = gpu_index
 
+    @abc.abstractmethod
+    def _get_handle(self):
+        """Acquire and set the handle for the GPU, enabling further operations."""
+        pass
 
-""" NVIDIA GPUs """
+    @abc.abstractmethod
+    def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
+        """Return the minimum and maximum power management limits for the GPU."""
+        pass
+
+    @abc.abstractmethod
+    def setPersistenceMode(self) -> None:
+        """Enable persistence mode for the GPU."""
+        pass
+
+    @abc.abstractmethod
+    def setPowerManagementLimit(self, value: int = None) -> None:
+        """Set the power management limit for the GPU to a specified value or default."""
+        pass
+
+    @abc.abstractmethod
+    def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        """Lock the memory clock to a specified range."""
+        pass
+
+    @abc.abstractmethod
+    def getSupportedMemoryClocks(self) -> list[int]:
+        """Return a list of supported memory clock frequencies for the GPU."""
+        pass
+
+    @abc.abstractmethod
+    def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
+        """Return a list of supported graphics clock frequencies for a given memory frequency."""
+        pass
+
+    @abc.abstractmethod
+    def getName(self) -> str:
+        """Return the name of the GPU."""
+        pass
+
+    @abc.abstractmethod
+    def setGpuLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        """Lock the GPU clock to a specified range."""
+        pass
+
+    @abc.abstractmethod
+    def resetMemoryLockedClocks(self) -> None:
+        """Reset the memory locked clocks to default values."""
+        pass
+
+    @abc.abstractmethod
+    def resetGpuLockedClocks(self) -> None:
+        """Reset the GPU locked clocks to default values."""
+        pass
+
+    @abc.abstractmethod
+    def getPowerUsage(self) -> int:
+        """Return the current power usage of the GPU."""
+        pass
+
+    @abc.abstractmethod
+    def supportsGetTotalEnergyConsumption(self) -> bool:
+        """Check if the GPU supports retrieving total energy consumption."""
+        pass
+
+    @abc.abstractmethod
+    def getTotalEnergyConsumption(self) -> int:
+        """Return the total energy consumption of the GPU."""
+        pass
+
+
+""" GPU MANAGEMENT OBJECTS """
 
 class NVIDIAGPU(GPU):
-    """"""
+    """
+    A subclass of GPU tailored for NVIDIA GPUs, providing an interface to control and query GPU features via the NVML library.
+
+    This class includes methods to set and get power management limits, persistence mode, memory and GPU clock speeds,
+    and to query supported memory and graphics clock speeds, GPU names, and power usage. Exception handling for NVML
+    errors is integrated, mapping NVML error codes to custom exceptions for clearer error reporting and management.
+
+    Attributes:
+        _exception_map (dict): A dictionary mapping NVML error codes to custom exception classes for this application.
+
+    Methods:
+        __init__(gpu_index: int): Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`.
+        getPowerManagementLimitConstraints(): Returns the minimum and maximum power management limits for the GPU using `pynvml.nvmlDeviceGetPowerManagementLimitConstraints`.
+        setPersistenceMode(): Enables persistence mode for the GPU using `pynvml.nvmlDeviceSetPersistenceMode`, ensuring the driver keeps the GPU initialized even when not in use.
+        setPowerManagementLimit(value: int = None): Sets the power management limit for the GPU to a specified value or to the default limit if no value is given, using `pynvml.nvmlDeviceSetPowerManagementLimit`.
+        setMemoryLockedClocks(minMemClockMHz: int, maxMemClockMHz: int): Locks the memory clock to a specified range using `pynvml.nvmlDeviceSetMemoryLockedClocks`.
+        getSupportedMemoryClocks(): Returns a list of supported memory clock frequencies for the GPU using `pynvml.nvmlDeviceGetSupportedMemoryClocks`.
+        getSupportedGraphicsClocks(freq: int): Returns a list of supported graphics clock frequencies for a given memory frequency using `pynvml.nvmlDeviceGetSupportedGraphicsClocks`.
+        getName(): Returns the name of the GPU using `pynvml.nvmlDeviceGetName`.
+        setGpuLockedClocks(index: int, minMemClockMHz: int, maxMemClockMHz: int): Locks the GPU clock to a specified range using `pynvml.nvmlDeviceSetGpuLockedClocks`.
+        resetMemoryLockedClocks(): Resets the memory locked clocks to default values using `pynvml.nvmlDeviceResetMemoryLockedClocks`.
+        resetGpuLockedClocks(): Resets the GPU locked clocks to default values using `pynvml.nvmlDeviceResetGpuLockedClocks`.
+        getPowerUsage(): Returns the current power usage of the GPU using `pynvml.nvmlDeviceGetPowerUsage`.
+        supportsGetTotalEnergyConsumption(): Checks if the GPU supports retrieving total energy consumption, based on GPU architecture using `pynvml.nvmlDeviceGetArchitecture` and comparing with `pynvml.NVML_DEVICE_ARCH_VOLTA`.
+        getTotalEnergyConsumption(): Returns the total energy consumption of the GPU since the last driver load using `pynvml.nvmlDeviceGetTotalEnergyConsumption`."""
     _exception_map = {
             pynvml.NVML_ERROR_UNINITIALIZED : ZeusInitGPUError,
             pynvml.NVML_ERROR_INVALID_ARGUMENT : ZeusInvalidArgGPUError,
@@ -204,6 +299,7 @@ class NVIDIAGPU(GPU):
         return wrapper
 
     def __init__(self, gpu_index: int) -> None:
+        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
         super().__init__(gpu_index)
         self._get_handle()
 
@@ -217,16 +313,18 @@ class NVIDIAGPU(GPU):
     
     @handle_nvml_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
+        """Returns the minimum and maximum power management limits for the specified GPU."""
         return pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
 
     @handle_nvml_errors
     def setPersistenceMode(self) -> None:
+        """Enables persistence mode for the specified GPU."""
         # TODO(JW): Check SYS_ADMIN permissions and error with an explanation.
         pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_ENABLED)
 
     @handle_nvml_errors
     def setPowerManagementLimit(self, value: int = None) -> None:
-        """if defualt is True, set to default value, else set to value"""
+        """Sets the power management limit for the specified GPU to the given value. If no value is provided, the default limit is set."""
         if value is None:
             pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle))
         else:
@@ -234,38 +332,49 @@ class NVIDIAGPU(GPU):
     
     @handle_nvml_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        """Locks the memory clock of the specified GPU to a range defined by the minimum and
+            maximum memory clock frequencies."""
         pynvml.nvmlDeviceSetMemoryLockedClocks(self.handle, minMemClockMHz, maxMemClockMHz)
     
     @handle_nvml_errors
-    def getName(self) -> str:
-        return pynvml.nvmlDeviceGetName(self.handle)
-    
-    @handle_nvml_errors
     def getSupportedMemoryClocks(self) -> list[int]:
+        """Returns a list of supported memory clock frequencies for the specified GPU."""
         return pynvml.nvmlDeviceGetSupportedMemoryClocks(self.handle)
     
     @handle_nvml_errors
     def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
+        """Returns a list of supported graphics clock frequencies for the specified GPU at
+            a given frequency."""
         return pynvml.nvmlDeviceGetSupportedGraphicsClocks(self.handle, freq)
+
+    @handle_nvml_errors
+    def getName(self) -> str:
+        """Returns the name of the specified GPU."""
+        return pynvml.nvmlDeviceGetName(self.handle)
     
     @handle_nvml_errors
     def setGpuLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies."""
         pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, minMemClockMHz, maxMemClockMHz)
     
     @handle_nvml_errors
     def resetMemoryLockedClocks(self) -> None:
+        """Resets the memory locked clocks of the specified GPU to their default values."""
         pynvml.nvmlDeviceResetMemoryLockedClocks(self.handle)
     
     @handle_nvml_errors
     def resetGpuLockedClocks(self) -> None:
+        """Resets the GPU locked clocks of the specified GPU to their default values."""
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
     
     @handle_nvml_errors
     def getPowerUsage(self) -> int:
+        """Returns the power usage of the specified GPU."""
         return pynvml.nvmlDeviceGetPowerUsage(self.handle)
     
     @handle_nvml_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
+        """Returns True if the specified GPU supports retrieving the total energy consumption."""
         # NVIDIA GPUs Volta or newer support this method
         return (
             pynvml.nvmlDeviceGetArchitecture(self.handle)
@@ -274,6 +383,7 @@ class NVIDIAGPU(GPU):
     
     @handle_nvml_errors
     def getTotalEnergyConsumption(self) -> int:
+        """Returns the total energy consumption of the specified GPU."""
         return pynvml.nvmlDeviceGetTotalEnergyConsumption(self.handle)
 
 
@@ -283,58 +393,103 @@ class UnprivilegedNVIDIAGPU(NVIDIAGPU):
 
 
 class AMDGPU(GPU):
+
+    _exception_map = {}
+
+    def handle_amdsmi_errors(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except amdsmi.AmdSmiException as e:
+                exception_class = AMDGPU._exception_map.get(e.value, ZeusBaseGPUError)
+                raise exception_class(e.msg) from e
+        return wrapper
+
     def __init__(self, gpu_index: int) -> None:
+        """Initializes the AMDGPU object with a specified GPU index. Acquires a handle to the GPU using `amdsmi.amdsmi_get_processor_handles()`."""
         super().__init__(gpu_index)
+        self._get_handle()
+
+    @handle_amdsmi_errors
+    def _get_handle(self):
         self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
-    
+
+    @handle_amdsmi_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
+        """Returns the minimum and maximum power management limits for the specified GPU."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)
         return (info.min_power_cap, info.max_power_cap)  
 
+    @handle_amdsmi_errors
     def setPersistenceMode(self) -> None:
-        profile = ... # TODO: find out correct profile, need deep dive on docs
+        raise ZeusNotSupportedGPUError("Persistence mode is not supported for AMD GPUs yet")
+        profile = ... # TODO: find out correct profile
         amdsmi.amdsmi_set_gpu_power_profile(self.handle, 0, profile)
     
+    @handle_amdsmi_errors
     def setPowerManagementLimit(self, value: int = None) -> None:
-        """
-        Input parameters:
-        processor_handle handle for the given device
-        sensor_ind a 0-based sensor index. Normally, this will be 0. If a device has more than one sensor, it could be greater than 0
-        cap int that indicates the desired power cap, in microwatts
-        """
+        """Sets the power management limit for the specified GPU to the given value. If no value is provided, the default limit is set."""
         if value is None:
             info = amdsmi.amdsmi_get_power_cap_info(self.handle)
             amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=info.default_power_cap)
         else:
             amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=value)
     
+    @handle_amdsmi_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        """Locks the memory clock of the specified GPU to a range defined by the minimum and
+            maximum memory clock frequencies."""
         amdsmi.amdsmi_set_gpu_clk_range(self.handle, minMemClockMHz, maxMemClockMHz, clk_type= amdsmi.AMDSMI_CLK_TYPE_SYS)
 
-    def getName(self) -> str:
-        market_name, vendor_id, device_id, rev_id, asic_serial = amdsmi.amdsmi_get_gpu_asic_info(self.handle) #TODO: Does this return correct string
-        return market_name
-    
+    @handle_amdsmi_errors
     def getSupportedMemoryClocks(self) -> list[int]:
+        """Returns a list of supported memory clock frequencies for the specified GPU."""
         num_supported, current, frequency = amdsmi.amdsmi_get_clk_freq(self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS) #TODO: Figure out correct clk_type
-        """ frequency; List of frequencies, only the first num_supported frequencies are valid"""
+        # frequency; List of frequencies, only the first num_supported frequencies are valid"""
         return frequency[:num_supported]
 
+    @handle_amdsmi_errors
     def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
-        # TODO: what does 137-140 in optimizer.py do?
-        pass
+        """Returns a list of supported graphics clock frequencies for the specified GPU at
+            a given frequency."""
+        raise ZeusNotSupportedGPUError("Getting supported graphics clocks is not supported for AMD GPUs yet")
 
+    @handle_amdsmi_errors
+    def getName(self) -> str:
+        """Returns the name of the specified GPU."""
+        market_name, vendor_id, device_id, rev_id, asic_serial = amdsmi.amdsmi_get_gpu_asic_info(self.handle) #TODO: Does this return correct string
+        return market_name
+
+    @handle_amdsmi_errors
     def setGpuLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+        """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies."""
         amdsmi.amdsmi_set_gpu_clk_range(self.handle, minMemClockMHz, maxMemClockMHz, clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX)
 
+    @handle_amdsmi_errors
     def resetMemoryLockedClocks(self) -> None:
+        """Resets the memory locked clocks of the specified GPU to their default values."""
         amdsmi.amdsmi_reset_gpu_clk(self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS) # TODO: check docs
 
+    @handle_amdsmi_errors
     def resetGpuLockedClocks(self) -> None:
+        """Resets the GPU locked clocks of the specified GPU to their default values."""
         amdsmi.amdsmi_reset_gpu_clk(self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX) # TODO: check docs
     
+    @handle_amdsmi_errors
     def getPowerUsage(self) -> int:
-        return None # TODO: figure out how to get power usage
+        """Returns the power usage of the specified GPU."""
+        raise ZeusNotSupportedGPUError("Getting power usage is not supported for AMD GPUs yet")
+
+    @handle_amdsmi_errors
+    def supportsGetTotalEnergyConsumption(self) -> bool:
+        """Returns True if the specified GPU supports retrieving the total energy consumption."""
+        raise ZeusNotSupportedGPUError("Getting total energy consumption is not supported for AMD GPUs yet")
+    
+    @handle_amdsmi_errors
+    def getTotalEnergyConsumption(self) -> int:
+        """Returns the total energy consumption of the specified GPU."""
+        raise ZeusNotSupportedGPUError("Getting total energy consumption is not supported for AMD GPUs yet")
 
 class UnprivilegedAMDGPU(AMDGPU):
     pass
@@ -389,10 +544,6 @@ class GPUs(abc.ABC):
         """Returns the name of the specified GPU."""
         return self.gpus[index].getName()
     
-    def __len__(self) -> int:
-        """Returns the number of GPUs being tracked."""
-        return len(self.gpus)
-    
     def setGpuLockedClocks(self, index: int, minMemClockMHz: int, maxMemClockMHz: int) -> None:
         """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies."""
         self.gpus[index].setGpuLockedClocks(minMemClockMHz, maxMemClockMHz)
@@ -420,6 +571,10 @@ class GPUs(abc.ABC):
     def sync(self, index: int) -> None:
         """Synchronizes the specified GPU, ensuring all previous commands have been completed."""
         cuda_sync(index) # cuda_sync takes in re-indexed cuda index, not nvml index
+    
+    def __len__(self) -> int:
+        """Returns the number of GPUs being tracked."""
+        return len(self.gpus)
 
 class NVIDIAGPUs(GPUs):
     """
@@ -582,13 +737,13 @@ class AMDGPUs(GPUs):
 _gpus = None
 def get_gpus(gpus_to_track: list[int] = None, ensure_homogeneuous: bool = True) -> GPUs:
     """
-    Initialize and return a singleton GPU monitoring object for NVIDIA or AMD GPUs.
+    Initialize (if called for the first time) and return a singleton GPU monitoring object for NVIDIA or AMD GPUs.
 
     This function attempts to initialize GPU monitoring using the pynvml library for NVIDIA GPUs
     first. If pynvml is not available or fails to initialize, it then tries to use the amdsmi 
     library for AMD GPUs. If both attempts fail, it raises a ZeusErrorInit exception.
 
-    `CUDA_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
+    For the GPU monitoring object, `CUDA_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
     4 GPUs and `CUDA_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are tracked. In this case, to access
     GPU of CUDA index 0, use the index 0, and for CUDA index 2, use the index 1.
 
@@ -629,4 +784,3 @@ def get_gpus(gpus_to_track: list[int] = None, ensure_homogeneuous: bool = True) 
                 f"AMD Error: {amd_error}"
             ) from None
     return _gpus
-

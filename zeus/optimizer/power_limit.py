@@ -45,7 +45,7 @@ from zeus.monitor import ZeusMonitor
 from zeus.util.logging import get_logger
 from zeus.util.metric import zeus_cost
 from zeus.util.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
-from zeus.device import get_gpus
+from zeus.device import get_gpus, ZeusNoPermissionGPUError
 
 from typing import TYPE_CHECKING
 
@@ -284,12 +284,12 @@ class GlobalPowerLimitOptimizer(Callback):
         try:
             for index in monitor.gpu_indices:
                 gpus.setPersistenceMode(index)
-        except pynvml.NVMLError_NoPermission:  # type: ignore #TODO: create generic zeus exception
+        except ZeusNoPermissionGPUError as ze:
             raise RuntimeError(
                 "SYS_ADMIN capability is required to modify GPU power limits. "
                 "Using --cap-add SYS_ADMIN when running the Docker container "
                 "is the easiest way to do this."
-            ) from None
+            ) from ze
         self.current_power_limit = 0
 
         # Store `Measurement` objects in a list, one for each power limit.

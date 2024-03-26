@@ -20,7 +20,7 @@ import atexit
 import contextlib
 import multiprocessing as mp
 
-from zeus.device import get_gpus
+from zeus.device import get_gpus, ZeusNotSupportedGPUError
 
 
 class FrequencyController:
@@ -59,7 +59,7 @@ class FrequencyController:
 
         # Set the memory frequency to be the highest.
         max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))
-        with contextlib.suppress(pynvml.NVMLError_NotSupported):  # TODO: change to generic zeus exception
+        with contextlib.suppress(ZeusNotSupportedGPUError):
             gpus.setMemoryLockedClocks(device_id, max_mem_freq, max_mem_freq)
 
         # Set the SM frequency to be the highest.
@@ -78,7 +78,7 @@ class FrequencyController:
                 gpus.setGpuLockedClocks(device_id, target_freq, target_freq)
                 current_freq = target_freq
 
-        # Reset everything. # TODO: change to generic zeus exception
-        with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
+        # Reset everything.
+        with contextlib.suppress(ZeusNotSupportedGPUError):
             gpus.resetMemoryLockedClocks(device_id)
         gpus.deviceResetGpuLockedClocks(device_id)
