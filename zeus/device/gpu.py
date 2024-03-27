@@ -1,4 +1,12 @@
-"""GPU management module for Zeus."""
+"""GPU management module for Zeus.
+
+Class hierarchy
+The abstraction provided by this module (most importantly, get_gpus). Basically, how a Zeus-developer should use this module.
+How different GPU vendors are handled
+
+
+
+"""
 
 from __future__ import annotations
 import abc
@@ -20,7 +28,7 @@ if TYPE_CHECKING:
 
 
 class ZeusInitGPUError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for ImportError or Failed to Initialize GPU libraries."""
+    """Import error or GPU library initialization failures."""
 
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
@@ -183,16 +191,12 @@ class ZeusUnknownGPUError(ZeusBaseGPUError):
 
 
 class GPU(abc.ABC):
+    # TODO: Fix doctring
     """Abstract base class for GPU management. This class defines the interface for interacting with GPUs, including power management, clock settings, and information retrieval. Subclasses should implement the methods to interact with specific GPU libraries (e.g., NVML for NVIDIA GPUs)."""
 
     def __init__(self, gpu_index: int) -> None:
         """Initialize the GPU with a specified index."""
         self.gpu_index = gpu_index
-
-    @abc.abstractmethod
-    def _get_handle(self):
-        """Acquire and set the handle for the GPU, enabling further operations."""
-        pass
 
     @abc.abstractmethod
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
@@ -271,25 +275,6 @@ class NVIDIAGPU(GPU):
     This class includes methods to set and get power management limits, persistence mode, memory and GPU clock speeds,
     and to query supported memory and graphics clock speeds, GPU names, and power usage. Exception handling for NVML
     errors is integrated, mapping NVML error codes to custom exceptions for clearer error reporting and management.
-
-    Attributes:
-        _exception_map (dict): A dictionary mapping NVML error codes to custom exception classes for this application.
-
-    Methods:
-        __init__(gpu_index: int): Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`.
-        getPowerManagementLimitConstraints(): Returns the minimum and maximum power management limits for the GPU using `pynvml.nvmlDeviceGetPowerManagementLimitConstraints`.
-        setPersistenceMode(): Enables persistence mode for the GPU using `pynvml.nvmlDeviceSetPersistenceMode`, ensuring the driver keeps the GPU initialized even when not in use.
-        setPowerManagementLimit(value: int = None): Sets the power management limit for the GPU to a specified value or to the default limit if no value is given, using `pynvml.nvmlDeviceSetPowerManagementLimit`.
-        setMemoryLockedClocks(minMemClockMHz: int, maxMemClockMHz: int): Locks the memory clock to a specified range using `pynvml.nvmlDeviceSetMemoryLockedClocks`.
-        getSupportedMemoryClocks(): Returns a list of supported memory clock frequencies for the GPU using `pynvml.nvmlDeviceGetSupportedMemoryClocks`.
-        getSupportedGraphicsClocks(freq: int): Returns a list of supported graphics clock frequencies for a given memory frequency using `pynvml.nvmlDeviceGetSupportedGraphicsClocks`.
-        getName(): Returns the name of the GPU using `pynvml.nvmlDeviceGetName`.
-        setGpuLockedClocks(index: int, minMemClockMHz: int, maxMemClockMHz: int): Locks the GPU clock to a specified range using `pynvml.nvmlDeviceSetGpuLockedClocks`.
-        resetMemoryLockedClocks(): Resets the memory locked clocks to default values using `pynvml.nvmlDeviceResetMemoryLockedClocks`.
-        resetGpuLockedClocks(): Resets the GPU locked clocks to default values using `pynvml.nvmlDeviceResetGpuLockedClocks`.
-        getPowerUsage(): Returns the current power usage of the GPU using `pynvml.nvmlDeviceGetPowerUsage`.
-        supportsGetTotalEnergyConsumption(): Checks if the GPU supports retrieving total energy consumption, based on GPU architecture using `pynvml.nvmlDeviceGetArchitecture` and comparing with `pynvml.NVML_DEVICE_ARCH_VOLTA`.
-    getTotalEnergyConsumption(): Returns the total energy consumption of the GPU since the last driver load using `pynvml.nvmlDeviceGetTotalEnergyConsumption`.
     """
 
     _exception_map = {
@@ -331,11 +316,7 @@ class NVIDIAGPU(GPU):
 
     @_handle_nvml_errors
     def _get_handle(self):
-        try:
-            self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-        except pynvml.NVMLError as e:
-            exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusBaseGPUError)
-            raise exception_class(e.msg) from e
+        self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
 
     def __init__(self, gpu_index: int) -> None:
         """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
