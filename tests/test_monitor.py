@@ -56,8 +56,6 @@ def pynvml_mock(mocker: MockerFixture):
     mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
     mock.NVML_DEVICE_ARCH_AMPERE = pynvml.NVML_DEVICE_ARCH_AMPERE
 
-    mocker.patch("zeus.util.env.pynvml", mock) # only called by zeus.optimizer.perseus.optimizer.py
-
     return mock
 
 
