@@ -24,6 +24,7 @@ import pytest
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.util.testing import ReplayZeusMonitor
+import zeus.device.gpu
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,18 +38,23 @@ ARCHS = [
     pynvml.NVML_DEVICE_ARCH_AMPERE,
 ]
 
+# reset gpus to None after every unit test
+@pytest.fixture(autouse=True, scope="function")
+def reset_gpus() -> None:
+    print("Resetting _gpus to None")
+    zeus.device.gpu._gpus = None
+
 
 @pytest.fixture
 def pynvml_mock(mocker: MockerFixture):
     """Mock the entire pynvml module."""
-    mock = mocker.patch("zeus.monitor.energy.pynvml", autospec=True)
+    # Mock the pynvml import in the gpu module.
+    mock = mocker.patch("zeus.device.gpu.pynvml", autospec=True)
     
     # Except for the arch constants.
     mock.NVML_DEVICE_ARCH_PASCAL = pynvml.NVML_DEVICE_ARCH_PASCAL
     mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
     mock.NVML_DEVICE_ARCH_AMPERE = pynvml.NVML_DEVICE_ARCH_AMPERE
-
-    mocker.patch("zeus.util.env.pynvml", mock)
 
     return mock
 
@@ -154,8 +160,6 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     is_old_nvml = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(nvml_gpu_indices, gpu_archs)}
     is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
     old_gpu_torch_indices = [index for index, is_old in is_old_torch.items() if is_old]
-
-    mocker.patch("zeus.monitor.energy.atexit.register")
 
     class MockPowerMonitor:
         def __init__(self, gpu_indices: list[int] | None, update_period: float | None) -> None:

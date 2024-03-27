@@ -16,12 +16,11 @@
 
 from __future__ import annotations
 
-import pynvml
-
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.util.metric import zeus_cost
 from zeus.util.logging import get_logger
+from zeus.device import get_gpus
 
 
 class EarlyStopController(Callback):
@@ -80,17 +79,13 @@ class EarlyStopController(Callback):
         self.logger = get_logger(type(self).__name__)
 
         # Cache NVML device handles if they're needed.
-        self.gpu_handles = {}
         self.max_power = {}
         if self.cost_threshold is not None:
             assert self.monitor is not None
-            pynvml.nvmlInit()
+            gpus = get_gpus()
             for gpu_index in self.monitor.gpu_indices:
-                device = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
-                self.gpu_handles[gpu_index] = device
                 self.max_power[gpu_index] = (
-                    pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device)[1]
-                    // 1000
+                    gpus.getPowerManagementLimitConstraints(gpu_index)[1] // 1000
                 )
 
         # States.
