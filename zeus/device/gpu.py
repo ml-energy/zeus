@@ -327,12 +327,7 @@ class NVIDIAGPU(GPU):
                 raise exception_class(e.msg) from e
 
         return wrapper
-
-    def __init__(self, gpu_index: int) -> None:
-        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
-        super().__init__(gpu_index)
-        self._get_handle()
-
+    
     @_handle_nvml_errors
     def _get_handle(self):
         try:
@@ -340,6 +335,11 @@ class NVIDIAGPU(GPU):
         except pynvml.NVMLError as e:
             exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e
+
+    def __init__(self, gpu_index: int) -> None:
+        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
+        super().__init__(gpu_index)
+        self._get_handle()
 
     @_handle_nvml_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
