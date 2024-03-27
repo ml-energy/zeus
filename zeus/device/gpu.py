@@ -597,6 +597,16 @@ class GPUs(abc.ABC):
         """Shuts down the GPU monitoring library to release resources and clean up."""
         pass
 
+    def _ensure_homogeneous(self) -> None:
+        """Ensures that all tracked GPUs are homogeneous in terms of name."""
+        if not self.gpus:
+            return
+
+        first_gpu_name = next(iter(self.gpus.values())).getName()
+        for gpu in self.gpus.values():
+            if gpu.getName() != first_gpu_name:
+                raise ZeusBaseGPUError("All GPUs must be of the same name.")
+
     def getPowerManagementLimitConstraints(self, index: int) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU."""
         return self.gpus[index].getPowerManagementLimitConstraints()
@@ -724,8 +734,7 @@ class NVIDIAGPUs(GPUs):
             gpus_to_track (list[int], optional): Specifies the indices of the GPUs to be tracked. These indices
                 should align with the visible GPU indices as determined by the system and the `CUDA_VISIBLE_DEVICES`
                 environment variable. If None, all visible GPUs are tracked.
-            ensure_homogeneous (bool, optional): If True, attempts to ensure that all tracked GPUs are of the same model
-                and specifications.
+            ensure_homogeneous (bool, optional): If True, ensurea that all tracked GPUs have the same name (return value of pynvml.nvmlDeviceGetName).
 
         Raises:
             ZeusBaseGPUError: If an NVML error occurs, a specific GPU error is raised,
@@ -734,6 +743,8 @@ class NVIDIAGPUs(GPUs):
         try:
             pynvml.nvmlInit()
             self._init_gpus(gpus_to_track)
+            if ensure_homogeneous:
+                self._ensure_homogeneous()
         except pynvml.NVMLError as e:
             exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e
@@ -818,6 +829,8 @@ class AMDGPUs(GPUs):
         try:
             amdsmi.amdsmi_init()
             self._init_gpus(gpus_to_track)
+            if ensure_homogeneous:
+                self._ensure_homogeneous()
         except amdsmi.AmdSmiException as e:
             exception_class = AMDGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e

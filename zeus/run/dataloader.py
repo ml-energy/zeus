@@ -1001,17 +1001,17 @@ class ZeusDataLoader(DataLoader):
                     self.train_epoch_time.append(time_consumed)
                     # Record the energy consumption for each GPU.
                     for index in range(self.world_size):
-                        self.train_epoch_energy[index][self.epoch_num - 1] = (
-                            energy_consumed[index]
-                        )
+                        self.train_epoch_energy[index][
+                            self.epoch_num - 1
+                        ] = energy_consumed[index]
                 else:
                     # Integrate the last time_consumed seconds.
                     self.eval_epoch_time.append(time_consumed)
                     # Record the energy consumption for each GPU.
                     for index in range(self.world_size):
-                        self.eval_epoch_energy[index][self.epoch_num - 1] = (
-                            energy_consumed[index]
-                        )
+                        self.eval_epoch_energy[index][
+                            self.epoch_num - 1
+                        ] = energy_consumed[index]
                     # For the eval dataloader, we want to record the throughput and power
                     # for the current power limit. Since the train dataloader sets the power limit
                     # to the optimal power limit right after profiling is done, this will naturally

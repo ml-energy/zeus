@@ -81,6 +81,7 @@ pydocstyle.convention = "google"
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
 "zeus/util/pydantic_v1.py" = ["F403"]
+"zeus/device/gpu.py" = ["N802", "N803"]
 
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"
