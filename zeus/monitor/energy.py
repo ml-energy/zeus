@@ -129,9 +129,6 @@ class ZeusMonitor:
         self.gpus = get_gpus(gpu_indices)
 
         # Get GPU indices:
-        # if gpu_indices is not None, we can directly use these indices in the gpu class,
-        # since the class only tracks all CUDA_VISIBLE_DEVICES gpus, or all gpus if CUDA_VISIBLE_DEVICES is not set
-        # if gpu_indices is None, we must track all GPUs visible under CUDA_VISIBLE_DEVICES (which the gpus class keeps track of)
         self.gpu_indices = (
             gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
         )

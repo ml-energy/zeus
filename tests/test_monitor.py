@@ -163,8 +163,6 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
     old_gpu_torch_indices = [index for index, is_old in is_old_torch.items() if is_old]
 
-    # mocker.patch("zeus.monitor.energy.atexit.register")
-
     class MockPowerMonitor:
         def __init__(self, gpu_indices: list[int] | None, update_period: float | None) -> None:
             assert gpu_indices == old_gpu_torch_indices
