@@ -483,7 +483,7 @@ class AMDGPU(GPU):
     def getSupportedMemoryClocks(self) -> list[int]:
         """Returns a list of supported memory clock frequencies for the specified GPU."""
         num_supported, current, frequency = amdsmi.amdsmi_get_clk_freq(
-            self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS
+            self.handle, clk_type=amdsmi.AmdSmiClkType.MEM
         )  # TODO: Figure out correct clk_type
         # frequency; List of frequencies, only the first num_supported frequencies are valid"""
         return frequency[:num_supported]
