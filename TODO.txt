@@ -4,10 +4,9 @@
     ❓ should the MODULE_CACHE stuff be done for pynvml and amdsmi?
     ❓ is it possible for a system to have both NVIDIA and AMD? should we give the option for a user to select which system?
 
-- move lru_cache stuff to gpu Class
+✅ Fixed set Persistence Mode, added TODO comment back to where set Persistence mode SYS_admin check was
+    ✅ included ability to turn off persistence mode
 
-- Fix set Persistence Mode, add TODO comment back to where set Persistence mode SYS_admin check was
-    - include ability to turn off persistence mode
 - Fixed set PowerManagementLimit - breaks API consistency
 - To check ensure homogeneous, just convert to set and check len larger than 1 
 - declare self.gpus as an abstract property to ensure it exists
@@ -16,6 +15,7 @@
 - Fall back to ZeusGPUUnknown Error
 
 BIG BOY:
+- move lru_cache stuff to gpu Class
 - Fix tests, and remove gpu_indicies
 
 STLYE:

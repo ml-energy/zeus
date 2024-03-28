@@ -419,7 +419,8 @@ class ZeusDataLoader(DataLoader):
         gpus = get_gpus()
         for index in range(self.world_size):
             # Set persistent mode.
-            gpus.setPersistenceMode(index)
+            # TODO(JW): Check SYS_ADMIN permissions and error with an explanation.
+            gpus.setPersistenceMode(index, enable=True)
 
         # Query NVML for the possible power limit range. Unit is mW.
         min_pl, self.max_pl = gpus.getPowerManagementLimitConstraints(

@@ -203,7 +203,7 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def setPersistenceMode(self) -> None:
+    def setPersistenceMode(self, enable: bool) -> None:
         """Enable persistence mode for the GPU."""
         pass
 
@@ -328,10 +328,12 @@ class NVIDIAGPU(GPU):
         return pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
 
     @_handle_nvml_errors
-    def setPersistenceMode(self) -> None:
-        """Enables persistence mode for the specified GPU."""
-        # TODO(JW): Check SYS_ADMIN permissions and error with an explanation.
-        pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_ENABLED)
+    def setPersistenceMode(self, enable: bool) -> None:
+        """If enable = True, enables persistence mode for the specified GPU. If enable = False, disables persistence mode."""
+        if enable:
+            pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_ENABLED)
+        else:
+            pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_DISABLED)
 
     @_handle_nvml_errors
     def setPowerManagementLimit(self, value: int = None) -> None:
@@ -449,7 +451,7 @@ class AMDGPU(GPU):
         return (info.min_power_cap, info.max_power_cap)
 
     @_handle_amdsmi_errors
-    def setPersistenceMode(self) -> None:
+    def setPersistenceMode(self, enable: bool) -> None:
         """Enables persistence mode for the specified GPU."""
         raise ZeusNotSupportedGPUError(
             "Persistence mode is not supported for AMD GPUs yet"
@@ -592,9 +594,9 @@ class GPUs(abc.ABC):
         """Returns the minimum and maximum power management limits for the specified GPU."""
         return self.gpus[index].getPowerManagementLimitConstraints()
 
-    def setPersistenceMode(self, index: int) -> None:
-        """Enables persistence mode for the specified GPU."""
-        self.gpus[index].setPersistenceMode()
+    def setPersistenceMode(self, index: int, enable: bool) -> None:
+        """If enable = True, enables persistence mode for the specified GPU. If enable = False, disables persistence mode."""
+        self.gpus[index].setPersistenceMode(enable)
 
     def setPowerManagementLimit(self, index: int, value: int = None) -> None:
         """Sets the power management limit for the specified GPU to the given value. If no value is provided, the default limit is set."""
