@@ -1,0 +1,41 @@
+
+- remove cuda_sync and setDevice from gpu, put it back where it belongs
+- change gpu/get_gpu to torch_is_available() to make it scalable
+
+- move lru_cache stuff to gpu Class
+
+- Fix set Persistence Mode, add TODO comment back to where set Persistence mode SYS_admin check was
+    - include ability to turn off persistence mode
+- Fixed set PowerManagementLimit - breaks API consistency
+- To check ensure homogeneous, just convert to set and check len larger than 1 
+- declare self.gpus as an abstract property to ensure it exists
+
+- Fix names of exceptions
+- Fall back to ZeusGPUUnknown Error
+
+BIG BOY:
+- Fix tests, and remove gpu_indicies
+
+STLYE:
+
+- Module-level docstring in zeus/__init__.py
+- Fix docstrings
+    -  Remove all private attributes from docstrings
+    -  This docstring should include the following information at the minimum:
+
+            Class hierarchy
+            The abstraction provided by this module (most importantly, get_gpus). Basically, how a Zeus-developer should use this module.
+            How different GPU vendors are handled
+    -  First Line of Docstring should be a single sentence. Then next paragraph goes into more detail
+    - "derived from is confusing": I actually don't understand what this means. The phrase derived from is confusing. I think the docstring should rather clearly define NVML GPU indices (which is in the order of physical GPUs attached) and CUDA GPU indices (which is a subset of GPUs influenced by CUDA_VISIBLE_DEVICES) and use these terminologies to indicate whether a certain integer index is NVML or CUDA.
+
+- Check type annotations
+- make sure signature of __init__ all match
+- __init__ should come First
+- mention unit for each method
+
+
+AMD stuff:
+- Persistence mode of AMD GPUs?
+- CLock types for AMD GPUs?
+- HIP_VISIBLE_DEVICES?
