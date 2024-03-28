@@ -852,8 +852,7 @@ def get_gpus(gpus_to_track: list[int] = None, ensure_homogeneous: bool = True) -
     Args:
         gpus_to_track (Optional[list[int]]): A list of integers representing the GPU indices
                                              to track. If None, all GPUs are tracked.
-        ensure_homogeneous (bool, optional): If True, attempts to ensure that all tracked GPUs are of the same model
-                and specifications.
+        ensure_homogeneous (bool, optional): If True, raises an error if the names of all GPUs are not homogeneous.
 
     Returns:
         GPUs: An instance of NVIDIAGPUs or AMDGPUs depending on the system's GPU.
