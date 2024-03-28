@@ -16,7 +16,7 @@
 
 BIG BOY fixes:
 ✅ move lru_cache stuff to gpu Class
-- Fix tests, and remove gpu_indicies
+- Fix tests, and remove gpu_indicies -> making new branch
 
 STLYE:
 
