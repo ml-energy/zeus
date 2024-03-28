@@ -21,7 +21,7 @@ and get going with [`ZeusMonitor`][zeus.monitor.ZeusMonitor].
 Otherwise, we recommend using our Docker container:
 
 1. [Set up your environment](environment.md).
-2. [Install and build Zeus components](installing_and_building.md).
+2. [Install Zeus](installing.md).
 
 ### `ZeusMonitor`
 

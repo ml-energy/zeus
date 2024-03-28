@@ -10,7 +10,7 @@ repo_name: ml-energy/zeus
 repo_url: https://github.com/ml-energy/zeus
 
 # Copyright
-copyright: Copyright &copy; 2023 Jae-Won Chung
+copyright: Copyright &copy; 2024 Jae-Won Chung
 
 # Theme configuration
 theme:
@@ -88,8 +88,8 @@ markdown_extensions:
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 # Appearance
 extra_css:
@@ -110,7 +110,7 @@ nav:
   - Getting Started:
     - getting_started/index.md
     - Environment Setup: getting_started/environment.md
-    - Installing and Building: getting_started/installing_and_building.md
+    - Installing Zeus: getting_started/installing.md
   - Perseus:
     - perseus/index.md
     - Integrating: perseus/integrating.md
