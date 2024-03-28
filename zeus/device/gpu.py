@@ -585,15 +585,19 @@ class GPUs(abc.ABC):
         """Shuts down the GPU monitoring library to release resources and clean up."""
         pass
 
+    # @abc.abstractproperty
+    # gpus = None
+    # def gpus(self) -> dict[int, GPU]:
+    #     """Returns a dictionary of GPU objects being tracked."""
+    #     pass
+
     def _ensure_homogeneous(self) -> None:
         """Ensures that all tracked GPUs are homogeneous in terms of name."""
-        if not self.gpus:
-            return
-
-        first_gpu_name = next(iter(self.gpus.values())).getName()
-        for gpu in self.gpus.values():
-            if gpu.getName() != first_gpu_name:
-                raise ZeusBaseGPUError("All GPUs must be of the same name.")
+        
+        gpu_names = [gpu.getName() for gpu in self.gpus.values()]
+        # Both zero (no GPUs found) and one are fine.
+        if len(set(gpu_names)) > 1:
+            raise ZeusBaseGPUError(f"Heterogeneous GPUs found: {gpu_names}")
 
     def getPowerManagementLimitConstraints(self, index: int) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU."""

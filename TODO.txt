@@ -8,8 +8,8 @@
     ✅ included ability to turn off persistence mode
 
 ✅ Fixed set PowerManagementLimit - originally broke API consistency. Added resetPowerManagementLimit function. 
-- To check ensure homogeneous, just convert to set and check len larger than 1 
-- declare self.gpus as an abstract property to ensure it exists
+✅ Fixed: To check ensure homogeneous, just convert to set and check len larger than 1 
+❓ declare self.gpus as an abstract property to ensure it exists
 
 - Fix names of exceptions
 - Fall back to ZeusGPUUnknown Error
