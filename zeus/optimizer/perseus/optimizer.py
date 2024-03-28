@@ -23,9 +23,11 @@ the frequency of the CPU of the current process.
 from __future__ import annotations
 
 import httpx
+import torch
 import torch.distributed as dist
 
 from zeus.callback import Callback
+from zeus.device import get_gpus
 from zeus.optimizer.perseus.frequency_controller import FrequencyController
 from zeus.optimizer.perseus.common import (
     GET_FREQUENCY_SCHEDULE_URL,
@@ -35,8 +37,7 @@ from zeus.optimizer.perseus.common import (
     RankInfo,
     FrequencySchedule,
 )
-
-from zeus.device import get_gpus
+from zeus.util.framework import cuda_sync
 
 
 class PerseusOptimizer(Callback):
@@ -93,9 +94,9 @@ class PerseusOptimizer(Callback):
         self.tp_rank = tp_rank
 
         gpus = get_gpus()
-        gpus.setDevice(
+        torch.cuda.set_device(
             device_id
-        )  # calls torch.cuda.set_device(device_id) under the hood.
+        )
 
         # Rank 0 registers the job with the Perseus server and retrieves the job ID.
         job_id = None
@@ -207,8 +208,7 @@ class PerseusOptimizer(Callback):
         expected instruction matches the name of the instruction, and set the
         frequency accordingly.
         """
-        gpus = get_gpus()
-        gpus.sync(self.device_id)
+        cuda_sync(self.device_id)
 
         # Retrieve the next frequency from the schedule.
         item = next(self.freq_schedule_iter, None)

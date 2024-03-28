@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 import contextlib
 
 import pynvml
-import torch
 
 from zeus.device.exception import ZeusBaseGPUError
 from zeus.util import cuda_sync
@@ -724,16 +723,6 @@ class NVIDIAGPUs(GPUs):
             exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e
 
-    def sync(self, index: int) -> None:
-        """Synchronizes the specified GPU, ensuring all previous commands have been completed."""
-        cuda_sync(index)  # cuda_sync takes in re-indexed cuda index, not nvml index
-
-    def setDevice(self, index: int) -> None:
-        """Sets the specified GPU as the current device for CUDA operations."""
-        torch.cuda.set_device(
-            index
-        )  # torch.cuda.set_device takes in re-indexed cuda index, not nvml index
-
     def __del__(self) -> None:
         """Shuts down the NVIDIA GPU monitoring library to release resources and clean up."""
         with contextlib.suppress(pynvml.NVMLError):
@@ -819,12 +808,6 @@ class AMDGPUs(GPUs):
         except amdsmi.AmdSmiException as e:
             exception_class = AMDGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e
-
-    def sync(self, index: int) -> None:
-        """Synchronizes the specified GPU, ensuring all previous commands have been completed."""
-        raise ZeusNotSupportedGPUError(
-            "Synchronization is not supported for AMD GPUs yet"
-        )
 
     def __del__(self) -> None:
         """Shuts down the AMD GPU monitoring library to release resources and clean up."""

@@ -1,5 +1,5 @@
 
-- remove cuda_sync and setDevice from gpu, put it back where it belongs
+✅ remove cuda_sync and setDevice from gpu, put it back where it belongs 
 - change gpu/get_gpu to torch_is_available() to make it scalable
 
 - move lru_cache stuff to gpu Class

@@ -201,7 +201,7 @@ class ZeusMonitor:
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
             for gpu_index in self.gpu_indices:
-                self.gpus.sync(gpu_index)
+                cuda_sync(gpu_index)
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
