@@ -262,7 +262,7 @@ class GPU(abc.ABC):
 
     @abc.abstractmethod
     def getTotalEnergyConsumption(self) -> int:
-        """Return the total energy consumption of the GPU."""
+        """Return the total energy consumption of the GPU since driver load."""
         pass
 
 
