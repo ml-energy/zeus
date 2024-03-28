@@ -1,6 +1,8 @@
 
 ✅ remove cuda_sync and setDevice from gpu, put it back where it belongs 
-- change gpu/get_gpu to torch_is_available() to make it scalable
+✅ changed gpu/get_gpu to torch_is_available()-like to make it scalable
+    ❓ should the MODULE_CACHE stuff be done for pynvml and amdsmi?
+    ❓ is it possible for a system to have both NVIDIA and AMD? should we give the option for a user to select which system?
 
 - move lru_cache stuff to gpu Class
 

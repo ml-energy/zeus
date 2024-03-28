@@ -15,10 +15,10 @@ import os
 from typing import TYPE_CHECKING
 import contextlib
 
-import pynvml
+import pynvml # necessary for testing to mock! 
 
 from zeus.device.exception import ZeusBaseGPUError
-from zeus.util import cuda_sync
+from zeus.util import pynvml_is_available, amdsmi_is_available
 
 if TYPE_CHECKING:
     import amdsmi
@@ -846,6 +846,18 @@ def get_gpus(gpus_to_track: list[int] = None, ensure_homogeneous: bool = True) -
     global _gpus
     if _gpus is not None:
         return _gpus
+
+    if pynvml_is_available():
+        _gpus = NVIDIAGPUs(gpus_to_track, ensure_homogeneous)
+        return _gpus
+    elif amdsmi_is_available():
+        _gpus = AMDGPUs(gpus_to_track, ensure_homogeneous)
+        return _gpus
+    else:
+        raise ZeusInitGPUError(
+            "Failed to initialize GPU monitoring for NVIDIA and AMD GPUs."
+        )
+    
     try:
         # Attempt to initialize NVIDIA GPUs
         # import pynvml <- this import fails when running tests
