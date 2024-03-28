@@ -832,7 +832,7 @@ class AMDGPUs(GPUs):
             amdsmi.amdsmi_shut_down()  # Ignore error on shutdown. Neccessary for proper cleanup and test functionality
 
 
-_gpus = None
+_gpus: GPUs | None = None
 
 
 def get_gpus(gpus_to_track: list[int] = None, ensure_homogeneous: bool = True) -> GPUs:
