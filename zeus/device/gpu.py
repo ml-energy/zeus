@@ -476,7 +476,7 @@ class AMDGPU(GPU):
             self.handle,
             minMemClockMHz,
             maxMemClockMHz,
-            clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS,
+            clk_type=amdsmi.AmdSmiClkType.MEM,
         )
 
     @_handle_amdsmi_errors
