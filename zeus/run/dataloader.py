@@ -680,7 +680,7 @@ class ZeusDataLoader(DataLoader):
         # Set power limit for all GPUs.
         if self.current_gpu_pl != power_limit:
             for index in range(self.world_size):
-                gpus.setPowerManagementLimit(index, power_limit, default=False)
+                gpus.setPowerManagementLimit(index, power_limit)
                 self._log(f"[GPU_{index}] Set GPU power limit to {power_limit//1000}W.")
             ZeusDataLoader.current_gpu_pl = power_limit
 

@@ -336,15 +336,18 @@ class NVIDIAGPU(GPU):
             pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_DISABLED)
 
     @_handle_nvml_errors
-    def setPowerManagementLimit(self, value: int = None) -> None:
-        """Sets the power management limit for the specified GPU to the given value. If no value is provided, the default limit is set."""
-        if value is None:
-            pynvml.nvmlDeviceSetPowerManagementLimit(
+    def setPowerManagementLimit(self, value: int | None = None) -> None:
+        """Sets the power management limit for the specified GPU to the given value."""
+        pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, value)
+    
+    @_handle_nvml_errors
+    def resetPowerManagementLimit(self) -> None:
+        """Resets the power management limit for the specified GPU to the default value."""
+        pynvml.nvmlDeviceSetPowerManagementLimit(
                 self.handle,
                 pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
             )
-        else:
-            pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, value)
+
 
     @_handle_nvml_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
@@ -460,15 +463,17 @@ class AMDGPU(GPU):
         amdsmi.amdsmi_set_gpu_power_profile(self.handle, 0, profile)
 
     @_handle_amdsmi_errors
-    def setPowerManagementLimit(self, value: int = None) -> None:
-        """Sets the power management limit for the specified GPU to the given value. If no value is provided, the default limit is set."""
-        if value is None:
-            info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-            amdsmi.amdsmi_set_power_cap(
+    def setPowerManagementLimit(self, value: int) -> None:
+        """Sets the power management limit for the specified GPU to the given value."""
+        amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=value)
+    
+    @_handle_amdsmi_errors
+    def resetPowerManagementLimit(self) -> None:
+        """Resets the power management limit for the specified GPU to the default value."""
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)
+        amdsmi.amdsmi_set_power_cap(
                 self.handle, sensor_id=0, cap=info.default_power_cap
-            )
-        else:
-            amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=value)
+        )
 
     @_handle_amdsmi_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
@@ -598,9 +603,13 @@ class GPUs(abc.ABC):
         """If enable = True, enables persistence mode for the specified GPU. If enable = False, disables persistence mode."""
         self.gpus[index].setPersistenceMode(enable)
 
-    def setPowerManagementLimit(self, index: int, value: int = None) -> None:
-        """Sets the power management limit for the specified GPU to the given value. If no value is provided, the default limit is set."""
+    def setPowerManagementLimit(self, index: int, value: int) -> None:
+        """Sets the power management limit for the specified GPU to the given value."""
         self.gpus[index].setPowerManagementLimit(value)
+    
+    def resetPowerManagementLimit(self, index: int) -> None:
+        """Resets the power management limit for the specified GPU to the default value."""
+        self.gpus[index].resetPowerManagementLimit()
 
     def setMemoryLockedClocks(
         self, index: int, minMemClockMHz: int, maxMemClockMHz: int

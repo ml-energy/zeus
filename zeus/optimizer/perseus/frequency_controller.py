@@ -54,9 +54,7 @@ class FrequencyController:
         """Receive frequency values through a queue and apply it."""
         gpus = get_gpus()
         # Return the power limit to the default.
-        gpus.setPowerManagementLimit(
-            device_id, value=None
-        )  # value set to None for default power limit
+        gpus.resetPowerManagementLimit(device_id)
 
         # Set the memory frequency to be the highest.
         max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))

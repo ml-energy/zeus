@@ -7,7 +7,7 @@
 ✅ Fixed set Persistence Mode, added TODO comment back to where set Persistence mode SYS_admin check was
     ✅ included ability to turn off persistence mode
 
-- Fixed set PowerManagementLimit - breaks API consistency
+✅ Fixed set PowerManagementLimit - originally broke API consistency. Added resetPowerManagementLimit function. 
 - To check ensure homogeneous, just convert to set and check len larger than 1 
 - declare self.gpus as an abstract property to ensure it exists
 
