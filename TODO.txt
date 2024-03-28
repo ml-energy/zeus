@@ -12,7 +12,7 @@
 ❓ declare self.gpus as an abstract property to ensure it exists
 
 ✅ Fixed names of exceptions
-- Fall back to ZeusGPUUnknown Error
+✅ Fall back to ZeusGPUUnknown Error
 
 BIG BOY:
 - move lru_cache stuff to gpu Class
@@ -21,13 +21,12 @@ BIG BOY:
 STLYE:
 
 - Module-level docstring in zeus/__init__.py
-- Fix docstrings
-    -  Remove all private attributes from docstrings
-    -  This docstring should include the following information at the minimum:
-
+    - This docstring should include the following information at the minimum:
             Class hierarchy
             The abstraction provided by this module (most importantly, get_gpus). Basically, how a Zeus-developer should use this module.
             How different GPU vendors are handled
+- Fix docstrings
+    -  Remove all private attributes from docstrings
     -  First Line of Docstring should be a single sentence. Then next paragraph goes into more detail
     - "derived from is confusing": I actually don't understand what this means. The phrase derived from is confusing. I think the docstring should rather clearly define NVML GPU indices (which is in the order of physical GPUs attached) and CUDA GPU indices (which is a subset of GPUs influenced by CUDA_VISIBLE_DEVICES) and use these terminologies to indicate whether a certain integer index is NVML or CUDA.
 

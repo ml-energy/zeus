@@ -307,7 +307,7 @@ class NVIDIAGPU(GPU):
                 return func(*args, **kwargs)
             except pynvml.NVMLError as e:
                 exception_class = NVIDIAGPU._exception_map.get(
-                    e.value, ZeusBaseGPUError
+                    e.value, ZeusGPUUnknownError
                 )
                 raise exception_class(e.msg) from e
 
@@ -433,7 +433,7 @@ class AMDGPU(GPU):
             try:
                 return func(*args, **kwargs)
             except amdsmi.AmdSmiException as e:
-                exception_class = AMDGPU._exception_map.get(e.value, ZeusBaseGPUError)
+                exception_class = AMDGPU._exception_map.get(e.value, ZeusGPUUnknownError)
                 raise exception_class(e.msg) from e
 
         return wrapper
