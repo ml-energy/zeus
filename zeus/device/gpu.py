@@ -662,6 +662,7 @@ class NVIDIAGPUs(GPUs):
 
     If gpus_to_track is specified, only the GPUs listed are set up. For continuation of the example above,
     if `gpus_to_track=[1]`, only GPU 2 of CUDA index 2 is tracked. In this case, to access GPU of CUDA index 2, use index 1.
+    This is consistent with how `CUDA_VISIBLE_DEVICES` is conventionally handled.
 
     Parameters:
         gpus_to_track (list[int], optional): A list of integer indices specifying which GPUs to track.
