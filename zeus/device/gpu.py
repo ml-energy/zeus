@@ -321,6 +321,7 @@ class NVIDIAGPU(GPU):
         """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
         super().__init__(gpu_index)
         self._get_handle()
+        self._supportsGetTotalEnergyConsumption = None
 
     @_handle_nvml_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
@@ -397,10 +398,13 @@ class NVIDIAGPU(GPU):
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Returns True if the specified GPU supports retrieving the total energy consumption."""
         # NVIDIA GPUs Volta or newer support this method
-        return (
+        if self._supportsGetTotalEnergyConsumption is None:
+            self._supportsGetTotalEnergyConsumption = (
             pynvml.nvmlDeviceGetArchitecture(self.handle)
             >= pynvml.NVML_DEVICE_ARCH_VOLTA
-        )
+            )
+        
+        return self._supportsGetTotalEnergyConsumption
 
     @_handle_nvml_errors
     def getTotalEnergyConsumption(self) -> int:

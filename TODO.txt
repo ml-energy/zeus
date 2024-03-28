@@ -14,8 +14,8 @@
 ✅ Fixed names of exceptions
 ✅ Fall back to ZeusGPUUnknown Error
 
-BIG BOY:
-- move lru_cache stuff to gpu Class
+BIG BOY fixes:
+✅ move lru_cache stuff to gpu Class
 - Fix tests, and remove gpu_indicies
 
 STLYE:

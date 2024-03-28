@@ -20,7 +20,7 @@ import os
 from time import time
 from pathlib import Path
 from dataclasses import dataclass
-from functools import cached_property, lru_cache
+from functools import cached_property
 
 from zeus.monitor.power import PowerMonitor
 from zeus.util.logging import get_logger
@@ -158,8 +158,8 @@ class ZeusMonitor:
         # Initialize power monitors for older architecture GPUs.
         old_gpu_indices = [
             gpu_index
-            for gpu_index, is_new in zip(self.gpu_indices, self._is_new_arch_flags)
-            if not is_new
+            for gpu_index in self.gpu_indices
+            if not self.gpus.supportsGetTotalEnergyConsumption(gpu_index)
         ]
         if old_gpu_indices:
             self.power_monitor = PowerMonitor(
@@ -167,17 +167,6 @@ class ZeusMonitor:
             )
         else:
             self.power_monitor = None
-
-    # NOTE: right now, supports `getTotalEnergyConsumption` API is cached here. Should be cached in GPUs?
-    @lru_cache
-    def _is_new_arch(self, gpu_index: int) -> bool:
-        """Return whether the GPU supports `getTotalEnergyConsumption` API."""
-        return self.gpus.supportsGetTotalEnergyConsumption(gpu_index)
-
-    @cached_property
-    def _is_new_arch_flags(self) -> list[bool]:
-        """A list of flags indicating whether each GPU supports `getTotalEnergyConsumption` API."""
-        return [self._is_new_arch(gpu_index) for gpu_index in self.gpu_indices]
 
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""
@@ -210,7 +199,7 @@ class ZeusMonitor:
             # Query energy directly if the GPU has newer architecture.
             # Otherwise, the Zeus power monitor is running in the background to
             # collect power consumption, so we just need to read the log file later.
-            if self._is_new_arch(gpu_index):
+            if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
                 energy_state[gpu_index] = (
                     self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
                 )
@@ -264,7 +253,7 @@ class ZeusMonitor:
         energy_consumption: dict[int, float] = {}
         for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
-            if self._is_new_arch(gpu_index):
+            if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
                 end_energy = self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
                 energy_consumption[gpu_index] = end_energy - start_energy[gpu_index]
 
