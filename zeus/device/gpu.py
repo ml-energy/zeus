@@ -667,7 +667,7 @@ class NVIDIAGPUs(GPUs):
     Parameters:
         gpu_indices (list[int], optional): A list of CUDA indices specifying which GPUs to track. Respects `CUDA_VISIBLE_DEVICES`.
         ensure_homogeneous (bool, optional): Ensures that all GPUs being tracked are homogeneous (i.e.,
-            of the same model and with the same specifications).
+            have the same output of `getName`).
 
     Attributes:
         visible_indices (list[int]): The list of GPU indices that are visible and considered for tracking,
