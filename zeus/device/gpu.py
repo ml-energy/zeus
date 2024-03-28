@@ -680,7 +680,7 @@ class NVIDIAGPUs(GPUs):
             This is raised when initialization fails due to an NVML error, with specifics provided by the NVML exception.
     """
 
-    def _init_gpus(self, gpus_to_track: list[int] = None) -> None:
+    def _init_gpus(self, gpus_to_track: list[int] | None = None) -> None:
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
