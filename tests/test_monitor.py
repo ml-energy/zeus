@@ -38,10 +38,9 @@ ARCHS = [
     pynvml.NVML_DEVICE_ARCH_AMPERE,
 ]
 
-# reset gpus to None after every unit test
 @pytest.fixture(autouse=True, scope="function")
 def reset_gpus() -> None:
-    print("Resetting _gpus to None")
+    """Reset the global variable `_gpus` to None on every test."""
     zeus.device.gpu._gpus = None
 
 
