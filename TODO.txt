@@ -1,39 +1,33 @@
+Completed:
 
 ✅ remove cuda_sync and setDevice from gpu, put it back where it belongs 
 ✅ changed gpu/get_gpu to torch_is_available()-like to make it scalable
-    ❓ should the MODULE_CACHE stuff be done for pynvml and amdsmi?
-    ❓ is it possible for a system to have both NVIDIA and AMD? should we give the option for a user to select which system?
 
 ✅ Fixed set Persistence Mode, added TODO comment back to where set Persistence mode SYS_admin check was
     ✅ included ability to turn off persistence mode
 
 ✅ Fixed set PowerManagementLimit - originally broke API consistency. Added resetPowerManagementLimit function. 
 ✅ Fixed: To check ensure homogeneous, just convert to set and check len larger than 1 
-❓ declare self.gpus as an abstract property to ensure it exists
+✅  declare self.gpus as an abstract property to ensure it exists
 
 ✅ Fixed names of exceptions
 ✅ Fall back to ZeusGPUUnknown Error
 
-BIG BOY fixes:
+BIG fixes:
 ✅ move lru_cache stuff to gpu Class
 ✅ Fix tests, and remove gpu_indicies
 
-STLYE:
+STYLE Fixes:
+✅ Module-level docstring in zeus/__init__.py and zeus/device/__init__.py
+✅ Fixed docstrings
+    ✅  Removed all private attributes from docstrings
 
-- Module-level docstring in zeus/__init__.py
-    - This docstring should include the following information at the minimum:
-            Class hierarchy
-            The abstraction provided by this module (most importantly, get_gpus). Basically, how a Zeus-developer should use this module.
-            How different GPU vendors are handled
-- Fix docstrings
-    -  Remove all private attributes from docstrings
-    -  First Line of Docstring should be a single sentence. Then next paragraph goes into more detail
-    - "derived from is confusing": I actually don't understand what this means. The phrase derived from is confusing. I think the docstring should rather clearly define NVML GPU indices (which is in the order of physical GPUs attached) and CUDA GPU indices (which is a subset of GPUs influenced by CUDA_VISIBLE_DEVICES) and use these terminologies to indicate whether a certain integer index is NVML or CUDA.
+✅ made sure signature of __init__ all match
+✅ __init__ should come First
+✅ mention unit for each method
 
-- Check type annotations
-- make sure signature of __init__ all match
-- __init__ should come First
-- mention unit for each method
+Questions and notes:
+❓ It looks like it is failing on github actions, but it works perfectly locally. I'm not sure what exactly is the issue.
 
 
 AMD stuff:

@@ -276,6 +276,12 @@ class NVIDIAGPU(GPU):
     To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to NVML.
     """
 
+    def __init__(self, gpu_index: int) -> None:
+        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
+        super().__init__(gpu_index)
+        self._get_handle()
+        self._supportsGetTotalEnergyConsumption = None
+
     _exception_map = {
         pynvml.NVML_ERROR_UNINITIALIZED: ZeusGPUInitError,
         pynvml.NVML_ERROR_INVALID_ARGUMENT: ZeusGPUInvalidArgError,
@@ -316,12 +322,6 @@ class NVIDIAGPU(GPU):
     @_handle_nvml_errors
     def _get_handle(self):
         self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
-
-    def __init__(self, gpu_index: int) -> None:
-        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
-        super().__init__(gpu_index)
-        self._get_handle()
-        self._supportsGetTotalEnergyConsumption = None
 
     @_handle_nvml_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
@@ -434,6 +434,11 @@ class AMDGPU(GPU):
     To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to amdsmi.
     """
 
+    def __init__(self, gpu_index: int) -> None:
+        """Initializes the AMDGPU object with a specified GPU index. Acquires a handle to the GPU using `amdsmi.amdsmi_get_processor_handles()`."""
+        super().__init__(gpu_index)
+        self._get_handle()
+
     _exception_map = {}
 
     @staticmethod
@@ -449,11 +454,6 @@ class AMDGPU(GPU):
                 raise exception_class(e.msg) from e
 
         return wrapper
-
-    def __init__(self, gpu_index: int) -> None:
-        """Initializes the AMDGPU object with a specified GPU index. Acquires a handle to the GPU using `amdsmi.amdsmi_get_processor_handles()`."""
-        super().__init__(gpu_index)
-        self._get_handle()
 
     @_handle_amdsmi_errors
     def _get_handle(self):
@@ -704,6 +704,21 @@ class NVIDIAGPUs(GPUs):
     Note: This class instantiates (grabs the handle, by calling `pynvml.nvmlDeviceGetHandleByIndex`) all GPUs that are visible to the system, as determined by the `CUDA_VISIBLE_DEVICES` environment variable if set.
     """
 
+    def __init__(self, ensure_homogeneous: bool = False) -> None:
+        """Instantiates NVIDIAGPUs object, setting up tracking for specified NVIDIA GPUs.
+
+        Args:
+            ensure_homogeneous (bool, optional): If True, ensures that all tracked GPUs have the same name (return value of pynvml.nvmlDeviceGetName). False by default.
+        """
+        try:
+            pynvml.nvmlInit()
+            self._init_gpus()
+            if ensure_homogeneous:
+                self._ensure_homogeneous()
+        except pynvml.NVMLError as e:
+            exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusBaseGPUError)
+            raise exception_class(e.msg) from e
+
     @property
     def gpus(self) -> list[GPU]:
         """Returns a list of NVIDIAGPU objects being tracked."""
@@ -720,21 +735,6 @@ class NVIDIAGPUs(GPUs):
         self._gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
 
         # eventually replace with: self.gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
-
-    def __init__(self, ensure_homogeneous: bool = False) -> None:
-        """Instantiates NVIDIAGPUs object, setting up tracking for specified NVIDIA GPUs.
-
-        Args:
-            ensure_homogeneous (bool, optional): If True, ensures that all tracked GPUs have the same name (return value of pynvml.nvmlDeviceGetName). False by default.
-        """
-        try:
-            pynvml.nvmlInit()
-            self._init_gpus()
-            if ensure_homogeneous:
-                self._ensure_homogeneous()
-        except pynvml.NVMLError as e:
-            exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusBaseGPUError)
-            raise exception_class(e.msg) from e
 
     def __del__(self) -> None:
         """Shuts down the NVIDIA GPU monitoring library to release resources and clean up."""
@@ -767,15 +767,6 @@ class AMDGPUs(GPUs):
 
     """
 
-    def _init_gpus(self) -> None:
-        # Must respect `ROCR_VISIBLE_DEVICES` if set
-        if (visible_device := os.environ.get("ROCR_VISIBLE_DEVICES")) is not None:
-            self.visible_indices = [int(idx) for idx in visible_device.split(",")]
-        else:
-            self.visible_indices = list(
-                range(len(amdsmi.amdsmi_get_processor_handles()))
-            )
-
     def __init__(self, ensure_homogeneous: bool = False) -> None:
         """Instantiates NVIDIAGPUs object, setting up tracking for specified NVIDIA GPUs.
 
@@ -790,6 +781,15 @@ class AMDGPUs(GPUs):
         except amdsmi.AmdSmiException as e:
             exception_class = AMDGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e
+
+    def _init_gpus(self) -> None:
+        # Must respect `ROCR_VISIBLE_DEVICES` if set
+        if (visible_device := os.environ.get("ROCR_VISIBLE_DEVICES")) is not None:
+            self.visible_indices = [int(idx) for idx in visible_device.split(",")]
+        else:
+            self.visible_indices = list(
+                range(len(amdsmi.amdsmi_get_processor_handles()))
+            )
 
     def __del__(self) -> None:
         """Shuts down the AMD GPU monitoring library to release resources and clean up."""
