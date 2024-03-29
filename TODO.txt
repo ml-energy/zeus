@@ -40,3 +40,14 @@ AMD stuff:
 - Persistence mode of AMD GPUs?
 - CLock types for AMD GPUs?
 - HIP_VISIBLE_DEVICES?
+
+For example, if you want to do the following:
+    ```python
+    handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+    pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
+    ```
+    You can instead do: 
+
+
+- track credits on AMD gpus
+- salloc 

@@ -22,6 +22,7 @@
 - [`analyze`][zeus.analyze]: Functions for analyzing log files.
 - [`job`][zeus.job]: Job specification.
 - [`simulate`][zeus.simulate]: Machinery for trace-driven Zeus.
+- [`device`][zeus.device]: Abstraction of GPU devices.
 - [`policy`][zeus.policy]: Collection of optimization policies.
 - [`util`][zeus.util]: Utility functions and classes.
 """

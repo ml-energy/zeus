@@ -94,9 +94,7 @@ class PerseusOptimizer(Callback):
         self.tp_rank = tp_rank
 
         gpus = get_gpus()
-        torch.cuda.set_device(
-            device_id
-        )
+        torch.cuda.set_device(device_id)
 
         # Rank 0 registers the job with the Perseus server and retrieves the job ID.
         job_id = None
