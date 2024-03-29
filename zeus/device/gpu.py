@@ -598,7 +598,7 @@ class GPUs(abc.ABC):
     def _ensure_homogeneous(self) -> None:
         """Ensures that all tracked GPUs are homogeneous in terms of name."""
         
-        gpu_names = [gpu.getName() for gpu in self.gpus.values()]
+        gpu_names = [gpu.getName() for gpu in self.gpus]
         # Both zero (no GPUs found) and one are fine.
         if len(set(gpu_names)) > 1:
             raise ZeusBaseGPUError(f"Heterogeneous GPUs found: {gpu_names}")
@@ -698,7 +698,7 @@ class NVIDIAGPUs(GPUs):
             This is raised when initialization fails due to an NVML error, with specifics provided by the NVML exception.
     """
 
-    def _init_gpus(self, gpus_to_track: list[int] | None = None) -> None:
+    def _init_gpus(self) -> None:
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
@@ -706,16 +706,12 @@ class NVIDIAGPUs(GPUs):
             self.visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
 
         # initialize all GPUs
-        self.gpus = {}
-        if gpus_to_track is not None:
-            for gpu_num in gpus_to_track:
-                self.gpus[gpu_num] = NVIDIAGPU(self.visible_indices[gpu_num])
-        else:
-            for index, gpu_num in enumerate(self.visible_indices):
-                self.gpus[index] = NVIDIAGPU(gpu_num)
+        self.gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
+
+        # eventually replace with: self.gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
 
     def __init__(
-        self, gpus_to_track: list[int] = None, ensure_homogeneous: bool = True
+        self, ensure_homogeneous: bool = True
     ) -> None:
         """Initializes the NVIDIAGPUs instance, setting up tracking for specified NVIDIA GPUs.
 
@@ -735,7 +731,7 @@ class NVIDIAGPUs(GPUs):
         """
         try:
             pynvml.nvmlInit()
-            self._init_gpus(gpus_to_track)
+            self._init_gpus()
             if ensure_homogeneous:
                 self._ensure_homogeneous()
         except pynvml.NVMLError as e:
@@ -781,7 +777,7 @@ class AMDGPUs(GPUs):
             This is raised when initialization fails due to an amdsmi error, with specifics provided by the amdsmi exception.
     """
 
-    def _init_gpus(self, gpus_to_track: list[int] = None) -> None:
+    def _init_gpus(self) -> None:
         # Must respect `ROCR_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("ROCR_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
@@ -790,17 +786,17 @@ class AMDGPUs(GPUs):
                 range(len(amdsmi.amdsmi_get_processor_handles()))
             )
 
-        # initialize all GPUs
-        self.gpus = {}
-        if gpus_to_track is not None:
-            for gpu_num in gpus_to_track:
-                self.gpus[gpu_num] = AMDGPU(self.visible_indices[gpu_num])
-        else:
-            for index, gpu_num in enumerate(self.visible_indices):
-                self.gpus[index] = AMDGPU(gpu_num)
+        # # initialize all GPUs
+        # self.gpus = {}
+        # if gpus_to_track is not None:
+        #     for gpu_num in gpus_to_track:
+        #         self.gpus[gpu_num] = AMDGPU(self.visible_indices[gpu_num])
+        # else:
+        #     for index, gpu_num in enumerate(self.visible_indices):
+        #         self.gpus[index] = AMDGPU(gpu_num)
 
     def __init__(
-        self, gpus_to_track: list[int] = None, ensure_homogeneous: bool = True
+        self, ensure_homogeneous: bool = True
     ) -> None:
         """Initializes the AMDGPUs instance, setting up tracking for specified AMD GPUs.
 
@@ -821,7 +817,7 @@ class AMDGPUs(GPUs):
         """
         try:
             amdsmi.amdsmi_init()
-            self._init_gpus(gpus_to_track)
+            self._init_gpus()
             if ensure_homogeneous:
                 self._ensure_homogeneous()
         except amdsmi.AmdSmiException as e:
@@ -837,7 +833,7 @@ class AMDGPUs(GPUs):
 _gpus: GPUs | None = None
 
 
-def get_gpus(gpus_to_track: list[int] = None, ensure_homogeneous: bool = True) -> GPUs:
+def get_gpus(ensure_homogeneous: bool = True) -> GPUs:
     """Initialize (if called for the first time) and return a singleton GPU monitoring object for NVIDIA or AMD GPUs.
 
     This function attempts to initialize GPU monitoring using the pynvml library for NVIDIA GPUs
@@ -867,10 +863,10 @@ def get_gpus(gpus_to_track: list[int] = None, ensure_homogeneous: bool = True) -
         return _gpus
 
     if pynvml_is_available():
-        _gpus = NVIDIAGPUs(gpus_to_track, ensure_homogeneous)
+        _gpus = NVIDIAGPUs(ensure_homogeneous)
         return _gpus
     elif amdsmi_is_available():
-        _gpus = AMDGPUs(gpus_to_track, ensure_homogeneous)
+        _gpus = AMDGPUs(ensure_homogeneous)
         return _gpus
     else:
         raise ZeusGPUInitError(

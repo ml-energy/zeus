@@ -113,10 +113,9 @@ def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[t
 
     def mock_pynvml(nvml_indices: list[int], archs: list[int]) -> None:
         assert len(nvml_indices) == len(archs)
-        index_to_handle = {i: f"handle{i}" for i in nvml_indices}
         handle_to_arch = {f"handle{i}": arch for i, arch in zip(nvml_indices, archs)}
         pynvml_mock.nvmlDeviceGetCount.return_value = NUM_GPUS
-        pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: index_to_handle[index]
+        pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: f"handle{index}"
         pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
 
     if cuda_visible_devices is None:  # All GPUs are visible to PyTorch.
