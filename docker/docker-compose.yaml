@@ -51,7 +51,10 @@ services:
     build:
       context: ../
       dockerfile: ./docker/Dockerfile.migration
-    restart: on-failure:3
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
     depends_on: 
       db:
         # wait until db is ready to accept connection

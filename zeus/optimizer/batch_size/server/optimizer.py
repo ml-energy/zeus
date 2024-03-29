@@ -1,10 +1,13 @@
 """Batch size optimizer top-most layer that provides register/report/predict."""
 
 from __future__ import annotations
+import hashlib
+import time
+from uuid import uuid4
 
 import numpy as np
 from zeus.optimizer.batch_size.common import (
-    JobConfig,
+    JobSpecFromClient,
     TrialId,
     ReportResponse,
     TrainingResult,
@@ -46,7 +49,7 @@ class ZeusBatchSizeOptimizer:
         self.pruning_manager = PruningExploreManager(service)
         self.mab = GaussianTS(service)
 
-    async def register_job(self, job: JobConfig) -> bool:
+    async def register_job(self, job: JobSpecFromClient) -> bool:
         """Register a job that user submitted. If the job id already exists, check if it is identical with previously registered configuration.
 
         Args:
@@ -58,12 +61,20 @@ class ZeusBatchSizeOptimizer:
         Raises:
             `ZeusBSOJobConfigMismatchError`: In the case of existing job, if job configuration doesn't match with previously registered config
         """
-        registered_job = await self.service.get_job(job.job_id)
+        registered_job = None
+
+        if job.job_id is None:
+            while True:
+                job.job_id = f"{job.job_id_prefix}-{hashlib.sha256(str(time.time()).encode()).hexdigest()[:8]}"
+                if (await self.service.get_job(job.job_id)) == None:
+                    break
+        else:
+            registered_job = await self.service.get_job(job.job_id)
 
         if registered_job is not None:
             # Job exists
             logger.info("Job(%s) already exists", job.job_id)
-            registerd_job_config = JobConfig.parse_obj(registered_job.dict())
+            registerd_job_config = JobSpecFromClient.parse_obj(registered_job.dict())
 
             # check if it is identical
             if registerd_job_config != job:

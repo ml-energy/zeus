@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import numpy as np
 from zeus.util.pydantic_v1 import root_validator, validator, Field, BaseModel
-from zeus.optimizer.batch_size.common import JobConfig
+from zeus.optimizer.batch_size.common import GpuConfig, JobSpecFromClient, JobParams
 from zeus.optimizer.batch_size.server.database.schema import BatchSizeTable, JobTable
 from zeus.optimizer.batch_size.server.job.models import Stage
 
@@ -71,7 +71,7 @@ class UpdateJobMinCost(BaseModel):
     min_cost_batch_size: int = Field(gt=0)
 
 
-class CreateJob(JobConfig):
+class CreateJob(GpuConfig, JobParams):
     """Parameters to create a new job.
 
     Attributes:
@@ -134,7 +134,7 @@ class CreateJob(JobConfig):
 
         return values
 
-    def from_job_config(js: JobConfig) -> "CreateJob":
+    def from_job_config(js: JobSpecFromClient) -> "CreateJob":
         """From JobConfig, instantiate `CreateJob`.
 
         Initialize generator state, exp_default_batch_size, and min_cost_batch_size.

@@ -29,7 +29,7 @@ from zeus.optimizer.batch_size.common import (
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
     REPORT_RESULT_URL,
-    JobConfig,
+    JobSpecFromClient,
     JobSpec,
     TrainingResult,
 )
@@ -42,7 +42,7 @@ class BatchSizeOptimizerDummyClient:
         self.url = url
         self.trial_number = 0
 
-    def register_job(self, job: JobConfig):
+    def register_job(self, job: JobSpecFromClient):
         httpx.post(self.url + REGISTER_JOB_URL, content=job.json())
 
     def predict(self, job_id: str):
@@ -53,7 +53,7 @@ class BatchSizeOptimizerDummyClient:
 
     def observe(
         self,
-        job: JobConfig,
+        job: JobSpecFromClient,
         batch_size: int,
         total_energy: float,
         time: float,
@@ -161,8 +161,9 @@ class SimulatorWithServer:
         # Copy all internal state so that simulation does not modify any
         # internal state and is deterministic w.r.t. the random seed.
         # A new job. Profile the feasible batch size range.
-        jobSpec = JobConfig(
-            job_id="Simulate_one_job",
+        jobSpec = JobSpecFromClient(
+            job_id="simulation-one-job",
+            job_id_prefix="simulation",
             batch_sizes=self._profile_batch_size_range(job),
             default_batch_size=job.default_bs,
             target_metric=job.target_metric,

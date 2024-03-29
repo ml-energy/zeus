@@ -13,7 +13,8 @@ from zeus.optimizer.batch_size.common import (
     REGISTER_JOB_URL,
     REPORT_END_URL,
     REPORT_RESULT_URL,
-    JobConfig,
+    CreatedJob,
+    JobSpecFromClient,
     TrialId,
     ReportResponse,
     TrainingResult,
@@ -32,6 +33,7 @@ app = FastAPI()
 # Global variable across different requests: https://github.com/tiangolo/fastapi/issues/592
 # We lock the job before we make any modification to prevent any concurrent bugs.
 app.job_locks = defaultdict(asyncio.Lock)
+app.prefix_locks = defaultdict(asyncio.Lock)
 
 logger = get_logger(__name__)
 logging.basicConfig(level=logging.getLevelName(settings.log_level))
@@ -49,38 +51,40 @@ def startup_hook():
         200: {"description": "Job is already registered"},
         201: {"description": "Job is successfully registered"},
     },
-    response_model=JobConfig,
+    response_model=JobSpecFromClient,
 )
 async def register_job(
-    job: JobConfig,
+    job: JobSpecFromClient,
     response: Response,
     db_session: AsyncSession = Depends(get_db_session),
-) -> JobConfig:
+) -> CreatedJob:
     """Endpoint for users to register a job or check if the job is registered and configuration is identical."""
-    optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
-    try:
-        created = await optimizer.register_job(job)
-        await db_session.commit()
-        if created:
-            # new job is created
-            response.status_code = status.HTTP_201_CREATED
-        else:
-            # job already exists
-            response.status_code = status.HTTP_200_OK
-        return job
-    except ZeusBSOServerBaseError as err:
-        await db_session.rollback()
-        return JSONResponse(
-            status_code=err.status_code,
-            content={"message": err.message},
-        )
-    except Exception as err:
-        await db_session.rollback()
-        logger.error("Commit Failed: %s", str(err))
-        return JSONResponse(
-            status_code=500,
-            content={"message": str(err)},
-        )
+    async with app.prefix_locks[job.job_id_prefix]:
+        # One lock for registering a job. To prevent getting a same lock
+        optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
+        try:
+            created = await optimizer.register_job(job)
+            await db_session.commit()
+            if created:
+                # new job is created
+                response.status_code = status.HTTP_201_CREATED
+            else:
+                # job already exists
+                response.status_code = status.HTTP_200_OK
+            return job
+        except ZeusBSOServerBaseError as err:
+            await db_session.rollback()
+            return JSONResponse(
+                status_code=err.status_code,
+                content={"message": err.message},
+            )
+        except Exception as err:
+            await db_session.rollback()
+            logger.error("Commit Failed: %s", str(err))
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )
 
 
 @app.delete(DELETE_JOB_URL)

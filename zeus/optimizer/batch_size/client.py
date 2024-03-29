@@ -12,7 +12,8 @@ from zeus.optimizer.batch_size.common import (
     REGISTER_JOB_URL,
     REPORT_END_URL,
     REPORT_RESULT_URL,
-    JobConfig,
+    CreatedJob,
+    JobSpecFromClient,
     JobSpec,
     TrialId,
     ReportResponse,
@@ -69,7 +70,7 @@ class BatchSizeOptimizer(Callback):
             raise ZeusBSOConfigError("No GPUs detected.")
 
         # set gpu configurations(max_power, number of gpus, and gpu model)
-        self.job = JobConfig(
+        self.job = JobSpecFromClient(
             **job.dict(),
             max_power=(pls[0][1] // 1000) * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
@@ -83,6 +84,11 @@ class BatchSizeOptimizer(Callback):
         res = httpx.post(self.server_url + REGISTER_JOB_URL, content=self.job.json())
         self._handle_response(res)
 
+        self.job = CreatedJob.parse_obj(res.json())
+
+        logger.critical(
+            "Job is registered with job_id: \x1b[31;1m%s\x1b[0m", self.job.job_id
+        )
         logger.info("Job is registered: %s", str(self.job))
 
     def get_batch_size(self) -> int:
@@ -94,8 +100,8 @@ class BatchSizeOptimizer(Callback):
         Raises:
             `ZeusBSORuntimError`: if the batch size we receive is invalid
         """
-        if self.training_finished:
-            # If train is already over, should not re-send the request to the server. Typically, re-launch the script for another training
+        if self.current_batch_size != 0:
+            # If we already got the batch size, return
             return self.current_batch_size
 
         self.cur_epoch = 0

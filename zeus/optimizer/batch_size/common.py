@@ -37,6 +37,7 @@ class JobParams(BaseModel):
     """
 
     job_id: str
+    job_id_prefix: str
     batch_sizes: list[int]
     default_batch_size: int = Field(gt=0)
     eta_knob: float = 0.5
@@ -84,38 +85,8 @@ class JobParams(BaseModel):
         return values
 
 
-class JobSpec(JobParams):
-    """Job specification that user inputs.
-
-    Attributes:
-        job_id: Prefix of job Id.
-        job_id_prefix: Prefix of job.
-
-    Refer [`JobParams`][`zeus.optimizer.batch_size.common.JobParams`] for other attributes.
-    """
-
-    job_id: Optional[str]
-    job_id_prefix: str
-
-    @root_validator(skip_on_failure=True)
-    def _check_job_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        job_id: str | None = values.get("job_id")
-        prefix: str = values["job_id_prefix"]
-
-        if job_id is not None and not job_id.startswith(prefix):
-            raise ValueError(f"Job_id({job_id}) does not start with prefix({prefix}).")
-        elif job_id is None:
-            values["job_id"] = f"{prefix}-{uuid4()}"
-        return values
-
-
-class JobConfig(JobParams):
-    """Internal job configuration including gpu settigns.
-
-    Attributes:
-        max_power: sum of maximum power limit of all gpus we are using
-        number_of_gpus: number of gpus that are being used for training
-    """
+class GpuConfig(BaseModel):
+    """Gpu configuration of current training."""
 
     max_power: float = Field(gt=0)
     number_of_gpus: int = Field(gt=0)
@@ -127,6 +98,35 @@ class JobConfig(JobParams):
             raise ValueError(f"Invalid gpu_model({v}). Shouldn't be empty.")
         else:
             return v
+
+
+class JobSpec(JobParams):
+    """Job specification that user inputs.
+
+    Attributes:
+        job_id: ID of job. If none is provided, will be created by server.
+
+    Refer [`JobParams`][`zeus.optimizer.batch_size.common.JobParams`] for other attributes.
+    """
+
+    job_id: Optional[str]
+
+    @root_validator(skip_on_failure=True)
+    def _check_job_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        job_id: str | None = values.get("job_id")
+        prefix: str = values["job_id_prefix"]
+
+        if job_id is not None and not job_id.startswith(prefix):
+            raise ValueError(f"Job_id({job_id}) does not start with prefix({prefix}).")
+        return values
+
+
+class JobSpecFromClient(JobSpec, GpuConfig):
+    """Internal job configuration including gpu settings. Job Id is optional here."""
+
+
+class CreatedJob(JobParams, GpuConfig):
+    """Job configuration from the server. Job Id is required."""
 
 
 class TrialId(BaseModel):

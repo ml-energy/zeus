@@ -77,3 +77,13 @@ Training can fail if
 2. It exceeded the early stopping threshold which is configured by `beta_knob` in `JobSpec`
 
 In that case, optimizer will raise `ZeusBSOTrainFailError`. This means that chosen batch size was not useful, and bso server will not give this batch size again. However, the user ***should re-lanuch the job*** so that the bso server can give another batch size. The server will learn which batch size is useful and will converge to the batch size that causes the least cost as you lanch the job multiple times.
+
+## Kubernetes
+
+You can convert `docker-compose` file into kubernetes yaml file using `kompose`.
+
+```Shell
+docker-compose config > docker-compose-resolved.yaml && kompose convert -f docker-compose-resolved.yaml && rm docker-compose-resolved.yaml
+```
+
+This command will resolve the `.env` file and create a resolved version of docker-compose yaml file. Then, you can convert it to kubernetes yaml file using `kompose convert`. Refer [Kompose](https://kompose.io/) for more information.

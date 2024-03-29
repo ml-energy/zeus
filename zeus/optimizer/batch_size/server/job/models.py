@@ -9,7 +9,7 @@ from typing import Any, Optional
 import numpy as np
 from zeus.util.pydantic_v1 import root_validator
 from pydantic.utils import GetterDict
-from zeus.optimizer.batch_size.common import JobConfig
+from zeus.optimizer.batch_size.common import GpuConfig, JobParams
 
 
 class Stage(Enum):
@@ -31,7 +31,7 @@ class JobGetter(GetterDict):
         return super().get(key, default)
 
 
-class JobState(JobConfig):
+class JobState(JobParams, GpuConfig):
     """Pydantic model for Job which includes job-level states.
 
     Attributes:

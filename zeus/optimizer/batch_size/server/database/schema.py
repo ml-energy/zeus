@@ -35,7 +35,8 @@ class JobTable(Base):
 
     __tablename__ = "Job"
 
-    job_id: Mapped[str] = mapped_column(VARCHAR(300), primary_key=True)
+    job_id: Mapped[str] = mapped_column(VARCHAR(400), primary_key=True)
+    job_id_prefix: Mapped[str] = mapped_column(VARCHAR(300), nullable=False)
     default_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
     higher_is_better_metric: Mapped[bool] = mapped_column(Boolean, default=True)
     eta_knob: Mapped[float] = mapped_column(Float, default=0.5)

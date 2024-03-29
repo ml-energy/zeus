@@ -1,19 +1,11 @@
-import atexit
 from copy import deepcopy
-import sys
-from typing import Callable
-from unittest import mock
 from unittest.mock import MagicMock
-from uuid import uuid4
 
-import httpx
 import pytest
 from pytest_mock import MockerFixture
-from fastapi.testclient import TestClient
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
 from zeus.optimizer.batch_size.common import JobSpec
-from zeus.optimizer.batch_size.server.router import app
 
 
 @pytest.fixture
@@ -81,8 +73,9 @@ def test_batch_sizes(mock_monitor):
     bso_client.on_evaluate(0.2)
     bso_client.on_evaluate(0.6)  # Converged
 
-    bso_client.on_train_begin()
+    bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
+    bso_client.on_train_begin()
 
     assert bs == 512 and bso_client.current_batch_size == 512
 
@@ -96,8 +89,9 @@ def test_batch_sizes(mock_monitor):
 
     assert str(e_info.value).find("cost upper bound") != -1
 
-    bso_client.on_train_begin()
+    bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
+    bso_client.on_train_begin()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048
 
@@ -123,7 +117,8 @@ def test_converge_fail(mock_monitor):
     print(e_info.value, i)
     assert str(e_info.value).find("Train failed to converge within max_epoch") != -1
 
-    bso_client.on_train_begin()
+    bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
+    bso_client.on_train_begin()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048

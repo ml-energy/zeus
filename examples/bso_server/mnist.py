@@ -17,36 +17,17 @@ import torch.optim as optim
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobParams, JobSpec
+from zeus.optimizer.batch_size.common import JobSpec
 
 
 WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
-
-job = {
-    "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    "seed": 1,
-    "default_batch_size": 256,
-    "batch_sizes": [32, 64, 256, 512, 1024, 4096, 2048],
-    "eta_knob": 0.5,
-    "beta_knob": 2,
-    "target_metric": 0.5,
-    "higher_is_better_metric": True,
-    "max_epochs": 100,
-    "num_pruning_rounds": 2,
-    "window_size": 5,
-    "mab_prior_mean": 0,
-    "mab_prior_precision": 0,
-    "mab_seed": 123456,
-    "mab_num_exploration": 2,
-    "gpu_model": "A100",
-}
 
 monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
 plo = GlobalPowerLimitOptimizer(monitor)
 bso = BatchSizeOptimizer(
     monitor=monitor,
     server_url="http://127.0.0.1:8000",
-    job=JobParams(
+    job=JobSpec(
         job_id="1",
         job_id_prefix="mnist-dev",
         default_batch_size=256,
