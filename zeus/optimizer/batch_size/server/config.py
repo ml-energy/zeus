@@ -1,6 +1,7 @@
 """Server global configurations."""
 
 from __future__ import annotations
+from typing import Union
 
 from dotenv import find_dotenv
 from zeus.util.pydantic_v1 import BaseSettings, validator
@@ -16,7 +17,7 @@ class ZeusBsoSettings(BaseSettings):
     """
 
     database_url: str
-    echo_sql: bool | str = False  # To prevent conversion error for empty string
+    echo_sql: Union[bool, str] = False  # To prevent conversion error for empty string
     log_level: str = "INFO"
 
     class Config:
