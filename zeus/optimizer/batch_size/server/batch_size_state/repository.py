@@ -228,7 +228,7 @@ class BatchSizeStateRepository(DatabaseRepository):
         self.fetched_arm.num_observations = updated_mab_state.num_observations
 
     async def get_explorations_of_job(self, job_id: str) -> ExplorationsPerJob:
-        """Retrieve explorations for a given job.
+        """Retrieve succeeded or ongoing explorations for a given job.
 
         Args:
             job_id: ID of the job
@@ -243,6 +243,7 @@ class BatchSizeStateRepository(DatabaseRepository):
                 and_(
                     TrialTable.job_id == job_id,
                     TrialTable.type == TrialType.Exploration,
+                    TrialTable.status != TrialStatus.Failed,
                 )
             )
             .order_by(TrialTable.trial_number.asc())

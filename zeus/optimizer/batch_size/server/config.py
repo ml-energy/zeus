@@ -1,5 +1,7 @@
 """Server global configurations."""
 
+from __future__ import annotations
+
 from dotenv import find_dotenv
 from zeus.util.pydantic_v1 import BaseSettings, validator
 
@@ -14,7 +16,7 @@ class ZeusBsoSettings(BaseSettings):
     """
 
     database_url: str
-    echo_sql: bool = False
+    echo_sql: bool | str = False  # To prevent conversion error for empty string
     log_level: str = "INFO"
 
     class Config:
@@ -29,10 +31,14 @@ class ZeusBsoSettings(BaseSettings):
 
     @validator("echo_sql")
     def _validate_echo_sql(cls, v) -> bool:
-        if v is None or not isinstance(v, bool):
-            # Set default to false
-            return False
-        return v
+        if v is not None and isinstance(v, bool):
+            return v
+        elif v is not None and isinstance(v, str):
+            if v.lower() == "false":
+                return False
+            elif v.lower() == "true":
+                return True
+        return False
 
     @validator("log_level")
     def _validate_log_level(cls, v) -> bool:
@@ -50,4 +56,3 @@ class ZeusBsoSettings(BaseSettings):
 
 
 settings = ZeusBsoSettings()
-print(settings)
