@@ -59,9 +59,6 @@ def cuda_sync(device: int | None = None) -> None:
     raise RuntimeError("No frameworks are available.")
 
 
-# Should MODULE_CACHE be used here?
-
-
 def pynvml_is_available() -> bool:
     """Check if PyNVML is available."""
     try:

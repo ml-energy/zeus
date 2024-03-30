@@ -151,7 +151,7 @@ class PerseusOptimizer(Callback):
             )
 
         # The frequency controller is responsible for controlling the frequency
-        # of the GPU (nvml_device_id) asynchronously.
+        # of the GPU (device_id) asynchronously.
         self.frequency_controller = FrequencyController(device_id=device_id)
 
         # Fetch the frequency schedule from the Perseus server.

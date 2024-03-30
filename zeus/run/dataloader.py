@@ -416,16 +416,14 @@ class ZeusDataLoader(DataLoader):
                 shape=(self.world_size, self.max_epochs), dtype=np.float64
             )
 
-        gpus = get_gpus()
+        gpus = get_gpus(ensure_homogeneous=True)
         for index in range(self.world_size):
             # Set persistent mode.
             # TODO(JW): Check SYS_ADMIN permissions and error with an explanation.
             gpus.setPersistenceMode(index, enable=True)
 
         # Query NVML for the possible power limit range. Unit is mW.
-        min_pl, self.max_pl = gpus.getPowerManagementLimitConstraints(
-            0
-        )  # TODO: assume 0?
+        min_pl, self.max_pl = gpus.getPowerManagementLimitConstraints(0)
         self.power_limits = list(range(self.max_pl, min_pl - 25_000, -25_000))
         if self._is_train:
             self._log(f"Power limit range: {self.power_limits}")

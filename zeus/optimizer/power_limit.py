@@ -270,7 +270,7 @@ class GlobalPowerLimitOptimizer(Callback):
 
         # Set the range of power limits to explore.
         # Assert that supported power limits ranges are uniform across GPUs.
-        gpus = get_gpus()
+        gpus = get_gpus(ensure_homogeneous=True)
         pls = []
         for index in monitor.gpu_indices:
             pls.append(gpus.getPowerManagementLimitConstraints(index))

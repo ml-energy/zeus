@@ -103,10 +103,8 @@ class ZeusMaster:
         self.profile_measure_iters = profile_measure_iters
 
         # Query the max power limit of the GPU.
-        gpus = get_gpus()
-        minmax = gpus.getPowerManagementLimitConstraints(
-            0
-        )  # unit: mW, assumes device 0
+        gpus = get_gpus(ensure_homogeneous=True)
+        minmax = gpus.getPowerManagementLimitConstraints(0)  # unit: mW
         self.max_pl = minmax[1] // 1000  # unit: W
         print(f"[Zeus Master] Max power limit of {gpus.getName(0)}: {self.max_pl}W")
 
