@@ -40,7 +40,7 @@ The following exceptions are defined in this module:
 - [`ZeusGPUNotFoundError`][zeus.device.gpu.ZeusGPUNotFoundError]: Error for missing GPUs.
 - [`ZeusGPUInsufficientSizeError`][zeus.device.gpu.ZeusGPUInsufficientSizeError]: Error for insufficient buffer size.
 - [`ZeusGPUInsufficientPowerError`][zeus.device.gpu.ZeusGPUInsufficientPowerError]: Error for insufficient power.
-- [`ZeusGPUDriverError`][zeus.device.gpu.ZeusGPUDriverError]: Error for driver issues.
+- [`ZeusGPUDriverNotLoadedError`][zeus.device.gpu.ZeusGPUDriverNotLoadedError]: Error for driver issues.
 - [`ZeusGPUTimeoutError`][zeus.device.gpu.ZeusGPUTimeoutError]: Error for timeout issues.
 - [`ZeusGPUIRQError`][zeus.device.gpu.ZeusGPUIRQError]: Error for IRQ issues.
 - [`ZeusGPULibraryNotFoundError`][zeus.device.gpu.ZeusGPULibraryNotFoundError]: Error for missing libraries.
@@ -65,7 +65,7 @@ from zeus.device.gpu import (
     ZeusGPUNotFoundError,
     ZeusGPUInsufficientSizeError,
     ZeusGPUInsufficientPowerError,
-    ZeusGPUDriverError,
+    ZeusGPUDriverNotLoadedError,
     ZeusGPUTimeoutError,
     ZeusGPUIRQError,
     ZeusGPULibraryNotFoundError,

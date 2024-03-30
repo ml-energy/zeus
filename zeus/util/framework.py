@@ -57,33 +57,3 @@ def cuda_sync(device: int | None = None) -> None:
         return
 
     raise RuntimeError("No frameworks are available.")
-
-
-def nvml_is_available() -> bool:
-    """Check if PyNVML is available."""
-    try:
-        import pynvml
-    except ImportError:
-        logger.info("PyNVML is not available.")
-        return False
-    try:
-        pynvml.nvmlInit()
-        return True
-    except pynvml.NVMLError:
-        logger.info("PyNVML is available but could not initialize.")
-        return False
-
-
-def amdsmi_is_available() -> bool:
-    """Check if amdsmi is available."""
-    try:
-        import amdsmi
-    except ImportError:
-        logger.info("amdsmi is not available.")
-        return False
-    try:
-        amdsmi.amdsmi_init()
-        return True
-    except amdsmi.AmdSmiLibraryException:
-        logger.info("amdsmi is available but could not initialize.")
-        return False

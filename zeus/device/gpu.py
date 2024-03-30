@@ -10,7 +10,9 @@ import contextlib
 import pynvml  # necessary for testing to mock!
 
 from zeus.device.exception import ZeusBaseGPUError
-from zeus.util import nvml_is_available, amdsmi_is_available
+from zeus.util.logging import get_logger
+
+logger = get_logger(name=__name__)
 
 if TYPE_CHECKING:
     import amdsmi
@@ -82,7 +84,7 @@ class ZeusGPUInsufficientPowerError(ZeusBaseGPUError):
         super().__init__(message)
 
 
-class ZeusGPUDriverError(ZeusBaseGPUError):
+class ZeusGPUDriverNotLoadedError(ZeusBaseGPUError):
     """Zeus GPU exception class Wrapper for Driver Error."""
 
     def __init__(self, message: str) -> None:
@@ -303,7 +305,7 @@ class NVIDIAGPU(GPU):
         pynvml.NVML_ERROR_NOT_FOUND: ZeusGPUNotFoundError,
         pynvml.NVML_ERROR_INSUFFICIENT_SIZE: ZeusGPUInsufficientSizeError,
         pynvml.NVML_ERROR_INSUFFICIENT_POWER: ZeusGPUInsufficientPowerError,
-        pynvml.NVML_ERROR_DRIVER_NOT_LOADED: ZeusGPUDriverError,  # change to : ZeusGPUDriverNotLoadedError
+        pynvml.NVML_ERROR_DRIVER_NOT_LOADED: ZeusGPUDriverNotLoadedError,  # change to : ZeusGPUDriverNotLoadedError
         pynvml.NVML_ERROR_TIMEOUT: ZeusGPUTimeoutError,
         pynvml.NVML_ERROR_IRQ_ISSUE: ZeusGPUIRQError,
         pynvml.NVML_ERROR_LIBRARY_NOT_FOUND: ZeusGPULibraryNotFoundError,
@@ -823,3 +825,33 @@ def get_gpus(ensure_homogeneous: bool = False) -> GPUs:
         raise ZeusGPUInitError(
             "NVML and AMDSMI unavailable. Failed to initialize GPU management library."
         )
+
+
+def nvml_is_available() -> bool:
+    """Check if PyNVML is available."""
+    try:
+        import pynvml
+    except ImportError:
+        logger.info("PyNVML is not available.")
+        return False
+    try:
+        pynvml.nvmlInit()
+        return True
+    except pynvml.NVMLError:
+        logger.info("PyNVML is available but could not initialize.")
+        return False
+
+
+def amdsmi_is_available() -> bool:
+    """Check if amdsmi is available."""
+    try:
+        import amdsmi
+    except ImportError:
+        logger.info("amdsmi is not available.")
+        return False
+    try:
+        amdsmi.amdsmi_init()
+        return True
+    except amdsmi.AmdSmiLibraryException:
+        logger.info("amdsmi is available but could not initialize.")
+        return False
