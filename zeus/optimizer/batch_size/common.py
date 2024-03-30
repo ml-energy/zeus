@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from uuid import uuid4
 
 from zeus.util.pydantic_v1 import BaseModel, root_validator, validator, Field
 
