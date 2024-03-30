@@ -18,4 +18,4 @@ from zeus.util.env import get_env
 from zeus.util.logging import FileAndConsole
 from zeus.util.lr_scaler import LinearScaler, SquareRootScaler
 from zeus.util.metric import zeus_cost, ZeusCostThresholdExceededError
-from zeus.util.framework import cuda_sync, pynvml_is_available, amdsmi_is_available
+from zeus.util.framework import cuda_sync, nvml_is_available, amdsmi_is_available

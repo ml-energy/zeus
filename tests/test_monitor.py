@@ -179,7 +179,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     log_file = tmp_path / "log.csv"
 
-    # want to make zeus.device.gpu.pynvml_is_available is a function, want it to always return true when testing
+    # want to make zeus.device.gpu.nvml_is_available is a function, want it to always return true when testing
     mocker.patch("zeus.device.gpu.nvml_is_available", return_value=True)
 
     ########################################

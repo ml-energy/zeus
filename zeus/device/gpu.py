@@ -10,7 +10,7 @@ import contextlib
 import pynvml  # necessary for testing to mock!
 
 from zeus.device.exception import ZeusBaseGPUError
-from zeus.util import pynvml_is_available, amdsmi_is_available
+from zeus.util import nvml_is_available, amdsmi_is_available
 
 if TYPE_CHECKING:
     import amdsmi
@@ -813,7 +813,7 @@ def get_gpus(ensure_homogeneous: bool = False) -> GPUs:
     if _gpus is not None:
         return _gpus
 
-    if pynvml_is_available():
+    if nvml_is_available():
         _gpus = NVIDIAGPUs(ensure_homogeneous)
         return _gpus
     elif amdsmi_is_available():

@@ -59,7 +59,7 @@ def cuda_sync(device: int | None = None) -> None:
     raise RuntimeError("No frameworks are available.")
 
 
-def pynvml_is_available() -> bool:
+def nvml_is_available() -> bool:
     """Check if PyNVML is available."""
     try:
         import pynvml
