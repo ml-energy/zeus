@@ -268,6 +268,18 @@ class GPU(abc.ABC):
 """ GPU MANAGEMENT OBJECTS """
 
 
+def _handle_nvml_errors(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except pynvml.NVMLError as e:
+            exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusGPUUnknownError)
+            raise exception_class(e.msg) from e
+
+    return wrapper
+
+
 class NVIDIAGPU(GPU):
     """Control a Single NVIDIA GPU.
 
@@ -304,20 +316,6 @@ class NVIDIAGPU(GPU):
         pynvml.NVML_ERROR_MEMORY: ZeusGPUMemoryError,
         pynvml.NVML_ERROR_UNKNOWN: ZeusGPUUnknownError,
     }
-
-    @staticmethod
-    def _handle_nvml_errors(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except pynvml.NVMLError as e:
-                exception_class = NVIDIAGPU._exception_map.get(
-                    e.value, ZeusGPUUnknownError
-                )
-                raise exception_class(e.msg) from e
-
-        return wrapper
 
     @_handle_nvml_errors
     def _get_handle(self):
@@ -426,6 +424,18 @@ class UnprivilegedNVIDIAGPU(NVIDIAGPU):
     pass
 
 
+def _handle_amdsmi_errors(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except amdsmi.AmdSmiException as e:
+            exception_class = AMDGPU._exception_map.get(e.value, ZeusGPUUnknownError)
+            raise exception_class(e.msg) from e
+
+    return wrapper
+
+
 class AMDGPU(GPU):
     """Control a Single AMD GPU.
 
@@ -440,20 +450,6 @@ class AMDGPU(GPU):
         self._get_handle()
 
     _exception_map = {}
-
-    @staticmethod
-    def _handle_amdsmi_errors(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except amdsmi.AmdSmiException as e:
-                exception_class = AMDGPU._exception_map.get(
-                    e.value, ZeusGPUUnknownError
-                )
-                raise exception_class(e.msg) from e
-
-        return wrapper
 
     @_handle_amdsmi_errors
     def _get_handle(self):
