@@ -704,7 +704,7 @@ class NVIDIAGPUs(GPUs):
         """Instantiates NVIDIAGPUs object, setting up tracking for specified NVIDIA GPUs.
 
         Args:
-            ensure_homogeneous (bool, optional): If True, ensures that all tracked GPUs have the same name (return value of pynvml.nvmlDeviceGetName). False by default.
+            ensure_homogeneous (bool): If True, ensures that all tracked GPUs have the same name (return value of `nvmlDeviceGetName`). False by default.
         """
         try:
             pynvml.nvmlInit()
@@ -821,5 +821,5 @@ def get_gpus(ensure_homogeneous: bool = False) -> GPUs:
         return _gpus
     else:
         raise ZeusGPUInitError(
-            "Failed to initialize GPU monitoring for NVIDIA and AMD GPUs."
+            "NVML and AMDSMI unavailable. Failed to initialize GPU management library."
         )
