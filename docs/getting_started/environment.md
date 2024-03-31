@@ -7,7 +7,7 @@ We encourage users to do everything inside a Docker container spawned with our p
 
     - Python still needs the Linux `SYS_ADMIN` capability to change the GPU's power limit. One dirty way is to run Python with `sudo`.
     - Skim through our Dockerfile (shown below) to make sure you have the stuff that's being installed.
-    - Follow the instructions in [Installing and Building](installing_and_building.md).
+    - Follow the instructions in [Installing Zeus](installing.md).
 
 ## Zeus Docker image
 
