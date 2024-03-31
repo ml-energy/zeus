@@ -117,7 +117,7 @@ class PowerMonitor:
         gpu_indices: list[int] | None = None,
         update_period: float | None = None,
     ) -> None:
-        """Initialize the power monitor.
+        """Initialize the power monitor. Initialization should not be done in global scope due to python's protection.
 
         Args:
             gpu_indices: Indices of the GPUs to monitor. If None, monitor all GPUs.
