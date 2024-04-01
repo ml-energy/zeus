@@ -27,7 +27,7 @@ Otherwise, we recommend using our Docker container:
 
 [`ZeusMonitor`][zeus.monitor.ZeusMonitor] makes it very simple to measure the GPU time and energy consumption of arbitrary Python code blocks.
 
-```python
+```python hl_lines="4 11-13"
 from zeus.monitor import ZeusMonitor
 
 # All GPUs are measured simultaneously if `gpu_indices` is not given.
@@ -43,8 +43,8 @@ for epoch in range(100):
         result = monitor.end_window("step")
         measurements.append(result)
 
-    eres = monitor.end_window("epoch")
-    print(f"Epoch {epoch} consumed {eres.time} s and {eres.total_energy} J.")
+    result = monitor.end_window("epoch")
+    print(f"Epoch {epoch} consumed {result.time} s and {result.total_energy} J.")
 
     avg_time = sum(map(lambda m: m.time, measurements)) / len(measurements)
     avg_energy = sum(map(lambda m: m.total_energy, measurements)) / len(measurements)
@@ -70,9 +70,9 @@ Refer to
 [our integration example with ImageNet](https://github.com/ml-energy/zeus/tree/master/examples/imagenet/)
 for complete running examples for single-GPU and multi-GPU data parallel training.
 
-```python
+```python hl_lines="10"
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer
+from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
 
 # Data parallel training with four GPUs.
 # Omitting `gpu_indices` will use all GPUs, while respecting
@@ -103,7 +103,10 @@ for epoch in range(100):
 ### `HFGlobalPowerLimitOptimizer`
 For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/transformers/en/index), [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] is a drop-in compatible [HuggingFace 🤗 Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback). When initializing a [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer) or a [TFL SFTTrainer](https://huggingface.co/docs/trl/main/en/sft_trainer), initialize and pass in [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] as shown below:
 
-```python
+```python hl_lines="10"
+from zeus.monitor import ZeusMonitor
+from zeus.optimizer.power_limit import HFGlobalPowerLimitOptimizer
+
 monitor = ZeusMonitor()
 optimizer = HFGlobalPowerLimitOptimizer(monitor)
 
