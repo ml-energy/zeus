@@ -129,7 +129,7 @@ class PowerMonitor:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
 
         # Get GPUs
-        gpus = get_gpus(gpu_indices)
+        gpus = get_gpus()
 
         # Set up logging.
         self.logger = get_logger(type(self).__name__)
