@@ -20,20 +20,20 @@ import atexit
 import contextlib
 import multiprocessing as mp
 
-import pynvml
+from zeus.device import get_gpus, ZeusGPUNotSupportedError
 
 
 class FrequencyController:
     """Spawns a separate process that sets the GPU frequency."""
 
-    def __init__(self, nvml_device_id: int = 0) -> None:
+    def __init__(self, device_id: int = 0) -> None:
         """Instantiate the frequency controller.
 
         Args:
-            nvml_device_id: The NVML device ID of the GPU to control.
+            device_id: Device ID of the GPU to control.
         """
         self._q: mp.Queue[int | None] = mp.Queue()
-        self._proc = mp.Process(target=self._controller_process, args=(nvml_device_id,))
+        self._proc = mp.Process(target=self._controller_process, args=(device_id,))
 
         atexit.register(self.end)
         self._proc.start()
@@ -52,25 +52,18 @@ class FrequencyController:
 
     def _controller_process(self, device_id: int) -> None:
         """Receive frequency values through a queue and apply it."""
-        pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
-
+        gpus = get_gpus()
         # Return the power limit to the default.
-        pynvml.nvmlDeviceSetPowerManagementLimit(
-            handle,
-            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(handle),
-        )
+        gpus.resetPowerManagementLimit(device_id)
 
         # Set the memory frequency to be the highest.
-        max_mem_freq = max(pynvml.nvmlDeviceGetSupportedMemoryClocks(handle))
-        with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
-            pynvml.nvmlDeviceSetMemoryLockedClocks(handle, max_mem_freq, max_mem_freq)
+        max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))
+        with contextlib.suppress(ZeusGPUNotSupportedError):
+            gpus.setMemoryLockedClocks(device_id, max_mem_freq, max_mem_freq)
 
         # Set the SM frequency to be the highest.
-        max_freq = max(
-            pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq)
-        )
-        pynvml.nvmlDeviceSetGpuLockedClocks(handle, max_freq, max_freq)
+        max_freq = max(gpus.getSupportedGraphicsClocks(device_id, max_mem_freq))
+        gpus.setGpuLockedClocks(device_id, max_freq, max_freq)
         current_freq = max_freq
 
         # Wait on the queue for the next frequency to set.
@@ -79,11 +72,10 @@ class FrequencyController:
             if target_freq is None:
                 break
             if current_freq != target_freq:
-                pynvml.nvmlDeviceSetGpuLockedClocks(handle, target_freq, target_freq)
+                gpus.setGpuLockedClocks(device_id, target_freq, target_freq)
                 current_freq = target_freq
 
         # Reset everything.
-        with contextlib.suppress(pynvml.NVMLError_NotSupported):  # type: ignore
-            pynvml.nvmlDeviceResetMemoryLockedClocks(handle)
-        pynvml.nvmlDeviceResetGpuLockedClocks(handle)
-        pynvml.nvmlShutdown()
+        with contextlib.suppress(ZeusGPUNotSupportedError):
+            gpus.resetMemoryLockedClocks(device_id)
+        gpus.deviceResetGpuLockedClocks(device_id)

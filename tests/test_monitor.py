@@ -24,6 +24,7 @@ import pytest
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.util.testing import ReplayZeusMonitor
+import zeus.device.gpu
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,18 +38,22 @@ ARCHS = [
     pynvml.NVML_DEVICE_ARCH_AMPERE,
 ]
 
+@pytest.fixture(autouse=True, scope="function")
+def reset_gpus() -> None:
+    """Reset the global variable `_gpus` to None on every test."""
+    zeus.device.gpu._gpus = None
+
 
 @pytest.fixture
 def pynvml_mock(mocker: MockerFixture):
     """Mock the entire pynvml module."""
-    mock = mocker.patch("zeus.monitor.energy.pynvml", autospec=True)
+    # Mock the pynvml import in the gpu module.
+    mock = mocker.patch("zeus.device.gpu.pynvml", autospec=True)
     
     # Except for the arch constants.
     mock.NVML_DEVICE_ARCH_PASCAL = pynvml.NVML_DEVICE_ARCH_PASCAL
     mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
     mock.NVML_DEVICE_ARCH_AMPERE = pynvml.NVML_DEVICE_ARCH_AMPERE
-
-    mocker.patch("zeus.util.env.pynvml", mock)
 
     return mock
 
@@ -108,10 +113,9 @@ def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[t
 
     def mock_pynvml(nvml_indices: list[int], archs: list[int]) -> None:
         assert len(nvml_indices) == len(archs)
-        index_to_handle = {i: f"handle{i}" for i in nvml_indices}
         handle_to_arch = {f"handle{i}": arch for i, arch in zip(nvml_indices, archs)}
         pynvml_mock.nvmlDeviceGetCount.return_value = NUM_GPUS
-        pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: index_to_handle[index]
+        pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: f"handle{index}" # GPU Monitoring object grabs all handles visible to system on initialization.
         pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
 
     if cuda_visible_devices is None:  # All GPUs are visible to PyTorch.
@@ -155,8 +159,6 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
     old_gpu_torch_indices = [index for index, is_old in is_old_torch.items() if is_old]
 
-    mocker.patch("zeus.monitor.energy.atexit.register")
-
     class MockPowerMonitor:
         def __init__(self, gpu_indices: list[int] | None, update_period: float | None) -> None:
             assert gpu_indices == old_gpu_torch_indices
@@ -176,6 +178,9 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counters[handle])
 
     log_file = tmp_path / "log.csv"
+
+    # want to make zeus.device.gpu.nvml_is_available is a function, want it to always return true when testing
+    mocker.patch("zeus.device.gpu.nvml_is_available", return_value=True)
 
     ########################################
     # Test ZeusMonitor initialization.

@@ -17,18 +17,15 @@
 from __future__ import annotations
 
 import os
-import atexit
 from time import time
 from pathlib import Path
 from dataclasses import dataclass
-from functools import cached_property, lru_cache
-
-import pynvml
+from functools import cached_property
 
 from zeus.monitor.power import PowerMonitor
 from zeus.util.logging import get_logger
 from zeus.util.framework import cuda_sync
-from zeus.util.env import resolve_gpu_indices
+from zeus.device import get_gpus
 
 logger = get_logger(__name__)
 
@@ -128,18 +125,13 @@ class ZeusMonitor:
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy
 
-        # Initialize NVML.
-        pynvml.nvmlInit()
-        atexit.register(pynvml.nvmlShutdown)
+        # Get gpus
+        self.gpus = get_gpus()
 
-        # CUDA GPU indices and NVML GPU indices are different if `CUDA_VISIBLE_DEVICES` is set.
-        self.gpu_indices, self.nvml_gpu_indices = resolve_gpu_indices(gpu_indices)
-
-        # Save all the NVML GPU handles. These should be called with system-level GPU indices.
-        self.gpu_handles: dict[int, pynvml.c_nvmlDevice_t] = {}
-        for nvml_gpu_index, gpu_index in zip(self.nvml_gpu_indices, self.gpu_indices):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(nvml_gpu_index)
-            self.gpu_handles[gpu_index] = handle
+        # Get GPU indices:
+        self.gpu_indices = (
+            gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
+        )
 
         # Initialize loggers.
         if log_file is None:
@@ -166,8 +158,8 @@ class ZeusMonitor:
         # Initialize power monitors for older architecture GPUs.
         old_gpu_indices = [
             gpu_index
-            for gpu_index, is_new in zip(self.gpu_indices, self._is_new_arch_flags)
-            if not is_new
+            for gpu_index in self.gpu_indices
+            if not self.gpus.supportsGetTotalEnergyConsumption(gpu_index)
         ]
         if old_gpu_indices:
             self.power_monitor = PowerMonitor(
@@ -176,26 +168,10 @@ class ZeusMonitor:
         else:
             self.power_monitor = None
 
-    @lru_cache
-    def _is_new_arch(self, gpu: int) -> bool:
-        """Return whether the GPU is Volta or newer."""
-        return (
-            pynvml.nvmlDeviceGetArchitecture(self.gpu_handles[gpu])
-            >= pynvml.NVML_DEVICE_ARCH_VOLTA
-        )
-
-    @cached_property
-    def _is_new_arch_flags(self) -> list[bool]:
-        """A list of flags indicating whether each GPU is Volta or newer."""
-        return [self._is_new_arch(gpu) for gpu in self.gpu_handles]
-
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""
         power_measurement_start_time: float = time()
-        power = {
-            i: pynvml.nvmlDeviceGetPowerUsage(h) / 1000.0
-            for i, h in self.gpu_handles.items()
-        }
+        power = {i: self.gpus.getPowerUsage(i) / 1000.0 for i in self.gpu_indices}
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
@@ -213,19 +189,19 @@ class ZeusMonitor:
 
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
-            for gpu_index in self.gpu_handles:
+            for gpu_index in self.gpu_indices:
                 cuda_sync(gpu_index)
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
         energy_state: dict[int, float] = {}
-        for gpu_index, gpu_handle in self.gpu_handles.items():
+        for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
             # Otherwise, the Zeus power monitor is running in the background to
             # collect power consumption, so we just need to read the log file later.
-            if self._is_new_arch(gpu_index):
+            if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
                 energy_state[gpu_index] = (
-                    pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
+                    self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
                 )
 
         # Add measurement state to dictionary.
@@ -264,7 +240,7 @@ class ZeusMonitor:
 
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
-            for gpu_index in self.gpu_handles:
+            for gpu_index in self.gpu_indices:
                 cuda_sync(gpu_index)
 
         # If the measurement window is cancelled, return an empty Measurement object.
@@ -275,12 +251,10 @@ class ZeusMonitor:
         end_time: float = time()
         time_consumption: float = end_time - start_time
         energy_consumption: dict[int, float] = {}
-        for gpu_index, gpu_handle in self.gpu_handles.items():
+        for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
-            if self._is_new_arch(gpu_index):
-                end_energy = (
-                    pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle) / 1000.0
-                )
+            if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
+                end_energy = self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
                 energy_consumption[gpu_index] = end_energy - start_energy[gpu_index]
 
         # If there are older GPU architectures, the PowerMonitor will take care of those.
