@@ -305,7 +305,7 @@ class NVIDIAGPU(GPU):
         pynvml.NVML_ERROR_NOT_FOUND: ZeusGPUNotFoundError,
         pynvml.NVML_ERROR_INSUFFICIENT_SIZE: ZeusGPUInsufficientSizeError,
         pynvml.NVML_ERROR_INSUFFICIENT_POWER: ZeusGPUInsufficientPowerError,
-        pynvml.NVML_ERROR_DRIVER_NOT_LOADED: ZeusGPUDriverNotLoadedError,  # change to : ZeusGPUDriverNotLoadedError
+        pynvml.NVML_ERROR_DRIVER_NOT_LOADED: ZeusGPUDriverNotLoadedError,
         pynvml.NVML_ERROR_TIMEOUT: ZeusGPUTimeoutError,
         pynvml.NVML_ERROR_IRQ_ISSUE: ZeusGPUIRQError,
         pynvml.NVML_ERROR_LIBRARY_NOT_FOUND: ZeusGPULibraryNotFoundError,
