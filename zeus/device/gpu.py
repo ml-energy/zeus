@@ -455,13 +455,18 @@ class AMDGPU(GPU):
 
     @_handle_amdsmi_errors
     def _get_handle(self):
-        self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
+        handles = amdsmi.amdsmi_get_processor_handles()
+        if len(handles) <= self.gpu_index:
+            raise ZeusGPUNotFoundError(
+                f"GPU with index {self.gpu_index} not found. Found {len(handles)} GPUs."
+            )
+        self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index] # Can throw AmdSmiLibraryException
 
     @_handle_amdsmi_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-        return (info.min_power_cap, info.max_power_cap)
+        return (info.min_power_cap, info.max_power_cap) # Can throw AmdSmiLibraryException, AmdSmiRetryException, AmdSmiParameterException
 
     @_handle_amdsmi_errors
     def setPersistenceMode(self, enable: bool) -> None:
