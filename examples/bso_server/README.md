@@ -86,4 +86,5 @@ You can convert `docker-compose` file into kubernetes yaml file using `kompose`.
 docker-compose config > docker-compose-resolved.yaml && kompose convert -f docker-compose-resolved.yaml && rm docker-compose-resolved.yaml
 ```
 
-This command will resolve the `.env` file and create a resolved version of docker-compose yaml file. Then, you can convert it to kubernetes yaml file using `kompose convert`. Refer [Kompose](https://kompose.io/) for more information.
+This command will resolve the `.env` file and create a resolved version of docker-compose yaml file. Then, you can convert it to kubernetes yaml file using `kompose convert`. Refer [Kompose](https://kompose.io/) and [Kompose labels](https://github.com/kubernetes/kompose/blob/main/docs/user-guide.md) for more information.
+
