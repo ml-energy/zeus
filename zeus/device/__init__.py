@@ -3,26 +3,28 @@
 The main function of this module is [`get_gpus`][zeus.device.gpu.get_gpus], which returns a GPU Manager object specific to the platform.
 To instantiate a GPU Manager object, you can do the following:
     
-    ```python
-    from zeus.device import get_gpus
-    gpus = get_gpus() # Returns NVIDIAGPUs() or AMDGPUs() depending on the platform.
-    ```
+```python
+from zeus.device import get_gpus
+gpus = get_gpus() # Returns NVIDIAGPUs() or AMDGPUs() depending on the platform.
+```
+
 There exists a 1:1 mapping between specific library functions and methods implemented in the GPU Manager object.
 For example, for NVIDIA systems, if you wanted to do:
 
-    ```python
-    handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
-    constraints = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
-    ```
+```python
+handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+constraints = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
+```
 
 You can now do:
 
-    ```python
-    gpus = get_gpus() # returns a NVIDIAGPUs object
-    constraints =  gpus.getPowerManagementLimitConstraints(gpu_index)
-    ```
+```python
+gpus = get_gpus() # returns a NVIDIAGPUs object
+constraints =  gpus.getPowerManagementLimitConstraints(gpu_index)
+```
 
 Class hierarchy:
+
 - [`GPUs`][zeus.device.gpu.GPUs]: Abstract class for GPU managers.
     - [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs]: GPU manager for NVIDIA GPUs, initialize NVIDIAGPU objects.
     - [`AMDGPUs`][zeus.device.gpu.AMDGPUs]: GPU manager for AMD GPUs, initialize AMDGPU objects.
@@ -32,6 +34,7 @@ Class hierarchy:
 
 
 The following exceptions are defined in this module:
+
 - [`ZeusGPUInitError`][zeus.device.gpu.ZeusGPUInitError]: Base class for initialization errors.
 - [`ZeusGPUInvalidArgError`][zeus.device.gpu.ZeusGPUInvalidArgError]: Error for invalid arguments.
 - [`ZeusGPUNotSupportedError`][zeus.device.gpu.ZeusGPUNotSupportedError]: Error for unsupported GPUs.
