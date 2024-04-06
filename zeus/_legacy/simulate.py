@@ -25,7 +25,7 @@ import pandas as pd
 
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
-from zeus.policy import BatchSizeOptimizer, PowerLimitOptimizer
+from zeus._legacy.policy import BatchSizeOptimizer, PowerLimitOptimizer
 from zeus.util import zeus_cost
 
 

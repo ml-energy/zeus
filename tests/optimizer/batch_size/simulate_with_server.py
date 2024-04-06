@@ -33,7 +33,7 @@ from zeus.optimizer.batch_size.common import (
     JobSpec,
     TrainingResult,
 )
-from zeus.policy import PowerLimitOptimizer
+from zeus._legacy.policy import PowerLimitOptimizer
 from zeus.util import zeus_cost
 
 

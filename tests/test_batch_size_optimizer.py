@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from zeus.policy.optimizer import PruningExploreManager
+from zeus._legacy.policy.optimizer import PruningExploreManager
 
 
 class TestPruningExploreManager:

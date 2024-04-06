@@ -7,8 +7,11 @@ import pytest
 from pytest_mock import MockerFixture
 from tests.optimizer.batch_size.simulate_with_server import SimulatorWithServer
 from zeus.job import Job
-from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
-from zeus.simulate import Simulator
+from zeus._legacy.policy.optimizer import (
+    JITPowerLimitOptimizer,
+    PruningGTSBatchSizeOptimizer,
+)
+from zeus._legacy.simulate import Simulator
 
 
 config = {

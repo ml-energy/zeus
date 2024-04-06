@@ -25,5 +25,8 @@ Custom [`PowerLimitOptimizer`][zeus.policy.PowerLimitOptimizer]s will
 have to be integrated into [`ZeusDataLoader`][zeus.run.ZeusDataLoader].
 """
 
-from zeus.policy.interface import BatchSizeOptimizer, PowerLimitOptimizer
-from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
+from zeus._legacy.policy.interface import BatchSizeOptimizer, PowerLimitOptimizer
+from zeus._legacy.policy.optimizer import (
+    JITPowerLimitOptimizer,
+    PruningGTSBatchSizeOptimizer,
+)

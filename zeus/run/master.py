@@ -30,7 +30,7 @@ import torch
 
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
-from zeus.policy import BatchSizeOptimizer
+from zeus._legacy.policy import BatchSizeOptimizer
 from zeus.util import zeus_cost
 
 
