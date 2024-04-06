@@ -43,7 +43,8 @@ class BatchSizeOptimizerDummyClient:
         self.trial_number = 0
 
     def register_job(self, job: JobSpecFromClient):
-        httpx.post(self.url + REGISTER_JOB_URL, content=job.json())
+        res = httpx.post(self.url + REGISTER_JOB_URL, content=job.json())
+        assert res.status_code == 200 or res.status_code == 201, res.text
 
     def predict(self, job_id: str):
         res = httpx.get(self.url + GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_id})

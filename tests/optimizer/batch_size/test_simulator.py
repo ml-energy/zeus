@@ -57,8 +57,8 @@ def read_trace(
     return train_df, power_df
 
 
-@pytest.fixture(scope="session", autouse=True)
-def database_setup():
+@pytest.fixture(scope="module", autouse=True)
+def logger_setup():
     logger = logging.getLogger(
         "zeus.optimizer.batch_size.server.mab"
     )  # for testing, propagate the log to the root logger so that caplog can capture
