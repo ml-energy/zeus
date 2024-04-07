@@ -450,6 +450,7 @@ class AMDGPU(GPU):
         """Initializes the AMDGPU object with a specified GPU index. Acquires a handle to the GPU using `amdsmi.amdsmi_get_processor_handles()`."""
         super().__init__(gpu_index)
         self._get_handle()
+        self._supportsGetTotalEnergyConsumption = None
 
     _exception_map = {}
 
@@ -466,7 +467,7 @@ class AMDGPU(GPU):
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-        return (info.min_power_cap, info.max_power_cap) # Can throw AmdSmiLibraryException, AmdSmiRetryException, AmdSmiParameterException
+        return (info.min_power_cap * 1000, info.max_power_cap * 1000) # Can throw AmdSmiLibraryException, AmdSmiRetryException, AmdSmiParameterException
 
     @_handle_amdsmi_errors
     def setPersistenceMode(self, enable: bool) -> None:
@@ -476,14 +477,14 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def setPowerManagementLimit(self, value: int) -> None:
         """Sets the power management limit for the specified GPU to the given value. Unit: mW."""
-        amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=value)
+        amdsmi.amdsmi_set_power_cap(self.handle, 0, value / 1000) # Raises AMDSMI_STATUS_NO_PERM - Permission Denied
 
     @_handle_amdsmi_errors
     def resetPowerManagementLimit(self) -> None:
         """Resets the power management limit for the specified GPU to the default value."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)
         amdsmi.amdsmi_set_power_cap(
-            self.handle, sensor_id=0, cap=info.default_power_cap
+            self.handle, 0, cap=info.default_power_cap
         )
 
     @_handle_amdsmi_errors
@@ -494,39 +495,33 @@ class AMDGPU(GPU):
             minMemClockMHz,
             maxMemClockMHz,
             clk_type=amdsmi.AmdSmiClkType.MEM,
-        )
+        ) # Raises AMDSMI_STATUS_NO_PERM - Permission Denied
 
     @_handle_amdsmi_errors
     def getSupportedMemoryClocks(self) -> list[int]:
         """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
-        num_supported, _, frequency = amdsmi.amdsmi_get_clk_freq(
+        freq_info = amdsmi.amdsmi_get_clk_freq(
             self.handle, clk_type=amdsmi.AmdSmiClkType.MEM
         )
         # frequency; List of frequencies, only the first num_supported frequencies are valid"""
-        return frequency[:num_supported]
+        return [int(freq/1e6) for freq in freq_info['frequency'][:freq_info['num_supported']]] # convert to MHz
 
     @_handle_amdsmi_errors
     def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
         """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
-        num_supported, _, frequency = amdsmi.amdsmi_get_clk_freq(
+        freq_info = amdsmi.amdsmi_get_clk_freq(
             self.handle, clk_type=amdsmi.AmdSmiClkType.GFX
         )
         # frequency; List of frequencies, only the first num_supported frequencies are valid"""
-        return frequency[:num_supported]
+        return [int(freq/1e6) for freq in freq_info['frequency'][:freq_info['num_supported']]] # convert to MHz
 
     @_handle_amdsmi_errors
     def getName(self) -> str:
         """Returns the name of the specified GPU."""
-        (
-            market_name,
-            vendor_id,
-            device_id,
-            rev_id,
-            asic_serial,
-        ) = amdsmi.amdsmi_get_gpu_asic_info(
+        info = amdsmi.amdsmi_get_gpu_asic_info(
             self.handle
         )
-        return market_name
+        return info['market_name']
 
     @_handle_amdsmi_errors
     def setGpuLockedClocks(
@@ -538,14 +533,14 @@ class AMDGPU(GPU):
             minMemClockMHz,
             maxMemClockMHz,
             clk_type=amdsmi.AmdSmiClkType.GFX,
-        )
+        ) # AMDSMI_STATUS_NO_PERM - Permission Denied
 
     @_handle_amdsmi_errors
     def resetMemoryLockedClocks(self) -> None:
         """Resets the memory locked clocks of the specified GPU to their default values."""
         
         # Get default MEM clock values
-        cur_clk, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.MEM)
+        _, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.MEM)
 
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
@@ -559,7 +554,7 @@ class AMDGPU(GPU):
         """Resets the GPU locked clocks of the specified GPU to their default values."""
 
         # Get default GPU clock values
-        cur_clk, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.GFX)
+        _, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.GFX)
 
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
@@ -571,22 +566,28 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def getPowerUsage(self) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
-        return amdsmi.amdsmi_get_gpu_metrics_curr_socket_power(self.handle) * 1000 # Convert to mW
+        # AMDSMI_STATUS_NOT_SUPPORTED - Feature not supported
+        return amdsmi.amdsmi_get_gpu_metrics_curr_socket_power(self.handle) * 1000 # returns in W, convert to mW
         
 
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Returns True if the specified GPU supports retrieving the total energy consumption."""
-        return False
+        if self._supportsGetTotalEnergyConsumption is None:
+            try:
+                _ = amdsmi.amdsmi_get_energy_count(self.handle)
+                self._supportsGetTotalEnergyConsumption = True
+            except amdsmi.AMDSMI_STATUS_NOT_SUPPORTED as e:
+                self._supportsGetTotalEnergyConsumption = False
+        
+        return self._supportsGetTotalEnergyConsumption
 
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
         """Returns the total energy consumption of the specified GPU. Units: mJ."""
 
-        # amdsmi_get_gpu_metrics_avg_energy_acc <- returns average
-        raise ZeusGPUNotSupportedError(
-            "Getting total energy consumption is not supported for AMD GPUs"
-        )
+        info = amdsmi.amdsmi_get_energy_count(self.handle)
+        return int(info['power'] * 1e-3) # returns in micro Joules, convert to mili Joules
 
 
 class UnprivilegedAMDGPU(AMDGPU):
