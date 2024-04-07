@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import contextlib
 
 import pynvml  # necessary for testing to mock! 
+import amdsmi
 
 from zeus.device.exception import ZeusBaseGPUError
 from zeus.util.logging import get_logger
@@ -749,8 +750,6 @@ class NVIDIAGPUs(GPUs):
         # initialize all GPUs
         self._gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
 
-        # eventually replace with: self.gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
-
     def __del__(self) -> None:
         """Shuts down the NVIDIA GPU monitoring library to release resources and clean up."""
         with contextlib.suppress(pynvml.NVMLError):
@@ -796,6 +795,11 @@ class AMDGPUs(GPUs):
         except amdsmi.AmdSmiException as e:
             exception_class = AMDGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e
+    
+    @property
+    def gpus(self) -> list[GPU]:
+        """Returns a list of NVIDIAGPU objects being tracked."""
+        return self._gpus
 
     def _init_gpus(self) -> None:
         # Must respect `HIP_VISIBLE_DEVICES` if set
@@ -805,6 +809,9 @@ class AMDGPUs(GPUs):
             self.visible_indices = list(
                 range(len(amdsmi.amdsmi_get_processor_handles()))
             )
+
+        self._gpus = [AMDGPU(gpu_num) for gpu_num in self.visible_indices]
+
 
     def __del__(self) -> None:
         """Shuts down the AMD GPU monitoring library to release resources and clean up."""
