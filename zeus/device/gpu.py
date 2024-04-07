@@ -470,12 +470,8 @@ class AMDGPU(GPU):
 
     @_handle_amdsmi_errors
     def setPersistenceMode(self, enable: bool) -> None:
-        """Enables persistence mode for the specified GPU."""
-        raise ZeusGPUNotSupportedError(
-            "Persistence mode is not supported for AMD GPUs yet"
-        )
-        profile = ...  # TODO: find out correct profile
-        amdsmi.amdsmi_set_gpu_power_profile(self.handle, 0, profile)
+        pass
+        # TODO: look into amdsmi_set_gpu_perf_level
 
     @_handle_amdsmi_errors
     def setPowerManagementLimit(self, value: int) -> None:
@@ -503,18 +499,20 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def getSupportedMemoryClocks(self) -> list[int]:
         """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
-        num_supported, current, frequency = amdsmi.amdsmi_get_clk_freq(
+        num_supported, _, frequency = amdsmi.amdsmi_get_clk_freq(
             self.handle, clk_type=amdsmi.AmdSmiClkType.MEM
-        )  # TODO: Figure out correct clk_type
+        )
         # frequency; List of frequencies, only the first num_supported frequencies are valid"""
         return frequency[:num_supported]
 
     @_handle_amdsmi_errors
     def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
         """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
-        raise ZeusGPUNotSupportedError(
-            "Getting supported graphics clocks is not supported for AMD GPUs yet"
+        num_supported, _, frequency = amdsmi.amdsmi_get_clk_freq(
+            self.handle, clk_type=amdsmi.AmdSmiClkType.GFX
         )
+        # frequency; List of frequencies, only the first num_supported frequencies are valid"""
+        return frequency[:num_supported]
 
     @_handle_amdsmi_errors
     def getName(self) -> str:
@@ -527,7 +525,7 @@ class AMDGPU(GPU):
             asic_serial,
         ) = amdsmi.amdsmi_get_gpu_asic_info(
             self.handle
-        )  # TODO: Does this return correct string
+        )
         return market_name
 
     @_handle_amdsmi_errors
@@ -539,42 +537,55 @@ class AMDGPU(GPU):
             self.handle,
             minMemClockMHz,
             maxMemClockMHz,
-            clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX,
+            clk_type=amdsmi.AmdSmiClkType.GFX,
         )
 
     @_handle_amdsmi_errors
     def resetMemoryLockedClocks(self) -> None:
         """Resets the memory locked clocks of the specified GPU to their default values."""
-        amdsmi.amdsmi_reset_gpu_clk(
-            self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS
-        )  # TODO: check docs
+        
+        # Get default MEM clock values
+        cur_clk, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.MEM)
+
+        amdsmi.amdsmi_set_gpu_clk_range(
+            self.handle,
+            min_clk,
+            max_clk,
+            clk_type=amdsmi.AmdSmiClkType.MEM,
+        )
 
     @_handle_amdsmi_errors
     def resetGpuLockedClocks(self) -> None:
         """Resets the GPU locked clocks of the specified GPU to their default values."""
-        amdsmi.amdsmi_reset_gpu_clk(
-            self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX
-        )  # TODO: check docs
+
+        # Get default GPU clock values
+        cur_clk, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.GFX)
+
+        amdsmi.amdsmi_set_gpu_clk_range(
+            self.handle,
+            min_clk,
+            max_clk,
+            clk_type=amdsmi.AmdSmiClkType.GFX,
+        )
 
     @_handle_amdsmi_errors
     def getPowerUsage(self) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
-        raise ZeusGPUNotSupportedError(
-            "Getting power usage is not supported for AMD GPUs yet"
-        )
+        return amdsmi.amdsmi_get_gpu_metrics_curr_socket_power(self.handle) * 1000 # Convert to mW
+        
 
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Returns True if the specified GPU supports retrieving the total energy consumption."""
-        raise ZeusGPUNotSupportedError(
-            "Getting total energy consumption is not supported for AMD GPUs yet"
-        )
+        return False
 
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
         """Returns the total energy consumption of the specified GPU. Units: mJ."""
+
+        # amdsmi_get_gpu_metrics_avg_energy_acc <- returns average
         raise ZeusGPUNotSupportedError(
-            "Getting total energy consumption is not supported for AMD GPUs yet"
+            "Getting total energy consumption is not supported for AMD GPUs"
         )
 
 
@@ -748,8 +759,8 @@ class NVIDIAGPUs(GPUs):
 class AMDGPUs(GPUs):
     """AMD GPU Manager object, containing individual AMDGPU objects, abstracting amdsmi calls and handling related exceptions.
 
-    This class provides a high-level interface to interact with AMD GPUs. `ROCR_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
-    4 GPUs and `ROCR_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are instantiated. In this case, to access
+    This class provides a high-level interface to interact with AMD GPUs. `HIP_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
+    4 GPUs and `HIP_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are instantiated. In this case, to access
     GPU of ROCR index 0, use the index 0, and for ROCR index 2, use the index 1.
 
     This class provides a 1:1 mapping between the methods and AMDSMI library functions. For example, if you want to do the following:
@@ -766,7 +777,7 @@ class AMDGPUs(GPUs):
     constraints =  gpus.getPowerManagementLimitConstraints(gpu_index)
     ```
 
-    Note: This class instantiates (grabs the handle, by calling `amdsmi.amdsmi_get_processor_handles()`) all GPUs that are visible to the system, as determined by the `ROCR_VISIBLE_DEVICES` environment variable if set.
+    Note: This class instantiates (grabs the handle, by calling `amdsmi.amdsmi_get_processor_handles()`) all GPUs that are visible to the system, as determined by the `HIP_VISIBLE_DEVICES` environment variable if set.
 
     """
 
@@ -786,8 +797,8 @@ class AMDGPUs(GPUs):
             raise exception_class(e.msg) from e
 
     def _init_gpus(self) -> None:
-        # Must respect `ROCR_VISIBLE_DEVICES` if set
-        if (visible_device := os.environ.get("ROCR_VISIBLE_DEVICES")) is not None:
+        # Must respect `HIP_VISIBLE_DEVICES` if set
+        if (visible_device := os.environ.get("HIP_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
             self.visible_indices = list(
