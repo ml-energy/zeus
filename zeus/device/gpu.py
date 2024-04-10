@@ -378,7 +378,7 @@ class NVIDIAGPU(GPU):
 
     @_handle_nvml_errors
     def setGpuLockedClocks(
-        self, index: int, minMemClockMHz: int, maxMemClockMHz: int
+        self, minMemClockMHz: int, maxMemClockMHz: int
     ) -> None:
         """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies. Units: MHz."""
         pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, minMemClockMHz, maxMemClockMHz)
@@ -445,6 +445,7 @@ class AMDGPU(GPU):
     Uses amdsmi Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the amdsmi library functions.
     Zeus GPU Exceptions are raised when amdsmi errors occur.
     To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to amdsmi.
+    Supports ROCM 5.7
     """
 
     def __init__(self, gpu_index: int) -> None:
@@ -478,12 +479,14 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def setPowerManagementLimit(self, value: int) -> None:
         """Sets the power management limit for the specified GPU to the given value. Unit: mW."""
-        amdsmi.amdsmi_set_power_cap(self.handle, 0, value / 1000) # Raises AMDSMI_STATUS_NO_PERM - Permission Denied
+        # Can raise AMDSMI_STATUS_NO_PERM - Permission Denied error if inadequate permissions
+        amdsmi.amdsmi_set_power_cap(self.handle, 0, int(value * 1000)) # Units for set_power_cap: microwatts
 
     @_handle_amdsmi_errors
     def resetPowerManagementLimit(self) -> None:
         """Resets the power management limit for the specified GPU to the default value."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)
+        # Can raise AMDSMI_STATUS_NO_PERM - Permission Denied error if inadequate permissions
         amdsmi.amdsmi_set_power_cap(
             self.handle, 0, cap=info.default_power_cap
         )
@@ -491,18 +494,20 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
         """Locks the memory clock of the specified GPU to a range defined by the minimum and maximum memory clock frequencies. Units: MHz."""
+        # Can raise AMDSMI_STATUS_NO_PERM - Permission Denied error if inadequate permissions
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             minMemClockMHz,
             maxMemClockMHz,
             clk_type=amdsmi.AmdSmiClkType.MEM,
-        ) # Raises AMDSMI_STATUS_NO_PERM - Permission Denied
+        )
 
     @_handle_amdsmi_errors
     def getSupportedMemoryClocks(self) -> list[int]:
         """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
+        raise ZeusGPUNotSupportedError("AMDSMI does not support querying memory frequencies")
         freq_info = amdsmi.amdsmi_get_clk_freq(
-            self.handle, clk_type=amdsmi.AmdSmiClkType.MEM
+            self.handle, clk_type=amdsmi.AmdSmiClkType.MEM # TODO: looks like it always returns none, investigate different clock types
         )
         # frequency; List of frequencies, only the first num_supported frequencies are valid"""
         return [int(freq/1e6) for freq in freq_info['frequency'][:freq_info['num_supported']]] # convert to MHz
@@ -510,10 +515,12 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
         """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
+        raise ZeusGPUNotSupportedError("AMDSMI does not support querying GFX frequencies given a memory frequency")
         freq_info = amdsmi.amdsmi_get_clk_freq(
             self.handle, clk_type=amdsmi.AmdSmiClkType.GFX
         )
         # frequency; List of frequencies, only the first num_supported frequencies are valid"""
+        # TODO: not using freq?
         return [int(freq/1e6) for freq in freq_info['frequency'][:freq_info['num_supported']]] # convert to MHz
 
     @_handle_amdsmi_errors
@@ -526,7 +533,7 @@ class AMDGPU(GPU):
 
     @_handle_amdsmi_errors
     def setGpuLockedClocks(
-        self, index: int, minMemClockMHz: int, maxMemClockMHz: int
+        self, minMemClockMHz: int, maxMemClockMHz: int
     ) -> None:
         """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies.  Units: MHz."""
         amdsmi.amdsmi_set_gpu_clk_range(
@@ -568,7 +575,7 @@ class AMDGPU(GPU):
     def getPowerUsage(self) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
         # AMDSMI_STATUS_NOT_SUPPORTED - Feature not supported
-        return amdsmi.amdsmi_get_gpu_metrics_curr_socket_power(self.handle) * 1000 # returns in W, convert to mW
+        return amdsmi.amdsmi_get_power_info(self.handle) * 1000 # returns in W, convert to mW
         
 
     @_handle_amdsmi_errors
@@ -588,7 +595,7 @@ class AMDGPU(GPU):
         """Returns the total energy consumption of the specified GPU. Units: mJ."""
 
         info = amdsmi.amdsmi_get_energy_count(self.handle)
-        return int(info['power'] * 1e-3) # returns in micro Joules, convert to mili Joules
+        return int(info['power'] / 1e-3) # returns in micro Joules, convert to mili Joules
 
 
 class UnprivilegedAMDGPU(AMDGPU):
