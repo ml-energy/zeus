@@ -867,6 +867,7 @@ def nvml_is_available() -> bool:
         return False
     try:
         pynvml.nvmlInit()
+        logger.info("PyNVML is available and initialized.")
         return True
     except pynvml.NVMLError:
         logger.info("PyNVML is available but could not initialize.")
@@ -882,6 +883,7 @@ def amdsmi_is_available() -> bool:
         return False
     try:
         amdsmi.amdsmi_init()
+        logger.info("amdsmi is available and initialized")
         return True
     except amdsmi.AmdSmiLibraryException:
         logger.info("amdsmi is available but could not initialize.")
