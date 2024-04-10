@@ -19,6 +19,7 @@ from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
 from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.exceptions import ZeusBSOTrainFailError
 from zeus.optimizer.power_limit import MaxSlowdownConstraint
 from zeus.util.env import get_env
 
@@ -187,7 +188,6 @@ def main():
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "1234"
 
-    os.environ["NCCL_DEBUG"]="DEBUG"
     rank = int(os.getenv('RANK'))
     world_size = int(os.getenv('WORLD_SIZE'))
                      
@@ -195,11 +195,10 @@ def main():
 
     dist.init_process_group(backend=args.backend, init_method='env://')
 
-    torch.cuda.set_device(rank)
     device = torch.device("cuda" if use_cuda else "cpu")
     model = Net().to(device)
 
-    model = nn.parallel.DistributedDataParallel(model, device_ids=[rank])
+    model = nn.parallel.DistributedDataParallel(model)
 
     # Get FashionMNIST train and test dataset.
     train_ds = datasets.FashionMNIST(
@@ -227,6 +226,7 @@ def main():
                 job_id_prefix="mnist-dev",
                 default_batch_size=256,
                 batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
+                max_epochs=5
             )
         )
         callback_set: list[Callback] = [
@@ -249,7 +249,7 @@ def main():
         bs_tensor = torch.tensor([batch_size], device="cuda")
     else:
         callback_set = []
-        bs_tensor = torch.empty((1,), device="cuda")
+        bs_tensor = torch.tensor([0], device="cuda")
         print("Rank", dist.get_rank())
     
     dist.broadcast(bs_tensor, src=0)
@@ -257,7 +257,7 @@ def main():
     print("After broad casting",bs_tensor.item(), "word size", world_size)
     batch_size = bs_tensor.item() // world_size
         
-    print("Batach_size to use per gpu:", batch_size)
+    print(f"Batach_size to use for gpu[{rank}]: {batch_size}")
     callbacks = CallbackSet(callback_set)
 
     ########################### ZEUS INIT END ###########################

@@ -199,6 +199,7 @@ def main():
             job_id_prefix="mnist-dev",
             default_batch_size=256,
             batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
+            max_epochs=5
         ),
     )
     # Get batch size from bso 
