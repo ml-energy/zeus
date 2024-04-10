@@ -1,19 +1,19 @@
-"""
-Based on https://github.com/kubeflow/pytorch-operator/blob/master/examples/mnist/mnist.py
-"""
+"""Mnist example from https://github.com/kubeflow/training-operator/blob/c20422067e3ef81df39d03c6f285353344d8f77d/examples/pytorch/mnist/mnist.py"""
 
 from __future__ import print_function
 
 import argparse
 import os
 
-from tensorboardX import SummaryWriter
-from torchvision import datasets, transforms
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from tensorboardX import SummaryWriter
+from torch.utils.data import DistributedSampler
+from torchvision import datasets, transforms
+
 from zeus.callback import Callback, CallbackSet
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
@@ -22,8 +22,6 @@ from zeus.optimizer.batch_size.common import JobSpec
 from zeus.optimizer.power_limit import MaxSlowdownConstraint
 from zeus.util.env import get_env
 
-
-WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
 
 class Net(nn.Module):
     def __init__(self):
@@ -44,18 +42,22 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(args, model, device, train_loader, optimizer, epoch, writer, plo):
+def train(args, model, device, train_loader, epoch, writer,callbacks: CallbackSet):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        plo.on_step_begin()
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
+    for batch_idx, (data, target) in enumerate(train_loader):
+        ### Zeus usage: call callback for step begin
+        callbacks.on_step_begin()
+       
+        # Attach tensors to the device.
         data, target = data.to(device), target.to(device)
+
         optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
-
         if batch_idx % args.log_interval == 0:
             print(
                 "Train Epoch: {} [{}/{} ({:.0f}%)]\tloss={:.4f}".format(
@@ -68,50 +70,33 @@ def train(args, model, device, train_loader, optimizer, epoch, writer, plo):
             )
             niter = epoch * len(train_loader) + batch_idx
             writer.add_scalar("loss", loss.item(), niter)
-        plo.on_step_end()
+        
+        ### Zeus usage: call callback for step end 
+        callbacks.on_step_end()
 
 
-def test(args, model, device, test_loader, writer, epoch):
+def test(model, device, test_loader, writer, epoch) -> float:
     model.eval()
-    test_loss = 0
+
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
+            # Attach tensors to the device.
             data, target = data.to(device), target.to(device)
+
             output = model(data)
-            test_loss += F.nll_loss(
-                output, target, reduction="sum"
-            ).item()  # sum up batch loss
-            pred = output.max(1, keepdim=True)[
-                1
-            ]  # get the index of the max log-probability
+            # Get the index of the max log-probability.
+            pred = output.max(1, keepdim=True)[1]
             correct += pred.eq(target.view_as(pred)).sum().item()
 
-    test_loss /= len(test_loader.dataset)
     print("\naccuracy={:.4f}\n".format(float(correct) / len(test_loader.dataset)))
     writer.add_scalar("accuracy", float(correct) / len(test_loader.dataset), epoch)
-
     return float(correct) / len(test_loader.dataset)
-
-
-def should_distribute():
-    return dist.is_available() and WORLD_SIZE > 1
-
-
-def is_distributed():
-    return dist.is_available() and dist.is_initialized()
-
 
 def main():
     # Training settings
-    parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=64,
-        metavar="N",
-        help="input batch size for training (default: 64)",
-    )
+    parser = argparse.ArgumentParser(description="PyTorch FashionMNIST Example")
+   
     parser.add_argument(
         "--test-batch-size",
         type=int,
@@ -141,10 +126,17 @@ def main():
         help="SGD momentum (default: 0.5)",
     )
     parser.add_argument(
-        "--no-cuda", action="store_true", default=False, help="disables CUDA training"
+        "--no-cuda",
+        action="store_true",
+        default=False,
+        help="disables CUDA training",
     )
     parser.add_argument(
-        "--seed", type=int, default=1, metavar="S", help="random seed (default: 1)"
+        "--seed",
+        type=int,
+        default=1,
+        metavar="S",
+        help="random seed (default: 1)",
     )
     parser.add_argument(
         "--log-interval",
@@ -165,41 +157,73 @@ def main():
         metavar="L",
         help="directory where summary logs are stored",
     )
-    if dist.is_available():
-        parser.add_argument(
-            "--backend",
-            type=str,
-            help="Distributed backend",
-            choices=[dist.Backend.GLOO, dist.Backend.NCCL, dist.Backend.MPI],
-            default=dist.Backend.GLOO,
-        )
+
+    parser.add_argument(
+        "--backend",
+        type=str,
+        help="Distributed backend",
+        choices=[dist.Backend.GLOO, dist.Backend.NCCL, dist.Backend.MPI],
+        default=dist.Backend.GLOO,
+    )
+
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     if use_cuda:
         print("Using CUDA")
+        if args.backend != dist.Backend.NCCL:
+            print(
+                "Warning. Please use `nccl` distributed backend for the best performance using GPUs"
+            )
 
     writer = SummaryWriter(args.dir)
 
     torch.manual_seed(args.seed)
 
+    print("Using distributed PyTorch with {} backend".format(args.backend))
+    # Set distributed training environment variables to run this training script locally.
+    if "WORLD_SIZE" not in os.environ:
+        os.environ["RANK"] = "0"
+        os.environ["WORLD_SIZE"] = "1"
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = "1234"
+
+    os.environ["NCCL_DEBUG"]="DEBUG"
+    rank = int(os.getenv('RANK'))
+    world_size = int(os.getenv('WORLD_SIZE'))
+                     
+    print(f"World Size: {os.environ['WORLD_SIZE']}. Rank: {rank}")
+
+    dist.init_process_group(backend=args.backend, init_method='env://')
+
+    torch.cuda.set_device(rank)
     device = torch.device("cuda" if use_cuda else "cpu")
+    model = Net().to(device)
 
-    if should_distribute():
-        print("Using distributed PyTorch with {} backend".format(args.backend))
-        dist.init_process_group(backend=args.backend)
+    model = nn.parallel.DistributedDataParallel(model, device_ids=[rank])
 
-    kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
+    # Get FashionMNIST train and test dataset.
+    train_ds = datasets.FashionMNIST(
+        "../data",
+        train=True,
+        download=True,
+        transform=transforms.Compose([transforms.ToTensor()]),
+    )
+    test_ds = datasets.FashionMNIST(
+        "../data",
+        train=False,
+        download=True,
+        transform=transforms.Compose([transforms.ToTensor()]),
+    )
 
-    ##################### ZEUS INIT BEGIN ##########################
-
+    ########################### ZEUS INIT BEGIN ###########################
     # The rank 0 process will monitor and optimize the power limit of all GPUs.
-    if dist.get_rank() == 0: 
+    if rank == 0: 
         monitor=ZeusMonitor(gpu_indices=None) # All visible GPUs.
         bso = BatchSizeOptimizer(
             monitor=monitor,
-            server_url=get_env("ZEUS_SERVER_URL", str),
+            server_url=get_env("ZEUS_SERVER_URL", str, "http://192.168.49.2:30100"),
             job=JobSpec(
-                job_id=get_env("ZEUS_JOB_ID", str),
+                job_id=get_env("ZEUS_JOB_ID", str, "mnist-dev-dp-1"),
                 job_id_prefix="mnist-dev",
                 default_batch_size=256,
                 batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
@@ -220,70 +244,49 @@ def main():
         ]
         # Get batch size from bso 
         batch_size = bso.get_batch_size()
+        print("Rank", dist.get_rank())
         print("Chosen batach_size:", batch_size)
         bs_tensor = torch.tensor([batch_size], device="cuda")
     else:
         callback_set = []
         bs_tensor = torch.empty((1,), device="cuda")
-        dist.broadcast(bs_tensor, src=0)
-
-    batch_size = bs_tensor.item() // dist.get_world_size()
+        print("Rank", dist.get_rank())
+    
+    dist.broadcast(bs_tensor, src=0)
+    
+    print("After broad casting",bs_tensor.item(), "word size", world_size)
+    batch_size = bs_tensor.item() // world_size
+        
     print("Batach_size to use per gpu:", batch_size)
-
     callbacks = CallbackSet(callback_set)
-    ##################### ZEUS INIT END ##########################
+
+    ########################### ZEUS INIT END ###########################
+
+    # Add train and test loaders.
     train_loader = torch.utils.data.DataLoader(
-        datasets.FashionMNIST(
-            "../data",
-            train=True,
-            download=True,
-            transform=transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-            ),
-        ),
+        train_ds,
         batch_size=batch_size,
-        shuffle=True,
-        **kwargs,
+        sampler=DistributedSampler(train_ds),
     )
     test_loader = torch.utils.data.DataLoader(
-        datasets.FashionMNIST(
-            "../data",
-            train=False,
-            transform=transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-            ),
-        ),
+        test_ds,
         batch_size=args.test_batch_size,
-        shuffle=False,
-        **kwargs,
+        sampler=DistributedSampler(test_ds),
     )
 
-    model = Net().to(device)
-
-    if is_distributed():
-        Distributor = (
-            nn.parallel.DistributedDataParallel
-            if use_cuda
-            else nn.parallel.DistributedDataParallelCPU
-        )
-        model = Distributor(model)
-
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-    
-    ################### ZEUS OPTIMIZER USAGE BEGIN #######################
+    ########################### ZEUS USAGE BEGIN ###########################
     callbacks.on_train_begin()
-
     for epoch in range(1, args.epochs + 1):
         callbacks.on_epoch_begin()
-        train(args, model, device, train_loader, optimizer, epoch, writer, plo)
+        train(args, model, device, train_loader, epoch, writer, callbacks) 
         callbacks.on_epoch_end()
-        acc = test(args, model, device, test_loader, writer, epoch,bso)
+        acc = test(model, device, test_loader, writer, epoch)
         callbacks.on_evaluate(acc)
-        
-    ################### ZEUS OPTIMIZER USAGE END #########################
+
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
-
+    ########################### ZEUS USAGE ENG ###########################
 
 if __name__ == "__main__":
     main()
+

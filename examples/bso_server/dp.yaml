@@ -12,7 +12,7 @@ spec:
         spec:
           containers:
             - name: pytorch
-              image: mnist-dp-example
+              image: mnist-example
               imagePullPolicy: Never
               command:
                 - "python3"
@@ -33,7 +33,7 @@ spec:
         spec:
           containers:
             - name: pytorch
-              image: mnist-dp-example
+              image: mnist-example
               imagePullPolicy: Never
               command:
                 - "python3"

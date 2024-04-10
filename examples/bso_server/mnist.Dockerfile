@@ -1,4 +1,6 @@
 FROM pytorch/pytorch:2.1.2-cuda11.8-cudnn8-runtime
+# FROM nvcr.io/nvidia/pytorch:24.01-py3
+
 RUN pip install tensorboardX
 
 WORKDIR /workspace 
