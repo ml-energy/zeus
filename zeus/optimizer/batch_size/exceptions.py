@@ -25,3 +25,9 @@ class ZeusBSOOperationOrderError(ZeusBaseError):
     """Order of calling methods of BatchSizeOptimizer is wrong."""
 
     pass
+
+
+class ZeusBSOBadOperationError(ZeusBaseError):
+    """The usage of operations is wrong."""
+
+    pass

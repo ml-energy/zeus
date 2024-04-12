@@ -167,6 +167,14 @@ class ZeusBatchSizeOptimizer:
             )
         )
 
+        if trial.status != TrialStatus.Dispatched:
+            # result is already reported
+            return ReportResponse(
+                stop_train=True,
+                converged=trial.converged,
+                message=f"Result for this trial({trial.trial_number}) is already reported.",
+            )
+
         if trial is None:
             raise ZeusBSOServiceBadOperationError(f"Unknown trial {result}")
 

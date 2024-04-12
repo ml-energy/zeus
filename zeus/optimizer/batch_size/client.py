@@ -20,6 +20,7 @@ from zeus.optimizer.batch_size.common import (
     TrainingResult,
 )
 from zeus.optimizer.batch_size.exceptions import (
+    ZeusBSOBadOperationError,
     ZeusBSOConfigError,
     ZeusBSOOperationOrderError,
     ZeusBSORuntimError,
@@ -33,7 +34,9 @@ logger = get_logger(__name__)
 class BatchSizeOptimizer(Callback):
     """Batch size optimizer client that talks to server. One batch size optimizer per one training session of the job."""
 
-    def __init__(self, monitor: ZeusMonitor, server_url: str, job: JobSpec) -> None:
+    def __init__(
+        self, monitor: ZeusMonitor, server_url: str, job: JobSpec, rank: int = 0
+    ) -> None:
         """Initialize the optimizer, and register the job to the server.
 
         If job is already registered, check if the job configuration is identical with previously registered config.
@@ -42,6 +45,7 @@ class BatchSizeOptimizer(Callback):
             monitor: zeus monitor
             server_url: url of batch size optimizer server
             job: job specification. Refer to `JobSpec` for job specifcatio parameters.
+            rank: rank of gpu in the case of distributed training. We only let rank = 0 gpu to request for a batch size.
         """
         self.monitor = monitor
         self.server_url = server_url
@@ -50,6 +54,7 @@ class BatchSizeOptimizer(Callback):
         self.consumed_energy = 0.0
         self.training_finished = False
         self.trial_number = 0
+        self.rank = rank
 
         # Get max PL
         pynvml.nvmlInit()
@@ -100,6 +105,9 @@ class BatchSizeOptimizer(Callback):
         Raises:
             `ZeusBSORuntimError`: if the batch size we receive is invalid
         """
+        if self.rank != 0:
+            raise ZeusBSOBadOperationError("Only rank 0 gpu can ask for a batch size.")
+
         if self.current_batch_size != 0:
             # If we already got the batch size, return
             return self.current_batch_size
@@ -123,8 +131,6 @@ class BatchSizeOptimizer(Callback):
         logger.info("[BatchSizeOptimizer] Chosen batch size: %s", trial_id.batch_size)
 
         def report_end() -> None:
-            # TODO: Double check capturing variable.
-            print(self.server_url + REPORT_END_URL, trial_id.json())
             httpx.patch(self.server_url + REPORT_END_URL, content=trial_id.json())
 
         atexit.register(report_end)

@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
 from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.batch_size.exceptions import ZeusBSOBadOperationError
 
 
 @pytest.fixture
@@ -87,7 +88,7 @@ def test_batch_sizes(mock_monitor):
             assert i == bso_client.cur_epoch
             assert bso_client.current_batch_size == 512
 
-    assert str(e_info.value).find("cost upper bound") != -1
+        assert str(e_info.value).find("cost upper bound") != -1
 
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
@@ -114,11 +115,49 @@ def test_converge_fail(mock_monitor):
             assert i == bso_client.cur_epoch
             assert bso_client.current_batch_size == 1024
 
-    print(e_info.value, i)
-    assert str(e_info.value).find("Train failed to converge within max_epoch") != -1
+        print(e_info.value, i)
+        assert str(e_info.value).find("Train failed to converge within max_epoch") != -1
 
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
     bso_client.on_train_begin()
 
     assert bs == 2048 and bso_client.current_batch_size == 2048
+
+
+def test_distributed_setting(mock_monitor):
+    job = JobSpec.parse_obj(pytest.fake_job)
+    job.job_id = "test-dp"
+    NGPU = 4
+    bso_clients = [
+        BatchSizeOptimizer(mock_monitor, "", job, rank=i) for i in range(NGPU)
+    ]
+
+    # Only rank=0 can ask for bs
+    for i in range(1, NGPU):
+        with pytest.raises(ZeusBSOBadOperationError) as e_info:
+            bso_clients[i].get_batch_size()
+
+    bs = bso_clients[0].get_batch_size()
+    # distribute batch size to other clients
+    for i in range(1, NGPU):
+        bso_clients[i].current_batch_size = bs
+        bso_clients[i].trial_number = bso_clients[0].trial_number
+
+    # Mark as unconverged from rank = 0 client
+    i = 0
+    with pytest.raises(Exception) as e_info:
+        while i < job.max_epochs + 10:  # Fail after max_epoch
+            bso_clients[0].on_evaluate(0.3)
+            i += 1
+            assert i == bso_clients[0].cur_epoch
+            assert bso_clients[0].current_batch_size == 1024
+
+        print("[ERROR]", e_info.value, i)
+        assert str(e_info.value).find("Train failed to converge within max_epoch") != -1
+
+    for i in range(1, NGPU):
+        with pytest.raises(Exception) as e_info:
+            bso_clients[i].on_evaluate(0.3)
+            assert bso_clients[i].current_batch_size == 1024
+        assert str(e_info.value).find("is already reported.") != -1
