@@ -15,14 +15,13 @@ As in our paper, the batch size optimizer is first invoked to decide which batch
 
 You can find examples of policy implementations in [`zeus.policy.optimizer`][zeus.policy.optimizer].
 
-
 ## Plugging it into Zeus
 
 There are two ways to run Zeus: trace-driven and end-to-end.
 
 ### Trace-driven Zeus
 
-The Zeus simulator ([`Simulator`][zeus.simulate.Simulator]) accepts one [`BatchSizeOptimizer`][zeus.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus.policy.PowerLimitOptimizer] in its constructor.
+The Zeus simulator ([`Simulator`][zeus._legacy.simulate.Simulator]) accepts one [`BatchSizeOptimizer`][zeus.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus.policy.PowerLimitOptimizer] in its constructor.
 A full-example can be found in [`examples/trace_driven`](https://github.com/ml-energy/zeus/tree/master/examples/trace_driven/).
 
 ### End-to-end Zeus

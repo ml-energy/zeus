@@ -10,7 +10,7 @@ services:
     container_name: bso
     restart: always
     environment:
-        ZEUS_BSO_DATABASE_URL: mysql+asyncmy://${ZEUS_BSO_DB_USER}:${ZEUS_BSO_DB_PASSWORD}@db:3306/Zeus
+        ZEUS_BSO_DATABASE_URL: ${ZEUS_BSO_DATABASE_URL-mysql+asyncmy://${ZEUS_BSO_DB_USER}:${ZEUS_BSO_DB_PASSWORD}@db:3306/Zeus}
         ZEUS_BSO_LOG_LEVEL: ${ZEUS_BSO_LOG_LEVEL}
         ZEUS_BSO_ECHO_SQL: ${ZEUS_BSO_ECHO_SQL}
     ports:
@@ -69,7 +69,7 @@ services:
     command: >
       bash -c 'cd /workspace/zeus/optimizer/batch_size && alembic revision --autogenerate -m "Baseline: create tables" && alembic upgrade head'
     environment:
-      ZEUS_BSO_DATABASE_URL: mysql+asyncmy://${ZEUS_BSO_DB_USER}:${ZEUS_BSO_DB_PASSWORD}@db:3306/Zeus
+      ZEUS_BSO_DATABASE_URL: ${ZEUS_BSO_DATABASE_URL-mysql+asyncmy://${ZEUS_BSO_DB_USER}:${ZEUS_BSO_DB_PASSWORD}@db:3306/Zeus}
     networks:
       - servernet
     volumes:

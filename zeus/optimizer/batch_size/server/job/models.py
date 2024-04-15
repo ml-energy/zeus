@@ -41,7 +41,7 @@ class JobState(JobParams, GpuConfig):
         stage: Stage of the job.
         mab_random_generator_state: Generator state if mab_seed is not None. Otherwise, None.
 
-            For the rest of attributes, refer to [`JobConfig`][zeus.optimizer.batch_size.common.JobConfig]
+    For the rest of attributes, refer to [`JobParams`][zeus.optimizer.batch_size.common.JobParams] and [`GpuConfig`][zeus.optimizer.batch_size.common.GpuConfig]
     """
 
     exp_default_batch_size: int

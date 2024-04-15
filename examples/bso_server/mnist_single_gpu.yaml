@@ -16,7 +16,7 @@ spec:
               imagePullPolicy: Never
               command:
                 - "python3"
-                - "/workspace/examples/bso_server/mnist.py"
+                - "/workspace/examples/bso_server/mnist_single_gpu.py"
                 - "--epochs=5"
               env:
                 - name: ZEUS_SERVER_URL
