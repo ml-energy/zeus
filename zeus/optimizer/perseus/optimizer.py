@@ -23,11 +23,11 @@ the frequency of the CPU of the current process.
 from __future__ import annotations
 
 import httpx
-import pynvml
 import torch
 import torch.distributed as dist
 
 from zeus.callback import Callback
+from zeus.device import get_gpus
 from zeus.optimizer.perseus.frequency_controller import FrequencyController
 from zeus.optimizer.perseus.common import (
     GET_FREQUENCY_SCHEDULE_URL,
@@ -37,7 +37,6 @@ from zeus.optimizer.perseus.common import (
     RankInfo,
     FrequencySchedule,
 )
-from zeus.util.env import resolve_gpu_indices
 from zeus.util.framework import cuda_sync
 
 
@@ -94,12 +93,8 @@ class PerseusOptimizer(Callback):
         self.pp_rank = pp_rank
         self.tp_rank = tp_rank
 
-        cuda_device_ids, nvml_device_ids = resolve_gpu_indices([device_id])
-        self.cuda_device_id = cuda_device_ids[0]
-        nvml_device_id = nvml_device_ids[0]
-        # It is assumed that `torch.cuda.set_device` has been called with `device_id`.
-        # It won't hurt to call this again.
-        torch.cuda.set_device(self.cuda_device_id)
+        gpus = get_gpus()
+        torch.cuda.set_device(device_id)
 
         # Rank 0 registers the job with the Perseus server and retrieves the job ID.
         job_id = None
@@ -132,14 +127,11 @@ class PerseusOptimizer(Callback):
             raise RuntimeError("Failed to broadcast job ID to all ranks")
 
         # Query the list of available frequencies of the GPU.
-        pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(nvml_device_id)
-        max_mem_freq = max(pynvml.nvmlDeviceGetSupportedMemoryClocks(handle))
+        max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))
         freqs = sorted(
-            pynvml.nvmlDeviceGetSupportedGraphicsClocks(handle, max_mem_freq),
+            gpus.getSupportedGraphicsClocks(device_id, max_mem_freq),
             reverse=True,
         )
-        pynvml.nvmlShutdown()
 
         # Each rank reports itself to the Perseus server with the job ID.
         rank_info = RankInfo(
@@ -159,8 +151,8 @@ class PerseusOptimizer(Callback):
             )
 
         # The frequency controller is responsible for controlling the frequency
-        # of the GPU (nvml_device_id) asynchronously.
-        self.frequency_controller = FrequencyController(nvml_device_id=nvml_device_id)
+        # of the GPU (device_id) asynchronously.
+        self.frequency_controller = FrequencyController(device_id=device_id)
 
         # Fetch the frequency schedule from the Perseus server.
         self.freq_schedule = self._get_frequency_schedule()
@@ -214,7 +206,7 @@ class PerseusOptimizer(Callback):
         expected instruction matches the name of the instruction, and set the
         frequency accordingly.
         """
-        cuda_sync(self.cuda_device_id)
+        cuda_sync(self.device_id)
 
         # Retrieve the next frequency from the schedule.
         item = next(self.freq_schedule_iter, None)

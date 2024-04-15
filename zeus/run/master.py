@@ -25,13 +25,13 @@ from pathlib import Path
 from time import localtime, sleep, strftime
 
 import numpy as np
-import pynvml
 import torch
 
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
 from zeus._legacy.policy import BatchSizeOptimizer
 from zeus.util import zeus_cost
+from zeus.device import get_gpus
 
 
 class ZeusMaster:
@@ -103,14 +103,10 @@ class ZeusMaster:
         self.profile_measure_iters = profile_measure_iters
 
         # Query the max power limit of the GPU.
-        pynvml.nvmlInit()
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        minmax = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)  # unit: mW
+        gpus = get_gpus(ensure_homogeneous=True)
+        minmax = gpus.getPowerManagementLimitConstraints(0)  # unit: mW
         self.max_pl = minmax[1] // 1000  # unit: W
-        print(
-            f"[Zeus Master] Max power limit of {pynvml.nvmlDeviceGetName(handle)}: {self.max_pl}W"
-        )
-        pynvml.nvmlShutdown()
+        print(f"[Zeus Master] Max power limit of {gpus.getName(0)}: {self.max_pl}W")
 
     def build_logdir(
         self,

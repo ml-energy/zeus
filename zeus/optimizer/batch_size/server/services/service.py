@@ -102,10 +102,9 @@ class ZeusService:
 
         Args:
             updated_trial: Result of training that batch size
-            type: Type of trial
 
         Raises:
-            `ZeusBSOServiceBadOperationError`: When we didn't fetch the job or trial during this session. This operation should have
+            [`ZeusBSOServiceBadOperationError`][zeus.optimizer.batch_size.server.exceptions.ZeusBSOServiceBadOperationError]: When we didn't fetch the job or trial during this session. This operation should have
                     fetched the job and trial first. Also, check if trial type is matching with fetched trial's type.
         """
         trial = self._get_trial(

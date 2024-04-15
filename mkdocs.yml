@@ -21,6 +21,7 @@ theme:
   icon:
     repo: fontawesome/brands/github
   features:
+    - content.code.copy
     - search.suggest
     - navigation.tabs
     - navigation.tabs.sticky
@@ -80,11 +81,12 @@ markdown_extensions:
   - attr_list
   - footnotes
   - md_in_html
-  - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.snippets
   - pymdownx.details
   - pymdownx.critic
+  - pymdownx.highlight:
+      linenums: true
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.emoji:
@@ -104,13 +106,15 @@ extra_javascript:
 
 # Page tree
 nav:
-  - Home: index.md
+  - Zeus: index.md
   - Overview: 
     - overview/index.md
   - Getting Started:
     - getting_started/index.md
     - Environment Setup: getting_started/environment.md
     - Installing Zeus: getting_started/installing.md
+  - BatchSizeOptimizer:
+    - batch_size_optimizer/server.md
   - Perseus:
     - perseus/index.md
     - Integrating: perseus/integrating.md

@@ -126,7 +126,7 @@ def test_power_limit_optimizer(
     tmp_path: Path,
 ):
     # Mock PyNVML.
-    pynvml_mock = mocker.patch("zeus.optimizer.power_limit.pynvml", autospec=True)
+    pynvml_mock = mocker.patch("zeus.device.gpu.pynvml", autospec=True)
     pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda i: f"handle{i}"
     pynvml_mock.nvmlDeviceGetPowerManagementLimitConstraints.side_effect = \
         lambda _: (min(replay_log.power_limits) * 1000, max(replay_log.power_limits) * 1000)

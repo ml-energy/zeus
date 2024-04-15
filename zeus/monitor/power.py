@@ -22,15 +22,14 @@ import tempfile
 from time import time, sleep
 import multiprocessing as mp
 
-import pynvml
 import pandas as pd
 from sklearn.metrics import auc
 
 from zeus.util.logging import get_logger
-from zeus.util.env import resolve_gpu_indices
+from zeus.device import get_gpus
 
 
-def infer_counter_update_period(nvml_handles: list[pynvml.c_nvmlDevice_t]) -> float:
+def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     """Infer the update period of the NVML power counter.
 
     NVML counters can update as slow as 10 Hz depending on the GPU model, so
@@ -39,20 +38,21 @@ def infer_counter_update_period(nvml_handles: list[pynvml.c_nvmlDevice_t]) -> fl
     period detected. Then, it returns half the period to ensure that the
     counter is polled at least twice per update period.
     """
-    pynvml.nvmlInit()
-
     logger = get_logger(__name__)
+
+    # get gpus
+    gpus = get_gpus()
 
     # For each unique GPU model, infer the update period.
     update_period = 0.0
     gpu_models_covered = set()
-    for handle in nvml_handles:
-        if (model := pynvml.nvmlDeviceGetName(handle)) not in gpu_models_covered:
+    for index in gpu_indicies:
+        if (model := gpus.getName(index)) not in gpu_models_covered:
             logger.info(
                 "Detected %s, inferring NVML power counter update period.", model
             )
             gpu_models_covered.add(model)
-            detected_period = _infer_counter_update_period_single(handle)
+            detected_period = _infer_counter_update_period_single(index)
             logger.info(
                 "Counter update period for %s is %.2f s",
                 model,
@@ -60,8 +60,6 @@ def infer_counter_update_period(nvml_handles: list[pynvml.c_nvmlDevice_t]) -> fl
             )
             if update_period > detected_period:
                 update_period = detected_period
-
-    pynvml.nvmlShutdown()
 
     # Target half the update period to ensure that the counter is enough.
     update_period /= 2.0
@@ -76,14 +74,16 @@ def infer_counter_update_period(nvml_handles: list[pynvml.c_nvmlDevice_t]) -> fl
     return update_period
 
 
-def _infer_counter_update_period_single(nvml_handle: pynvml.c_nvmlDevice_t) -> float:
+def _infer_counter_update_period_single(gpu_index: int) -> float:
     """Infer the update period of the NVML power counter for a single GPU."""
+    # get gpus
+    gpus = get_gpus()
     # Collect 1000 samples of the power counter with timestamps.
     time_power_samples: list[tuple[float, int]] = [(0.0, 0) for _ in range(1000)]
     for i in range(len(time_power_samples)):
         time_power_samples[i] = (
             time(),
-            pynvml.nvmlDeviceGetPowerUsage(nvml_handle),
+            gpus.getPowerUsage(gpu_index),
         )
 
     # Find the timestamps when the power readings changed.
@@ -128,20 +128,21 @@ class PowerMonitor:
         if gpu_indices is not None and not gpu_indices:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
 
-        # Initialize NVML.
-        pynvml.nvmlInit()
+        # Get GPUs
+        gpus = get_gpus()
 
         # Set up logging.
         self.logger = get_logger(type(self).__name__)
 
-        # Get GPU indices and NVML handles.
-        self.gpu_indices, nvml_gpu_indices = resolve_gpu_indices(gpu_indices)
-        nvml_handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in nvml_gpu_indices]
+        # Get GPUs
+        self.gpu_indices = (
+            gpu_indices if gpu_indices is not None else list(range(len(gpus)))
+        )
         self.logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
 
         # Infer the update period if necessary.
         if update_period is None:
-            update_period = infer_counter_update_period(nvml_handles)
+            update_period = infer_counter_update_period(self.gpu_indices)
         self.update_period = update_period
 
         # Create the CSV file for power measurements.
@@ -154,13 +155,12 @@ class PowerMonitor:
         # Spawn the power polling process.
         atexit.register(self._stop)
         self.process = mp.get_context("spawn").Process(
-            target=_polling_process, args=(nvml_gpu_indices, power_csv, update_period)
+            target=_polling_process, args=(self.gpu_indices, power_csv, update_period)
         )
         self.process.start()
 
     def _stop(self) -> None:
         """Stop monitoring power usage."""
-        pynvml.nvmlShutdown()
         if self.process is not None:
             self.process.terminate()
             self.process.join(timeout=1.0)
@@ -239,27 +239,25 @@ class PowerMonitor:
 
 
 def _polling_process(
-    nvml_gpu_indices: list[int],
+    gpu_indices: list[int],
     power_csv: str,
     update_period: float,
 ) -> None:
     """Run the power monitor."""
     try:
-        pynvml.nvmlInit()
-        nvml_handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in nvml_gpu_indices]
+        # Get GPUs
+        gpus = get_gpus()
 
         # Use line buffering.
         with open(power_csv, "w", buffering=1) as power_f:
             while True:
                 power: list[float] = []
                 now = time()
-                for nvml_handle in nvml_handles:
-                    power.append(pynvml.nvmlDeviceGetPowerUsage(nvml_handle))
+                for index in gpu_indices:
+                    power.append(gpus.getPowerUsage(index))
                 power_str = ",".join(map(lambda p: str(p / 1000), power))
                 power_f.write(f"{now},{power_str}\n")
                 if (sleep_time := update_period - (time() - now)) > 0:
                     sleep(sleep_time)
     except KeyboardInterrupt:
         return
-    finally:
-        pynvml.nvmlShutdown()

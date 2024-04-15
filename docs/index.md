@@ -1,4 +1,5 @@
 ---
+description: "An open-source framework for Deep Learning energy measurement and optimization"
 hide:
   - toc
   - navigation

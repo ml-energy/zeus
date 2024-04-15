@@ -153,8 +153,7 @@ class BatchSizeOptimizer(Callback):
         - Cost exceeded the early stop threshold
 
         Args:
-            metric: Validation metric of this epoch. See also `higher_metric_is_better` in
-            [`JobSpec`][zeus.optimizer.batch_size.common.JobSpec].
+            metric: Validation metric of this epoch. See also `higher_metric_is_better` in [`JobParams`][zeus.optimizer.batch_size.common.JobParams].
 
         Raises:
             `ZeusBSOOperationOrderError`: When `get_batch_size` was not called first.

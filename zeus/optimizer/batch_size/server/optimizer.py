@@ -59,7 +59,7 @@ class ZeusBatchSizeOptimizer:
             True if a job is regiested, False if a job already exists and identical with previous configuration
 
         Raises:
-            `ZeusBSOJobConfigMismatchError`: In the case of existing job, if job configuration doesn't match with previously registered config
+            [`ZeusBSOJobConfigMismatchError`][zeus.optimizer.batch_size.server.exceptions.ZeusBSOJobConfigMismatchError]: In the case of existing job, if job configuration doesn't match with previously registered config
         """
         registered_job = None
 
@@ -98,7 +98,7 @@ class ZeusBatchSizeOptimizer:
             batch size to use
 
         Raises:
-            `ZeusBSOValueError`: If the job id is unknown, or creating a mab failed due to no converged batch size
+            [`ZeusBSOValueError`][zeus.optimizer.batch_size.server.exceptions.ZeusBSOValueError]: If the job id is unknown, or creating a mab failed due to no converged batch size
         """
         job = await self.service.get_job(job_id)
 
@@ -252,7 +252,7 @@ class ZeusBatchSizeOptimizer:
             trial_id: Unique identifier of trial
 
         Raises:
-            `ZeusBSOServerNotFound` if there is no corresponding trial.
+            [`ZeusBSOServerNotFound`][zeus.optimizer.batch_size.server.exceptions.ZeusBSOServerNotFound]: If there is no corresponding trial.
         """
         trial = await self.service.get_trial(ReadTrial(**trial_id.dict()))
 

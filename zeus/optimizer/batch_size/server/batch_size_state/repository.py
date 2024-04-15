@@ -176,8 +176,7 @@ class BatchSizeStateRepository(DatabaseRepository):
         """Update trial in the database (report the result of trial).
 
         Args:
-            updated_trial (UpdateTrial): The updated trial.
-            Refer to `UpdateTrial`[zeus.optimizer.batch_size.server.batch_size_state.models.UpdateTrial] for attributes.
+            updated_trial (UpdateTrial): The updated trial. Refer to `UpdateTrial`[zeus.optimizer.batch_size.server.batch_size_state.models.UpdateTrial] for attributes.
         """
         if self.fetched_trial is None:
             raise ZeusBSOValueError("No trial is fetched.")
@@ -200,7 +199,7 @@ class BatchSizeStateRepository(DatabaseRepository):
 
         Args:
             new_arms (List[GaussianTsArmStateModel]): List of new arms to create.
-            Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
+                Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
         """
         self.session.add_all([arm.to_orm() for arm in new_arms])
 
@@ -209,7 +208,7 @@ class BatchSizeStateRepository(DatabaseRepository):
 
         Args:
             updated_mab_state (GaussianTsArmStateModel): The updated arm state.
-            Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
+                Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
         """
         if self.fetched_arm is None:
             raise ZeusBSOValueError("No arm is fetched.")
