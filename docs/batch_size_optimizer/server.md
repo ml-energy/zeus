@@ -99,7 +99,7 @@ We currently doesn't support heterogeneous GPUs or different configurations. Num
 
 Now server is good to go!
 
-### Remark about server
+### Remark about the server
 
 Zeus Batch Size Optimizer server is using Sqlalchemy to support various type of database. However, you need to download the corresponding async connection driver.
 As a default, we are using Mysql. You can add installation code to `Dockerfile.migration` and `Dockerfile.server`. Refer to those files for reference.
