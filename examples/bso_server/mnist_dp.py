@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import argparse
 import os
+from time import sleep
 
 import torch
 import torch.distributed as dist
@@ -43,14 +44,14 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(args, model, device, train_loader, epoch, writer,callbacks: CallbackSet):
+def train(args, model, device, train_loader, epoch, writer, callbacks: CallbackSet):
     model.train()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
     for batch_idx, (data, target) in enumerate(train_loader):
         ### Zeus usage: call callback for step begin
         callbacks.on_step_begin()
-       
+
         # Attach tensors to the device.
         data, target = data.to(device), target.to(device)
 
@@ -71,8 +72,8 @@ def train(args, model, device, train_loader, epoch, writer,callbacks: CallbackSe
             )
             niter = epoch * len(train_loader) + batch_idx
             writer.add_scalar("loss", loss.item(), niter)
-        
-        ### Zeus usage: call callback for step end 
+
+        ### Zeus usage: call callback for step end
         callbacks.on_step_end()
 
 
@@ -94,10 +95,11 @@ def test(model, device, test_loader, writer, epoch) -> float:
     writer.add_scalar("accuracy", float(correct) / len(test_loader.dataset), epoch)
     return float(correct) / len(test_loader.dataset)
 
+
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description="PyTorch FashionMNIST Example")
-   
+
     parser.add_argument(
         "--test-batch-size",
         type=int,
@@ -188,12 +190,12 @@ def main():
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "1234"
 
-    rank = int(os.getenv('RANK'))
-    world_size = int(os.getenv('WORLD_SIZE'))
-                     
+    rank = int(os.getenv("RANK"))
+    world_size = int(os.getenv("WORLD_SIZE"))
+
     print(f"World Size: {os.environ['WORLD_SIZE']}. Rank: {rank}")
 
-    dist.init_process_group(backend=args.backend, init_method='env://')
+    dist.init_process_group(backend=args.backend, init_method="env://")
 
     device = torch.device("cuda" if use_cuda else "cpu")
     model = Net().to(device)
@@ -215,48 +217,51 @@ def main():
     )
 
     ########################### ZEUS INIT BEGIN ###########################
+    monitor = ZeusMonitor(gpu_indices=None)  # All visible GPUs.
+    bso = BatchSizeOptimizer(
+        monitor=monitor,
+        server_url=get_env("ZEUS_SERVER_URL", str, "http://localhost:30100"),
+        job=JobSpec(
+            job_id=get_env("ZEUS_JOB_ID", str, "mnist-dev-dp-1"),
+            job_id_prefix="mnist-dev",
+            default_batch_size=256,
+            batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
+            max_epochs=5,
+        ),
+        rank=rank,
+    )
+
     # The rank 0 process will monitor and optimize the power limit of all GPUs.
-    if rank == 0: 
-        monitor=ZeusMonitor(gpu_indices=None) # All visible GPUs.
-        bso = BatchSizeOptimizer(
-            monitor=monitor,
-            server_url=get_env("ZEUS_SERVER_URL", str, "http://192.168.49.2:30100"),
-            job=JobSpec(
-                job_id=get_env("ZEUS_JOB_ID", str, "mnist-dev-dp-1"),
-                job_id_prefix="mnist-dev",
-                default_batch_size=256,
-                batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
-                max_epochs=5
-            )
-        )
+    if rank == 0:
         callback_set: list[Callback] = [
-            # plo 
+            # plo
             GlobalPowerLimitOptimizer(
-                monitor=monitor,  
+                monitor=monitor,
                 optimum_selector=MaxSlowdownConstraint(
                     factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
                 ),
                 warmup_steps=10,
                 profile_steps=40,
                 pl_step=25,
-            ), 
-            bso 
+            ),
+            bso,
         ]
-        # Get batch size from bso 
+        # Get batch size from bso
         batch_size = bso.get_batch_size()
         print("Rank", dist.get_rank())
         print("Chosen batach_size:", batch_size)
-        bs_tensor = torch.tensor([batch_size], device="cuda")
+        # Need to broadcast 1. batch size 2. trial_number to identify current trial from other GPUs
+        bs_trial_tensor = torch.tensor([batch_size, bso.trial_number], device="cuda")
     else:
-        callback_set = []
-        bs_tensor = torch.tensor([0], device="cuda")
+        sleep(3)  # Wait for the initailization of rank=0 gpu
+        callback_set = [bso]
+        bs_trial_tensor = torch.tensor([0, 0], device="cuda")
         print("Rank", dist.get_rank())
-    
-    dist.broadcast(bs_tensor, src=0)
-    
-    print("After broad casting",bs_tensor.item(), "word size", world_size)
-    batch_size = bs_tensor.item() // world_size
-        
+
+    dist.broadcast(bs_trial_tensor, src=0)
+    batch_size = bs_trial_tensor[0].item() // world_size
+    bso.trial_number = bs_trial_tensor[1].item()
+
     print(f"Batach_size to use for gpu[{rank}]: {batch_size}")
     callbacks = CallbackSet(callback_set)
 
@@ -278,7 +283,7 @@ def main():
     callbacks.on_train_begin()
     for epoch in range(1, args.epochs + 1):
         callbacks.on_epoch_begin()
-        train(args, model, device, train_loader, epoch, writer, callbacks) 
+        train(args, model, device, train_loader, epoch, writer, callbacks)
         callbacks.on_epoch_end()
         acc = test(model, device, test_loader, writer, epoch)
         callbacks.on_evaluate(acc)
@@ -287,6 +292,6 @@ def main():
         torch.save(model.state_dict(), "mnist_cnn.pt")
     ########################### ZEUS USAGE ENG ###########################
 
+
 if __name__ == "__main__":
     main()
-
