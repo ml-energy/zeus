@@ -18,7 +18,6 @@ from zeus.optimizer.batch_size.common import (
     TrialId,
     ReportResponse,
     TrainingResult,
-    TrialId,
 )
 from zeus.optimizer.batch_size.server.config import settings
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session

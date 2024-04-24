@@ -16,7 +16,6 @@ from sqlalchemy import (
     Integer,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.sql.schema import Index
 from sqlalchemy.sql.sqltypes import VARCHAR
 from zeus.optimizer.batch_size.server.job.models import Stage
 

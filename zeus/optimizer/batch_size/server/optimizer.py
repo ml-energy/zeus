@@ -3,7 +3,6 @@
 from __future__ import annotations
 import hashlib
 import time
-from uuid import uuid4
 
 import numpy as np
 from zeus.optimizer.batch_size.common import (
@@ -11,7 +10,6 @@ from zeus.optimizer.batch_size.common import (
     TrialId,
     ReportResponse,
     TrainingResult,
-    TrialId,
 )
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateMabTrial,
@@ -21,7 +19,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.commands import (
 from zeus.optimizer.batch_size.server.database.schema import TrialStatus
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOJobConfigMismatchError,
-    ZeusBSOServerNotFound,
+    ZeusBSOServerNotFoundError,
     ZeusBSOServiceBadOperationError,
     ZeusBSOValueError,
 )
@@ -66,7 +64,7 @@ class ZeusBatchSizeOptimizer:
         if job.job_id is None:
             while True:
                 job.job_id = f"{job.job_id_prefix}-{hashlib.sha256(str(time.time()).encode()).hexdigest()[:8]}"
-                if (await self.service.get_job(job.job_id)) == None:
+                if (await self.service.get_job(job.job_id)) is None:
                     break
         else:
             registered_job = await self.service.get_job(job.job_id)
@@ -267,7 +265,7 @@ class ZeusBatchSizeOptimizer:
                     )
                 )
         else:
-            raise ZeusBSOServerNotFound(f"Could not find the trial: {trial_id}")
+            raise ZeusBSOServerNotFoundError(f"Could not find the trial: {trial_id}")
 
     async def delete_job(self, job_id: str) -> None:
         """Delete a job.
@@ -279,4 +277,4 @@ class ZeusBatchSizeOptimizer:
             True if the job is deleted. False if none was deleted
         """
         if not (await self.service.delete_job(job_id)):
-            raise ZeusBSOServerNotFound("No job was deleted.")
+            raise ZeusBSOServerNotFoundError("No job was deleted.")

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
-from sqlalchemy.orm import joinedload
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import JobTable
 from zeus.optimizer.batch_size.server.exceptions import (
@@ -157,11 +156,10 @@ class JobStateRepository(DatabaseRepository):
         Returns:
             True if the job got deleted.
         """
-
         stmt = select(JobTable).where(JobTable.job_id == job_id)
         job = await self.session.scalar(stmt)
 
-        if job == None:
+        if job is None:
             return False
 
         # We can't straight delete using a query, since some db such as sqlite

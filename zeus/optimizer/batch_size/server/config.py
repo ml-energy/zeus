@@ -43,14 +43,14 @@ class ZeusBsoSettings(BaseSettings):
 
     @validator("log_level")
     def _validate_log_level(cls, v) -> bool:
-        if v is None or (
-            v != "NOTSET"
-            and v != "DEBUG"
-            and v != "INFO"
-            and v != "WARN"
-            and v != "ERROR"
-            and v != "CRITICAL"
-        ):
+        if v is None or v not in {
+            "NOTSET",
+            "DEBUG",
+            "INFO",
+            "WARN",
+            "ERROR",
+            "CRITICAL",
+        }:
             # Default log level
             return "INFO"
         return v
