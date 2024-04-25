@@ -41,7 +41,7 @@ Documentation = "https://ml.energy/zeus"
 perseus = ["fastapi[all]", "pydantic<2", "lowtime", "aiofiles", "httpx"]
 bso = ["pydantic<2", "httpx"]
 bso-server = ["fastapi[all]","sqlalchemy","pydantic<2"]
-migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv", "cryptography"]
+migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv"]
 lint = ["ruff", "black==22.6.0"]
 test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0"]
 dev = ["zeus-ml[perseus,lint,test]", "greenlet"]
@@ -92,5 +92,5 @@ pydocstyle.convention = "google"
 "zeus/optimizer/batch_size/common.py" = ["N805"]
 "zeus/device/gpu.py" = ["N802", "N803"]
 
-#[tool.pytest.ini_options]
-#addopts = "--numprocesses auto"
+[tool.pytest.ini_options]
+addopts = "--numprocesses auto"

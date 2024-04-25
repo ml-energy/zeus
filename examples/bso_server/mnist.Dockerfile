@@ -7,7 +7,6 @@ WORKDIR /workspace
 
 ADD . /workspace
 
-RUN pip install --no-cache-dir -e .
 RUN pip install --no-cache-dir -e '.[bso]'
 
 RUN  chgrp -R 0 /workspace \

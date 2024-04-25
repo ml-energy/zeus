@@ -67,6 +67,7 @@ class ZeusMonitor:
     to get power samples over time, which are integrated to compute energy consumption.
     Since it is spawning the process, the monitor should not be instantiated as a global variable.
     Python puts a protection to prevent creating a process in global scope.
+    Refer to the "Safe importing of main module" section in https://docs.python.org/3/library/multiprocessing.html for more detail.
 
     ## Integration Example
 

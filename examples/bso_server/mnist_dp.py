@@ -287,10 +287,10 @@ def main():
         callbacks.on_epoch_end()
         acc = test(model, device, test_loader, writer, epoch)
         callbacks.on_evaluate(acc)
+    ########################### ZEUS USAGE END ###########################
 
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
-    ########################### ZEUS USAGE ENG ###########################
 
 
 if __name__ == "__main__":

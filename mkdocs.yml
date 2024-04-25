@@ -114,7 +114,7 @@ nav:
     - Environment Setup: getting_started/environment.md
     - Installing Zeus: getting_started/installing.md
   - Batch Size Optimizer:
-    - batch_size_optimizer/server.md
+    - batch_size_optimizer/index.md
   - Perseus:
     - perseus/index.md
     - Integrating: perseus/integrating.md

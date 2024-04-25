@@ -9,11 +9,11 @@ Users can implement custom policies to optimize batch size and power limits, and
 
 ## Interfaces
 
-Zeus defines two abstract classes [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus._legacy.policy.PowerLimitOptimizer] in [`zeus.policy.interface`][zeus._legacy.policy.interface].
+Zeus defines two abstract classes [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus._legacy.policy.PowerLimitOptimizer] in [`zeus._legacy.policy.interface`][zeus._legacy.policy.interface].
 Each class optimizes the batch size and power limit of a recurring training job respectively.
 As in our paper, the batch size optimizer is first invoked to decide which batch size to use, and then the power limit optimizer is invoked with both the job and the batch size chosen to decide which power limit to use.
 
-You can find examples of policy implementations in [`zeus.policy.optimizer`][zeus._legacy.policy.optimizer].
+You can find examples of policy implementations in [`zeus._legacy.policy.optimizer`][zeus._legacy.policy.optimizer].
 
 ## Plugging it into Zeus
 
