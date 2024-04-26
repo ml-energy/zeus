@@ -49,11 +49,11 @@ theme:
 plugins:
   - search
   - autorefs
-  # - social:
-  #     cards_dir: assets/img/social
-  #     cards_layout_options:
-  #       background_color: "#f7e96d"
-  #       color: "#231f20"
+  - social:
+      cards_dir: assets/img/social
+      cards_layout_options:
+        background_color: "#f7e96d"
+        color: "#231f20"
   - gen-files:
       scripts:
         - docs/gen_ref_pages.py
@@ -92,7 +92,11 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
-
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 # Appearance
 extra_css:
   - assets/css/custom.css

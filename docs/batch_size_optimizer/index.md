@@ -16,6 +16,40 @@ The key of BSO is recurrent training. If you are training your model periodicall
 
 We currently don't support heterogeneous GPUs or different configurations. The number of GPUs, GPU models, and other configurations in JobSpec should be identical in recurrent training. If you are running your training in a various environment each time, then it might not be desirable to use BSO.
 
+## Overview of BSO
+
+Below is the overall architecture of BSO.
+
+```mermaid
+graph LR
+    subgraph "BSO Server"
+        id1[(Database)]  -->|Result| App
+        App -->|Query| id1[(Database)] 
+    end
+    App -->|Response| Client
+    subgraph "BSO Client"
+        Client -->|Monitor| Training
+        Client -->|Request| App
+    end
+```
+
+Below is the sequence diagram of using BSO.
+
+```mermaid
+sequenceDiagram;
+    participant BSO server
+    participant BSO client
+    loop Every recurrent training
+        BSO client->>BSO server: Register the training job and ask for the batch size
+        BSO server->>BSO client: Return the next batch size to use with a trial number
+        loop Every epoch
+            BSO client->>BSO server: At the end of each epoch, report the result
+            BSO server->>BSO client: Compute the cost and tell the client if it should stop the training
+        end
+        BSO client->>BSO server: Report the end of the trial on exit
+    end
+```
+
 ## Quick start (Server)
 
 1. Clone the repository
