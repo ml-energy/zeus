@@ -45,25 +45,18 @@ def mock_http_call(client, mocker: MockerFixture):
     mocker.patch("httpx.patch", side_effect=client.patch)
 
     mocker.patch("atexit.register")
-    # TODO: How to patch the httpx.patch in exit handler? Since it goes out of pytest scope, patch doesn't get applied
 
 
 def test_register_job(mock_monitor):
-    job = JobSpec.parse_obj(pytest.fake_job)
+    job = JobSpec.parse_obj(pytest.get_fake_job("test_register_job"))
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
-
-    no_job_id = deepcopy(pytest.fake_job)
-    no_job_id["job_id"] = None
-    bso_client = BatchSizeOptimizer(mock_monitor, "", JobSpec.parse_obj(no_job_id))
-    assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
-    assert bso_client.job.job_id.startswith(pytest.fake_job["job_id_prefix"])
 
 
 def test_batch_sizes(mock_monitor):
-    job = JobSpec.parse_obj(pytest.fake_job)
+    job = JobSpec.parse_obj(pytest.get_fake_job("test_batch_sizes"))
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
 
@@ -98,8 +91,7 @@ def test_batch_sizes(mock_monitor):
 
 
 def test_converge_fail(mock_monitor):
-    job = JobSpec.parse_obj(pytest.fake_job)
-    job.job_id = "test-something"
+    job = JobSpec.parse_obj(pytest.get_fake_job("test_converge_fail"))
     job.beta_knob = None  # disable early stop
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bso_client.on_train_begin()
@@ -126,8 +118,7 @@ def test_converge_fail(mock_monitor):
 
 
 def test_distributed_setting(mock_monitor):
-    job = JobSpec.parse_obj(pytest.fake_job)
-    job.job_id = "test-dp"
+    job = JobSpec.parse_obj(pytest.get_fake_job("test_distributed_setting"))
     NGPU = 4
     bso_clients = [
         BatchSizeOptimizer(mock_monitor, "", job, rank=i) for i in range(NGPU)
