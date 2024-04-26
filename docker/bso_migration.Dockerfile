@@ -10,4 +10,3 @@ ADD . /workspace
 # For mysql 
 RUN  pip install --no-cache-dir asyncmy
 RUN  pip install --no-cache-dir '.[migration]'
-
