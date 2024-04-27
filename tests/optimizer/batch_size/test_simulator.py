@@ -1,5 +1,6 @@
 import logging
 import re
+from pathlib import Path
 from typing import Literal
 
 import pandas as pd
@@ -51,8 +52,9 @@ def read_trace(
     gpu: Literal["a40", "v100", "p100", "rtx6000"]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read the train and power trace files as Pandas DataFrames."""
-    train_df = pd.DataFrame(pd.read_csv("../../../trace/summary_train.csv"))
-    power_df = pd.DataFrame(pd.read_csv(f"../../../trace/summary_power_{gpu}.csv"))
+    trace_dir = Path(__file__).resolve(strict=True).parents[3]
+    train_df = pd.DataFrame(pd.read_csv(trace_dir / "trace/summary_train.csv"))
+    power_df = pd.DataFrame(pd.read_csv(trace_dir / f"trace/summary_power_{gpu}.csv"))
     return train_df, power_df
 
 

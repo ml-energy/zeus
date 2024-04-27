@@ -1,7 +1,12 @@
 import asyncio
+import os
 from typing import AsyncIterator
 
 import pytest
+
+os.environ["ZEUS_BSO_DATABASE_URL"] = (
+    "sqlite+aiosqlite:///dummy.db"  # To prevent pydantic setting error without .env file
+)
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.optimizer.batch_size.server.database.db_connection import (

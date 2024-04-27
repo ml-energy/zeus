@@ -65,7 +65,7 @@ class DatabaseSessionManager:
             await session.close()
 
 
-# Initialize session manager. #TODO: support more arguments from setting
+# Initialize session manager.
 sessionmanager = DatabaseSessionManager(
     settings.database_url, {"echo": settings.echo_sql}
 )

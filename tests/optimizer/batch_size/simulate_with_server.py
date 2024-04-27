@@ -231,9 +231,7 @@ class SimulatorWithServer:
                 # The job never ran because even one epoch exceeds the cost threshold.
                 # Let the BSO observe that this batch size is bad, but since the job
                 # did not run, do not add to the history and retry.
-                if (
-                    eta == 0 and tta == 0 and not reached
-                ):  # TODO: IMPLEMENT EARLY STOPPING!
+                if eta == 0 and tta == 0 and not reached:
                     # bso.observe(job, bs, 100 * beta_knob * min_cost, False)
                     self.bso.observe(jobSpec, bs, eta, tta, max_power, False, epoch)
                     continue
