@@ -43,7 +43,7 @@ bso = ["pydantic<2", "httpx"]
 bso-server = ["fastapi[all]","sqlalchemy","pydantic<2"]
 migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv"]
 lint = ["ruff", "black==22.6.0"]
-test = ["pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0"]
+test = ["fastapi[all]","sqlalchemy","pydantic<2", "httpx", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0"]
 dev = ["zeus-ml[perseus,lint,test]", "greenlet"]
 # greenlet is for supporting apple mac silicon for sqlalchemy(https://docs.sqlalchemy.org/en/20/faq/installation.html)
 
