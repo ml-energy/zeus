@@ -15,14 +15,14 @@
 """A simulator for running trace-driven Zeus experiments."""
 
 from __future__ import annotations
-from typing import Literal
 
-import uuid
 from copy import deepcopy
+from typing import Literal
 
 import httpx
 import numpy as np
 import pandas as pd
+from zeus._legacy.policy import PowerLimitOptimizer
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
 from zeus.optimizer.batch_size.common import (
@@ -30,10 +30,8 @@ from zeus.optimizer.batch_size.common import (
     REGISTER_JOB_URL,
     REPORT_RESULT_URL,
     JobSpecFromClient,
-    JobSpec,
     TrainingResult,
 )
-from zeus._legacy.policy import PowerLimitOptimizer
 from zeus.util import zeus_cost
 
 

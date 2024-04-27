@@ -1,5 +1,4 @@
 import random
-from copy import deepcopy
 
 import pytest
 from zeus.optimizer.batch_size.common import (
@@ -9,7 +8,6 @@ from zeus.optimizer.batch_size.common import (
     REPORT_END_URL,
     REPORT_RESULT_URL,
 )
-
 
 # https://fastapi.tiangolo.com/tutorial/testing/
 

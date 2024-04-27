@@ -1,17 +1,16 @@
-from copy import deepcopy
 import logging
-from math import isclose
 import re
-from typing import Tuple
 import uuid
+from math import isclose
+from typing import Tuple
 
 import pytest
 from zeus.optimizer.batch_size.common import (
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
     REPORT_RESULT_URL,
-    TrialId,
     TrainingResult,
+    TrialId,
 )
 from zeus.util.metric import zeus_cost
 

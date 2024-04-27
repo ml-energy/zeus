@@ -6,13 +6,12 @@ import pandas as pd
 import pytest
 from pytest_mock import MockerFixture
 from tests.optimizer.batch_size.simulate_with_server import SimulatorWithServer
-from zeus.job import Job
 from zeus._legacy.policy.optimizer import (
     JITPowerLimitOptimizer,
     PruningGTSBatchSizeOptimizer,
 )
 from zeus._legacy.simulate import Simulator
-
+from zeus.job import Job
 
 config = {
     "gpu": "v100",

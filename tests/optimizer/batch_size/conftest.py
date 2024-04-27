@@ -1,14 +1,9 @@
 import asyncio
-import json
-from pathlib import Path
-from typing import AsyncIterator, Callable
-from fastapi.testclient import TestClient
+from typing import AsyncIterator
+
 import pytest
-from filelock import FileLock
-
-from pytest_mock.plugin import MockerFixture
+from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio.session import AsyncSession
-
 from zeus.optimizer.batch_size.server.database.db_connection import (
     DatabaseSessionManager,
     get_db_session,
