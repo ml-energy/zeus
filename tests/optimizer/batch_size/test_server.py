@@ -125,8 +125,8 @@ def test_report(client):
             "job_id": job_config["job_id"],
             "batch_size": response.json()["batch_size"],
             "trial_number": response.json()["trial_number"],
-            "time": 14.438,
-            "energy": 8000.123,
+            "time": 30,
+            "energy": 6000,
             "metric": 0.55,
             "current_epoch": 98,
         },
@@ -134,9 +134,8 @@ def test_report(client):
     assert (
         response.status_code == 200
         and response.json()["converged"] == False
-        and response.json()["stop_train"] == True,
-        response.text,
-    )
+        and response.json()["stop_train"] == True
+    ), response.text
 
 
 def test_exploration_stage(client):
