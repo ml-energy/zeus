@@ -156,7 +156,7 @@ As a default, we are using Mysql. You can add installation code to `bso_migratio
     pip install zeus-ml[bso]
     ```
 
-2. Add [`ZeusBatchSizeOptimizer`][zeus.optimizer.batch_size.client.ZeusBatchSizeOptimizer] to your training script.
+2. Add [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer] to your training script.
 
     ```Python
     # Initialization
