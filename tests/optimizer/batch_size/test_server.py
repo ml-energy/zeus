@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import random
 
 import pytest
@@ -12,8 +14,8 @@ from zeus.optimizer.batch_size.common import (
 # https://fastapi.tiangolo.com/tutorial/testing/
 
 
-def test_register_job(client):
-    job_config = pytest.get_fake_job_config("test_register_job")
+def test_register_job(client, helpers):
+    job_config = helpers.get_fake_job_config("test_register_job")
     response = client.post(REGISTER_JOB_URL, json=job_config)
     print(response.text)
     print(str(response))
@@ -29,8 +31,8 @@ def test_register_job(client):
     assert response.status_code == 409
 
 
-def test_register_job_validation_error(client):
-    temp = pytest.get_fake_job_config("test_register_job_validation_error")
+def test_register_job_validation_error(client, helpers):
+    temp = helpers.get_fake_job_config("test_register_job_validation_error")
     temp["default_batch_size"] = 128
     response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
@@ -39,29 +41,29 @@ def test_register_job_validation_error(client):
     response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
-    temp = pytest.get_fake_job_config("test_register_job_validation_error")
+    temp = helpers.get_fake_job_config("test_register_job_validation_error")
     temp["max_epochs"] = 0
     response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
-    temp = pytest.get_fake_job_config("test_register_job_validation_error")
+    temp = helpers.get_fake_job_config("test_register_job_validation_error")
     temp["batch_sizes"] = []
     response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
-    temp = pytest.get_fake_job_config("test_register_job_validation_error")
+    temp = helpers.get_fake_job_config("test_register_job_validation_error")
     temp["eta_knob"] = 1.1
     response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
-    temp = pytest.get_fake_job_config("test_register_job_validation_error")
+    temp = helpers.get_fake_job_config("test_register_job_validation_error")
     temp["beta_knob"] = 0
     response = client.post(REGISTER_JOB_URL, json=temp)
     assert response.status_code == 422
 
 
-def test_predict(client):
-    job_config = pytest.get_fake_job_config("test_predict")
+def test_predict(client, helpers):
+    job_config = helpers.get_fake_job_config("test_predict")
     response = client.post(REGISTER_JOB_URL, json=job_config)
     assert response.status_code == 201
 
@@ -86,8 +88,8 @@ def test_predict(client):
     assert response.json()["trial_number"] == 2
 
 
-def test_report(client):
-    job_config = pytest.get_fake_job_config("test_report")
+def test_report(client, helpers):
+    job_config = helpers.get_fake_job_config("test_report")
     response = client.post(REGISTER_JOB_URL, json=job_config)
     assert response.status_code == 201
 
@@ -138,8 +140,8 @@ def test_report(client):
     ), response.text
 
 
-def test_exploration_stage(client):
-    job_config = pytest.get_fake_job_config("test_exploration_stage")
+def test_exploration_stage(client, helpers):
+    job_config = helpers.get_fake_job_config("test_exploration_stage")
     response = client.post(REGISTER_JOB_URL, json=job_config)
     assert response.status_code == 201
 
@@ -216,8 +218,8 @@ def test_exploration_stage(client):
         cur_default_bs = 512
 
 
-def test_mab_stage(client):
-    job_config = pytest.get_fake_job_config("test_mab_stage")
+def test_mab_stage(client, helpers):
+    job_config = helpers.get_fake_job_config("test_mab_stage")
     response = client.post(REGISTER_JOB_URL, json=job_config)
     assert response.status_code == 201
 
@@ -263,8 +265,8 @@ def test_mab_stage(client):
     print(bs_seq)
 
 
-def test_end_trial(client):
-    job_config = pytest.get_fake_job_config("test_end_trial")
+def test_end_trial(client, helpers):
+    job_config = helpers.get_fake_job_config("test_end_trial")
     response = client.post(REGISTER_JOB_URL, json=job_config)
     assert response.status_code == 201
 
@@ -325,8 +327,8 @@ def test_end_trial(client):
     assert response.status_code == 200
 
 
-def test_delete_job(client):
-    job_config = pytest.get_fake_job_config("test_delete_job")
+def test_delete_job(client, helpers):
+    job_config = helpers.get_fake_job_config("test_delete_job")
     response = client.post(REGISTER_JOB_URL, json=job_config)
     assert response.status_code == 201
 

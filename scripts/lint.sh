@@ -3,9 +3,9 @@
 set -ev
 
 if [[ -z $GITHUB_ACTION ]]; then
-  black zeus capriccio
+  black zeus capriccio tests
 else
-  black zeus capriccio
+  black zeus capriccio tests
 fi
 
-ruff zeus
+ruff check zeus

@@ -98,8 +98,6 @@ class ZeusMonitor:
     Attributes:
         gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from the
             DL framework's perspective after applying `CUDA_VISIBLE_DEVICES`.
-        nvml_gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from
-            NVML/system's perspective.
     """
 
     def __init__(
