@@ -247,7 +247,7 @@ class ZeusMonitor:
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:
             logger.debug("Measurement window '%s' cancelled.", key)
-            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_handles})
+            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_indices})
 
         end_time: float = time()
         time_consumption: float = end_time - start_time
