@@ -11,8 +11,9 @@ Refer to the `examples/batch_size_optimizer/mnist_dp.py` for the use case.
 
 Kubeflow is a tool to easily deploy your ML workflows to kubernetes. We provides some examples of using kubeflow with Zeus. In order to run your training in Kubeflow with Zeus, follow the `docs/batch_size_optimizer/server.md` to deploy batch size optimizer to kubernetes. After then, you can deploy your training script using kubeflow.
 
-1. Install kubeflow training operator.
+1. Set up Kubernetes and install kubeflow training operator.
 
+    Refer [minikube](https://minikube.sigs.k8s.io/docs/start/) for local development of Kubernetes.
     Refer [Kubeflow training operator](https://github.com/kubeflow/training-operator) to how to install kubeflow.
 
 2. Run server batch size optimizer server using Kubernetes.
@@ -25,6 +26,8 @@ Kubeflow is a tool to easily deploy your ML workflows to kubernetes. We provides
     # From project root directory
     docker build -f ./examples/batch_size_optimizer/mnist.Dockerfile -t mnist-example . 
     ```
+
+    If you are using the cloud such as AWS, modify the `image` and `imagePullPolicy` in `mnist_dp.yaml` to pull it from the corresponding registry.
 
 4. Deploy training script.
 
