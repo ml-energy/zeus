@@ -5,7 +5,7 @@ services:
   server: 
     image: bso-server
     build:
-      context: ../
+      context: ../../
       dockerfile: ./docker/batch_size_optimizer/server.Dockerfile
     container_name: bso
     restart: always
@@ -55,7 +55,7 @@ services:
   migration:
     image: bso-migration
     build:
-      context: ../
+      context: ../../
       dockerfile: ./docker/batch_size_optimizer/migration.Dockerfile
     deploy:
       restart_policy:
