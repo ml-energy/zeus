@@ -4,7 +4,6 @@ from __future__ import annotations
 import atexit
 
 import httpx
-import pynvml
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer.batch_size.common import (
@@ -27,12 +26,18 @@ from zeus.optimizer.batch_size.exceptions import (
     ZeusBSOTrainFailError,
 )
 from zeus.util.logging import get_logger
+from zeus.device import get_gpus
 
 logger = get_logger(__name__)
 
 
 class BatchSizeOptimizer(Callback):
-    """Batch size optimizer client that talks to server. One batch size optimizer per one training session of the job."""
+    """Batch size optimizer client that talks to server.
+
+    One batch size optimizer per one training session of the job.
+    The set of GPUs to be used for training should be homogeneous, and will be inferred
+    from the `ZeusMonitor` instance passed into the constructor.
+    """
 
     def __init__(
         self, monitor: ZeusMonitor, server_url: str, job: JobSpec, rank: int = 0
@@ -42,7 +47,7 @@ class BatchSizeOptimizer(Callback):
         If job is already registered, check if the job configuration is identical with previously registered config.
 
         Args:
-            monitor: zeus monitor
+            monitor: `ZeusMonitor` instance configured to measure the energy of all and only the GPUs used for training.
             server_url: url of batch size optimizer server
             job: job specification. Refer to `JobSpec` for job specifcatio parameters.
             rank: rank of gpu in the case of distributed training. We only let rank = 0 gpu to request for a batch size.
@@ -56,30 +61,19 @@ class BatchSizeOptimizer(Callback):
         self.trial_number = 0
         self.rank = rank
 
-        # Get max PL
-        pynvml.nvmlInit()
-        pls = []
-        name = ""
-        for index in self.monitor.nvml_gpu_indices:
-            device = pynvml.nvmlDeviceGetHandleByIndex(index)
-            device_name = str(pynvml.nvmlDeviceGetName(device))
-            if name == "":
-                name = device_name
-            elif name != device_name:
-                raise ZeusBSOConfigError(
-                    f"Should use the same GPUs for training: detected({name},{device_name})"
-                )
-            pls.append(pynvml.nvmlDeviceGetPowerManagementLimitConstraints(device))
-
-        if name == "":
+        # Currently, the BSO only supports homogeneous GPU training.
+        gpus = get_gpus(ensure_homogeneous=True)
+        if len(gpus) == 0:
             raise ZeusBSOConfigError("No GPUs detected.")
 
         # set gpu configurations(max_power, number of gpus, and gpu model)
         self.job = JobSpecFromClient(
             **job.dict(),
-            max_power=(pls[0][1] // 1000) * len(monitor.gpu_indices),
+            max_power=gpus.getPowerManagementLimitConstraints(0)[1]
+            // 1000
+            * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
-            gpu_model=name,
+            gpu_model=gpus.getName(0),
         )
 
         # Track the batch size of current job
