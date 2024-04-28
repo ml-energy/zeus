@@ -165,6 +165,9 @@ class ZeusBatchSizeOptimizer:
             )
         )
 
+        if trial is None:
+            raise ZeusBSOServiceBadOperationError(f"Unknown trial {result}")
+
         if trial.status != TrialStatus.Dispatched:
             # result is already reported
             return ReportResponse(
@@ -172,9 +175,6 @@ class ZeusBatchSizeOptimizer:
                 converged=trial.converged,
                 message=f"Result for this trial({trial.trial_number}) is already reported.",
             )
-
-        if trial is None:
-            raise ZeusBSOServiceBadOperationError(f"Unknown trial {result}")
 
         if job.beta_knob is not None and job.min_cost is not None:  # Early stop enabled
             cost_ub = job.beta_knob * job.min_cost

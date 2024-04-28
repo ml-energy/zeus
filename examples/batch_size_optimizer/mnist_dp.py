@@ -168,6 +168,12 @@ def main():
         choices=[dist.Backend.GLOO, dist.Backend.NCCL, dist.Backend.MPI],
         default=dist.Backend.GLOO,
     )
+    parser.add_argument(
+        "--target-accuracy",
+        type=float,
+        default=0.5,
+        help="Target accuracy (default: 0.5)",
+    )
 
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
@@ -226,7 +232,8 @@ def main():
             job_id_prefix="mnist-dev",
             default_batch_size=256,
             batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
-            max_epochs=5,
+            max_epochs=args.epochs,
+            target_metric=args.target_accuracy,
         ),
         rank=rank,
     )
@@ -259,10 +266,11 @@ def main():
         print("Rank", dist.get_rank())
 
     dist.broadcast(bs_trial_tensor, src=0)
-    batch_size = bs_trial_tensor[0].item() // world_size
+    bso.current_batch_size = bs_trial_tensor[0].item()
     bso.trial_number = bs_trial_tensor[1].item()
+    batch_size = bso.current_batch_size // world_size
 
-    print(f"Batach_size to use for gpu[{rank}]: {batch_size}")
+    print(f"Batach_size to use for gpu[{rank}]: {batch_size}, trial number: {bso.trial_number}")
     callbacks = CallbackSet(callback_set)
 
     ########################### ZEUS INIT END ###########################

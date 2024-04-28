@@ -19,11 +19,13 @@ spec:
                 - "/workspace/examples/batch_size_optimizer/mnist_dp.py"
                 - "--epochs=5"
                 - "--backend=nccl"
+                # Adjust target accuracy to test failure
+                - "--target-accuracy=0.2"
               env:
                 - name: ZEUS_SERVER_URL
                   value: "http://server:80"
                 - name: ZEUS_JOB_ID
-                  value: "mnist-dev-dp-2"
+                  value: "mnist-dev-dp-"
               securityContext:
                 capabilities:
                   add: ["SYS_ADMIN"]
@@ -41,11 +43,13 @@ spec:
                 - "/workspace/examples/batch_size_optimizer/mnist_dp.py"
                 - "--epochs=5"
                 - "--backend=nccl"
+                # Adjust target accuracy to test failure
+                - "--target-accuracy=0.2"
               env:
                 - name: ZEUS_SERVER_URL
                   value: "http://server:80"
                 - name: ZEUS_JOB_ID
-                  value: "mnist-dev-dp-2"
+                  value: "mnist-dev-dp-3"
               securityContext:
                 capabilities:
                   add: ["SYS_ADMIN"]

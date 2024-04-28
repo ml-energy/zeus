@@ -196,7 +196,7 @@ class BatchSizeOptimizer(Callback):
             self.training_finished = True
             if not parsed_response.converged:
                 raise ZeusBSOTrainFailError(
-                    f"Train failed: {parsed_response.message}. This batch size will not be selected again. Please re-launch the training"
+                    f"Train failed: {parsed_response.message} This batch size will not be selected again. Please re-launch the training"
                 )
 
     def _handle_response(self, res: httpx.Response) -> None:

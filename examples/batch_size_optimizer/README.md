@@ -15,16 +15,21 @@ Kubeflow is a tool to easily deploy your ML workflows to kubernetes. We provides
 
     Refer [Kubeflow training operator](https://github.com/kubeflow/training-operator) to how to install kubeflow.
 
-2. Build mnist example docker image.
+2. Run server batch size optimizer server using Kubernetes.
+
+    Refer docs to start the server [Quick start](../../docs/batch_size_optimizer/index.md).
+
+3. Build mnist example docker image.
 
     ```Shell
     # From project root directory
     docker build -f ./examples/batch_size_optimizer/mnist.Dockerfile -t mnist-example . 
     ```
 
-3. Deploy training script.
+4. Deploy training script.
 
     ```Shell
+    cd examples/batch_size_optimizer
     kubectl apply -f mnist_dp.yaml # For distributed training example
     kubectl apply -f mnist_single_gpu.yaml # For single gpu training example
     ```
