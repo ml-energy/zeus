@@ -98,8 +98,6 @@ class ZeusMonitor:
     Attributes:
         gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from the
             DL framework's perspective after applying `CUDA_VISIBLE_DEVICES`.
-        nvml_gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from
-            NVML/system's perspective.
     """
 
     def __init__(
@@ -249,7 +247,7 @@ class ZeusMonitor:
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:
             logger.debug("Measurement window '%s' cancelled.", key)
-            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_handles})
+            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_indices})
 
         end_time: float = time()
         time_consumption: float = end_time - start_time

@@ -62,7 +62,9 @@ class ReplayLog:
 
     def __init__(self, log_file: str) -> None:
         df = typing.cast(pd.DataFrame, pd.read_csv(log_file))
-        assert all(col.startswith("gpu") and col.endswith("_energy") for col in df.columns[3:])
+        assert all(
+            col.startswith("gpu") and col.endswith("_energy") for col in df.columns[3:]
+        )
         self.gpu_indices = list(map(lambda x: int(x[3]), df.columns[3:]))
 
         df["energy"] = df[df.columns[3:]].sum(axis=1)  # type: ignore
@@ -73,12 +75,15 @@ class ReplayLog:
         self.power_limits = df.power_limit.to_list()
 
     def optimal_zeus_cost_power_limit(self, eta_knob: float) -> int:
-        cost = self.df.apply(lambda row: zeus_cost(
-            energy=row["energy"],
-            time=row["elapsed_time"],
-            eta_knob=eta_knob,
-            max_power=max(self.power_limits) * len(self.gpu_indices),
-        ), axis=1)
+        cost = self.df.apply(
+            lambda row: zeus_cost(
+                energy=row["energy"],
+                time=row["elapsed_time"],
+                eta_knob=eta_knob,
+                max_power=max(self.power_limits) * len(self.gpu_indices),
+            ),
+            axis=1,
+        )
         return int(self.df.iloc[cost.argmin()].power_limit)
 
     def optimal_time_power_limit(self) -> int:
@@ -88,12 +93,16 @@ class ReplayLog:
         return int(self.df.iloc[self.df.energy.argmin()].power_limit)
 
     def optimal_max_slowdown_constraint_power_limit(self, factor: float) -> int:
-        shortest_time = self.df.query(f"power_limit == {max(self.power_limits)}").elapsed_time.item()
+        shortest_time = self.df.query(
+            f"power_limit == {max(self.power_limits)}"
+        ).elapsed_time.item()
         filtered_df = self.df.query(f"elapsed_time <= {shortest_time * factor}")
         return int(filtered_df.power_limit.min())
 
 
-@pytest.fixture(params=map(lambda p: PROFILE_DATA_DIR + p, os.listdir(PROFILE_DATA_DIR)))
+@pytest.fixture(
+    params=map(lambda p: PROFILE_DATA_DIR + p, os.listdir(PROFILE_DATA_DIR))
+)
 def replay_log(request) -> ReplayLog:
     return ReplayLog(request.param)
 
@@ -128,8 +137,10 @@ def test_power_limit_optimizer(
     # Mock PyNVML.
     pynvml_mock = mocker.patch("zeus.device.gpu.pynvml", autospec=True)
     pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda i: f"handle{i}"
-    pynvml_mock.nvmlDeviceGetPowerManagementLimitConstraints.side_effect = \
-        lambda _: (min(replay_log.power_limits) * 1000, max(replay_log.power_limits) * 1000)
+    pynvml_mock.nvmlDeviceGetPowerManagementLimitConstraints.side_effect = lambda _: (
+        min(replay_log.power_limits) * 1000,
+        max(replay_log.power_limits) * 1000,
+    )
 
     # Mock away the atexit hook, which raises an NVML error when testing finishes.
     mocker.patch("zeus.optimizer.power_limit.atexit", autospec=True)
@@ -207,14 +218,18 @@ def test_power_limit_optimizer(
         else:
             # After being interrupted, the PLO will set the power limit to the max.
             for i in sorted(monitor.gpu_indices):
-                call_list.append(call(f"handle{i}", max(replay_log.power_limits) * 1000))
+                call_list.append(
+                    call(f"handle{i}", max(replay_log.power_limits) * 1000)
+                )
             # Return the power limit back to the list for retry.
             power_limits.insert(0, power_limit)
     # If the final power limit tried was the optimal one, the PLO will not set it again.
     if power_limit != optimal_pl:
         for i in sorted(monitor.gpu_indices):
             call_list.append(call(f"handle{i}", optimal_pl * 1000))
-    pynvml_mock.nvmlDeviceSetPowerManagementLimit.assert_has_calls(call_list, any_order=False)
+    pynvml_mock.nvmlDeviceSetPowerManagementLimit.assert_has_calls(
+        call_list, any_order=False
+    )
     pynvml_mock.reset_mock()
 
     # Print out the profile data for debugging purposes.
@@ -230,8 +245,10 @@ def test_power_limit_optimizer(
         profile_path=tmp_path / "power_limit_optimizer.json",
     )
     assert isinstance(temp_plo.state, Done)
-    assert temp_plo.state.optimal_power_limit == replay_log.optimal_energy_power_limit() * 1000
-
+    assert (
+        temp_plo.state.optimal_power_limit
+        == replay_log.optimal_energy_power_limit() * 1000
+    )
 
     temp_plo = GlobalPowerLimitOptimizer(
         monitor,
@@ -239,8 +256,10 @@ def test_power_limit_optimizer(
         profile_path=tmp_path / "power_limit_optimizer.json",
     )
     assert isinstance(temp_plo.state, Done)
-    assert temp_plo.state.optimal_power_limit == replay_log.optimal_time_power_limit() * 1000
-
+    assert (
+        temp_plo.state.optimal_power_limit
+        == replay_log.optimal_time_power_limit() * 1000
+    )
 
     for factor in [1.0, 1.1, 1.2, 1.5, 2.0, 3.0, 5.0, 100.0]:
         temp_plo = GlobalPowerLimitOptimizer(
@@ -249,7 +268,10 @@ def test_power_limit_optimizer(
             profile_path=tmp_path / "power_limit_optimizer.json",
         )
         assert isinstance(temp_plo.state, Done)
-        assert temp_plo.state.optimal_power_limit == replay_log.optimal_max_slowdown_constraint_power_limit(factor) * 1000
+        assert (
+            temp_plo.state.optimal_power_limit
+            == replay_log.optimal_max_slowdown_constraint_power_limit(factor) * 1000
+        )
 
     ########################################
     # Test loading from saved profile data
@@ -273,9 +295,12 @@ def test_power_limit_optimizer(
         any_order=False,
     )
 
+
 def test_HFGPLO_signature_equivalence() -> None:
     """Ensure that the constructor signatures of GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer are equivalent."""
     gplo_signature = inspect.signature(GlobalPowerLimitOptimizer.__init__)
     hfgplo_signature = inspect.signature(HFGlobalPowerLimitOptimizer.__init__)
 
-    assert gplo_signature == hfgplo_signature, "GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer signatures do not match."
+    assert (
+        gplo_signature == hfgplo_signature
+    ), "GlobalPowerLimitOptimizer and HFGlobalPowerLimitOptimizer signatures do not match."

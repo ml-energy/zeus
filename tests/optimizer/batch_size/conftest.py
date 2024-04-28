@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import asyncio
 import os
 from typing import AsyncIterator
 
 import pytest
 
-os.environ["ZEUS_BSO_DATABASE_URL"] = (
-    "sqlite+aiosqlite:///dummy.db"  # To prevent pydantic setting error without .env file
-)
+# HACK: ZeusBsoSettings will complain if `database_url` is not set
+#       via environment variable.
+os.environ["ZEUS_BSO_DATABASE_URL"] = "sqlite+aiosqlite:///dummy.db"
+
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from zeus.optimizer.batch_size.server.database.db_connection import (
@@ -17,9 +20,8 @@ from zeus.optimizer.batch_size.server.database.schema import Base
 from zeus.optimizer.batch_size.server.router import app
 
 
-def pytest_configure():
-    # Test wide global helper functions.
-
+class Helpers:
+    @staticmethod
     def get_fake_job(job_id: str) -> dict:
         return {
             "job_id": job_id,
@@ -40,15 +42,18 @@ def pytest_configure():
             "mab_num_explorations": 2,
         }
 
-    def get_fake_job_config(job_id: str) -> dict:
-        fake_job_config = get_fake_job(job_id)
+    @classmethod
+    def get_fake_job_config(cls, job_id: str) -> dict:
+        fake_job_config = cls.get_fake_job(job_id)
         fake_job_config["max_power"] = 3000
         fake_job_config["number_of_gpus"] = 4
         fake_job_config["gpu_model"] = "A100"
         return fake_job_config
 
-    pytest.get_fake_job = get_fake_job
-    pytest.get_fake_job_config = get_fake_job_config
+
+@pytest.fixture(scope="module")
+def helpers():
+    return Helpers
 
 
 def init(db_url: str):

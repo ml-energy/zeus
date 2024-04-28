@@ -1,4 +1,5 @@
-from copy import deepcopy
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -6,7 +7,10 @@ from pytest_mock import MockerFixture
 from zeus.monitor.energy import Measurement, ZeusMonitor
 from zeus.optimizer.batch_size.client import BatchSizeOptimizer
 from zeus.optimizer.batch_size.common import JobSpec
-from zeus.optimizer.batch_size.exceptions import ZeusBSOBadOperationError
+from zeus.optimizer.batch_size.exceptions import (
+    ZeusBSOBadOperationError,
+    ZeusBSOTrainFailError,
+)
 
 
 @pytest.fixture
@@ -47,16 +51,16 @@ def mock_http_call(client, mocker: MockerFixture):
     mocker.patch("atexit.register")
 
 
-def test_register_job(mock_monitor):
-    job = JobSpec.parse_obj(pytest.get_fake_job("test_register_job"))
+def test_register_job(mock_monitor, helpers):
+    job = JobSpec.parse_obj(helpers.get_fake_job("test_register_job"))
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     assert bso_client.job.max_power == 300 * len(mock_monitor.gpu_indices)
 
 
-def test_batch_sizes(mock_monitor):
-    job = JobSpec.parse_obj(pytest.get_fake_job("test_batch_sizes"))
+def test_batch_sizes(mock_monitor, helpers):
+    job = JobSpec.parse_obj(helpers.get_fake_job("test_batch_sizes"))
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bs = bso_client.get_batch_size()
 
@@ -90,8 +94,8 @@ def test_batch_sizes(mock_monitor):
     assert bs == 2048 and bso_client.current_batch_size == 2048
 
 
-def test_converge_fail(mock_monitor):
-    job = JobSpec.parse_obj(pytest.get_fake_job("test_converge_fail"))
+def test_converge_fail(mock_monitor, helpers):
+    job = JobSpec.parse_obj(helpers.get_fake_job("test_converge_fail"))
     job.beta_knob = None  # disable early stop
     bso_client = BatchSizeOptimizer(mock_monitor, "", job)
     bso_client.on_train_begin()
@@ -117,8 +121,8 @@ def test_converge_fail(mock_monitor):
     assert bs == 2048 and bso_client.current_batch_size == 2048
 
 
-def test_distributed_setting(mock_monitor):
-    job = JobSpec.parse_obj(pytest.get_fake_job("test_distributed_setting"))
+def test_distributed_setting(mock_monitor, helpers):
+    job = JobSpec.parse_obj(helpers.get_fake_job("test_distributed_setting"))
     NGPU = 4
     bso_clients = [
         BatchSizeOptimizer(mock_monitor, "", job, rank=i) for i in range(NGPU)
@@ -137,7 +141,7 @@ def test_distributed_setting(mock_monitor):
 
     # Mark as unconverged from rank = 0 client
     i = 0
-    with pytest.raises(Exception) as e_info:
+    with pytest.raises(ZeusBSOTrainFailError) as e_info:
         while i < job.max_epochs + 10:  # Fail after max_epoch
             bso_clients[0].on_evaluate(0.3)
             i += 1
@@ -148,7 +152,7 @@ def test_distributed_setting(mock_monitor):
         assert str(e_info.value).find("Train failed to converge within max_epoch") != -1
 
     for i in range(1, NGPU):
-        with pytest.raises(Exception) as e_info:
+        with pytest.raises(ZeusBSOTrainFailError) as e_info:
             bso_clients[i].on_evaluate(0.3)
             assert bso_clients[i].current_batch_size == 1024
         assert str(e_info.value).find("is already reported.") != -1
