@@ -4,7 +4,6 @@ import logging
 import re
 import uuid
 from math import isclose
-from typing import Tuple
 
 import pytest
 from zeus.optimizer.batch_size.common import (
@@ -59,7 +58,7 @@ class TestPruningExploreManager:
 
     def register_job_with_default_bs(
         self, client, default_bs: int, helpers
-    ) -> Tuple[str, int]:
+    ) -> tuple[str, int]:
         job_id = f"test-{str(uuid.uuid4())}"
         fake_job = helpers.get_fake_job_config(job_id)
         fake_job["beta_knob"] = None

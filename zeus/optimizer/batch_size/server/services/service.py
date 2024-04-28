@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, Tuple
+from typing import Any
 
 import numpy as np
 from numpy.random import Generator as np_Generator
@@ -345,7 +345,7 @@ class ZeusService:
                 )
             )
 
-    def _get_generator(self, job_id: str) -> Tuple[np_Generator, bool]:
+    def _get_generator(self, job_id: str) -> tuple[np_Generator, bool]:
         """Get generator based on job_id. If mab_seed is not none, we should update the state after using generator.
 
         Returns:
