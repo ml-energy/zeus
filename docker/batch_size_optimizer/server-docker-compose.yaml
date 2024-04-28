@@ -6,7 +6,7 @@ services:
     image: bso-server
     build:
       context: ../
-      dockerfile: ./docker/bso_server.Dockerfile
+      dockerfile: ./docker/batch_size_optimizer/server.Dockerfile
     container_name: bso
     restart: always
     environment:
@@ -56,7 +56,7 @@ services:
     image: bso-migration
     build:
       context: ../
-      dockerfile: ./docker/bso_migration.Dockerfile
+      dockerfile: ./docker/batch_size_optimizer/migration.Dockerfile
     deploy:
       restart_policy:
         condition: on-failure
