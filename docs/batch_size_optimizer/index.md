@@ -41,7 +41,7 @@ sequenceDiagram;
     git clone https://github.com/ml-energy/zeus/tree/master
     ```
 
-2. Create `.env` under `/docker`. An example of `.env` is provided below.
+2. Create `.env` under `/docker/batch_size_optimizer`. An example of `.env` is provided below.
 
     By default, we are using the MySQL for the database.
 
@@ -62,8 +62,8 @@ sequenceDiagram;
     - Using docker-compose
 
         ```Shell
-        cd docker 
-        docker-compose -f ./docker/docker-compose.yaml up
+        cd docker/batch_size_optimizer
+        docker-compose -f ./server-docker-compose.yaml up
         ```
 
         This will build images for each container: db, migration, and the server. Then, it will spin those containers.
@@ -81,8 +81,8 @@ sequenceDiagram;
         2. Create Kubernetes yaml files using Kompose. Kompose is a tool that converts docker-compose files into Kubernetes files. For more information, visit [Kompose Reference](#kompose-references)
 
             ```Shell
-            cd docker 
-            docker-compose config > docker-compose-resolved.yaml && kompose convert -f docker-compose-resolved.yaml -o ./kube/ && rm docker-compose-resolved.yaml
+            cd docker/batch_size_optimizer
+            docker-compose -f server-docker-compose.yaml config > server-docker-compose-resolved.yaml && kompose convert -f server-docker-compose-resolved.yaml -o ./kube/ && rm server-docker-compose-resolved.yaml
             ```
 
             It first resolves env files using docker-compose, then creates Kubernetes yaml files under `docker/kube/`
