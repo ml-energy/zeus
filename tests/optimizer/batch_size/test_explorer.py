@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import re
 import uuid
@@ -55,10 +57,11 @@ class TestPruningExploreManager:
         )
         return res
 
-    # 0.5 * energy + (1 - eta_knob) * max_power * time
-    def register_job_with_default_bs(self, client, default_bs: int) -> Tuple[str, int]:
+    def register_job_with_default_bs(
+        self, client, default_bs: int, helpers
+    ) -> Tuple[str, int]:
         job_id = f"test-{str(uuid.uuid4())}"
-        fake_job = pytest.get_fake_job_config(job_id)
+        fake_job = helpers.get_fake_job_config(job_id)
         fake_job["beta_knob"] = None
         fake_job["job_id"] = job_id
         fake_job["batch_sizes"] = self.batch_sizes
@@ -121,9 +124,9 @@ class TestPruningExploreManager:
         else:
             assert False, "No output found from constructing Mab"
 
-    def test_normal(self, client, caplog):
+    def test_normal(self, client, caplog, helpers):
         """Test a typical case."""
-        job_id, max_power = self.register_job_with_default_bs(client, 128)
+        job_id, max_power = self.register_job_with_default_bs(client, 128, helpers)
 
         exploration = [
             (128, 10.0, True),
@@ -142,9 +145,9 @@ class TestPruningExploreManager:
         result = [32, 64, 128]
         self.run_exploration(client, caplog, job_id, exploration, result, max_power)
 
-    def test_default_is_largest(self, client, caplog):
+    def test_default_is_largest(self, client, caplog, helpers):
         """Test the case when the default batch size is the largest one."""
-        job_id, max_power = self.register_job_with_default_bs(client, 256)
+        job_id, max_power = self.register_job_with_default_bs(client, 256, helpers)
 
         exploration = [
             (256, 7.0, True),
@@ -160,9 +163,9 @@ class TestPruningExploreManager:
         result = [32, 64, 128, 256]
         self.run_exploration(client, caplog, job_id, exploration, result, max_power)
 
-    def test_default_is_smallest(self, client, caplog):
+    def test_default_is_smallest(self, client, caplog, helpers):
         """Test the case when the default batch size is the smallest one."""
-        job_id, max_power = self.register_job_with_default_bs(client, 8)
+        job_id, max_power = self.register_job_with_default_bs(client, 8, helpers)
 
         exploration = [
             (8, 10.0, True),
@@ -175,9 +178,9 @@ class TestPruningExploreManager:
         result = [8]
         self.run_exploration(client, caplog, job_id, exploration, result, max_power)
 
-    def test_all_converge(self, client, caplog):
+    def test_all_converge(self, client, caplog, helpers):
         """Test the case when every batch size converges."""
-        job_id, max_power = self.register_job_with_default_bs(client, 64)
+        job_id, max_power = self.register_job_with_default_bs(client, 64, helpers)
         exploration = [
             (64, 10.0, True),
             (32, 8.0, True),
@@ -195,9 +198,9 @@ class TestPruningExploreManager:
         result = self.batch_sizes
         self.run_exploration(client, caplog, job_id, exploration, result, max_power)
 
-    def test_every_bs_is_bs(self, client, caplog):
+    def test_every_bs_is_bs(self, client, caplog, helpers):
         """Test the case when every batch size other than the default fail to converge."""
-        job_id, max_power = self.register_job_with_default_bs(client, 64)
+        job_id, max_power = self.register_job_with_default_bs(client, 64, helpers)
         exploration = [
             (64, 10.0, True),
             (32, 22.0, False),
