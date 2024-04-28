@@ -29,7 +29,7 @@ import torch
 
 from zeus.analyze import HistoryEntry
 from zeus.job import Job
-from zeus.policy import BatchSizeOptimizer
+from zeus._legacy.policy import BatchSizeOptimizer
 from zeus.util import zeus_cost
 from zeus.device import get_gpus
 
@@ -44,7 +44,7 @@ class ZeusMaster:
     [`ZeusDataLoader`][zeus.run.ZeusDataLoader]'s class docstring.
 
     The optimal batch size is searched for and exploited using the
-    [`BatchSizeOptimizer`][zeus.policy.BatchSizeOptimizer] object passed in
+    [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] object passed in
     through the constructor.
     """
 
@@ -62,7 +62,7 @@ class ZeusMaster:
 
         Args:
             batch_size_optimizer: The user is expected to construct the
-                [`BatchSizeOptimizer`][zeus.policy.BatchSizeOptimizer] with the desired
+                [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] with the desired
                 policy and pass it into the master class.
             log_base: Absolute path where logs will be stored. A separate directory
                 will be created inside, whose name is determined by the job and current time.

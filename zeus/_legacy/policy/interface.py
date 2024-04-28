@@ -86,11 +86,11 @@ class PowerLimitOptimizer(ABC):
         Args:
             job: The job to pick the best power limit for.
             batch_size: The batch size chosen by the
-                [`BatchSizeOptimizer`][zeus.policy.BatchSizeOptimizer] for this job.
+                [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] for this job.
 
         Returns:
             The best power limit, or `None` if profiling results via
-            [`observe`][zeus.policy.interface.PowerLimitOptimizer.observe] are needed.
+            [`observe`][zeus._legacy.policy.interface.PowerLimitOptimizer.observe] are needed.
         """
 
     @abstractmethod

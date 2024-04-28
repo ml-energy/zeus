@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 from zeus.job import Job
-from zeus.policy import PruningGTSBatchSizeOptimizer
+from zeus._legacy.policy import PruningGTSBatchSizeOptimizer
 from zeus.run import ZeusMaster
 from zeus.util import FileAndConsole
 

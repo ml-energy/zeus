@@ -21,9 +21,9 @@
 - [`controller`][zeus.controller]: A collection of controllers that influence training flow.
 - [`analyze`][zeus.analyze]: Functions for analyzing log files.
 - [`job`][zeus.job]: Job specification.
-- [`simulate`][zeus.simulate]: Machinery for trace-driven Zeus.
+- [`simulate`][zeus._legacy.simulate]: Machinery for trace-driven Zeus.
 - [`device`][zeus.device]: Abstraction of compute devices.
-- [`policy`][zeus.policy]: Collection of optimization policies.
+- [`_legacy`][zeus._legacy.policy]: Collection of optimization policies for reproducing the paper's result.
 - [`util`][zeus.util]: Utility functions and classes.
 """
 

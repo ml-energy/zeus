@@ -92,7 +92,11 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
-
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 # Appearance
 extra_css:
   - assets/css/custom.css
@@ -113,6 +117,8 @@ nav:
     - getting_started/index.md
     - Environment Setup: getting_started/environment.md
     - Installing Zeus: getting_started/installing.md
+  - Batch Size Optimizer:
+    - batch_size_optimizer/index.md
   - Perseus:
     - perseus/index.md
     - Integrating: perseus/integrating.md

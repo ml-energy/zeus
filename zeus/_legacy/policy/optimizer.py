@@ -14,8 +14,8 @@
 
 """Implementations of various optimization policies.
 
-[`JITPowerLimitOptimizer`][zeus.policy.optimizer.JITPowerLimitOptimizer] and
-[`PruningGTSBatchSizeOptimizer`][zeus.policy.optimizer.PruningGTSBatchSizeOptimizer]
+[`JITPowerLimitOptimizer`][zeus._legacy.policy.optimizer.JITPowerLimitOptimizer] and
+[`PruningGTSBatchSizeOptimizer`][zeus._legacy.policy.optimizer.PruningGTSBatchSizeOptimizer]
 are the implementations used in Zeus's publication.
 """
 
@@ -27,8 +27,8 @@ from typing import Generator
 import numpy as np
 
 from zeus.job import Job
-from zeus.policy.interface import BatchSizeOptimizer, PowerLimitOptimizer
-from zeus.policy.mab import GaussianTS
+from zeus._legacy.policy.interface import BatchSizeOptimizer, PowerLimitOptimizer
+from zeus._legacy.policy.mab import GaussianTS
 
 
 class GTSBatchSizeOptimizer(BatchSizeOptimizer):
@@ -47,7 +47,7 @@ class GTSBatchSizeOptimizer(BatchSizeOptimizer):
     ) -> None:
         """Initialze the optimizer.
 
-        Refer to the constructor of [`GaussianTS`][zeus.policy.mab.GaussianTS]
+        Refer to the constructor of [`GaussianTS`][zeus._legacy.policy.mab.GaussianTS]
         for descriptions of other arguments.
 
         Args:
@@ -278,7 +278,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
     ) -> None:
         """Initialze the optimizer.
 
-        Refer to the constructor of [`GaussianTS`][zeus.policy.mab.GaussianTS]
+        Refer to the constructor of [`GaussianTS`][zeus._legacy.policy.mab.GaussianTS]
         for descriptions of other arguments.
 
         Args:
