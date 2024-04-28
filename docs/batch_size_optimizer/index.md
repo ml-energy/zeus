@@ -74,8 +74,8 @@ sequenceDiagram;
 
             ```Shell
             # From the root directory
-            docker build -f ./docker/bso_server.Dockerfile -t bso-server . 
-            docker build -f ./docker/bso_migration.Dockerfile -t bso-migration .
+            docker build -f ./docker/batch_size_optimizer/server.Dockerfile -t bso-server . 
+            docker build -f ./docker/batch_size_optimizer/migration.Dockerfile -t bso-migration .
             ```
 
         2. Create Kubernetes yaml files using Kompose. Kompose is a tool that converts docker-compose files into Kubernetes files. For more information, visit [Kompose Reference](#kompose-references)
@@ -146,7 +146,7 @@ sequenceDiagram;
 ### Remark about the server
 
 Zeus Batch Size Optimizer server is using Sqlalchemy to support various types of databases. However, you need to download the corresponding async connection driver.
-As a default, we are using Mysql. You can add installation code to `bso_migration.Dockerfile` and `bso_server.Dockerfile`. Refer to those files for reference.
+As a default, we are using Mysql. You can add installation code to `docker/batch_size_optimizer/migration.Dockerfile` and `docker/batch_size_optimizer/server.Dockerfile`. Refer to those files for reference.
 
 ## Use BSO in your training script (Client)
 

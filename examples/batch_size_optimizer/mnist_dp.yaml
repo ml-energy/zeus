@@ -16,7 +16,7 @@ spec:
               imagePullPolicy: Never
               command:
                 - "python3"
-                - "/workspace/examples/bso_server/mnist_dp.py"
+                - "/workspace/examples/batch_size_optimizer/mnist_dp.py"
                 - "--epochs=5"
                 - "--backend=nccl"
               env:
@@ -38,7 +38,7 @@ spec:
               imagePullPolicy: Never
               command:
                 - "python3"
-                - "/workspace/examples/bso_server/mnist_dp.py"
+                - "/workspace/examples/batch_size_optimizer/mnist_dp.py"
                 - "--epochs=5"
                 - "--backend=nccl"
               env:

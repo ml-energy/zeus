@@ -5,7 +5,7 @@ Batch size optimzer is composed of two parts: server and client. Client will be 
 ## Data parallel training with Zeus
 
 In the case of data parallel training, Batch size optimizer should be able to give the consistent batch size to all gpus. Since there is no way for batch size to tell the differences between concurrent job submissions and multiple GPU training, we ask users to send a request from a single GPU and broadcast the result(batch size, trial number) to other GPUs. In the case of reporting the result to the batch size optimizer server and receiving the corresponding result (train fail or succeeded) can be dealt by the server since it has the `trial_number`. Thus, report doesn't require any broadcast or communications with other GPUs.
-Refer to the `examples/bso_server/mnist_dp.py` for the use case.
+Refer to the `examples/batch_size_optimizer/mnist_dp.py` for the use case.
 
 ## Kubeflow
 
@@ -19,7 +19,7 @@ Kubeflow is a tool to easily deploy your ML workflows to kubernetes. We provides
 
     ```Shell
     # From project root directory
-    docker build -f ./examples/bso_server/mnist.Dockerfile -t mnist-example . 
+    docker build -f ./examples/batch_size_optimizer/mnist.Dockerfile -t mnist-example . 
     ```
 
 3. Deploy training script.
