@@ -1,7 +1,7 @@
 # Project information
 site_name: Zeus Project
 site_url: https://ml.energy/zeus
-site_author: Jae-Won Chung
+site_author: Zeus team
 site_description: Deep learning energy measurement and optimization
 edit_uri: ""
 
@@ -10,7 +10,7 @@ repo_name: ml-energy/zeus
 repo_url: https://github.com/ml-energy/zeus
 
 # Copyright
-copyright: Copyright &copy; 2024 Jae-Won Chung
+copyright: Copyright &copy; 2024 Zeus team
 
 # Theme configuration
 theme:

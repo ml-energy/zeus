@@ -17,12 +17,8 @@
 [`PowerLimitOptimizer`][zeus._legacy.policy.interface.PowerLimitOptimizer] and
 [`BatchSizeOptimizer`][zeus._legacy.policy.interface.BatchSizeOptimizer] are
 abstract classes. Users can implement custom policies by extending the
-abstract classes and implementing required method.
-Currently, [`Simulator`][zeus._legacy.simulate.Simulator] supports custom policies
-for both classes, while [`ZeusMaster`][zeus.run.ZeusMaster] only supports
-custom [`BatchSizeOptimizer`][zeus._legacy.policy.interface.BatchSizeOptimizer]s.
-Custom [`PowerLimitOptimizer`][zeus._legacy.policy.PowerLimitOptimizer]s will
-have to be integrated into [`ZeusDataLoader`][zeus.run.ZeusDataLoader].
+abstract classes, implementing required methods, and plugging them into
+the [`Simulator`][zeus._legacy.simulate.Simulator].
 """
 
 from zeus._legacy.policy.interface import BatchSizeOptimizer, PowerLimitOptimizer

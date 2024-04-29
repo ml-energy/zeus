@@ -18,7 +18,6 @@ def mock_monitor(mocker: MockerFixture):
     mocker.patch("pynvml.nvmlInit")
 
     zeus_monitor_mock_instance = MagicMock(spec=ZeusMonitor)
-    zeus_monitor_mock_instance.nvml_gpu_indices = [0, 1, 2, 3]
     zeus_monitor_mock_instance.gpu_indices = [0, 1, 2, 3]
     zeus_monitor_mock_instance.end_window.return_value = Measurement(
         time=37.24807469360,
@@ -34,6 +33,7 @@ def mock_monitor(mocker: MockerFixture):
         "zeus.monitor.energy.ZeusMonitor", return_value=zeus_monitor_mock_instance
     )
     mocker.patch("pynvml.nvmlDeviceGetName").return_value = "Tesla V100"
+    mocker.patch("pynvml.nvmlDeviceGetCount").return_value = 4
     mocker.patch("pynvml.nvmlDeviceGetHandleByIndex").return_value = 0
     mocker.patch("pynvml.nvmlDeviceGetPowerManagementLimitConstraints").return_value = [
         100000,

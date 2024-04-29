@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from zeus.util.pydantic_v1 import BaseModel, root_validator, validator, Field
+from zeus.utils.pydantic_v1 import BaseModel, root_validator, validator, Field
 
 REGISTER_JOB_URL = "/jobs"
 DELETE_JOB_URL = "/jobs"
@@ -43,13 +43,13 @@ class JobParams(BaseModel):
     beta_knob: Optional[float] = 2.0
     target_metric: float = 0.50
     higher_is_better_metric: bool = True
-    max_epochs: int = Field(100, gt=0)
-    num_pruning_rounds: int = Field(2, ge=0)
-    window_size: int = 10
+    max_epochs: int = Field(default=100, gt=0)
+    num_pruning_rounds: int = Field(default=2, ge=0)
+    window_size: int = 0
 
     mab_prior_mean: float = 0.0
     mab_prior_precision: float = 0.0
-    mab_num_explorations: int = Field(2, ge=0)
+    mab_num_explorations: int = Field(default=2, ge=0)
     mab_seed: Optional[int] = None
 
     @validator("batch_sizes")

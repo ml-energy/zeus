@@ -85,7 +85,7 @@ Total energy (J):
 ```console
 $ python -m zeus.monitor energy
 [2023-08-22 22:44:45,106] [ZeusMonitor](energy.py:157) Monitoring GPU [0, 1, 2, 3].
-[2023-08-22 22:44:46,210] [zeus.util.framework](framework.py:38) PyTorch with CUDA support is available.
+[2023-08-22 22:44:46,210] [zeus.utils.framework](framework.py:38) PyTorch with CUDA support is available.
 [2023-08-22 22:44:46,760] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' started.
 ^C[2023-08-22 22:44:50,205] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' ended.
 Total energy (J):
@@ -102,20 +102,14 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 ```
 .
 ├── zeus/                # ⚡ Zeus Python package
-│   ├── optimizer/       #    - GPU energy and time optimizers
-│   ├── run/             #    - Tools for running Zeus on real training jobs
-│   ├── policy/          #    - Optimization policies and extension interfaces
-│   ├── util/            #    - Utility functions and classes
-│   ├── monitor.py       #    - `ZeusMonitor`: Measure GPU time and energy of any code block
-│   ├── controller.py    #    - Tools for controlling the flow of training
-│   ├── callback.py      #    - Base class for Hugging Face-like training callbacks.
-│   ├── simulate.py      #    - Tools for trace-driven simulation
-│   ├── analyze.py       #    - Analysis functions for power logs
-│   └── job.py           #    - Class for job specification
+│   ├── optimizer/       #    - A collection of optimizers for time and energy
+│   ├── monitor/         #    - Programmatic power and energy measurement tools
+│   ├── utils/           #    - Utility functions and classes
+│   ├── _legacy/         #    - Legacy code mostly to keep our papers reproducible
+│   ├── device.py        #    - Abstraction layer over compute devices.
+│   └── callback.py      #    - Base class for HuggingFace-like training callbacks
 │
-├── zeus_monitor/        # 🔌 GPU power monitor
-│   ├── zemo/            #    -  A header-only library for querying NVML
-│   └── main.cpp         #    -  Source code of the power monitor
+├── docker/              # 🐳 Dockerfiles and Docker Compose files
 │
 ├── examples/            # 🛠️ Examples of integrating Zeus
 │

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from zeus.job import Job
+from zeus._legacy.job import Job
 
 
 class BatchSizeOptimizer(ABC):
@@ -33,8 +33,8 @@ class BatchSizeOptimizer(ABC):
     def register_job(self, job: Job, batch_sizes: list[int]) -> None:
         """Prepare internal state so that it can handle the given job.
 
-        It is assumed that the state of each [`Job`][zeus.job.Job] will be
-        managed separately. Note that [`Job`][zeus.job.Job] is hashable,
+        It is assumed that the state of each [`Job`][zeus._legacy.job.Job] will be
+        managed separately. Note that [`Job`][zeus._legacy.job.Job] is hashable,
         and thus can be used as dictionary keys.
 
         Args:

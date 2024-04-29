@@ -25,7 +25,7 @@ import multiprocessing as mp
 import pandas as pd
 from sklearn.metrics import auc
 
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 from zeus.device import get_gpus
 
 

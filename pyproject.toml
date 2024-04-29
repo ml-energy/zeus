@@ -14,18 +14,17 @@ classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
 ]
 keywords = ["deep-learning", "power", "energy", "sustainability", "mlsys"]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "numpy",
     "pandas",
     "scikit-learn",
     "nvidia-ml-py",
-    "pydantic",  # The `zeus.util.pydantic_v1` compatibility layer allows us to unpin Pydantic in most cases.
+    "pydantic",  # The `zeus.utils.pydantic_v1` compatibility layer allows us to unpin Pydantic in most cases.
     "rich",
     "tyro",
 ]
@@ -44,8 +43,9 @@ bso-server = ["fastapi[all]","sqlalchemy","pydantic<2"]
 migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv"]
 lint = ["ruff", "black==22.6.0"]
 test = ["fastapi[all]","sqlalchemy","pydantic<2", "httpx", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0"]
-dev = ["zeus-ml[perseus,lint,test]", "greenlet"]
+docs = ["mkdocs-material[imaging]==9.5.19", "mkdocstrings[python]==0.25.0", "mkdocs-gen-files==0.5.0", "mkdocs-literate-nav==0.6.1", "mkdocs-section-index==0.3.9", "urllib3<2", "black"]
 # greenlet is for supporting apple mac silicon for sqlalchemy(https://docs.sqlalchemy.org/en/20/faq/installation.html)
+dev = ["zeus-ml[lint,test,docs,perseus,bso-server]", "greenlet"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -84,7 +84,7 @@ pydocstyle.convention = "google"
 "**/__init__.py" = ["F401", "F403"]
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
-"zeus/util/pydantic_v1.py" = ["F403"]
+"zeus/utils/pydantic_v1.py" = ["F403"]
 "zeus/optimizer/batch_size/**/commands.py" = ["N805"]
 "zeus/optimizer/batch_size/**/models.py" = ["N805"]
 "zeus/optimizer/batch_size/server/config.py" = ["N805"]

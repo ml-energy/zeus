@@ -26,7 +26,7 @@ from typing import Generator
 
 import numpy as np
 
-from zeus.job import Job
+from zeus._legacy.job import Job
 from zeus._legacy.policy.interface import BatchSizeOptimizer, PowerLimitOptimizer
 from zeus._legacy.policy.mab import GaussianTS
 

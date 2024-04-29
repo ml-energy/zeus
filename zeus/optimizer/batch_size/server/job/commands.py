@@ -6,7 +6,7 @@ import json
 from typing import Any, Optional
 
 import numpy as np
-from zeus.util.pydantic_v1 import root_validator, validator, Field, BaseModel
+from zeus.utils.pydantic_v1 import root_validator, validator, Field, BaseModel
 from zeus.optimizer.batch_size.common import GpuConfig, JobSpecFromClient, JobParams
 from zeus.optimizer.batch_size.server.database.schema import BatchSizeTable, JobTable
 from zeus.optimizer.batch_size.server.job.models import Stage

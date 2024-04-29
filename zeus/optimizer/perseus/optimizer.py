@@ -37,7 +37,7 @@ from zeus.optimizer.perseus.common import (
     RankInfo,
     FrequencySchedule,
 )
-from zeus.util.framework import cuda_sync
+from zeus.utils.framework import cuda_sync
 
 
 class PerseusOptimizer(Callback):

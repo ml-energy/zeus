@@ -46,7 +46,7 @@ from zeus.optimizer.batch_size.server.services.commands import (
     GetRandomChoices,
     UpdateArm,
 )
-from zeus.util.metric import zeus_cost
+from zeus.utils.metric import zeus_cost
 
 
 class ZeusService:

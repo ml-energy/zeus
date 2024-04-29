@@ -102,8 +102,8 @@ Fortunately, DNN training jobs often **recur** in production GPU clusters,[^9] a
 
 This results in two main components in Zeus:
 
-- **JIT energy profiler** ([`ZeusDataLoader`][zeus.run.dataloader.ZeusDataLoader]): Finds the optimal power limit via online profiling.
-- **MAB + Thompson Sampling** ([`ZeusMaster`][zeus.run.master.ZeusMaster]): Finds the optimal batch size across recurrences.
+- **JIT energy profiler**: Finds the optimal power limit via online profiling.
+- **MAB + Thompson Sampling**: Finds the optimal batch size across recurrences.
 
 
 <!-- Abbreviation definitions -->

@@ -23,10 +23,28 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from zeus.analyze import HistoryEntry
-from zeus.job import Job
+from zeus._legacy.job import Job
 from zeus._legacy.policy import BatchSizeOptimizer, PowerLimitOptimizer
-from zeus.util import zeus_cost
+from zeus.utils.metric import zeus_cost
+
+
+@dataclass
+class HistoryEntry:
+    """Represents the config and result of a job run that may have failed.
+
+    Attributes:
+        bs: Batch size
+        pl: Power limit
+        energy: Energy consumption in Joules
+        reached: Whether the target metric was reached at the end
+        time: Time consumption in seconds
+    """
+
+    bs: int
+    pl: int
+    energy: float
+    reached: bool
+    time: float
 
 
 # ruff: noqa: PLR0912, PLR0915
@@ -101,7 +119,7 @@ class Simulator:
                 $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
 
         Returns:
-            A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.
+            A list of [`HistoryEntry`][zeus._legacy.simulate.HistoryEntry] objects for each job run.
         """
         # Copy all internal state so that simulation does not modify any
         # internal state and is deterministic w.r.t. the random seed.
@@ -248,7 +266,7 @@ class Simulator:
                 $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
 
         Returns:
-            A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.
+            A list of [`HistoryEntry`][zeus._legacy.simulate.HistoryEntry] objects for each job run.
         """
         # Copy all internal state so that simulation does not modify any
         # internal state and is deterministic w.r.t. the random seed.

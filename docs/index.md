@@ -89,7 +89,7 @@ Total energy (J):
 ```console
 $ python -m zeus.monitor energy
 [2023-08-22 22:44:45,106] [ZeusMonitor](energy.py:157) Monitoring GPU [0, 1, 2, 3].
-[2023-08-22 22:44:46,210] [zeus.util.framework](framework.py:38) PyTorch with CUDA support is available.
+[2023-08-22 22:44:46,210] [zeus.utils.framework](framework.py:38) PyTorch with CUDA support is available.
 [2023-08-22 22:44:46,760] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' started.
 ^C[2023-08-22 22:44:50,205] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' ended.
 Total energy (J):

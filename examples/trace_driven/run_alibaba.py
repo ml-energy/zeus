@@ -25,7 +25,7 @@ from functools import lru_cache
 
 import pandas as pd
 
-from zeus.job import Job
+from zeus._legacy.job import Job
 from zeus._legacy.simulate import Simulator
 from zeus.analyze import HistoryEntry
 from zeus._legacy.policy import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer

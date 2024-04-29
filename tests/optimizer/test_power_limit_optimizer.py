@@ -23,8 +23,9 @@ from unittest.mock import call
 import pytest
 import pandas as pd
 
-from zeus.optimizer import GlobalPowerLimitOptimizer, HFGlobalPowerLimitOptimizer
 from zeus.optimizer.power_limit import (
+    GlobalPowerLimitOptimizer,
+    HFGlobalPowerLimitOptimizer,
     Ready,
     Done,
     Energy,
@@ -32,8 +33,8 @@ from zeus.optimizer.power_limit import (
     ZeusCost,
     MaxSlowdownConstraint,
 )
-from zeus.util.testing import ReplayZeusMonitor
-from zeus.util.metric import zeus_cost
+from zeus.utils.testing import ReplayZeusMonitor
+from zeus.utils.metric import zeus_cost
 
 if typing.TYPE_CHECKING:
     from pathlib import Path

@@ -26,7 +26,7 @@ from zeus.optimizer.batch_size.server.exceptions import (
 )
 from zeus.optimizer.batch_size.server.optimizer import ZeusBatchSizeOptimizer
 from zeus.optimizer.batch_size.server.services.service import ZeusService
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 
 app = FastAPI()
 # Global variable across different requests: https://github.com/tiangolo/fastapi/issues/592

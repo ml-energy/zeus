@@ -28,8 +28,8 @@ from zeus.optimizer.batch_size.server.job.commands import CreateJob
 from zeus.optimizer.batch_size.server.job.models import Stage
 from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.optimizer.batch_size.server.services.service import ZeusService
-from zeus.util.logging import get_logger
-from zeus.util.metric import zeus_cost
+from zeus.utils.logging import get_logger
+from zeus.utils.metric import zeus_cost
 
 logger = get_logger(__name__)
 

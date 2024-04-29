@@ -23,7 +23,7 @@ import pynvml
 import pytest
 
 from zeus.monitor import Measurement, ZeusMonitor
-from zeus.util.testing import ReplayZeusMonitor
+from zeus.utils.testing import ReplayZeusMonitor
 import zeus.device.gpu
 
 if TYPE_CHECKING:

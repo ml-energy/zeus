@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, Optional
 
 import numpy as np
-from zeus.util.pydantic_v1 import root_validator
+from zeus.utils.pydantic_v1 import root_validator
 from pydantic.utils import GetterDict
 from zeus.optimizer.batch_size.common import GpuConfig, JobParams
 

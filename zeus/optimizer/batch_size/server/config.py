@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Union
 
 from dotenv import find_dotenv
-from zeus.util.pydantic_v1 import BaseSettings, validator
+from zeus.utils.pydantic_v1 import BaseSettings, validator
 
 
 class ZeusBsoSettings(BaseSettings):

@@ -14,7 +14,7 @@ from zeus._legacy.policy.optimizer import (
     PruningGTSBatchSizeOptimizer,
 )
 from zeus._legacy.simulate import Simulator
-from zeus.job import Job
+from zeus._legacy.job import Job
 
 config = {
     "gpu": "v100",

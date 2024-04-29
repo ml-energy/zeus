@@ -23,8 +23,8 @@ import httpx
 import numpy as np
 import pandas as pd
 from zeus._legacy.policy import PowerLimitOptimizer
-from zeus.analyze import HistoryEntry
-from zeus.job import Job
+from zeus._legacy.simulate import HistoryEntry
+from zeus._legacy.job import Job
 from zeus.optimizer.batch_size.common import (
     GET_NEXT_BATCH_SIZE_URL,
     REGISTER_JOB_URL,
@@ -32,7 +32,7 @@ from zeus.optimizer.batch_size.common import (
     JobSpecFromClient,
     TrainingResult,
 )
-from zeus.util import zeus_cost
+from zeus.utils.metric import zeus_cost
 
 
 class BatchSizeOptimizerDummyClient:
@@ -150,7 +150,7 @@ class SimulatorWithServer:
                 $\textrm{cost} = \eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}$
 
         Returns:
-            A list of [`HistoryEntry`][zeus.analyze.HistoryEntry] objects for each job run.
+            A list of [`HistoryEntry`][zeus._legacy.simulate.HistoryEntry] objects for each job run.
         """
         # Figure out MAXPOWER.
         max_power = self.df.power_limit.max().item()
