@@ -127,11 +127,12 @@ We created [Perseus](../perseus/index.md), which can optimize the energy consump
 
 ## Recurring jobs
 
-The cost-optimal batch size is located *across* multiple job runs using a Multi-Armed Bandit algorithm.
-First, go through the steps for non-recurring jobs. 
-[`ZeusDataLoader`][zeus.run.ZeusDataLoader] will transparently optimize the GPU power limit for any given batch size.
-Then, you can use [`ZeusMaster`][zeus.run.ZeusMaster] to drive recurring jobs and batch size optimization.
+In production, it's likely that a DNN is trained and re-trained repetitively to keep it up to date.
+For these kinds of recurring jobs, we can take those recurrences as exploration opportunities to find the cost-optimal training batch size.
+This is done with a Multi-Armed Bandit algorithm.
+See [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer].
 
-This example will come in handy:
+Two full examples are given for the batch size optimizer:
 
-- [Running trace-driven simulation on single recurring jobs and the Alibaba GPU cluster trace](https://github.com/ml-energy/zeus/tree/master/examples/trace_driven){.external}
+- [MNIST](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/mnist/): Single-GPU and data parallel training, with integration examples with Kubeflow
+- [Sentiment Analysis](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/capriccio/): Full training example with HuggingFace transformers using the Capriccio dataset, a sentiment analysis dataset with data drift.

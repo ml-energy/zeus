@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from zeus.util import LinearScaler, SquareRootScaler
+from zeus.utils.lr_scaler import LinearScaler, SquareRootScaler
 
 
 @dataclass(frozen=True, unsafe_hash=True)
@@ -36,7 +36,7 @@ class Job:
         default_bs: Initial batch size (b0) provided by the user.
         default_lr: Learning rate corresponding to the default batch size.
         workdir: Working directory in which to launch the job command.
-        command: Job command template. See [`gen_command`][zeus.job.Job.gen_command].
+        command: Job command template. See [`gen_command`][zeus._legacy.job.Job.gen_command].
     """
 
     dataset: str

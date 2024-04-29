@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from zeus.monitor.power import PowerMonitor
-from zeus.util.logging import get_logger
-from zeus.util.framework import cuda_sync
+from zeus.utils.logging import get_logger
+from zeus.utils.framework import cuda_sync
 from zeus.device import get_gpus
 
 logger = get_logger(__name__)

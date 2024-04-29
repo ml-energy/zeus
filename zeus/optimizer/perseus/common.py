@@ -24,7 +24,7 @@ from typing import Any, Optional
 import aiofiles
 import pandas as pd
 
-from zeus.util.pydantic_v1 import BaseModel, BaseSettings, Field, validator, PyObject
+from zeus.utils.pydantic_v1 import BaseModel, BaseSettings, Field, validator, PyObject
 
 GET_SERVER_INFO_URL = "/info"
 REGISTER_JOB_URL = "/register_job"

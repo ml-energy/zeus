@@ -30,5 +30,4 @@ data_path = dict(train="9_train.json", validation="9_val.json")
 raw_datasets = datasets.load_dataset("json", data_files=data_path)
 ```
 
-For a full example, you can use [`examples/ZeusDataLoader/capriccio/train.py`](../examples/ZeusDataLoader/capriccio/train.py) to fine-tune a Huggingface pre-trained language model on a slice of Capriccio.
-Parts relevant to using Capriccio are marked with `# CAPRICCIO` in the script.
+For a full example, please refer to [`examples/batch_size_optimizer/capriccio/train.py`](../examples/batch_size_optimizer/capriccio/train.py).

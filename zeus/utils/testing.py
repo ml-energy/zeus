@@ -19,8 +19,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from zeus.monitor import Measurement, ZeusMonitor
-from zeus.util.framework import cuda_sync
-from zeus.util.logging import get_logger
+from zeus.utils.framework import cuda_sync
+from zeus.utils.logging import get_logger
 
 
 class ReplayZeusMonitor(ZeusMonitor):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from zeus.util.pydantic_v1 import root_validator, validator, Field
+from zeus.utils.pydantic_v1 import root_validator, validator, Field
 from zeus.optimizer.batch_size.server.batch_size_state.models import BatchSizeBase
 from zeus.optimizer.batch_size.server.database.schema import (
     TrialStatus,

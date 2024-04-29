@@ -19,7 +19,7 @@ from __future__ import annotations
 import types
 from functools import lru_cache
 
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
 MODULE_CACHE: dict[str, types.ModuleType] = {}

@@ -15,9 +15,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer
-from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobSpec
+from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
+from zeus.optimizer.batch_size import BatchSizeOptimizer, JobSpec
+from zeus.utils.lr_scaler import LinearScaler
 
 
 WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
@@ -103,13 +103,6 @@ def main():
     # Training settings
     parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
     parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=64,
-        metavar="N",
-        help="input batch size for training (default: 64)",
-    )
-    parser.add_argument(
         "--test-batch-size",
         type=int,
         default=1000,
@@ -122,13 +115,6 @@ def main():
         default=1,
         metavar="N",
         help="number of epochs to train (default: 10)",
-    )
-    parser.add_argument(
-        "--lr",
-        type=float,
-        default=0.01,
-        metavar="LR",
-        help="learning rate (default: 0.01)",
     )
     parser.add_argument(
         "--momentum",
@@ -193,15 +179,14 @@ def main():
 
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
 
-    ##################### ZEUS INIT BEGIN ##########################
-    # Set up monitor, plo, bso.
-    monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
+    ########################## Zeus ##########################
+    monitor = ZeusMonitor(gpu_indices=[0])
     plo = GlobalPowerLimitOptimizer(monitor)
     bso = BatchSizeOptimizer(
         monitor=monitor,
-        server_url=os.environ.get("ZEUS_SERVER_URL"),
+        server_url=os.environ["ZEUS_SERVER_URL"],
         job=JobSpec(
-            job_id=os.environ.get("ZEUS_JOB_ID"),
+            job_id=os.environ.get("ZEUS_JOB_ID", None),
             job_id_prefix="mnist-dev",
             default_batch_size=256,
             batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
@@ -209,11 +194,15 @@ def main():
             target_metric=args.target_accuracy,
         ),
     )
-    # Get batch size from bso 
+    # Fetch the batch size from the BSO server.
     batch_size = bso.get_batch_size()
-    print("Chosen batach_size:", batch_size, "Trial number:", bso.trial_number)
+    print("Chosen batach_size:", batch_size)
+    # Scale the learning rate accordingly.
+    # Default was batch size 64 and learing rate 0.01, and we use the linear
+    # scaling rule since the optimizer is SGD.
+    args.lr = LinearScaler(bs=64, lr=0.01).compute_lr(new_bs=batch_size)
+    ##########################################################
 
-    ##################### ZEUS INIT END ##########################
     train_loader = torch.utils.data.DataLoader(
         datasets.FashionMNIST(
             "../data",
@@ -252,7 +241,7 @@ def main():
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
     
-    ################### ZEUS OPTIMIZER USAGE BEGIN #######################
+    ########################## Zeus ##########################
     bso.on_train_begin()
 
     for epoch in range(1, args.epochs + 1):
@@ -261,8 +250,9 @@ def main():
         plo.on_epoch_end()
         acc = test(args, model, device, test_loader, writer, epoch)
         bso.on_evaluate(acc)
+
+    ##########################################################
         
-    ################### ZEUS OPTIMIZER USAGE END #########################
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
 

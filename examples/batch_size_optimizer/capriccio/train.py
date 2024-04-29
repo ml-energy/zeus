@@ -15,6 +15,7 @@
 
 """Finetuning a 🤗 Transformers model for sentiment analysis on Capriccio."""
 
+import os
 import argparse
 import logging
 import random
@@ -36,8 +37,10 @@ from transformers import (
     set_seed,
 )
 
-# ZEUS
-from zeus.run import ZeusDataLoader
+from zeus.monitor import ZeusMonitor
+from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
+from zeus.optimizer.batch_size import BatchSizeOptimizer, JobSpec
+from zeus.utils.lr_scaler import SquareRootScaler
 
 logger = logging.getLogger(__name__)
 
@@ -48,38 +51,29 @@ def parse_args() -> argparse.Namespace:
         description="Finetune a transformers model on a text classification task"
     )
 
-    # CAPRICCIO
+    ########################## Zeus ##########################
     parser.add_argument(
         "--data_dir",
         type=str,
-        help="Directory where Capriccio is stored.",
+        help="Directory where the Capriccio dataset is stored.",
         required=True,
     )
     parser.add_argument(
         "--slice_number",
         type=int,
         help=(
-            "Which dataset slice to use."
+            "Which Capriccio dataset slice to use. "
             "Together with --data_dir, the paths to the train and val files are determined."
         ),
         required=True,
     )
-
-    # ZEUS
-    runtime_mode = parser.add_mutually_exclusive_group()
-    runtime_mode.add_argument(
-        "--zeus", action="store_true", help="Whether to run Zeus."
-    )
-
     parser.add_argument(
         "--target_metric",
-        default=None,
+        default=0.84,
         type=float,
-        help=(
-            "Stop training when the target metric is reached. This is ignored when running in Zeus mode because"
-            " ZeusDataLoader will receive the target metric via environment variable and stop training by itself."
-        ),
+        help="Stop training when the target metric is reached.",
     )
+    ##########################################################
 
     parser.add_argument(
         "--max_length",
@@ -107,40 +101,37 @@ def parse_args() -> argparse.Namespace:
         help="If passed, will use a slow tokenizer (not backed by the 🤗 Tokenizers library).",
     )
     parser.add_argument(
-        "--batch_size",
-        type=int,
-        help="Batch size  for the training and eval dataloader.",
-        required=True,
-    )
-    parser.add_argument(
         "--learning_rate",
         type=float,
-        default=5e-5,
+        default=4.00e-7,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
         "--weight_decay", type=float, default=0.0, help="Weight decay to use."
     )
     parser.add_argument(
-        "--num_train_epochs",
+        "--max_epochs",
         type=int,
-        default=3,
-        help="Total number of training epochs to perform.",
+        default=10,
+        help="Maximum number of training epochs to perform.",
     )
     parser.add_argument(
-        "--seed", type=int, default=None, help="A seed for reproducible training."
+        "--seed", type=int, default=123, help="A seed for reproducible training."
     )
     args = parser.parse_args()
 
-    # CAPRICCIO
-    if not (
-        train_file := Path(args.data_dir) / f"{args.slice_number}_train.json"
-    ).exists():
+    ########################## Zeus ##########################
+    # Determine the paths to the Capriccio train and val files.
+    train_file = Path(args.data_dir) / f"{args.slice_number}_train.json"
+    if not train_file.exists():
         raise ValueError(f"'{train_file}' does not exist")
     args.train_file = str(train_file)
-    if not (val_file := Path(args.data_dir) / f"{args.slice_number}_val.json").exists():
+
+    val_file = Path(args.data_dir) / f"{args.slice_number}_val.json"
+    if not val_file.exists():
         raise ValueError(f"'{val_file}' does not exist")
     args.val_file = str(val_file)
+    ##########################################################
 
     return args
 
@@ -165,8 +156,32 @@ def main() -> None:
     if args.seed is not None:
         set_seed(args.seed)
 
-    # Load the dataset.
-    # CAPRICCIO
+    ########################## Zeus ##########################
+    monitor = ZeusMonitor(gpu_indices=[0])  # Assumes single-GPU training.
+    plo = GlobalPowerLimitOptimizer(monitor)
+    bso = BatchSizeOptimizer(
+        monitor=monitor,
+        server_url=os.environ["ZEUS_SERVER_URL"],
+        job=JobSpec(
+            job_id=os.environ.get("ZEUS_JOB_ID"),
+            job_id_prefix="capriccio",
+            default_batch_size=128,
+            batch_sizes=[8, 16, 32, 64, 128],
+            max_epochs=args.max_epochs,
+            target_metric=args.target_metric,
+            window_size=10,
+        ),
+    )
+    # Fetch the batch size from the BSO server.
+    batch_size = bso.get_batch_size()
+    print("Chosen batach size:", batch_size)
+    # Scale the learning rate accordingly.
+    # Default was batch size 128 and learing rate 4.00e-7, and we use the square root
+    # scaling rule since the optimizer is AdamW.
+    args.learning_rate = SquareRootScaler(bs=128, lr=4.00e-7).compute_lr(new_bs=batch_size)
+    ##########################################################
+
+    # Load the specific slice of the Capriccio dataset.
     data_path = dict(train=args.train_file, validation=args.val_file)
     logger.info("Using dataset slice: %s", data_path)
     raw_datasets = load_dataset("json", data_files=data_path)
@@ -191,7 +206,6 @@ def main() -> None:
         config=config,
     )
 
-    # CAPRICCIO
     sentence1_key = "text"
     sentence2_key = None
 
@@ -228,7 +242,6 @@ def main() -> None:
         desc="Running tokenizer on dataset",
     )
 
-    # CAPRICCIO
     train_dataset = processed_datasets["train"]
     eval_dataset = processed_datasets["validation"]
 
@@ -247,28 +260,15 @@ def main() -> None:
         # of 8s, which will enable the use of Tensor Cores on NVIDIA hardware with compute capability >= 7.5 (Volta).
         data_collator = DataCollatorWithPadding(tokenizer)
 
-    # ZEUS
-    if args.zeus:
-        train_dataloader = ZeusDataLoader(
-            train_dataset,
-            batch_size=args.batch_size,
-            max_epochs=args.num_train_epochs,
-            shuffle=True,
-            collate_fn=data_collator,
-        )
-        eval_dataloader = ZeusDataLoader(
-            eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
-        )
-    else:
-        train_dataloader = DataLoader(
-            train_dataset,
-            shuffle=True,
-            collate_fn=data_collator,
-            batch_size=args.batch_size,
-        )
-        eval_dataloader = DataLoader(
-            eval_dataset, collate_fn=data_collator, batch_size=args.batch_size
-        )
+    train_dataloader = DataLoader(
+        train_dataset,
+        shuffle=True,
+        collate_fn=data_collator,
+        batch_size=batch_size,
+    )
+    eval_dataloader = DataLoader(
+        eval_dataset, collate_fn=data_collator, batch_size=batch_size
+    )
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
@@ -300,7 +300,7 @@ def main() -> None:
     # shorter in multiprocess)
 
     # Compute the total number of training steps.
-    args.max_train_steps = args.num_train_epochs * len(train_dataloader)
+    args.max_train_steps = args.max_epochs * len(train_dataloader)
 
     # Get the metric function
     metric = load_metric("accuracy")
@@ -308,10 +308,10 @@ def main() -> None:
     # Train!
     logger.info("***** Running training *****")
     logger.info("  Num examples = %s", len(train_dataset))
-    logger.info("  Num Epochs = %s", args.num_train_epochs)
+    logger.info("  Max Epochs = %s", args.max_epochs)
     logger.info(
         "  Total train batch size (w. parallel, distributed & accumulation) = %s",
-        args.batch_size,
+        batch_size,
     )
     logger.info("  Total optimization steps = %s", args.max_train_steps)
     if args.target_metric is not None:
@@ -320,16 +320,16 @@ def main() -> None:
     progress_bar = tqdm(range(args.max_train_steps))
     completed_steps = 0
 
-    # ZEUS
-    if args.zeus:
-        assert isinstance(train_dataloader, ZeusDataLoader)
-        epoch_iter = train_dataloader.epochs()
-    else:
-        epoch_iter = range(args.num_train_epochs)
+    ########################## Zeus ##########################
+    bso.on_train_begin()
 
-    for epoch in epoch_iter:
+    for epoch in range(args.max_epochs):
+        plo.on_epoch_begin()
+
         model.train()
         for batch in train_dataloader:
+            plo.on_step_begin()
+
             for key, val in batch.items():
                 if torch.is_tensor(val):
                     batch[key] = val.cuda()
@@ -340,6 +340,10 @@ def main() -> None:
             optimizer.zero_grad()
             progress_bar.update(1)
             completed_steps += 1
+
+            plo.on_step_end()
+
+        plo.on_epoch_end()
 
         model.eval()
         for batch in eval_dataloader:
@@ -356,22 +360,8 @@ def main() -> None:
         eval_metric = metric.compute()
         logger.info("epoch %s: %s", epoch, eval_metric)
 
-        # ZEUS
-        if args.zeus:
-            assert isinstance(train_dataloader, ZeusDataLoader)
-            train_dataloader.report_metric(
-                eval_metric["accuracy"], higher_is_better=True
-            )
-        # If this were Zeus, the train dataloader will stop training by itself.
-        elif args.target_metric is not None:
-            if eval_metric["accuracy"] >= args.target_metric:
-                logger.info(
-                    "Reached target metric %s in %s epochs.",
-                    args.target_metric,
-                    epoch + 1,
-                )
-                break
-
+        bso.on_evaluate(eval_metric["accuracy"])
+        ##########################################################
 
 if __name__ == "__main__":
     main()

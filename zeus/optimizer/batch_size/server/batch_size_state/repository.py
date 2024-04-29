@@ -27,7 +27,7 @@ from zeus.optimizer.batch_size.server.database.schema import (
     TrialType,
 )
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 
 logger = get_logger(__name__)
 

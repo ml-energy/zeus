@@ -23,7 +23,7 @@ from torch.utils.data import Subset
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.power_limit import MaxSlowdownConstraint
-from zeus.util.env import get_env
+from zeus.utils.env import get_env
 from zeus.callback import Callback, CallbackSet
 
 

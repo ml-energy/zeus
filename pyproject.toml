@@ -14,18 +14,17 @@ classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
 ]
 keywords = ["deep-learning", "power", "energy", "sustainability", "mlsys"]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "numpy",
     "pandas",
     "scikit-learn",
     "nvidia-ml-py",
-    "pydantic",  # The `zeus.util.pydantic_v1` compatibility layer allows us to unpin Pydantic in most cases.
+    "pydantic",  # The `zeus.utils.pydantic_v1` compatibility layer allows us to unpin Pydantic in most cases.
     "rich",
     "tyro",
 ]
@@ -85,7 +84,7 @@ pydocstyle.convention = "google"
 "**/__init__.py" = ["F401", "F403"]
 "zeus/optimizer/perseus/common.py" = ["N805"]
 "zeus/optimizer/perseus/server/router.py" = ["B008"]
-"zeus/util/pydantic_v1.py" = ["F403"]
+"zeus/utils/pydantic_v1.py" = ["F403"]
 "zeus/optimizer/batch_size/**/commands.py" = ["N805"]
 "zeus/optimizer/batch_size/**/models.py" = ["N805"]
 "zeus/optimizer/batch_size/server/config.py" = ["N805"]

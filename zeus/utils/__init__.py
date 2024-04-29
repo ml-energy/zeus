@@ -12,17 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compatibility layer for Pydantic v1 and v2.
-
-We don't want to pin any specific version of Pydantic. With this, we can
-import things from `zeus.util.pydantic_v1` and always use the V1 API
-regardless of the installed version of Pydantic.
-
-Inspired by Deepspeed:
-https://github.com/microsoft/DeepSpeed/blob/5d754606/deepspeed/pydantic_v1.py
-"""
-
-try:
-    from pydantic.v1 import *
-except ImportError:
-    from pydantic import *
+"""Utility functions and classes."""

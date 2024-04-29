@@ -13,7 +13,7 @@ from zeus.optimizer.batch_size.common import (
     TrainingResult,
     TrialId,
 )
-from zeus.util.metric import zeus_cost
+from zeus.utils.metric import zeus_cost
 
 
 @pytest.fixture(scope="session", autouse=True)

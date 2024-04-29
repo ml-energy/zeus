@@ -25,7 +25,7 @@ from zeus.optimizer.batch_size.exceptions import (
     ZeusBSORuntimError,
     ZeusBSOTrainFailError,
 )
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 from zeus.device import get_gpus
 
 logger = get_logger(__name__)
@@ -33,6 +33,11 @@ logger = get_logger(__name__)
 
 class BatchSizeOptimizer(Callback):
     """Batch size optimizer client that talks to server.
+
+    The following methods must be called in order inside the training script:
+    - `get_batch_size`: At the beginning of the script.
+    - `on_train_begin`: Before running any epochs.
+    - `on_evaluate`: After each epoch when the validation metric is available.
 
     One batch size optimizer per one training session of the job.
     The set of GPUs to be used for training should be homogeneous, and will be inferred

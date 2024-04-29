@@ -12,9 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility functions and classes."""
+"""Compatibility layer for Pydantic v1 and v2.
 
-from zeus.util.env import get_env
-from zeus.util.logging import FileAndConsole
-from zeus.util.lr_scaler import LinearScaler, SquareRootScaler
-from zeus.util.metric import zeus_cost
+We don't want to pin any specific version of Pydantic. With this, we can
+import things from `zeus.utils.pydantic_v1` and always use the V1 API
+regardless of the installed version of Pydantic.
+
+Inspired by Deepspeed:
+https://github.com/microsoft/DeepSpeed/blob/5d754606/deepspeed/pydantic_v1.py
+"""
+
+try:
+    from pydantic.v1 import *
+except ImportError:
+    from pydantic import *

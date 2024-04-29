@@ -42,9 +42,9 @@ from abc import ABC, abstractmethod
 
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
-from zeus.util.logging import get_logger
-from zeus.util.metric import zeus_cost
-from zeus.util.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
+from zeus.utils.logging import get_logger
+from zeus.utils.metric import zeus_cost
+from zeus.utils.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
 from zeus.device import get_gpus, ZeusGPUNoPermissionError
 
 from typing import TYPE_CHECKING

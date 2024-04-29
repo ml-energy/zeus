@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utilities for result analysis."""
+"""Defines the energy-time cost metric function."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import cast
@@ -25,23 +24,23 @@ import pandas as pd
 from sklearn.metrics import auc
 
 
-@dataclass
-class HistoryEntry:
-    """Represents the config and result of a job run that may have failed.
+def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int) -> float:
+    """Compute Zeus's energy-time cost metric.
 
-    Attributes:
-        bs: Batch size
-        pl: Power limit
-        energy: Energy consumption in Joules
-        reached: Whether the target metric was reached at the end
-        time: Time consumption in seconds
+    Trades off ETA and TTA based on the value of `eta_knob`.
+    The caller is expected to do bound checking for `eta_knob`,
+    because `eta_knob` does not change frequently.
+
+    Args:
+        energy: Joules
+        time: seconds
+        eta_knob: Real number in [0, 1].
+        max_power: The maximum power limit of the GPU.
+
+    Returns:
+        The cost of the DL training job.
     """
-
-    bs: int
-    pl: int
-    energy: float
-    reached: bool
-    time: float
+    return eta_knob * energy + (1 - eta_knob) * max_power * time
 
 
 # ruff: noqa: PLR2004

@@ -17,12 +17,9 @@ from torchvision import datasets, transforms
 
 from zeus.callback import Callback, CallbackSet
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer
-from zeus.optimizer.batch_size.client import BatchSizeOptimizer
-from zeus.optimizer.batch_size.common import JobSpec
-from zeus.optimizer.batch_size.exceptions import ZeusBSOTrainFailError
-from zeus.optimizer.power_limit import MaxSlowdownConstraint
-from zeus.util.env import get_env
+from zeus.optimizer.batch_size import BatchSizeOptimizer, JobSpec
+from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
+from zeus.utils.lr_scaler import LinearScaler
 
 
 class Net(nn.Module):
@@ -226,9 +223,9 @@ def main():
     monitor = ZeusMonitor(gpu_indices=None)  # All visible GPUs.
     bso = BatchSizeOptimizer(
         monitor=monitor,
-        server_url=get_env("ZEUS_SERVER_URL", str, "http://localhost:30100"),
+        server_url=os.environ.get("ZEUS_SERVER_URL", "http://localhost:30100"),
         job=JobSpec(
-            job_id=get_env("ZEUS_JOB_ID", str, "mnist-dev-dp-1"),
+            job_id=os.environ.get("ZEUS_JOB_ID"),
             job_id_prefix="mnist-dev",
             default_batch_size=256,
             batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
@@ -240,19 +237,7 @@ def main():
 
     # The rank 0 process will monitor and optimize the power limit of all GPUs.
     if rank == 0:
-        callback_set: list[Callback] = [
-            # plo
-            GlobalPowerLimitOptimizer(
-                monitor=monitor,
-                optimum_selector=MaxSlowdownConstraint(
-                    factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
-                ),
-                warmup_steps=10,
-                profile_steps=40,
-                pl_step=25,
-            ),
-            bso,
-        ]
+        callback_set: list[Callback] = [GlobalPowerLimitOptimizer(monitor), bso]
         # Get batch size from bso
         batch_size = bso.get_batch_size()
         print("Rank", dist.get_rank())
@@ -266,13 +251,17 @@ def main():
         print("Rank", dist.get_rank())
 
     dist.broadcast(bs_trial_tensor, src=0)
-    bso.current_batch_size = bs_trial_tensor[0].item()
-    bso.trial_number = bs_trial_tensor[1].item()
+    bso.current_batch_size = int(bs_trial_tensor[0].item())
+    bso.trial_number = int(bs_trial_tensor[1].item())
     batch_size = bso.current_batch_size // world_size
 
     print(f"Batach_size to use for gpu[{rank}]: {batch_size}, trial number: {bso.trial_number}")
     callbacks = CallbackSet(callback_set)
 
+    # Scale the learning rate accordingly.
+    # Default was batch size 64 and learing rate 0.01, and we use the linear
+    # scaling rule since the optimizer is SGD.
+    args.lr = LinearScaler(bs=64, lr=0.01).compute_lr(new_bs=batch_size * world_size)
     ########################### ZEUS INIT END ###########################
 
     # Add train and test loaders.

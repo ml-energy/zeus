@@ -21,7 +21,7 @@ import logging
 import functools
 from typing import Any, Coroutine, TypeVar
 
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 
 T = TypeVar("T")
 default_logger = get_logger(__name__)
@@ -38,7 +38,7 @@ def create_task(
     Args:
         coroutine: The coroutine to be wrapped.
         logger: The logger to be used for logging exceptions. If `None`, the
-            the logger with the name `zeus.util.async_utils` is used.
+            the logger with the name `zeus.utils.async_utils` is used.
     """
     loop = asyncio.get_running_loop()
     task = loop.create_task(coroutine)
