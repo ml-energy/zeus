@@ -432,9 +432,9 @@ def _handle_amdsmi_errors(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except amdsmi.AmdSmiException as e:
-            exception_class = AMDGPU._exception_map.get(e.value, ZeusGPUUnknownError)
-            raise exception_class(e.msg) from e
+        except amdsmi.AmdSmiLibraryException as e:
+            exception_class = AMDGPU._exception_map.get(e.get_error_code(), ZeusGPUUnknownError)
+            raise exception_class(e.get_error_info()) from e
 
     return wrapper
 
@@ -454,7 +454,28 @@ class AMDGPU(GPU):
         self._get_handle()
         self._supportsGetTotalEnergyConsumption = None
 
-    _exception_map = {}
+    _exception_map = {
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL : ZeusGPUInvalidArgError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED : ZeusGPUNotSupportedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_TIMEOUT : ZeusGPUTimeoutError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM : ZeusGPUNoPermissionError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_OUT_OF_RESOURCES : ZeusGPUMemoryError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INIT_ERROR : ZeusGPUInitError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_FOUND : ZeusGPUNotFoundError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_INIT : ZeusGPUInitError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_DRIVER_NOT_LOADED : ZeusGPUDriverNotLoadedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INSUFFICIENT_SIZE : ZeusGPUInsufficientSizeError,
+            amdsmi.amdsmi_wrapper.AMDSMI_NO_ENERGY_DRV : ZeusGPUDriverNotLoadedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_NO_MSR_DRV : ZeusGPUDriverNotLoadedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_DRV : ZeusGPUDriverNotLoadedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_SUP : ZeusGPUNotSupportedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_MSG_SUP : ZeusGPUNotSupportedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_HSMP_TIMEOUT :ZeusGPUTimeoutError,
+            amdsmi.amdsmi_wrapper.AMDSMI_NO_DRV : ZeusGPUDriverNotLoadedError,
+            amdsmi.amdsmi_wrapper.AMDSMI_FILE_NOT_FOUND : ZeusGPULibraryNotFoundError,
+            amdsmi.amdsmi_wrapper.AMDSMI_ARG_PTR_NULL : ZeusGPUInvalidArgError,
+            amdsmi.amdsmi_wrapper.AMDSMI_STATUS_UNKNOWN_ERROR : ZeusGPUUnknownError
+    }
 
     @_handle_amdsmi_errors
     def _get_handle(self):
@@ -463,30 +484,27 @@ class AMDGPU(GPU):
             raise ZeusGPUNotFoundError(
                 f"GPU with index {self.gpu_index} not found. Found {len(handles)} GPUs."
             )
-        self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index] # Can throw AmdSmiLibraryException
+        self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
 
     @_handle_amdsmi_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-        return (info.min_power_cap * 1000, info.max_power_cap * 1000) # Can throw AmdSmiLibraryException, AmdSmiRetryException, AmdSmiParameterException
+        return (info.min_power_cap * 1000, info.max_power_cap * 1000)
 
     @_handle_amdsmi_errors
     def setPersistenceMode(self, enable: bool) -> None:
         pass
-        # TODO: look into amdsmi_set_gpu_perf_level
 
     @_handle_amdsmi_errors
     def setPowerManagementLimit(self, value: int) -> None:
         """Sets the power management limit for the specified GPU to the given value. Unit: mW."""
-        # Can raise AMDSMI_STATUS_NO_PERM - Permission Denied error if inadequate permissions
         amdsmi.amdsmi_set_power_cap(self.handle, 0, int(value * 1000)) # Units for set_power_cap: microwatts
 
     @_handle_amdsmi_errors
     def resetPowerManagementLimit(self) -> None:
         """Resets the power management limit for the specified GPU to the default value."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-        # Can raise AMDSMI_STATUS_NO_PERM - Permission Denied error if inadequate permissions
         amdsmi.amdsmi_set_power_cap(
             self.handle, 0, cap=info.default_power_cap
         )
@@ -494,7 +512,6 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
         """Locks the memory clock of the specified GPU to a range defined by the minimum and maximum memory clock frequencies. Units: MHz."""
-        # Can raise AMDSMI_STATUS_NO_PERM - Permission Denied error if inadequate permissions
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             minMemClockMHz,
@@ -506,22 +523,11 @@ class AMDGPU(GPU):
     def getSupportedMemoryClocks(self) -> list[int]:
         """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
         raise ZeusGPUNotSupportedError("AMDSMI does not support querying memory frequencies")
-        freq_info = amdsmi.amdsmi_get_clk_freq(
-            self.handle, clk_type=amdsmi.AmdSmiClkType.MEM # TODO: looks like it always returns none, investigate different clock types
-        )
-        # frequency; List of frequencies, only the first num_supported frequencies are valid"""
-        return [int(freq/1e6) for freq in freq_info['frequency'][:freq_info['num_supported']]] # convert to MHz
 
     @_handle_amdsmi_errors
     def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
         """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
         raise ZeusGPUNotSupportedError("AMDSMI does not support querying GFX frequencies given a memory frequency")
-        freq_info = amdsmi.amdsmi_get_clk_freq(
-            self.handle, clk_type=amdsmi.AmdSmiClkType.GFX
-        )
-        # frequency; List of frequencies, only the first num_supported frequencies are valid"""
-        # TODO: not using freq?
-        return [int(freq/1e6) for freq in freq_info['frequency'][:freq_info['num_supported']]] # convert to MHz
 
     @_handle_amdsmi_errors
     def getName(self) -> str:
@@ -541,7 +547,7 @@ class AMDGPU(GPU):
             minMemClockMHz,
             maxMemClockMHz,
             clk_type=amdsmi.AmdSmiClkType.GFX,
-        ) # AMDSMI_STATUS_NO_PERM - Permission Denied
+        )
 
     @_handle_amdsmi_errors
     def resetMemoryLockedClocks(self) -> None:
@@ -574,8 +580,7 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def getPowerUsage(self) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
-        # AMDSMI_STATUS_NOT_SUPPORTED - Feature not supported
-        return amdsmi.amdsmi_get_power_info(self.handle) * 1000 # returns in W, convert to mW
+        return amdsmi.amdsmi_get_power_info(self.handle)['average_socket_power'] * 1000 # returns in W, convert to mW
         
 
     @_handle_amdsmi_errors
@@ -595,7 +600,7 @@ class AMDGPU(GPU):
         """Returns the total energy consumption of the specified GPU. Units: mJ."""
 
         info = amdsmi.amdsmi_get_energy_count(self.handle)
-        return int(info['power'] / 1e-3) # returns in micro Joules, convert to mili Joules
+        return int(info['power'] / 1e3) # returns in micro Joules, convert to mili Joules
 
 
 class UnprivilegedAMDGPU(AMDGPU):
