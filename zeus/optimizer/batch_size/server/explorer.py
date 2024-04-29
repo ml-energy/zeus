@@ -118,9 +118,9 @@ class PruningExploreManager:
                 batch_sizes,
             )
 
-        if len(batch_sizes) == 0:
-            raise ZeusBSOServerRuntimeError(
-                "No converged batch sizes has observed. Reconfigure batch_sizes and re-launch the job."
-            )
+            if len(batch_sizes) == 0:
+                raise ZeusBSOServerRuntimeError(
+                    "No converged batch sizes has observed. Reconfigure batch_sizes and re-launch the job."
+                )
         # After going through pruning rounds, we couldn't find the bs. Should go to MAB stage, so return good batch_sizes.
         return sorted(batch_sizes)

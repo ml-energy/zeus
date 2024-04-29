@@ -51,6 +51,9 @@ services:
       retries: 10
       start_period: 2s
       start_interval: 1s
+    labels:
+      kompose.image-pull-policy: IfNotPresent
+      kompose.volume.type: "emptyDir" # For testing and debugging. In production, use block storage of the cloud. ex) Amazon Elastic Block Store volume
 
   migration:
     image: bso-migration
@@ -74,9 +77,10 @@ services:
       - servernet
     volumes:
       # mount version scripts we generated.
-      - ./zeus/optimizer/batch_size/migrations/versions:/workspace/zeus/optimizer/batch_size/migrations/versions
+      - ../../zeus/optimizer/batch_size/migrations/versions:/workspace/zeus/optimizer/batch_size/migrations/versions
     labels:
       kompose.image-pull-policy: IfNotPresent
+      kompose.volume.type: "emptyDir" 
       
 
 networks:

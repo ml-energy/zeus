@@ -7,6 +7,6 @@ ADD . /workspace
 # For sqlite 
 # RUN  pip install --no-cache-dir aiosqlite
 
-# For mysql 
-RUN  pip install --no-cache-dir asyncmy
-RUN  pip install --no-cache-dir '.[migration]'
+# For mysql, we need asyncmy and cryptography (for sha256_password)
+RUN pip install --no-cache-dir asyncmy cryptography 
+RUN pip install --no-cache-dir '.[migration]'
