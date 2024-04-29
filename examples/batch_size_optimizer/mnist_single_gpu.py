@@ -162,6 +162,12 @@ def main():
         metavar="L",
         help="directory where summary logs are stored",
     )
+    parser.add_argument(
+        "--target-accuracy",
+        type=float,
+        default=0.5,
+        help="Target accuracy (default: 0.5)",
+    )
     if dist.is_available():
         parser.add_argument(
             "--backend",
@@ -199,12 +205,13 @@ def main():
             job_id_prefix="mnist-dev",
             default_batch_size=256,
             batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
-            max_epochs=5
+            max_epochs=args.epochs,
+            target_metric=args.target_accuracy,
         ),
     )
     # Get batch size from bso 
     batch_size = bso.get_batch_size()
-    print("Chosen batach_size:", batch_size)
+    print("Chosen batach_size:", batch_size, "Trial number:", bso.trial_number)
 
     ##################### ZEUS INIT END ##########################
     train_loader = torch.utils.data.DataLoader(
@@ -252,7 +259,7 @@ def main():
         plo.on_epoch_begin()
         train(args, model, device, train_loader, optimizer, epoch, writer, plo)
         plo.on_epoch_end()
-        acc = test(args, model, device, test_loader, writer, epoch,bso)
+        acc = test(args, model, device, test_loader, writer, epoch)
         bso.on_evaluate(acc)
         
     ################### ZEUS OPTIMIZER USAGE END #########################
