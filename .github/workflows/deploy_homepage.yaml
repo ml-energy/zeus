@@ -7,7 +7,7 @@ on:
       - 'docs/**'
       - 'zeus/**'
       - 'mkdocs.yml'
-      - 'Dockerfile'
+      - 'docker/Dockerfile'
       - '.github/workflows/deploy_homepage.yaml'
 
 jobs:
@@ -30,6 +30,6 @@ jobs:
           restore-keys: |
             mkdocs-material-
       - name: Install homepage build dependencies
-        run: pip install -r docs/requirements.txt
+        run: pip install '.[docs]'
       - name: Build homepage
         run: mkdocs gh-deploy --force
