@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import contextlib
 
 import pynvml  # necessary for testing to mock!
-# import amdsmi
+import amdsmi
 
 from zeus.device.exception import ZeusBaseGPUError
 from zeus.util.logging import get_logger
