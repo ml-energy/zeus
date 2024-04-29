@@ -1,9 +1,0 @@
-mkdocs-material==9.5.17
-mkdocstrings[python]==0.24.1
-mkdocs-gen-files==0.5.0
-mkdocs-literate-nav==0.6.1
-mkdocs-section-index==0.3.8
-urllib3<2
-pillow==10.2.0
-cairosvg==2.7.1
-black

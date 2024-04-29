@@ -45,7 +45,7 @@ class ReplayZeusMonitor(ZeusMonitor):
     def __init__(
         self,
         gpu_indices: list[int] | None = None,
-        monitor_exec: str = "zeus_monitor",
+        approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
         ignore_sync_cuda: bool = False,
         match_window_name: bool = True,
@@ -60,7 +60,7 @@ class ReplayZeusMonitor(ZeusMonitor):
                 with the indices used in the log file. If `None`, GPU indices will be inferred
                 from the log file header. Does not respect `CUDA_VISIBLE_DEVICES`.
                 (Default: `None`)
-            monitor_exec: Zeus monitor executable. Not used. (Default: `"zeus_monitor"`)
+            approx_instant_energy: Whether to approximate the instant energy consumption. Not used.
             log_file: Path to the log CSV file to replay events from. `None` is not allowed.
             ignore_sync_cuda: Whether to ignore `sync_cuda` calls. (Default: `False`)
             match_window_name: Whether to make sure window names match. (Default: `True`)
@@ -68,7 +68,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         if log_file is None:
             raise ValueError("`log_file` cannot be `None` for `ReplayZeusMonitor`.")
 
-        self.monitor_exec = monitor_exec
+        self.approx_instant_energy = approx_instant_energy
         self.log_file = open(log_file)
         self.ignore_sync_cuda = ignore_sync_cuda
         self.match_window_name = match_window_name

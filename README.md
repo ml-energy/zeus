@@ -113,10 +113,6 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 │   ├── analyze.py       #    - Analysis functions for power logs
 │   └── job.py           #    - Class for job specification
 │
-├── zeus_monitor/        # 🔌 GPU power monitor
-│   ├── zemo/            #    -  A header-only library for querying NVML
-│   └── main.cpp         #    -  Source code of the power monitor
-│
 ├── examples/            # 🛠️ Examples of integrating Zeus
 │
 ├── capriccio/           # 🌊 A drifting sentiment analysis dataset
