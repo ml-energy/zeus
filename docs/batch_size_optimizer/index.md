@@ -54,7 +54,7 @@ sequenceDiagram;
     ZEUS_BSO_ECHO_SQL="True"
     ```
 
-    If you want to use different databases, you need to add `ZEUS_BSO_DATABASE_URL` as an environment variable. See [Remark](#remark-about-server) for detail.
+    If you want to use different databases, you need to add `ZEUS_BSO_DATABASE_URL` as an environment variable. See [Remark](#notes-on-the-server) for detail.
     Also, if you are running using docker-compose or Kubernetes, you need to change the image name under `db` in the docker-compose file.
 
 3. Running a server
@@ -146,7 +146,7 @@ sequenceDiagram;
 
         Now the server is good to go!
 
-### Remark about the server
+### Notes on the server
 
 Zeus Batch Size Optimizer server is using Sqlalchemy to support various types of databases. However, you need to download the corresponding async connection driver.
 As a default, we are using Mysql. You can add installation code to `docker/batch_size_optimizer/migration.Dockerfile` and `docker/batch_size_optimizer/server.Dockerfile`. Refer to those files for reference.
@@ -189,7 +189,7 @@ As a default, we are using Mysql. You can add installation code to `docker/batch
     bso.on_evaluate(metric)
     ```
 
-### Remark about the client
+### Notes on the client
 
 Training can fail if
 

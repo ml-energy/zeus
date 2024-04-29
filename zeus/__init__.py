@@ -20,7 +20,6 @@
 - [`_legacy`][zeus._legacy.policy]: Legacy code mostly to keep our papers reproducible
 - [`device`][zeus.device]: Abstraction layer over compute devices
 - [`callback`][zeus.callback]: Callback definition
-- [`analyze`][zeus.analyze]: Functions for analyzing log files
 """
 
 __version__ = "0.8.2"
