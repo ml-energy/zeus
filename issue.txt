@@ -1,8 +1,0 @@
-
-Not able to query GPU effectively, energy values not updating
-
-Solutions tried:
-
-1. Asked question on the forum: https://github.com/ROCm/ROCm/discussions/3044. No response from anyone.
-
-2. 
