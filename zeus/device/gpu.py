@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import contextlib
 
 import pynvml  # necessary for testing to mock!
-import amdsmi
+# import amdsmi
 
 from zeus.device.exception import ZeusBaseGPUError
 from zeus.util.logging import get_logger
@@ -272,31 +272,6 @@ class GPU(abc.ABC):
 
 
 def _handle_nvml_errors(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except pynvml.NVMLError as e:
-            exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusGPUUnknownError)
-            raise exception_class(e.msg) from e
-
-    return wrapper
-
-
-class NVIDIAGPU(GPU):
-    """Control a Single NVIDIA GPU.
-
-    Uses NVML Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the NVML library functions.
-    Zeus GPU Exceptions are raised when NVML errors occur.
-    To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to NVML.
-    """
-
-    def __init__(self, gpu_index: int) -> None:
-        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
-        super().__init__(gpu_index)
-        self._get_handle()
-        self._supportsGetTotalEnergyConsumption = None
-
     _exception_map = {
         pynvml.NVML_ERROR_UNINITIALIZED: ZeusGPUInitError,
         pynvml.NVML_ERROR_INVALID_ARGUMENT: ZeusGPUInvalidArgError,
@@ -319,6 +294,31 @@ class NVIDIAGPU(GPU):
         pynvml.NVML_ERROR_MEMORY: ZeusGPUMemoryError,
         pynvml.NVML_ERROR_UNKNOWN: ZeusGPUUnknownError,
     }
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except pynvml.NVMLError as e:
+            exception_class = _exception_map.get(e.value, ZeusGPUUnknownError)
+            raise exception_class(e.msg) from e
+
+    return wrapper
+
+
+class NVIDIAGPU(GPU):
+    """Control a Single NVIDIA GPU.
+
+    Uses NVML Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the NVML library functions.
+    Zeus GPU Exceptions are raised when NVML errors occur.
+    To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to NVML.
+    """
+
+    def __init__(self, gpu_index: int) -> None:
+        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
+        super().__init__(gpu_index)
+        self._get_handle()
+        self._supportsGetTotalEnergyConsumption = None
 
     @_handle_nvml_errors
     def _get_handle(self):
@@ -426,34 +426,6 @@ class UnprivilegedNVIDIAGPU(NVIDIAGPU):
 
 
 def _handle_amdsmi_errors(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except amdsmi.AmdSmiLibraryException as e:
-            exception_class = AMDGPU._exception_map.get(
-                e.get_error_code(), ZeusGPUUnknownError
-            )
-            raise exception_class(e.get_error_info()) from e
-
-    return wrapper
-
-
-class AMDGPU(GPU):
-    """Control a Single AMD GPU.
-
-    Uses amdsmi Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the amdsmi library functions.
-    Zeus GPU Exceptions are raised when amdsmi errors occur.
-    To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to amdsmi.
-    Supports ROCM 5.7
-    """
-
-    def __init__(self, gpu_index: int) -> None:
-        """Initializes the AMDGPU object with a specified GPU index. Acquires a handle to the GPU using `amdsmi.amdsmi_get_processor_handles()`."""
-        super().__init__(gpu_index)
-        self._get_handle()
-        self._supportsGetTotalEnergyConsumption = None
-
     _exception_map = {
         amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL: ZeusGPUInvalidArgError,
         amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED: ZeusGPUNotSupportedError,
@@ -476,6 +448,34 @@ class AMDGPU(GPU):
         amdsmi.amdsmi_wrapper.AMDSMI_ARG_PTR_NULL: ZeusGPUInvalidArgError,
         amdsmi.amdsmi_wrapper.AMDSMI_STATUS_UNKNOWN_ERROR: ZeusGPUUnknownError,
     }
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except amdsmi.AmdSmiLibraryException as e:
+            exception_class = _exception_map.get(
+                e.get_error_code(), ZeusGPUUnknownError
+            )
+            raise exception_class(e.get_error_info()) from e
+
+    return wrapper
+
+
+class AMDGPU(GPU):
+    """Control a Single AMD GPU.
+
+    Uses amdsmi Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the amdsmi library functions.
+    Zeus GPU Exceptions are raised when amdsmi errors occur.
+    To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to amdsmi.
+    Supports ROCM 5.7
+    """
+
+    def __init__(self, gpu_index: int) -> None:
+        """Initializes the AMDGPU object with a specified GPU index. Acquires a handle to the GPU using `amdsmi.amdsmi_get_processor_handles()`."""
+        super().__init__(gpu_index)
+        self._get_handle()
+        self._supportsGetTotalEnergyConsumption = None
 
     @_handle_amdsmi_errors
     def _get_handle(self):
