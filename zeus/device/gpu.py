@@ -455,26 +455,26 @@ class AMDGPU(GPU):
         self._supportsGetTotalEnergyConsumption = None
 
     _exception_map = {
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL: ZeusGPUInvalidArgError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED: ZeusGPUNotSupportedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_TIMEOUT: ZeusGPUTimeoutError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM: ZeusGPUNoPermissionError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_OUT_OF_RESOURCES: ZeusGPUMemoryError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INIT_ERROR: ZeusGPUInitError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_FOUND: ZeusGPUNotFoundError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_INIT: ZeusGPUInitError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_DRIVER_NOT_LOADED: ZeusGPUDriverNotLoadedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INSUFFICIENT_SIZE: ZeusGPUInsufficientSizeError,
-        amdsmi.amdsmi_wrapper.AMDSMI_NO_ENERGY_DRV: ZeusGPUDriverNotLoadedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_NO_MSR_DRV: ZeusGPUDriverNotLoadedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_DRV: ZeusGPUDriverNotLoadedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_SUP: ZeusGPUNotSupportedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_MSG_SUP: ZeusGPUNotSupportedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_HSMP_TIMEOUT: ZeusGPUTimeoutError,
-        amdsmi.amdsmi_wrapper.AMDSMI_NO_DRV: ZeusGPUDriverNotLoadedError,
-        amdsmi.amdsmi_wrapper.AMDSMI_FILE_NOT_FOUND: ZeusGPULibraryNotFoundError,
-        amdsmi.amdsmi_wrapper.AMDSMI_ARG_PTR_NULL: ZeusGPUInvalidArgError,
-        amdsmi.amdsmi_wrapper.AMDSMI_STATUS_UNKNOWN_ERROR: ZeusGPUUnknownError,
+        1 : ZeusGPUInvalidArgError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
+        2 : ZeusGPUNotSupportedError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
+        8 : ZeusGPUTimeoutError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_TIMEOUT
+        10 : ZeusGPUNoPermissionError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM
+        15 : ZeusGPUMemoryError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_OUT_OF_RESOURCES
+        18 : ZeusGPUInitError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INIT_ERROR
+        31 : ZeusGPUNotFoundError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_FOUND
+        32 : ZeusGPUInitError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_INIT
+        34 : ZeusGPUDriverNotLoadedError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_DRIVER_NOT_LOADED
+        41 : ZeusGPUInsufficientSizeError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INSUFFICIENT_SIZE
+        45 : ZeusGPUDriverNotLoadedError, # amdsmi.amdsmi_wrapper.AMDSMI_NO_ENERGY_DRV
+        46 : ZeusGPUDriverNotLoadedError, # amdsmi.amdsmi_wrapper.AMDSMI_NO_MSR_DRV
+        47 : ZeusGPUDriverNotLoadedError, # amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_DRV
+        48 : ZeusGPUNotSupportedError, # amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_SUP
+        49 : ZeusGPUNotSupportedError, # amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_MSG_SUP
+        50 : ZeusGPUTimeoutError, # amdsmi.amdsmi_wrapper.AMDSMI_HSMP_TIMEOUT
+        51: ZeusGPUDriverNotLoadedError, # amdsmi.amdsmi_wrapper.AMDSMI_NO_DRV
+        52 : ZeusGPULibraryNotFoundError, # amdsmi.amdsmi_wrapper.AMDSMI_FILE_NOT_FOUND
+        53 : ZeusGPUInvalidArgError, # amdsmi.amdsmi_wrapper.AMDSMI_ARG_PTR_NULL
+        4294967295: ZeusGPUUnknownError, # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_UNKNOWN_ERROR
     }
 
     @_handle_amdsmi_errors
