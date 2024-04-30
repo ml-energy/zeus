@@ -815,8 +815,8 @@ class AMDGPUs(GPUs):
             raise exception_class(e.msg) from e
 
     @property
-    def gpus(self) -> list[GPU]:
-        """Returns a list of NVIDIAGPU objects being tracked."""
+    def gpus(self) -> Sequence[GPU]:
+        """Returns a list of AMDGPU objects being tracked."""
         return self._gpus
 
     def _init_gpus(self) -> None:
@@ -834,10 +834,6 @@ class AMDGPUs(GPUs):
         """Shuts down the AMD GPU monitoring library to release resources and clean up."""
         with contextlib.suppress(amdsmi.AmdSmiException):
             amdsmi.amdsmi_shut_down()  # Ignore error on shutdown. Neccessary for proper cleanup and test functionality
-    @property
-    def gpus(self) -> Sequence[GPU]:
-        """Returns a list of AMDGPU objects being tracked."""
-        raise NotImplementedError("AMDGPUs.gpus is not implemented yet.")
 
 
 _gpus: GPUs | None = None
