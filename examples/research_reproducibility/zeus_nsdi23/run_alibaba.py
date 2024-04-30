@@ -26,8 +26,7 @@ from functools import lru_cache
 import pandas as pd
 
 from zeus._legacy.job import Job
-from zeus._legacy.simulate import Simulator
-from zeus.analyze import HistoryEntry
+from zeus._legacy.simulate import Simulator, HistoryEntry
 from zeus._legacy.policy import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
 
 
@@ -49,7 +48,9 @@ def run_simulator(
 ) -> list[tuple[str, list[HistoryEntry]]]:
     """Run the simulator on the given job."""
     # Read in the Alibaba trace
-    alibaba_df = pd.DataFrame(pd.read_csv("../../trace/alibaba_groups.csv.xz"))
+    alibaba_df = pd.DataFrame(pd.read_csv("../../../trace/alibaba_groups.csv.xz"))
+    print("Read in the Alibaba trace.")
+    print(f"Number of groups: {alibaba_df.group.nunique()}")
 
     # Run simulation on all Alibaba recurring job groups.
     with mp.Pool(mp.cpu_count()) as p:
@@ -96,13 +97,13 @@ def simulate_group(
 @lru_cache(maxsize=1)
 def read_train_trace() -> pd.DataFrame:
     """Read the train trace file as a Pandas DataFrame."""
-    return pd.DataFrame(pd.read_csv("../../trace/summary_train.csv"))
+    return pd.DataFrame(pd.read_csv("../../../trace/summary_train.csv"))
 
 
 @lru_cache(maxsize=1)
 def read_power_trace(gpu: Literal["a40", "v100", "p100", "rtx6000"]) -> pd.DataFrame:
     """Read the power trace of the given GPU as a Pandas DataFrame."""
-    return pd.DataFrame(pd.read_csv(f"../../trace/summary_power_{gpu}.csv"))
+    return pd.DataFrame(pd.read_csv(f"../../../trace/summary_power_{gpu}.csv"))
 
 
 def get_job_with_defaults(
