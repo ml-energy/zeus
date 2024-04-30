@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import contextlib
 
 import pynvml  # necessary for testing to mock!
+
 # import amdsmi
 
 from zeus.device.exception import ZeusBaseGPUError
@@ -301,7 +302,7 @@ def _handle_nvml_errors(func):
             return func(*args, **kwargs)
         except pynvml.NVMLError as e:
             exception_class = _exception_map.get(e.value, ZeusGPUUnknownError)
-            raise exception_class(e.msg) from e
+            raise exception_class(str(e)) from e
 
     return wrapper
 
