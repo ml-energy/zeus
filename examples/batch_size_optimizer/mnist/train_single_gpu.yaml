@@ -1,0 +1,30 @@
+apiVersion: "kubeflow.org/v1"
+kind: PyTorchJob
+metadata:
+  name: pytorch-zeus-mnist
+  namespace: kubeflow
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+            - name: pytorch
+              image: mnist-example
+              imagePullPolicy: Never
+              command:
+                - "python3"
+                - "/workspace/examples/batch_size_optimizer/mnist_single_gpu.py"
+                - "--epochs=5"
+              env:
+                - name: ZEUS_SERVER_URL
+                  value: "http://server:80"
+                - name: ZEUS_JOB_ID
+                  value: "mnist-dev-1"
+                - name: ZEUS_LOG_LEVEL
+                  value: "INFO"
+              securityContext:
+                capabilities:
+                  add: ["SYS_ADMIN"]

@@ -4,7 +4,7 @@ from __future__ import annotations
 import abc
 import functools
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 import contextlib
 
 import pynvml  # necessary for testing to mock!
@@ -12,7 +12,7 @@ import pynvml  # necessary for testing to mock!
 # import amdsmi
 
 from zeus.device.exception import ZeusBaseGPUError
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
 
@@ -207,7 +207,7 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def setPowerManagementLimit(self, value: int = None) -> None:
+    def setPowerManagementLimit(self, value: int) -> None:
         """Set the power management limit for the GPU to a specified value or default. Unit: mW."""
         pass
 
@@ -237,9 +237,7 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def setGpuLockedClocks(
-        self, index: int, minGpuClockMHz: int, maxGpuClockMHz: int
-    ) -> None:
+    def setGpuLockedClocks(self, minGpuClockMHz: int, maxGpuClockMHz: int) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         pass
 
@@ -328,7 +326,8 @@ class NVIDIAGPU(GPU):
     @_handle_nvml_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
-        return pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
+        min_, max_ = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
+        return (min_, max_)
 
     @_handle_nvml_errors
     def setPersistenceMode(self, enable: bool) -> None:
@@ -343,7 +342,7 @@ class NVIDIAGPU(GPU):
             )
 
     @_handle_nvml_errors
-    def setPowerManagementLimit(self, value: int | None = None) -> None:
+    def setPowerManagementLimit(self, value: int) -> None:
         """Sets the power management limit for the specified GPU to the given value. Unit: mW."""
         pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, value)
 
@@ -640,7 +639,7 @@ class GPUs(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def gpus(self) -> list[GPU]:
+    def gpus(self) -> Sequence[GPU]:
         """Returns a list of GPU objects being tracked."""
         pass
 
@@ -675,11 +674,11 @@ class GPUs(abc.ABC):
 
     def getSupportedMemoryClocks(self, index: int) -> list[int]:
         """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
-        self.gpus[index].getSupportedMemoryClocks()
+        return self.gpus[index].getSupportedMemoryClocks()
 
     def getSupportedGraphicsClocks(self, index: int, freq: int) -> list[int]:
         """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
-        self.gpus[index].getSupportedGraphicsClocks(freq)
+        return self.gpus[index].getSupportedGraphicsClocks(freq)
 
     def getName(self, index: int) -> str:
         """Returns the name of the specified GPU."""
@@ -755,7 +754,7 @@ class NVIDIAGPUs(GPUs):
             raise exception_class(e.msg) from e
 
     @property
-    def gpus(self) -> list[GPU]:
+    def gpus(self) -> Sequence[GPU]:
         """Returns a list of NVIDIAGPU objects being tracked."""
         return self._gpus
 
@@ -835,6 +834,10 @@ class AMDGPUs(GPUs):
         """Shuts down the AMD GPU monitoring library to release resources and clean up."""
         with contextlib.suppress(amdsmi.AmdSmiException):
             amdsmi.amdsmi_shut_down()  # Ignore error on shutdown. Neccessary for proper cleanup and test functionality
+    @property
+    def gpus(self) -> Sequence[GPU]:
+        """Returns a list of AMDGPU objects being tracked."""
+        raise NotImplementedError("AMDGPUs.gpus is not implemented yet.")
 
 
 _gpus: GPUs | None = None

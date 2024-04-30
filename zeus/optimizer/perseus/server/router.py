@@ -22,7 +22,7 @@ from typing import Callable
 from fastapi import Depends, FastAPI, Response, Request
 from fastapi.routing import APIRoute
 
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 from zeus.optimizer.perseus.common import (
     REGISTER_JOB_URL,
     REGISTER_RANK_URL,

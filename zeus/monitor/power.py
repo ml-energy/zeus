@@ -25,7 +25,7 @@ import multiprocessing as mp
 import pandas as pd
 from sklearn.metrics import auc
 
-from zeus.util.logging import get_logger
+from zeus.utils.logging import get_logger
 from zeus.device import get_gpus
 
 
@@ -118,6 +118,9 @@ class PowerMonitor:
         update_period: float | None = None,
     ) -> None:
         """Initialize the power monitor.
+
+        Initialization should not be done in global scope due to python's protection.
+        Refer to the "Safe importing of main module" section in https://docs.python.org/3/library/multiprocessing.html for more detail.
 
         Args:
             gpu_indices: Indices of the GPUs to monitor. If None, monitor all GPUs.

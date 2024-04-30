@@ -25,10 +25,10 @@ from functools import lru_cache
 
 import pandas as pd
 
-from zeus.job import Job
-from zeus.simulate import Simulator
+from zeus._legacy.job import Job
+from zeus._legacy.simulate import Simulator
 from zeus.analyze import HistoryEntry
-from zeus.policy import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
+from zeus._legacy.policy import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
 
 
 def parse_args() -> argparse.Namespace:

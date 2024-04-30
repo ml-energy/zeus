@@ -14,17 +14,12 @@
 
 """Zeus is a framework for deep learning energy measurement and optimization.
 
-- [`run`][zeus.run]: Machinery for actually running Zeus.
-- [`monitor`][zeus.monitor]: Class for profiling energy inside training scripts.
-- [`optimizer`][zeus.optimizer]: A collection of optimizers for various knobs.
-- [`callback`][zeus.callback]: Callback definition.
-- [`controller`][zeus.controller]: A collection of controllers that influence training flow.
-- [`analyze`][zeus.analyze]: Functions for analyzing log files.
-- [`job`][zeus.job]: Job specification.
-- [`simulate`][zeus.simulate]: Machinery for trace-driven Zeus.
-- [`device`][zeus.device]: Abstraction of compute devices.
-- [`policy`][zeus.policy]: Collection of optimization policies.
-- [`util`][zeus.util]: Utility functions and classes.
+- [`optimizer`][zeus.optimizer]: A collection of optimizers for time and energy
+- [`monitor`][zeus.monitor]: Programmatic power and energy measurement tools
+- [`utils`][zeus.utils]: Utility functions and classes.
+- [`_legacy`][zeus._legacy.policy]: Legacy code mostly to keep our papers reproducible
+- [`device`][zeus.device]: Abstraction layer over compute devices
+- [`callback`][zeus.callback]: Callback definition
 """
 
 __version__ = "0.8.2"

@@ -1,0 +1,88 @@
+version: '3.9'
+name: zeus_bso_server
+
+services:
+  server: 
+    image: bso-server
+    build:
+      context: ../../
+      dockerfile: ./docker/batch_size_optimizer/server.Dockerfile
+    container_name: bso
+    restart: always
+    environment:
+        ZEUS_BSO_DATABASE_URL: ${ZEUS_BSO_DATABASE_URL-mysql+asyncmy://${ZEUS_BSO_DB_USER}:${ZEUS_BSO_DB_PASSWORD}@db:3306/Zeus}
+        ZEUS_BSO_LOG_LEVEL: ${ZEUS_BSO_LOG_LEVEL}
+        ZEUS_BSO_ECHO_SQL: ${ZEUS_BSO_ECHO_SQL}
+    ports:
+      # Map 80 to the container
+      - "80:80"
+    networks:
+      - servernet
+    depends_on:
+      migration:
+        # start running when migration is done.
+        condition: service_completed_successfully
+    labels:
+      # labels for kubernetes 
+      kompose.service.type: nodeport
+      # Pull image only when there is no image locally. Otherewise use that one.
+      kompose.image-pull-policy: IfNotPresent
+      # set the node port. Should be 30000-32767
+      kompose.service.nodeport.port: ${ZEUS_BSO_SERVER_PORT-30100}
+  db:
+    image: mysql
+    container_name: db
+    restart: always
+    environment:
+      MYSQL_DATABASE: Zeus
+      MYSQL_USER: ${ZEUS_BSO_DB_USER}
+      MYSQL_ROOT_PASSWORD: ${ZEUS_BSO_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${ZEUS_BSO_DB_PASSWORD}
+    expose:
+      # Opens 3306 on the container to server & migration
+      - 3306
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    networks:
+      - servernet
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+      start_interval: 1s
+    labels:
+      kompose.image-pull-policy: IfNotPresent
+      kompose.volume.type: "emptyDir" # For testing and debugging. In production, use block storage of the cloud. ex) Amazon Elastic Block Store volume
+
+  migration:
+    image: bso-migration
+    build:
+      context: ../../
+      dockerfile: ./docker/batch_size_optimizer/migration.Dockerfile
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    depends_on: 
+      db:
+        # wait until db is ready to accept connection
+        condition: service_healthy
+    # Generate revision and upgrade database. Change message of revision as you want
+    command: >
+      bash -c 'cd /workspace/zeus/optimizer/batch_size && alembic revision --autogenerate -m "Baseline: create tables" && alembic upgrade head'
+    environment:
+      ZEUS_BSO_DATABASE_URL: ${ZEUS_BSO_DATABASE_URL-mysql+asyncmy://${ZEUS_BSO_DB_USER}:${ZEUS_BSO_DB_PASSWORD}@db:3306/Zeus}
+    networks:
+      - servernet
+    volumes:
+      # mount version scripts we generated.
+      - ../../zeus/optimizer/batch_size/migrations/versions:/workspace/zeus/optimizer/batch_size/migrations/versions
+    labels:
+      kompose.image-pull-policy: IfNotPresent
+      kompose.volume.type: "emptyDir" 
+      
+
+networks:
+  servernet:  
+    driver: bridge

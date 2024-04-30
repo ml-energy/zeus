@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from zeus.monitor.power import PowerMonitor
-from zeus.util.logging import get_logger
-from zeus.util.framework import cuda_sync
+from zeus.utils.logging import get_logger
+from zeus.utils.framework import cuda_sync
 from zeus.device import get_gpus
 
 logger = get_logger(__name__)
@@ -65,6 +65,9 @@ class ZeusMonitor:
     `nvmlDeviceGetTotalEnergyConsumption` API. On older architectures, this API is
     not supported, so a separate Python process is used to poll `nvmlDeviceGetPowerUsage`
     to get power samples over time, which are integrated to compute energy consumption.
+    Since it is spawning the process, the monitor should not be instantiated as a global variable.
+    Python puts a protection to prevent creating a process in global scope.
+    Refer to the "Safe importing of main module" section in https://docs.python.org/3/library/multiprocessing.html for more detail.
 
     ## Integration Example
 
@@ -95,8 +98,6 @@ class ZeusMonitor:
     Attributes:
         gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from the
             DL framework's perspective after applying `CUDA_VISIBLE_DEVICES`.
-        nvml_gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from
-            NVML/system's perspective.
     """
 
     def __init__(
@@ -246,7 +247,7 @@ class ZeusMonitor:
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:
             logger.debug("Measurement window '%s' cancelled.", key)
-            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_handles})
+            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_indices})
 
         end_time: float = time()
         time_consumption: float = end_time - start_time

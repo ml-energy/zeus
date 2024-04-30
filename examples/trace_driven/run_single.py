@@ -22,10 +22,12 @@ from typing import Literal
 
 import pandas as pd
 
-from zeus.job import Job
-from zeus.policy.optimizer import JITPowerLimitOptimizer, PruningGTSBatchSizeOptimizer
-from zeus.simulate import Simulator
-from zeus.analyze import HistoryEntry
+from zeus._legacy.job import Job
+from zeus._legacy.policy.optimizer import (
+    JITPowerLimitOptimizer,
+    PruningGTSBatchSizeOptimizer,
+)
+from zeus._legacy.simulate import Simulator, HistoryEntry
 
 
 def parse_args() -> argparse.Namespace:

@@ -23,7 +23,7 @@ import pynvml
 import pytest
 
 from zeus.monitor import Measurement, ZeusMonitor
-from zeus.util.testing import ReplayZeusMonitor
+from zeus.utils.testing import ReplayZeusMonitor
 import zeus.device.gpu
 
 if TYPE_CHECKING:
@@ -38,6 +38,7 @@ ARCHS = [
     pynvml.NVML_DEVICE_ARCH_AMPERE,
 ]
 
+
 @pytest.fixture(autouse=True, scope="function")
 def reset_gpus() -> None:
     """Reset the global variable `_gpus` to None on every test."""
@@ -49,7 +50,7 @@ def pynvml_mock(mocker: MockerFixture):
     """Mock the entire pynvml module."""
     # Mock the pynvml import in the gpu module.
     mock = mocker.patch("zeus.device.gpu.pynvml", autospec=True)
-    
+
     # Except for the arch constants.
     mock.NVML_DEVICE_ARCH_PASCAL = pynvml.NVML_DEVICE_ARCH_PASCAL
     mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
@@ -70,7 +71,10 @@ def gpu_cases():
     with `CUDA_VISIBLE_DEVICES` and `gpu_monitor`, we assign all possible combinations
     GPU architectures to `gpu_archs`.
     """
-    def nonempty_subsequences(indices: Sequence[int]) -> Generator[list[int], None, None]:
+
+    def nonempty_subsequences(
+        indices: Sequence[int],
+    ) -> Generator[list[int], None, None]:
         """Returns all non-empty subsets of `indices`."""
         for length in range(1, len(indices) + 1):
             yield from map(list, combinations(indices, r=length))
@@ -78,7 +82,9 @@ def gpu_cases():
     # `CUDA_VISIBLE_DEVICES` is given.
     for cuda_visible_devices in nonempty_subsequences(range(NUM_GPUS)):  # NVML index
         # `gpu_indices` is not `None`.
-        for gpu_indices in nonempty_subsequences(range(len(cuda_visible_devices))):  # PyTorch index
+        for gpu_indices in nonempty_subsequences(
+            range(len(cuda_visible_devices))
+        ):  # PyTorch index
             for gpu_archs in product(ARCHS, repeat=len(gpu_indices)):
                 yield cuda_visible_devices, gpu_indices, list(gpu_archs)
         # `gpu_indices` is `None` (use all GPUs visible to PyTorch).
@@ -95,7 +101,9 @@ def gpu_cases():
 
 
 @pytest.fixture(params=gpu_cases())
-def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
+def mock_gpus(
+    request, mocker: MockerFixture, pynvml_mock: MagicMock
+) -> tuple[tuple[int], tuple[int]]:
     """Mock `pynvml` so that it looks like there are GPUs with the given archs.
 
     This fixture automatically generates (1) all combinations of possible GPU indices
@@ -115,8 +123,12 @@ def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[t
         assert len(nvml_indices) == len(archs)
         handle_to_arch = {f"handle{i}": arch for i, arch in zip(nvml_indices, archs)}
         pynvml_mock.nvmlDeviceGetCount.return_value = NUM_GPUS
-        pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: f"handle{index}" # GPU Monitoring object grabs all handles visible to system on initialization.
-        pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
+        pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = (
+            lambda index: f"handle{index}"
+        )  # GPU Monitoring object grabs all handles visible to system on initialization.
+        pynvml_mock.nvmlDeviceGetArchitecture.side_effect = (
+            lambda handle: handle_to_arch[handle]
+        )
 
     if cuda_visible_devices is None:  # All GPUs are visible to PyTorch.
         # When `CUDA_VISIBLE_DEVICES` is not given, NVML indices and PyTorch indices conincide.
@@ -126,7 +138,10 @@ def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[t
             mock_pynvml(gpu_indices, archs)
 
     else:  # `CUDA_VISIBLE_DEVICES` is given, limiting the set of visible GPUs to PyTorch.
-        mocker.patch.dict("os.environ", {"CUDA_VISIBLE_DEVICES": ",".join(map(str, cuda_visible_devices))})
+        mocker.patch.dict(
+            "os.environ",
+            {"CUDA_VISIBLE_DEVICES": ",".join(map(str, cuda_visible_devices))},
+        )
         # Valid NVML indices are determined by `cuda_visible_devices` and `gpu_indices`.
         if gpu_indices is None:
             mock_pynvml(cuda_visible_devices, archs)
@@ -155,17 +170,27 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     assert len(nvml_gpu_indices) == len(torch_gpu_indices) == len(gpu_archs)
 
     num_gpus = len(gpu_archs)
-    is_old_nvml = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(nvml_gpu_indices, gpu_archs)}
-    is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
+    is_old_nvml = {
+        index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA
+        for index, arch in zip(nvml_gpu_indices, gpu_archs)
+    }
+    is_old_torch = {
+        index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA
+        for index, arch in zip(torch_gpu_indices, gpu_archs)
+    }
     old_gpu_torch_indices = [index for index, is_old in is_old_torch.items() if is_old]
 
     class MockPowerMonitor:
-        def __init__(self, gpu_indices: list[int] | None, update_period: float | None) -> None:
+        def __init__(
+            self, gpu_indices: list[int] | None, update_period: float | None
+        ) -> None:
             assert gpu_indices == old_gpu_torch_indices
             self.gpu_indices = gpu_indices
             self.update_period = update_period
+
         def get_energy(self, start: float, end: float) -> dict[int, float]:
             return {i: -1.0 for i in self.gpu_indices}
+
     mocker.patch("zeus.monitor.energy.PowerMonitor", MockPowerMonitor)
 
     time_counter = itertools.count(start=4, step=1)
@@ -173,9 +198,12 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     energy_counters = {
         f"handle{i}": itertools.count(start=1000, step=3)
-        for i in nvml_gpu_indices if not is_old_nvml[i]
+        for i in nvml_gpu_indices
+        if not is_old_nvml[i]
     }
-    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counters[handle])
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(
+        energy_counters[handle]
+    )
 
     log_file = tmp_path / "log.csv"
 
@@ -206,11 +234,12 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         assert monitor.measurement_states[name][1] == {
             # `4` is the time origin of `time_counter`.
             i: pytest.approx((1000 + 3 * (begin_time - 4)) / 1000.0)
-            for i in torch_gpu_indices if not is_old_torch[i]
+            for i in torch_gpu_indices
+            if not is_old_torch[i]
         }
-        pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
-            call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]
-        ])
+        pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls(
+            [call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]]
+        )
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
 
     def assert_measurement(
@@ -241,11 +270,10 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         if not assert_calls:
             return
 
-        pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls([
-            call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]
-        ])
+        pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls(
+            [call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]]
+        )
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
-
 
     # Serial non-overlapping windows.
     monitor.begin_window("window1", sync_cuda=False)
@@ -260,12 +288,15 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     measurement = monitor.end_window("window1", sync_cuda=False)
     assert_measurement("window1", measurement, begin_time=4, elapsed_time=2)
 
-    tick(); tick()
+    tick()
+    tick()
 
     monitor.begin_window("window2", sync_cuda=False)
     assert_window_begin("window2", 9)
 
-    tick(); tick(); tick()
+    tick()
+    tick()
+    tick()
 
     measurement = monitor.end_window("window2", sync_cuda=False)
     assert_measurement("window2", measurement, begin_time=9, elapsed_time=4)
@@ -287,16 +318,18 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     monitor.begin_window("window4", sync_cuda=False)
     assert_window_begin("window4", 16)
 
-    tick(); tick();
+    tick()
+    tick()
 
     measurement = monitor.end_window("window3", sync_cuda=False)
     assert_measurement("window3", measurement, begin_time=14, elapsed_time=5)
 
-    tick(); tick(); tick();
+    tick()
+    tick()
+    tick()
 
     measurement = monitor.end_window("window4", sync_cuda=False)
     assert_measurement("window4", measurement, begin_time=16, elapsed_time=7)
-
 
     # Nested windows.
     monitor.begin_window("window5", sync_cuda=False)
@@ -305,12 +338,15 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     monitor.begin_window("window6", sync_cuda=False)
     assert_window_begin("window6", 25)
 
-    tick(); tick();
+    tick()
+    tick()
 
     measurement = monitor.end_window("window6", sync_cuda=False)
     assert_measurement("window6", measurement, begin_time=25, elapsed_time=3)
 
-    tick(); tick(); tick();
+    tick()
+    tick()
+    tick()
 
     measurement = monitor.end_window("window5", sync_cuda=False)
     assert_measurement("window5", measurement, begin_time=24, elapsed_time=8)
@@ -360,13 +396,15 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         return
 
     replay_monitor.begin_window("window1", sync_cuda=False)
-    
+
     # Calling `begin_window` again with the same name should raise an error.
     with pytest.raises(RuntimeError, match="is already ongoing"):
         replay_monitor.begin_window("window1", sync_cuda=False)
 
     measurement = replay_monitor.end_window("window1", sync_cuda=False)
-    assert_measurement("window1", measurement, begin_time=5, elapsed_time=2, assert_calls=False)
+    assert_measurement(
+        "window1", measurement, begin_time=5, elapsed_time=2, assert_calls=False
+    )
 
     # Calling `end_window` with a non-existant window name should raise an error.
     with pytest.raises(RuntimeError, match="is not ongoing"):
@@ -374,19 +412,29 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     replay_monitor.begin_window("window2", sync_cuda=False)
     measurement = replay_monitor.end_window("window2", sync_cuda=False)
-    assert_measurement("window2", measurement, begin_time=10, elapsed_time=4, assert_calls=False)
+    assert_measurement(
+        "window2", measurement, begin_time=10, elapsed_time=4, assert_calls=False
+    )
 
     replay_monitor.begin_window("window3", sync_cuda=False)
     replay_monitor.begin_window("window4", sync_cuda=False)
 
     measurement = replay_monitor.end_window("window3", sync_cuda=False)
-    assert_measurement("window3", measurement, begin_time=15, elapsed_time=5, assert_calls=False)
+    assert_measurement(
+        "window3", measurement, begin_time=15, elapsed_time=5, assert_calls=False
+    )
     measurement = replay_monitor.end_window("window4", sync_cuda=False)
-    assert_measurement("window4", measurement, begin_time=17, elapsed_time=7, assert_calls=False)
+    assert_measurement(
+        "window4", measurement, begin_time=17, elapsed_time=7, assert_calls=False
+    )
 
     replay_monitor.begin_window("window5", sync_cuda=False)
     replay_monitor.begin_window("window6", sync_cuda=False)
     measurement = replay_monitor.end_window("window6", sync_cuda=False)
-    assert_measurement("window6", measurement, begin_time=26, elapsed_time=3, assert_calls=False)
+    assert_measurement(
+        "window6", measurement, begin_time=26, elapsed_time=3, assert_calls=False
+    )
     measurement = replay_monitor.end_window("window5", sync_cuda=False)
-    assert_measurement("window5", measurement, begin_time=25, elapsed_time=8, assert_calls=False)
+    assert_measurement(
+        "window5", measurement, begin_time=25, elapsed_time=8, assert_calls=False
+    )

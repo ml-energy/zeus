@@ -1,0 +1,55 @@
+apiVersion: "kubeflow.org/v1"
+kind: PyTorchJob
+metadata:
+  name: pytorch-zeus-mnist-dp
+  namespace: kubeflow
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+            - name: pytorch
+              image: mnist-example
+              imagePullPolicy: Never
+              command:
+                - "python3"
+                - "/workspace/examples/batch_size_optimizer/mnist_dp.py"
+                - "--epochs=5"
+                - "--backend=nccl"
+                # Adjust target accuracy if you want to test failure
+                - "--target-accuracy=0.2"
+              env:
+                - name: ZEUS_SERVER_URL
+                  value: "http://server:80"
+                - name: ZEUS_JOB_ID
+                  value: "mnist-dev-dp-1"
+              securityContext:
+                capabilities:
+                  add: ["SYS_ADMIN"]
+    Worker:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+            - name: pytorch
+              image: mnist-example
+              imagePullPolicy: Never
+              command:
+                - "python3"
+                - "/workspace/examples/batch_size_optimizer/mnist_dp.py"
+                - "--epochs=5"
+                - "--backend=nccl"
+                # Adjust target accuracy if you want to test failure
+                - "--target-accuracy=0.2"
+              env:
+                - name: ZEUS_SERVER_URL
+                  value: "http://server:80"
+                - name: ZEUS_JOB_ID
+                  value: "mnist-dev-dp-1"
+              securityContext:
+                capabilities:
+                  add: ["SYS_ADMIN"]

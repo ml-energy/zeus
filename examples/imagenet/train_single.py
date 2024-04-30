@@ -22,7 +22,7 @@ import torchvision.models as models
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer import GlobalPowerLimitOptimizer
 from zeus.optimizer.power_limit import MaxSlowdownConstraint
-from zeus.util.env import get_env
+from zeus.utils.env import get_env
 
 
 def parse_args() -> argparse.Namespace:

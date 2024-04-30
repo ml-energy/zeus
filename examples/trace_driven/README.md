@@ -4,11 +4,11 @@ While the existence of recurring jobs in production GPU clusters is clear, it is
 Thus, Zeus provides a trace-driven simulator that allows users to plug in their own customized batch size optimizer and power limit optimizers and observe gains.
 
 We provide two types of traces.  
+
 1. Train trace: We trained six different (model, dataset) pairs with many different batch sizes. And we repeated training at least four times for each triplet with different random seeds. Thus, when we would like to know the result of training a model on a dataset with a certain batch size, we can sample a *training path* from this trace.
 2. Power trace: We profiled the the duration of one epoch and average power consumption for six (model, dataset) pairs with many different (batch size, power limit) configurations. These results not stochastic, and can be fetched from the trace to construct TTA (time to accuracy) and ETA (energy to accuracy) values.
 
 Refer to the [`trace`](../../trace/) directory for more information about the traces we provide.
-
 
 ## Simulating the recurrence of one job
 
@@ -36,7 +36,6 @@ python run_single.py \
     --beta_knob 2.0 \
     --seed 1
 ```
-
 
 ## Simulating jobs based on the Alibaba GPU cluster trace
 

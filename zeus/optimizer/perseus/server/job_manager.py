@@ -32,8 +32,8 @@ from zeus.optimizer.perseus.common import (
     save_sched,
     save_ranks,
 )
-from zeus.util.logging import get_logger
-from zeus.util.async_utils import create_task
+from zeus.utils.logging import get_logger
+from zeus.utils.async_utils import create_task
 
 GLOBAL_JOB_MANAGER: JobManager | None = None
 
