@@ -445,7 +445,6 @@ class AMDGPU(GPU):
     Uses amdsmi Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the amdsmi library functions.
     Zeus GPU Exceptions are raised when amdsmi errors occur.
     To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to amdsmi.
-    Supports ROCM 5.7
     """
 
     def __init__(self, gpu_index: int) -> None:
@@ -595,8 +594,11 @@ class AMDGPU(GPU):
             try:
                 _ = amdsmi.amdsmi_get_energy_count(self.handle)
                 self._supportsGetTotalEnergyConsumption = True
-            except amdsmi.AMDSMI_STATUS_NOT_SUPPORTED:
-                self._supportsGetTotalEnergyConsumption = False
+            except amdsmi.AmdSmiLibraryException as e:
+                if e.get_error_code() == 2: # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
+                    self._supportsGetTotalEnergyConsumption = False
+                else:
+                    raise e
 
         return self._supportsGetTotalEnergyConsumption
 
@@ -796,7 +798,7 @@ class AMDGPUs(GPUs):
     ```
 
     Note: This class instantiates (grabs the handle, by calling `amdsmi.amdsmi_get_processor_handles()`) all GPUs that are visible to the system, as determined by the `HIP_VISIBLE_DEVICES` environment variable if set.
-
+    Supports ROCM 5.7 and ROCM 6.0.
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:
