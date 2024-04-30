@@ -238,7 +238,7 @@ class GPU(abc.ABC):
 
     @abc.abstractmethod
     def setGpuLockedClocks(
-        self, index: int, minMemClockMHz: int, maxMemClockMHz: int
+        self, index: int, minGpuClockMHz: int, maxGpuClockMHz: int
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         pass
@@ -273,7 +273,6 @@ class GPU(abc.ABC):
 
 
 def _handle_nvml_errors(func):
-
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -298,7 +297,7 @@ class NVIDIAGPU(GPU):
         super().__init__(gpu_index)
         self._get_handle()
         self._supportsGetTotalEnergyConsumption = None
-    
+
     _exception_map = {
         pynvml.NVML_ERROR_UNINITIALIZED: ZeusGPUInitError,
         pynvml.NVML_ERROR_INVALID_ARGUMENT: ZeusGPUInvalidArgError,
@@ -379,9 +378,9 @@ class NVIDIAGPU(GPU):
         return pynvml.nvmlDeviceGetName(self.handle)
 
     @_handle_nvml_errors
-    def setGpuLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+    def setGpuLockedClocks(self, minGpuClockMHz: int, maxGpuClockMHz: int) -> None:
         """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies. Units: MHz."""
-        pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, minMemClockMHz, maxMemClockMHz)
+        pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, minGpuClockMHz, maxGpuClockMHz)
 
     @_handle_nvml_errors
     def resetMemoryLockedClocks(self) -> None:
@@ -428,7 +427,6 @@ class UnprivilegedNVIDIAGPU(NVIDIAGPU):
 
 
 def _handle_amdsmi_errors(func):
-
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -456,7 +454,7 @@ class AMDGPU(GPU):
         super().__init__(gpu_index)
         self._get_handle()
         self._supportsGetTotalEnergyConsumption = None
-    
+
     _exception_map = {
         amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL: ZeusGPUInvalidArgError,
         amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED: ZeusGPUNotSupportedError,
