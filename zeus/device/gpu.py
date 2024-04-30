@@ -595,7 +595,9 @@ class AMDGPU(GPU):
                 _ = amdsmi.amdsmi_get_energy_count(self.handle)
                 self._supportsGetTotalEnergyConsumption = True
             except amdsmi.AmdSmiLibraryException as e:
-                if e.get_error_code() == 2: # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
+                if (
+                    e.get_error_code() == 2
+                ):  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
                     self._supportsGetTotalEnergyConsumption = False
                 else:
                     raise e
