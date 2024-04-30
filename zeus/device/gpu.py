@@ -779,7 +779,7 @@ class AMDGPUs(GPUs):
 
     This class provides a high-level interface to interact with AMD GPUs. `HIP_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
     4 GPUs and `HIP_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are instantiated. In this case, to access
-    GPU of ROCR index 0, use the index 0, and for ROCR index 2, use the index 1.
+    GPU of HIP index 0, use the index 0, and for HIP index 2, use the index 1.
 
     This class provides a 1:1 mapping between the methods and AMDSMI library functions. For example, if you want to do the following:
 
