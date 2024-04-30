@@ -543,12 +543,12 @@ class AMDGPU(GPU):
         return info["market_name"]
 
     @_handle_amdsmi_errors
-    def setGpuLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
+    def setGpuLockedClocks(self, minGpuClockMHz: int, maxGpuClockMHz: int) -> None:
         """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies.  Units: MHz."""
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
-            minMemClockMHz,
-            maxMemClockMHz,
+            minGpuClockMHz,
+            maxGpuClockMHz,
             clk_type=amdsmi.AmdSmiClkType.GFX,
         )
 
@@ -686,10 +686,10 @@ class GPUs(abc.ABC):
         return self.gpus[index].getName()
 
     def setGpuLockedClocks(
-        self, index: int, minMemClockMHz: int, maxMemClockMHz: int
+        self, index: int, minGpuClockMHz: int, maxGpuClockMHz: int
     ) -> None:
         """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies. Units: MHz."""
-        self.gpus[index].setGpuLockedClocks(minMemClockMHz, maxMemClockMHz)
+        self.gpus[index].setGpuLockedClocks(minGpuClockMHz, maxGpuClockMHz)
 
     def resetMemoryLockedClocks(self, index: int) -> None:
         """Resets the memory locked clocks of the specified GPU to their default values."""
