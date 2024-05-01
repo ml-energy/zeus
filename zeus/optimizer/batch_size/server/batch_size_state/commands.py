@@ -119,7 +119,7 @@ class UpdateTrial(BatchSizeBase):
     """Report the result of trial."""
 
     trial_number: int = Field(gt=0)
-    end_timestamp: datetime = Field(default_factory=datetime.now, const=True)
+    end_timestamp: datetime = Field(default_factory=datetime.now)
     status: TrialStatus
     time: Optional[float] = Field(default=None, ge=0)
     energy: Optional[float] = Field(default=None, ge=0)
