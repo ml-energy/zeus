@@ -30,7 +30,7 @@ jobs:
           python-version: 3.9
           cache: 'pip'
       - name: Install Zeus and lint tools
-        run: pip install -U pip && pip install ".[lint,test]"
+        run: pip install -U pip && pip install ".[dev]"
       - name: Check format and lint
         run: bash scripts/lint.sh
       - name: Run tests
