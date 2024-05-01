@@ -72,7 +72,7 @@ class BatchSizeOptimizer(Callback):
             raise ZeusBSOConfigError("No GPUs detected.")
 
         # set gpu configurations(max_power, number of gpus, and gpu model)
-        self.job = JobSpecFromClient(
+        self.job_spec = JobSpecFromClient(
             **job.dict(),
             max_power=gpus.getPowerManagementLimitConstraints(0)[1]
             // 1000
@@ -85,7 +85,7 @@ class BatchSizeOptimizer(Callback):
         self.current_batch_size = 0
 
         # Register job
-        res = httpx.post(self.server_url + REGISTER_JOB_URL, content=self.job.json())
+        res = httpx.post(self.server_url + REGISTER_JOB_URL, content=self.job_spec.json())
         self._handle_response(res)
 
         self.job = CreatedJob.parse_obj(res.json())

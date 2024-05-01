@@ -24,7 +24,7 @@ import pandas as pd
 from sklearn.metrics import auc
 
 
-def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int) -> float:
+def zeus_cost(energy: float, time: float, eta_knob: float, max_power: int | float) -> float:
     """Compute Zeus's energy-time cost metric.
 
     Trades off ETA and TTA based on the value of `eta_knob`.

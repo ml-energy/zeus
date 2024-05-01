@@ -24,7 +24,7 @@ class BatchSizeBase(BaseModel):
     job_id: str
     batch_size: int = Field(gt=0)
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.
@@ -58,7 +58,7 @@ class Trial(BatchSizeBase):
     energy: Optional[float] = Field(None, ge=0)
     converged: Optional[bool] = None
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Enable instantiating model from an ORM object, and make it immutable after it's created.
@@ -117,7 +117,7 @@ class GaussianTsArmState(BatchSizeBase):
     reward_precision: float
     num_observations: int = Field(ge=0)
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Enable instantiating model from an ORM object, and make it immutable after it's created.
@@ -154,7 +154,7 @@ class TrialResult(BatchSizeBase):
     energy: float = Field(ge=0)
     converged: bool
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Enable instantiating model from an ORM object, and make it immutable after it's created.
@@ -217,7 +217,7 @@ class ExplorationsPerJob(BaseModel):
     job_id: str
     explorations_per_bs: dict[int, list[Trial]]  # BS -> Trials with exploration type
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.
@@ -237,11 +237,11 @@ class ExplorationsPerJob(BaseModel):
             for exp in exps:
                 if job_id != exp.job_id:
                     raise ValueError(
-                        f"job_id doesn't correspond with explorations: {job_id} != {exps.job_id}"
+                        f"job_id doesn't correspond with explorations: {job_id} != {exp.job_id}"
                     )
                 if bs != exp.batch_size:
                     raise ValueError(
-                        f"Batch size doesn't correspond with explorations: {bs} != {exps.batch_size}"
+                        f"Batch size doesn't correspond with explorations: {bs} != {exp.batch_size}"
                     )
                 if exp.type != TrialType.Exploration:
                     raise ValueError("Trial type is not equal to Exploration.")

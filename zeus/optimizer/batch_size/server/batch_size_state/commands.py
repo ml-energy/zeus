@@ -32,10 +32,10 @@ class CreateTrialBase(BatchSizeBase):
     """Base command to create trial."""
 
     type: TrialType
-    start_timestamp: datetime = Field(datetime.now(), const=True)
-    status: TrialStatus = Field(TrialStatus.Dispatched, const=True)
+    start_timestamp: datetime = Field(default_factory=datetime.now)
+    status: TrialStatus = Field(default=TrialStatus.Dispatched, const=True)
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.
@@ -52,7 +52,7 @@ class CreateTrial(CreateTrialBase):
 
     trial_number: int = Field(gt=0)
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.
@@ -76,9 +76,9 @@ class CreateTrial(CreateTrialBase):
 class CreateExplorationTrial(CreateTrialBase):
     """Create a exploration."""
 
-    type: TrialType = Field(TrialType.Exploration, const=True)
+    type: TrialType = Field(default=TrialType.Exploration, const=True)
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.
@@ -90,9 +90,9 @@ class CreateExplorationTrial(CreateTrialBase):
 class CreateMabTrial(CreateTrialBase):
     """Create a MAB trial."""
 
-    type: TrialType = Field(TrialType.MAB, const=True)
+    type: TrialType = Field(default=TrialType.MAB, const=True)
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.
@@ -104,9 +104,9 @@ class CreateMabTrial(CreateTrialBase):
 class CreateConcurrentTrial(CreateTrialBase):
     """Create a exploration."""
 
-    type: TrialType = Field(TrialType.Concurrent, const=True)
+    type: TrialType = Field(default=TrialType.Concurrent, const=True)
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.
@@ -119,13 +119,13 @@ class UpdateTrial(BatchSizeBase):
     """Report the result of trial."""
 
     trial_number: int = Field(gt=0)
-    end_timestamp: datetime = Field(datetime.now(), const=True)
+    end_timestamp: datetime = Field(default_factory=datetime.now, const=True)
     status: TrialStatus
-    time: Optional[float] = Field(None, ge=0)
-    energy: Optional[float] = Field(None, ge=0)
+    time: Optional[float] = Field(default=None, ge=0)
+    energy: Optional[float] = Field(default=None, ge=0)
     converged: Optional[bool] = None
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Make it immutable after it's created.

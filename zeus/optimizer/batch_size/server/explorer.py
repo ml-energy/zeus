@@ -9,7 +9,7 @@ from zeus.optimizer.batch_size.server.batch_size_state.commands import (
 )
 from zeus.optimizer.batch_size.server.batch_size_state.models import ExplorationsPerJob
 from zeus.optimizer.batch_size.server.database.schema import TrialStatus
-from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerRuntimeError
+from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerRuntimeError, ZeusBSOValueError
 from zeus.optimizer.batch_size.server.job.models import JobState
 from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.utils.logging import get_logger
@@ -91,6 +91,10 @@ class PruningExploreManager:
                             converged_bs_list.append(bs)
 
                             m = exploration_history.explorations_per_bs[bs][round]
+                            if m.energy is None or m.time is None:
+                                raise ZeusBSOValueError(
+                                    "Energy or time is not available for the exploration."
+                                )
                             cost = zeus_cost(
                                 m.energy, m.time, job.eta_knob, job.max_power
                             )

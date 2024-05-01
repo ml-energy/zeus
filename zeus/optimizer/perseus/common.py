@@ -79,7 +79,7 @@ class PerseusSettings(BaseSettings):
     def _make_upper_case(cls, value):
         return value.upper()
 
-    class Config:
+    class Config:  # type: ignore
         """Configuration class read by pydantic."""
 
         env_prefix = "perseus_"

@@ -61,7 +61,7 @@ class JobStateRepository(DatabaseRepository):
         """
         if self.fetched_job is None or self.fetched_job.job_id != job_id:
             return None
-        return self.fetched_job
+        return JobState.from_orm(self.fetched_job)
 
     def update_exp_default_bs(self, updated_bs: UpdateExpDefaultBs) -> None:
         """Update exploration default batch size on fetched job.

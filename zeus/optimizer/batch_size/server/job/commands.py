@@ -134,7 +134,8 @@ class CreateJob(GpuConfig, JobParams):
 
         return values
 
-    def from_job_config(js: JobSpecFromClient) -> "CreateJob":
+    @classmethod
+    def from_job_config(cls, js: JobSpecFromClient) -> "CreateJob":
         """From JobConfig, instantiate `CreateJob`.
 
         Initialize generator state, exp_default_batch_size, and min_cost_batch_size.
@@ -145,7 +146,7 @@ class CreateJob(GpuConfig, JobParams):
             rng = np.random.default_rng(js.mab_seed)
             d["mab_random_generator_state"] = json.dumps(rng.__getstate__())
         d["min_cost_batch_size"] = js.default_batch_size
-        return CreateJob.parse_obj(d)
+        return cls.parse_obj(d)
 
     def to_orm(self) -> JobTable:
         """Convert pydantic model `CreateJob` to ORM object Job."""
