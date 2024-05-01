@@ -788,6 +788,7 @@ class AMDGPUs(GPUs):
         """Shuts down the AMD GPU monitoring library to release resources and clean up."""
         with contextlib.suppress(amdsmi.AmdSmiException):
             amdsmi.amdsmi_shut_down()  # Ignore error on shutdown. Neccessary for proper cleanup and test functionality
+
     @property
     def gpus(self) -> Sequence[GPU]:
         """Returns a list of AMDGPU objects being tracked."""

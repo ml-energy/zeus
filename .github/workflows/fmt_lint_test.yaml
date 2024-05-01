@@ -35,4 +35,3 @@ jobs:
         run: bash scripts/lint.sh
       - name: Run tests
         run: python -m pytest
-

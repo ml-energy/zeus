@@ -13,7 +13,6 @@ from zeus.optimizer.batch_size.common import (
     REGISTER_JOB_URL,
     REPORT_END_URL,
     REPORT_RESULT_URL,
-    CreatedJob,
     JobSpecFromClient,
     TrialId,
     ReportResponse,
@@ -29,29 +28,26 @@ from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.utils.logging import get_logger
 
 app = FastAPI()
-# Global variable across different requests: https://github.com/tiangolo/fastapi/issues/592
-# We lock the job before we make any modification to prevent any concurrent bugs.
-job_locks = defaultdict(asyncio.Lock)
-prefix_locks = defaultdict(asyncio.Lock)
+
+# Per-job locking to prevent any concurrent operations on the same job.
+# This is fine because it's very unlikely that the same job will be
+# accessed concurrently in high frequency.
+JOB_LOCKS = defaultdict(asyncio.Lock)
+PREFIX_LOCKS = defaultdict(asyncio.Lock)
+
 
 def get_job_locks() -> defaultdict[str, asyncio.Lock]:
-    global job_locks
-    return job_locks
+    """Get global job locks."""
+    return JOB_LOCKS
 
 
 def get_prefix_locks() -> defaultdict[str, asyncio.Lock]:
-    global prefix_locks
-    return prefix_locks
+    """Get global job Id prefix locks."""
+    return PREFIX_LOCKS
 
 
 logger = get_logger(__name__)
 logging.basicConfig(level=logging.getLevelName(settings.log_level))
-
-
-@app.on_event("startup")
-def startup_hook():
-    """Startup hook."""
-    pass
 
 
 @app.post(

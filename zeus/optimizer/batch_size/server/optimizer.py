@@ -20,7 +20,6 @@ from zeus.optimizer.batch_size.server.database.schema import TrialStatus
 from zeus.optimizer.batch_size.server.exceptions import (
     ZeusBSOJobConfigMismatchError,
     ZeusBSOServerNotFoundError,
-    ZeusBSOServerRuntimeError,
     ZeusBSOServiceBadOperationError,
     ZeusBSOValueError,
 )

@@ -85,7 +85,9 @@ class BatchSizeOptimizer(Callback):
         self.current_batch_size = 0
 
         # Register job
-        res = httpx.post(self.server_url + REGISTER_JOB_URL, content=self.job_spec.json())
+        res = httpx.post(
+            self.server_url + REGISTER_JOB_URL, content=self.job_spec.json()
+        )
         self._handle_response(res)
 
         self.job = CreatedJob.parse_obj(res.json())
