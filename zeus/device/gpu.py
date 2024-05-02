@@ -9,6 +9,11 @@ import contextlib
 
 import pynvml  # necessary for testing to mock!
 
+try:
+    import amdsmi  # This is necessary so that AMDGPU can see the library. Import and initialization is retested in `amdsmi_is_available`.
+except ImportError:
+    amdsmi = None
+
 from zeus.device.exception import ZeusBaseGPUError
 from zeus.utils.logging import get_logger
 
@@ -275,7 +280,7 @@ def _handle_nvml_errors(func):
             return func(*args, **kwargs)
         except pynvml.NVMLError as e:
             exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusGPUUnknownError)
-            raise exception_class(e.msg) from e
+            raise exception_class(str(e)) from e
 
     return wrapper
 
@@ -428,9 +433,11 @@ def _handle_amdsmi_errors(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except amdsmi.AmdSmiException as e:
-            exception_class = AMDGPU._exception_map.get(e.value, ZeusGPUUnknownError)
-            raise exception_class(e.msg) from e
+        except amdsmi.AmdSmiLibraryException as e:
+            exception_class = AMDGPU._exception_map.get(
+                e.get_error_code(), ZeusGPUUnknownError
+            )
+            raise exception_class(e.get_error_info()) from e
 
     return wrapper
 
@@ -447,40 +454,66 @@ class AMDGPU(GPU):
         """Initializes the AMDGPU object with a specified GPU index. Acquires a handle to the GPU using `amdsmi.amdsmi_get_processor_handles()`."""
         super().__init__(gpu_index)
         self._get_handle()
+        self._supportsGetTotalEnergyConsumption = None
 
-    _exception_map = {}
+    _exception_map = {
+        1: ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
+        2: ZeusGPUNotSupportedError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
+        8: ZeusGPUTimeoutError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_TIMEOUT
+        10: ZeusGPUNoPermissionError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM
+        15: ZeusGPUMemoryError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_OUT_OF_RESOURCES
+        18: ZeusGPUInitError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INIT_ERROR
+        31: ZeusGPUNotFoundError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_FOUND
+        32: ZeusGPUInitError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_INIT
+        34: ZeusGPUDriverNotLoadedError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_DRIVER_NOT_LOADED
+        41: ZeusGPUInsufficientSizeError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INSUFFICIENT_SIZE
+        45: ZeusGPUDriverNotLoadedError,  # amdsmi.amdsmi_wrapper.AMDSMI_NO_ENERGY_DRV
+        46: ZeusGPUDriverNotLoadedError,  # amdsmi.amdsmi_wrapper.AMDSMI_NO_MSR_DRV
+        47: ZeusGPUDriverNotLoadedError,  # amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_DRV
+        48: ZeusGPUNotSupportedError,  # amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_SUP
+        49: ZeusGPUNotSupportedError,  # amdsmi.amdsmi_wrapper.AMDSMI_NO_HSMP_MSG_SUP
+        50: ZeusGPUTimeoutError,  # amdsmi.amdsmi_wrapper.AMDSMI_HSMP_TIMEOUT
+        51: ZeusGPUDriverNotLoadedError,  # amdsmi.amdsmi_wrapper.AMDSMI_NO_DRV
+        52: ZeusGPULibraryNotFoundError,  # amdsmi.amdsmi_wrapper.AMDSMI_FILE_NOT_FOUND
+        53: ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_ARG_PTR_NULL
+        4294967295: ZeusGPUUnknownError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_UNKNOWN_ERROR
+    }
 
     @_handle_amdsmi_errors
     def _get_handle(self):
+        handles = amdsmi.amdsmi_get_processor_handles()
+        if len(handles) <= self.gpu_index:
+            raise ZeusGPUNotFoundError(
+                f"GPU with index {self.gpu_index} not found. Found {len(handles)} GPUs."
+            )
         self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
 
     @_handle_amdsmi_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-        return (info.min_power_cap, info.max_power_cap)
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
+        return (info["min_power_cap"] * 1000, info["max_power_cap"] * 1000)
 
     @_handle_amdsmi_errors
     def setPersistenceMode(self, enable: bool) -> None:
-        """Enables persistence mode for the specified GPU."""
-        raise ZeusGPUNotSupportedError(
-            "Persistence mode is not supported for AMD GPUs yet"
-        )
-        profile = ...  # TODO: find out correct profile
-        amdsmi.amdsmi_set_gpu_power_profile(self.handle, 0, profile)
+        """If enable = True, enables persistence mode for the specified GPU. If enable = False, disables persistence mode."""
+        # N/A for AMD GPUs.
+        pass
 
     @_handle_amdsmi_errors
     def setPowerManagementLimit(self, value: int) -> None:
         """Sets the power management limit for the specified GPU to the given value. Unit: mW."""
-        amdsmi.amdsmi_set_power_cap(self.handle, sensor_id=0, cap=value)
+        amdsmi.amdsmi_set_power_cap(
+            self.handle, 0, int(value * 1000)
+        )  # Units for set_power_cap: microwatts
 
     @_handle_amdsmi_errors
     def resetPowerManagementLimit(self) -> None:
         """Resets the power management limit for the specified GPU to the default value."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
         amdsmi.amdsmi_set_power_cap(
-            self.handle, sensor_id=0, cap=info.default_power_cap
-        )
+            self.handle, 0, cap=int(info["default_power_cap"] * 1e6)
+        )  # expects value in microwatts
 
     @_handle_amdsmi_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
@@ -495,32 +528,22 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def getSupportedMemoryClocks(self) -> list[int]:
         """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
-        num_supported, current, frequency = amdsmi.amdsmi_get_clk_freq(
-            self.handle, clk_type=amdsmi.AmdSmiClkType.MEM
-        )  # TODO: Figure out correct clk_type
-        # frequency; List of frequencies, only the first num_supported frequencies are valid"""
-        return frequency[:num_supported]
+        raise ZeusGPUNotSupportedError(
+            "AMDSMI does not support querying memory frequencies"
+        )
 
     @_handle_amdsmi_errors
     def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
         """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
         raise ZeusGPUNotSupportedError(
-            "Getting supported graphics clocks is not supported for AMD GPUs yet"
+            "AMDSMI does not support querying GFX frequencies given a memory frequency"
         )
 
     @_handle_amdsmi_errors
     def getName(self) -> str:
         """Returns the name of the specified GPU."""
-        (
-            market_name,
-            vendor_id,
-            device_id,
-            rev_id,
-            asic_serial,
-        ) = amdsmi.amdsmi_get_gpu_asic_info(
-            self.handle
-        )  # TODO: Does this return correct string
-        return market_name
+        info = amdsmi.amdsmi_get_gpu_asic_info(self.handle)
+        return info["market_name"]
 
     @_handle_amdsmi_errors
     def setGpuLockedClocks(self, minGpuClockMHz: int, maxGpuClockMHz: int) -> None:
@@ -529,43 +552,70 @@ class AMDGPU(GPU):
             self.handle,
             minGpuClockMHz,
             maxGpuClockMHz,
-            clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX,
+            clk_type=amdsmi.AmdSmiClkType.GFX,
         )
 
     @_handle_amdsmi_errors
     def resetMemoryLockedClocks(self) -> None:
         """Resets the memory locked clocks of the specified GPU to their default values."""
-        amdsmi.amdsmi_reset_gpu_clk(
-            self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_SYS
-        )  # TODO: check docs
+        # Get default MEM clock values
+        info = amdsmi.amdsmi_get_clock_info(
+            self.handle, amdsmi.AmdSmiClkType.MEM
+        )  # returns MHz
+
+        amdsmi.amdsmi_set_gpu_clk_range(
+            self.handle,
+            info["min_clk"],
+            info["max_clk"],
+            clk_type=amdsmi.AmdSmiClkType.MEM,
+        )  # expects MHz
 
     @_handle_amdsmi_errors
     def resetGpuLockedClocks(self) -> None:
         """Resets the GPU locked clocks of the specified GPU to their default values."""
-        amdsmi.amdsmi_reset_gpu_clk(
-            self.handle, clk_type=amdsmi.AMDSMI_CLK_TYPE_GFX
-        )  # TODO: check docs
+        # Get default GPU clock values
+        info = amdsmi.amdsmi_get_clock_info(
+            self.handle, amdsmi.AmdSmiClkType.GFX
+        )  # returns MHz
+
+        amdsmi.amdsmi_set_gpu_clk_range(
+            self.handle,
+            info["min_clk"],
+            info["max_clk"],
+            clk_type=amdsmi.AmdSmiClkType.GFX,
+        )  # expects MHz
 
     @_handle_amdsmi_errors
     def getPowerUsage(self) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
-        raise ZeusGPUNotSupportedError(
-            "Getting power usage is not supported for AMD GPUs yet"
-        )
+        return int(
+            amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000
+        )  # returns in W, convert to mW
 
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Returns True if the specified GPU supports retrieving the total energy consumption."""
-        raise ZeusGPUNotSupportedError(
-            "Getting total energy consumption is not supported for AMD GPUs yet"
-        )
+        if self._supportsGetTotalEnergyConsumption is None:
+            try:
+                _ = amdsmi.amdsmi_get_energy_count(self.handle)
+                self._supportsGetTotalEnergyConsumption = True
+            except amdsmi.AmdSmiLibraryException as e:
+                if (
+                    e.get_error_code() == 2
+                ):  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
+                    self._supportsGetTotalEnergyConsumption = False
+                else:
+                    raise e
+
+        return self._supportsGetTotalEnergyConsumption
 
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
         """Returns the total energy consumption of the specified GPU. Units: mJ."""
-        raise ZeusGPUNotSupportedError(
-            "Getting total energy consumption is not supported for AMD GPUs yet"
-        )
+        info = amdsmi.amdsmi_get_energy_count(self.handle)
+        return int(
+            info["power"] / 1e3
+        )  # returns in micro Joules, convert to mili Joules
 
 
 class UnprivilegedAMDGPU(AMDGPU):
@@ -727,8 +777,6 @@ class NVIDIAGPUs(GPUs):
         # initialize all GPUs
         self._gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
 
-        # eventually replace with: self.gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
-
     def __del__(self) -> None:
         """Shuts down the NVIDIA GPU monitoring library to release resources and clean up."""
         with contextlib.suppress(pynvml.NVMLError):
@@ -738,9 +786,12 @@ class NVIDIAGPUs(GPUs):
 class AMDGPUs(GPUs):
     """AMD GPU Manager object, containing individual AMDGPU objects, abstracting amdsmi calls and handling related exceptions.
 
-    This class provides a high-level interface to interact with AMD GPUs. `ROCR_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
-    4 GPUs and `ROCR_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are instantiated. In this case, to access
-    GPU of ROCR index 0, use the index 0, and for ROCR index 2, use the index 1.
+    !!! Important
+        Currently only ROCM 6.0 is supported.
+
+    This class provides a high-level interface to interact with AMD GPUs. `HIP_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
+    4 GPUs and `HIP_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are instantiated. In this case, to access
+    GPU of HIP index 0, use the index 0, and for HIP index 2, use the index 1.
 
     This class provides a 1:1 mapping between the methods and AMDSMI library functions. For example, if you want to do the following:
 
@@ -756,8 +807,7 @@ class AMDGPUs(GPUs):
     constraints =  gpus.getPowerManagementLimitConstraints(gpu_index)
     ```
 
-    Note: This class instantiates (grabs the handle, by calling `amdsmi.amdsmi_get_processor_handles()`) all GPUs that are visible to the system, as determined by the `ROCR_VISIBLE_DEVICES` environment variable if set.
-
+    Note: This class instantiates (grabs the handle, by calling `amdsmi.amdsmi_get_processor_handles()`) all GPUs that are visible to the system, as determined by the `HIP_VISIBLE_DEVICES` environment variable if set.
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:
@@ -775,23 +825,26 @@ class AMDGPUs(GPUs):
             exception_class = AMDGPU._exception_map.get(e.value, ZeusBaseGPUError)
             raise exception_class(e.msg) from e
 
+    @property
+    def gpus(self) -> Sequence[GPU]:
+        """Returns a list of AMDGPU objects being tracked."""
+        return self._gpus
+
     def _init_gpus(self) -> None:
-        # Must respect `ROCR_VISIBLE_DEVICES` if set
-        if (visible_device := os.environ.get("ROCR_VISIBLE_DEVICES")) is not None:
+        # Must respect `HIP_VISIBLE_DEVICES` if set
+        if (visible_device := os.environ.get("HIP_VISIBLE_DEVICES")) is not None:
             self.visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
             self.visible_indices = list(
                 range(len(amdsmi.amdsmi_get_processor_handles()))
             )
 
+        self._gpus = [AMDGPU(gpu_num) for gpu_num in self.visible_indices]
+
     def __del__(self) -> None:
         """Shuts down the AMD GPU monitoring library to release resources and clean up."""
         with contextlib.suppress(amdsmi.AmdSmiException):
             amdsmi.amdsmi_shut_down()  # Ignore error on shutdown. Neccessary for proper cleanup and test functionality
-    @property
-    def gpus(self) -> Sequence[GPU]:
-        """Returns a list of AMDGPU objects being tracked."""
-        raise NotImplementedError("AMDGPUs.gpus is not implemented yet.")
 
 
 _gpus: GPUs | None = None
@@ -835,6 +888,7 @@ def nvml_is_available() -> bool:
         return False
     try:
         pynvml.nvmlInit()
+        logger.info("PyNVML is available and initialized.")
         return True
     except pynvml.NVMLError:
         logger.info("PyNVML is available but could not initialize.")
@@ -850,6 +904,7 @@ def amdsmi_is_available() -> bool:
         return False
     try:
         amdsmi.amdsmi_init()
+        logger.info("amdsmi is available and initialized")
         return True
     except amdsmi.AmdSmiLibraryException:
         logger.info("amdsmi is available but could not initialize.")
