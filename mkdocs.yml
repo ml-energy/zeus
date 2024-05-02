@@ -97,6 +97,7 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+
 # Appearance
 extra_css:
   - assets/css/custom.css
@@ -111,18 +112,16 @@ extra_javascript:
 # Page tree
 nav:
   - Zeus: index.md
-  - Overview: 
-    - overview/index.md
-  - Getting Started:
-    - getting_started/index.md
-    - Environment Setup: getting_started/environment.md
-    - Installing Zeus: getting_started/installing.md
-  - Batch Size Optimizer:
-    - batch_size_optimizer/index.md
-  - Perseus:
-    - perseus/index.md
-    - Integrating: perseus/integrating.md
-  - Extending Zeus: extend.md
+  - Getting Started: getting_started/index.md
+  - Measure: measure/index.md
+  - Optimize:
+    - optimize/index.md
+    - optimize/global_power_limit_optimizer.md
+    - optimize/batch_size_optimizer.md
+    - optimize/perseus_optimizer.md
+  - Research Overview: 
+    - research_overview/zeus.md
+    - research_overview/perseus.md
   - Source Code Reference: reference/
 
 # Extra stuff
