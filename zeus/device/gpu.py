@@ -786,6 +786,9 @@ class NVIDIAGPUs(GPUs):
 class AMDGPUs(GPUs):
     """AMD GPU Manager object, containing individual AMDGPU objects, abstracting amdsmi calls and handling related exceptions.
 
+    !!! Important
+        Currently only ROCM 6.0 is supported.
+
     This class provides a high-level interface to interact with AMD GPUs. `HIP_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
     4 GPUs and `HIP_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are instantiated. In this case, to access
     GPU of HIP index 0, use the index 0, and for HIP index 2, use the index 1.
@@ -805,7 +808,6 @@ class AMDGPUs(GPUs):
     ```
 
     Note: This class instantiates (grabs the handle, by calling `amdsmi.amdsmi_get_processor_handles()`) all GPUs that are visible to the system, as determined by the `HIP_VISIBLE_DEVICES` environment variable if set.
-    !!! Only supports ROCM 6.0 !!!
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:
