@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Sequence
 import contextlib
 
 import pynvml  # necessary for testing to mock!
+
 try:
-    import amdsmi
+    import amdsmi  # This is necessary so that AMDGPU can see the library. Import and initialization is retested in `amdsmi_is_available`.
 except ImportError:
     amdsmi = None
 
@@ -490,7 +491,7 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle) # Returns in W
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
         return (info["min_power_cap"] * 1000, info["max_power_cap"] * 1000)
 
     @_handle_amdsmi_errors
@@ -509,8 +510,10 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def resetPowerManagementLimit(self) -> None:
         """Resets the power management limit for the specified GPU to the default value."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle) # Returns in W
-        amdsmi.amdsmi_set_power_cap(self.handle, 0, cap=int(info["default_power_cap"]*1e6)) # expects value in microwatts
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
+        amdsmi.amdsmi_set_power_cap(
+            self.handle, 0, cap=int(info["default_power_cap"] * 1e6)
+        )  # expects value in microwatts
 
     @_handle_amdsmi_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
@@ -558,14 +561,14 @@ class AMDGPU(GPU):
         # Get default MEM clock values
         info = amdsmi.amdsmi_get_clock_info(
             self.handle, amdsmi.AmdSmiClkType.MEM
-        ) # returns MHz
+        )  # returns MHz
 
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             info["min_clk"],
             info["max_clk"],
-            clk_type=amdsmi.AmdSmiClkType.MEM
-        ) # expects MHz
+            clk_type=amdsmi.AmdSmiClkType.MEM,
+        )  # expects MHz
 
     @_handle_amdsmi_errors
     def resetGpuLockedClocks(self) -> None:
@@ -573,20 +576,20 @@ class AMDGPU(GPU):
         # Get default GPU clock values
         info = amdsmi.amdsmi_get_clock_info(
             self.handle, amdsmi.AmdSmiClkType.GFX
-        ) # returns MHz
+        )  # returns MHz
 
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             info["min_clk"],
             info["max_clk"],
             clk_type=amdsmi.AmdSmiClkType.GFX,
-        ) # expects MHz
+        )  # expects MHz
 
     @_handle_amdsmi_errors
     def getPowerUsage(self) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
-        return (
-            int(amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000)
+        return int(
+            amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000
         )  # returns in W, convert to mW
 
     @_handle_amdsmi_errors
