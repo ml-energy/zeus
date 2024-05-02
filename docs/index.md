@@ -12,7 +12,6 @@ hide:
 </div>
 
 !!! Success "Join the Zeus Slack workspace!"
-    Zeus exceeded 100k+ pulls on [Docker Hub](https://hub.docker.com/r/mlenergy/zeus)!
     The Zeus team is always happy to chat with Zeus users and help out.
     Reach out to us in the [Zeus Slack workspace](https://join.slack.com/t/zeus-ml/shared_invite/zt-1najba5mb-WExy7zoNTyaZZfTlUWoLLg).
 
