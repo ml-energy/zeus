@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING, Sequence
 import contextlib
 
 import pynvml  # necessary for testing to mock!
-
-# import amdsmi
+try:
+    import amdsmi
+except ImportError:
+    amdsmi = None
 
 from zeus.device.exception import ZeusBaseGPUError
 from zeus.utils.logging import get_logger
@@ -488,8 +490,8 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
         """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-        return (info.min_power_cap * 1000, info.max_power_cap * 1000)
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle) # Returns in W
+        return (info["min_power_cap"] * 1000, info["max_power_cap"] * 1000)
 
     @_handle_amdsmi_errors
     def setPersistenceMode(self, enable: bool) -> None:
@@ -507,8 +509,8 @@ class AMDGPU(GPU):
     @_handle_amdsmi_errors
     def resetPowerManagementLimit(self) -> None:
         """Resets the power management limit for the specified GPU to the default value."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)
-        amdsmi.amdsmi_set_power_cap(self.handle, 0, cap=info.default_power_cap)
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle) # Returns in W
+        amdsmi.amdsmi_set_power_cap(self.handle, 0, cap=int(info["default_power_cap"]*1e6)) # expects value in microwatts
 
     @_handle_amdsmi_errors
     def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
@@ -554,37 +556,37 @@ class AMDGPU(GPU):
     def resetMemoryLockedClocks(self) -> None:
         """Resets the memory locked clocks of the specified GPU to their default values."""
         # Get default MEM clock values
-        _, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(
+        info = amdsmi.amdsmi_get_clock_info(
             self.handle, amdsmi.AmdSmiClkType.MEM
-        )
+        ) # returns MHz
 
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
-            min_clk,
-            max_clk,
-            clk_type=amdsmi.AmdSmiClkType.MEM,
-        )
+            info["min_clk"],
+            info["max_clk"],
+            clk_type=amdsmi.AmdSmiClkType.MEM
+        ) # expects MHz
 
     @_handle_amdsmi_errors
     def resetGpuLockedClocks(self) -> None:
         """Resets the GPU locked clocks of the specified GPU to their default values."""
         # Get default GPU clock values
-        _, max_clk, min_clk = amdsmi.amdsmi_get_clock_info(
+        info = amdsmi.amdsmi_get_clock_info(
             self.handle, amdsmi.AmdSmiClkType.GFX
-        )
+        ) # returns MHz
 
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
-            min_clk,
-            max_clk,
+            info["min_clk"],
+            info["max_clk"],
             clk_type=amdsmi.AmdSmiClkType.GFX,
-        )
+        ) # expects MHz
 
     @_handle_amdsmi_errors
     def getPowerUsage(self) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
         return (
-            amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000
+            int(amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000)
         )  # returns in W, convert to mW
 
     @_handle_amdsmi_errors
