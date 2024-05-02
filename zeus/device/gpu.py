@@ -805,7 +805,7 @@ class AMDGPUs(GPUs):
     ```
 
     Note: This class instantiates (grabs the handle, by calling `amdsmi.amdsmi_get_processor_handles()`) all GPUs that are visible to the system, as determined by the `HIP_VISIBLE_DEVICES` environment variable if set.
-    Supports ROCM 5.7 and ROCM 6.0.
+    !!! Only supports ROCM 6.0 !!!
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:
