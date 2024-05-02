@@ -79,7 +79,7 @@ async def run_migrations_online() -> None:
     """
     connectable = AsyncEngine(
         engine_from_config(
-            config.get_section(config.config_ini_section),
+            config.get_section(config.config_ini_section),  # type: ignore
             prefix="sqlalchemy.",
             poolclass=pool.NullPool,
             future=True,

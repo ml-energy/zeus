@@ -4,25 +4,38 @@ from __future__ import annotations
 import abc
 import functools
 import os
-from typing import TYPE_CHECKING, Sequence
 import contextlib
+from typing import Sequence
 
-import pynvml  # necessary for testing to mock!
+import pynvml
 
 try:
-    import amdsmi  # This is necessary so that AMDGPU can see the library. Import and initialization is retested in `amdsmi_is_available`.
+    import amdsmi  # type: ignore
 except ImportError:
-    amdsmi = None
+
+    class MockAMDSMI:
+        """Mock class for AMD SMI library."""
+
+        def __getattr__(self, name):
+            """Raise an error if any method is called.
+
+            Since this class is only used when `amdsmi` is not available,
+            something has gone wrong if any method is called.
+            """
+            raise RuntimeError(
+                f"amdsmi is not available and amdsmi.{name} shouldn't have been called. "
+                "This is a bug."
+            )
+
+    amdsmi = MockAMDSMI()
 
 from zeus.device.exception import ZeusBaseGPUError
 from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
 
-if TYPE_CHECKING:
-    import amdsmi
 
-""" EXCEPTION WRAPPERS """
+# EXCEPTION WRAPPERS
 
 
 class ZeusGPUInitError(ZeusBaseGPUError):
@@ -185,7 +198,7 @@ class ZeusGPUUnknownError(ZeusBaseGPUError):
         super().__init__(message)
 
 
-""" SINGLE GPU MANAGEMENT OBJECTS """
+# SINGLE GPU MANAGEMENT OBJECTS
 
 
 class GPU(abc.ABC):
@@ -270,7 +283,7 @@ class GPU(abc.ABC):
         pass
 
 
-""" GPU MANAGEMENT OBJECTS """
+# GPU MANAGEMENT OBJECTS
 
 
 def _handle_nvml_errors(func):
@@ -279,7 +292,10 @@ def _handle_nvml_errors(func):
         try:
             return func(*args, **kwargs)
         except pynvml.NVMLError as e:
-            exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusGPUUnknownError)
+            exception_class = NVIDIAGPU._exception_map.get(
+                e.value,  # pyright: ignore[reportAttributeAccessIssue]
+                ZeusGPUUnknownError,
+            )
             raise exception_class(str(e)) from e
 
     return wrapper
@@ -759,8 +775,12 @@ class NVIDIAGPUs(GPUs):
             if ensure_homogeneous:
                 self._ensure_homogeneous()
         except pynvml.NVMLError as e:
-            exception_class = NVIDIAGPU._exception_map.get(e.value, ZeusBaseGPUError)
-            raise exception_class(e.msg) from e
+            exception_class = NVIDIAGPU._exception_map.get(
+                e.value, ZeusBaseGPUError  # pyright: ignore[reportAttributeAccessIssue]
+            )
+            raise exception_class(
+                e.msg  # pyright: ignore[reportAttributeAccessIssue]
+            ) from e
 
     @property
     def gpus(self) -> Sequence[GPU]:
@@ -898,7 +918,7 @@ def nvml_is_available() -> bool:
 def amdsmi_is_available() -> bool:
     """Check if amdsmi is available."""
     try:
-        import amdsmi
+        import amdsmi  # type: ignore
     except ImportError:
         logger.info("amdsmi is not available.")
         return False

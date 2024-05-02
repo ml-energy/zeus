@@ -9,3 +9,4 @@ else
 fi
 
 ruff check zeus
+pyright zeus

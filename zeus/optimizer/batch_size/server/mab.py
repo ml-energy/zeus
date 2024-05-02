@@ -63,7 +63,7 @@ class GaussianTS:
             Updated arm state
         """
         if len(rewards) == 0:
-            return
+            raise ZeusBSOValueError("No rewards to fit the arm.")
 
         variance = np.var(rewards)
         reward_prec = np.inf if variance == 0.0 else np.reciprocal(variance)
@@ -156,7 +156,7 @@ class GaussianTS:
                 sample,
             )
 
-        bs = max(expectations, key=expectations.get)
+        bs = max(expectations, key=expectations.get)  # type: ignore
         logger.info("%s in Thompson Sampling stage -> BS = %d", job_id, bs)
         return bs
 
@@ -198,6 +198,10 @@ class GaussianTS:
             rewards = []
             # Collect rewards starting from the most recent ones and backwards.
             for trial in evidence.explorations_per_bs[bs]:
+                if trial.energy is None or trial.time is None:
+                    raise ZeusBSOValueError(
+                        f"Trial {trial.trial_number} has no energy or time set."
+                    )
                 rewards.append(
                     -zeus_cost(trial.energy, trial.time, job.eta_knob, job.max_power)
                 )
@@ -230,6 +234,11 @@ class GaussianTS:
         Raises:
             `ZeusBSOValueError`: When the arm (job id, batch_size) doesn't exist
         """
+        if trial_result.energy is None or trial_result.time is None:
+            raise ZeusBSOValueError(
+                f"Trial {trial_result.trial_number} has no energy or time set."
+            )
+
         # Since we're learning the reward precision, we need to
         # 1. re-compute the precision of this arm based on the reward history,
         # 2. update the arm's reward precision

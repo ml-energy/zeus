@@ -4,6 +4,8 @@ Heavily inspired by https://praciano.com.br/fastapi-and-async-sqlalchemy-20-with
 and https://medium.com/@tclaitken/setting-up-a-fastapi-app-with-async-sqlalchemy-2-0-pydantic-v2-e6c540be4308
 """
 
+from __future__ import annotations
+
 import contextlib
 from typing import Any, AsyncIterator
 
@@ -20,7 +22,7 @@ from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerRuntimeErro
 class DatabaseSessionManager:
     """Session manager class."""
 
-    def __init__(self, host: str, engine_kwargs: dict[str, Any] = None):
+    def __init__(self, host: str, engine_kwargs: dict[str, Any] | None = None):
         """Create async engine and session maker."""
         if engine_kwargs is None:
             engine_kwargs = {}

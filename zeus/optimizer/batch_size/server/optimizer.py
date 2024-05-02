@@ -157,6 +157,9 @@ class ZeusBatchSizeOptimizer:
         """
         cost_ub = np.inf
         job = await self.service.get_job(result.job_id)
+        if job is None:
+            raise ZeusBSOServiceBadOperationError(f"Unknown job {result.job_id}")
+
         trial = await self.service.get_trial(
             ReadTrial(
                 job_id=result.job_id,
@@ -164,12 +167,15 @@ class ZeusBatchSizeOptimizer:
                 trial_number=result.trial_number,
             )
         )
-
         if trial is None:
             raise ZeusBSOServiceBadOperationError(f"Unknown trial {result}")
 
         if trial.status != TrialStatus.Dispatched:
             # result is already reported
+            if trial.converged is None:
+                raise ZeusBSOValueError(
+                    f"Trial({trial.trial_number}) is already reported but converged is not set."
+                )
             return ReportResponse(
                 stop_train=True,
                 converged=trial.converged,
@@ -239,6 +245,7 @@ class ZeusBatchSizeOptimizer:
             # update trial
             self.service.update_trial(trial_result)
 
+        assert trial_result.converged is not None, "This just set to boolean above."
         return ReportResponse(
             stop_train=True, converged=trial_result.converged, message=message
         )

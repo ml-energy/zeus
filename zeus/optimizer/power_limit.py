@@ -489,7 +489,7 @@ except ModuleNotFoundError:
     TrainerCallback = object  # Fallback base class
 
 
-class HFGlobalPowerLimitOptimizer(TrainerCallback):
+class HFGlobalPowerLimitOptimizer(TrainerCallback):  # type: ignore
     """[Wrapped for Hugging Face Trainer Callback] Optimizer for the power limit knob.
 
     This optimizer uses the JIT profiling log to determine the optimal power limit.

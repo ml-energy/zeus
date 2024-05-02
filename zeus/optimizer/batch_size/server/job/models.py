@@ -22,7 +22,7 @@ class Stage(Enum):
 class JobGetter(GetterDict):
     """Getter for batch size to convert ORM batch size object to integer."""
 
-    def get(self, key: str, default: Any) -> Any:
+    def get(self, key: str, default: Any = None) -> Any:
         """Get value from dict."""
         if key == "batch_sizes":
             # If the key is batch_sizes, parse the integer from object.

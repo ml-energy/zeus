@@ -22,6 +22,8 @@ Inspired by Deepspeed:
 https://github.com/microsoft/DeepSpeed/blob/5d754606/deepspeed/pydantic_v1.py
 """
 
+# pyright: reportWildcardImportFromLibrary=false
+
 try:
     from pydantic.v1 import *
 except ImportError:

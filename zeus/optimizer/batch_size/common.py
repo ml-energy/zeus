@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from zeus.utils.pydantic_v1 import BaseModel, root_validator, validator, Field
 
@@ -53,7 +53,7 @@ class JobParams(BaseModel):
     mab_seed: Optional[int] = None
 
     @validator("batch_sizes")
-    def _validate_batch_sizes(cls, bs: list[int]) -> int:
+    def _validate_batch_sizes(cls, bs: list[int]) -> list[int]:
         if bs is not None and len(bs) > 0:
             bs.sort()
             return bs
@@ -61,13 +61,13 @@ class JobParams(BaseModel):
             raise ValueError(f"Batch Sizes = {bs} is empty")
 
     @validator("eta_knob")
-    def _validate_eta_knob(cls, v: float) -> int:
+    def _validate_eta_knob(cls, v: float) -> float:
         if v < 0 or v > 1:
             raise ValueError("eta_knob should be in range [0,1]")
         return v
 
     @validator("beta_knob")
-    def _validate_beta_knob(cls, v: float) -> int:
+    def _validate_beta_knob(cls, v: float) -> float:
         if v is None or v > 0:
             return v
         else:
@@ -76,7 +76,7 @@ class JobParams(BaseModel):
             )
 
     @root_validator(skip_on_failure=True)
-    def _check_default_batch_size(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def _check_default_batch_size(cls, values: dict[str, Any]) -> dict[str, Any]:
         bs = values["default_batch_size"]
         bss = values["batch_sizes"]
         if bs not in bss:
@@ -108,10 +108,10 @@ class JobSpec(JobParams):
     Refer [`JobParams`][`zeus.optimizer.batch_size.common.JobParams`] for other attributes.
     """
 
-    job_id: Optional[str]
+    job_id: Optional[str]  # pyright: ignore[reportIncompatibleVariableOverride]
 
     @root_validator(skip_on_failure=True)
-    def _check_job_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def _check_job_id(cls, values: dict[str, Any]) -> dict[str, Any]:
         job_id: str | None = values.get("job_id")
         prefix: str = values["job_id_prefix"]
 

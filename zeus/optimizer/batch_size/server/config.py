@@ -20,7 +20,7 @@ class ZeusBsoSettings(BaseSettings):
     echo_sql: Union[bool, str] = False  # To prevent conversion error for empty string
     log_level: str = "INFO"
 
-    class Config:
+    class Config:  # type: ignore
         """Model configuration.
 
         Set how to find the env variables and how to parse it.
@@ -42,7 +42,7 @@ class ZeusBsoSettings(BaseSettings):
         return False
 
     @validator("log_level")
-    def _validate_log_level(cls, v) -> bool:
+    def _validate_log_level(cls, v) -> str:
         if v is None or v not in {
             "NOTSET",
             "DEBUG",
@@ -56,4 +56,4 @@ class ZeusBsoSettings(BaseSettings):
         return v
 
 
-settings = ZeusBsoSettings()
+settings = ZeusBsoSettings()  # type: ignore

@@ -759,12 +759,12 @@ class Simulator:
                 # Also there are all runs 1, 2, ... included, but power info is actually
                 # completely duplicated across different runs in the DataFrame.
                 # Thus, taking the mean across the entire power_df gets us what we want.
-                energy_first_epoch = power_df.energy_per_epoch.mean().item()
+                energy_first_epoch = power_df.energy_per_epoch.mean().item()  # type: ignore
                 energy_from_second_epoch = path.energy_per_epoch.item() * (
                     num_epochs - 1
                 )
                 energy_consumption = energy_first_epoch + energy_from_second_epoch
-                time_first_epoch = power_df.time_per_epoch.mean().item()
+                time_first_epoch = power_df.time_per_epoch.mean().item()  # type: ignore
                 time_from_second_epoch = path.time_per_epoch.item() * (num_epochs - 1)
                 time_consumption = time_first_epoch + time_from_second_epoch
             # Just run num_epochs with the given power limit. Simple.

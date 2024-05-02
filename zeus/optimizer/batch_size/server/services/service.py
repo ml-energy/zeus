@@ -119,9 +119,24 @@ class ZeusService:
 
         self.bs_repo.updated_current_trial(updated_trial)
 
+        # Update the corresponding batch size's min cost if needed.
         if updated_trial.status != TrialStatus.Failed:
             job = self._get_job(updated_trial.job_id)
-            self._update_min_if_needed(updated_trial, job)
+            if updated_trial.energy is None or updated_trial.time is None:
+                raise ZeusBSOValueError(
+                    "Energy and time should be set if the trial is not failed."
+                )
+            cur_cost = zeus_cost(
+                updated_trial.energy, updated_trial.time, job.eta_knob, job.max_power
+            )
+            if job.min_cost is None or job.min_cost > cur_cost:
+                self.job_repo.update_min(
+                    UpdateJobMinCost(
+                        job_id=job.job_id,
+                        min_cost=cur_cost,
+                        min_cost_batch_size=updated_trial.batch_size,
+                    )
+                )
 
     def update_arm_state(
         self,
@@ -326,24 +341,6 @@ class ZeusService:
             True if the job is deleted. False if none was deleted
         """
         return await self.job_repo.delete_job(job_id)
-
-    def _update_min_if_needed(
-        self,
-        updated_trial: UpdateTrial,
-        job: JobState,
-    ):
-        """Update the min training cost and corresponding batch size based on the trianing result."""
-        cur_cost = zeus_cost(
-            updated_trial.energy, updated_trial.time, job.eta_knob, job.max_power
-        )
-        if job.min_cost is None or job.min_cost > cur_cost:
-            self.job_repo.update_min(
-                UpdateJobMinCost(
-                    job_id=job.job_id,
-                    min_cost=cur_cost,
-                    min_cost_batch_size=updated_trial.batch_size,
-                )
-            )
 
     def _get_generator(self, job_id: str) -> tuple[np_Generator, bool]:
         """Get generator based on job_id. If mab_seed is not none, we should update the state after using generator.

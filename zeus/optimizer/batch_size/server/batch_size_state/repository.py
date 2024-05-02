@@ -38,8 +38,8 @@ class BatchSizeStateRepository(DatabaseRepository):
     def __init__(self, session: AsyncSession):
         """Set db session and intialize fetched trial. We are only updating one trial per session."""
         super().__init__(session)
-        self.fetched_trial: Trial | None = None
-        self.fetched_arm: GaussianTsArmState | None = None
+        self.fetched_trial: TrialTable | None = None
+        self.fetched_arm: GaussianTsArmStateTable | None = None
 
     async def get_next_trial_number(self, job_id: str) -> int:
         """Get next trial number of a given job. Trial number starts from 1 and increase by 1 at a time."""
@@ -152,12 +152,13 @@ class BatchSizeStateRepository(DatabaseRepository):
     def get_trial_from_session(self, trial: ReadTrial) -> Trial | None:
         """Fetch a trial from the session."""
         if (
-            self.fetched_trial.job_id != trial.job_id
+            self.fetched_trial is None
+            or self.fetched_trial.job_id != trial.job_id
             or self.fetched_trial.batch_size != trial.batch_size
             or self.fetched_trial.trial_number != trial.trial_number
         ):
             return None
-        return self.fetched_trial
+        return Trial.from_orm(self.fetched_trial)
 
     def create_trial(self, trial: CreateTrial) -> None:
         """Create a trial in db.

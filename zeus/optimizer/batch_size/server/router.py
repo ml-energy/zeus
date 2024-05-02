@@ -13,7 +13,6 @@ from zeus.optimizer.batch_size.common import (
     REGISTER_JOB_URL,
     REPORT_END_URL,
     REPORT_RESULT_URL,
-    CreatedJob,
     JobSpecFromClient,
     TrialId,
     ReportResponse,
@@ -29,19 +28,26 @@ from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.utils.logging import get_logger
 
 app = FastAPI()
-# Global variable across different requests: https://github.com/tiangolo/fastapi/issues/592
-# We lock the job before we make any modification to prevent any concurrent bugs.
-app.job_locks = defaultdict(asyncio.Lock)
-app.prefix_locks = defaultdict(asyncio.Lock)
+
+# Per-job locking to prevent any concurrent operations on the same job.
+# This is fine because it's very unlikely that the same job will be
+# accessed concurrently in high frequency.
+JOB_LOCKS = defaultdict(asyncio.Lock)
+PREFIX_LOCKS = defaultdict(asyncio.Lock)
+
+
+def get_job_locks() -> defaultdict[str, asyncio.Lock]:
+    """Get global job locks."""
+    return JOB_LOCKS
+
+
+def get_prefix_locks() -> defaultdict[str, asyncio.Lock]:
+    """Get global job Id prefix locks."""
+    return PREFIX_LOCKS
+
 
 logger = get_logger(__name__)
 logging.basicConfig(level=logging.getLevelName(settings.log_level))
-
-
-@app.on_event("startup")
-def startup_hook():
-    """Startup hook."""
-    pass
 
 
 @app.post(
@@ -56,9 +62,10 @@ async def register_job(
     job: JobSpecFromClient,
     response: Response,
     db_session: AsyncSession = Depends(get_db_session),
-) -> CreatedJob:
+    prefix_locks: defaultdict[str, asyncio.Lock] = Depends(get_prefix_locks),
+):
     """Endpoint for users to register a job or check if the job is registered and configuration is identical."""
-    async with app.prefix_locks[job.job_id_prefix]:
+    async with prefix_locks[job.job_id_prefix]:
         # One lock for registering a job. To prevent getting a same lock
         optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
         try:
@@ -88,10 +95,12 @@ async def register_job(
 
 @app.delete(DELETE_JOB_URL)
 async def delete_job(
-    job_id: str, db_session: AsyncSession = Depends(get_db_session)
-) -> None:
+    job_id: str,
+    db_session: AsyncSession = Depends(get_db_session),
+    job_locks: defaultdict[str, asyncio.Lock] = Depends(get_job_locks),
+):
     """Endpoint for users to delete a job."""
-    async with app.job_locks[job_id]:
+    async with job_locks[job_id]:
         try:
             optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
             await optimizer.delete_job(job_id)
@@ -110,15 +119,17 @@ async def delete_job(
                 content={"message": str(err)},
             )
         finally:
-            app.job_locks.pop(job_id)
+            job_locks.pop(job_id)
 
 
 @app.patch(REPORT_END_URL)
 async def end_trial(
-    trial: TrialId, db_session: AsyncSession = Depends(get_db_session)
-) -> None:
+    trial: TrialId,
+    db_session: AsyncSession = Depends(get_db_session),
+    job_locks: defaultdict[str, asyncio.Lock] = Depends(get_job_locks),
+):
     """Endpoint for users to end the trial."""
-    async with app.job_locks[trial.job_id]:
+    async with job_locks[trial.job_id]:
         optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
         try:
             await optimizer.end_trial(trial)
@@ -142,9 +153,10 @@ async def end_trial(
 async def predict(
     job_id: str,
     db_session: AsyncSession = Depends(get_db_session),
-) -> TrialId:
+    job_locks: defaultdict[str, asyncio.Lock] = Depends(get_job_locks),
+):
     """Endpoint for users to receive a batch size."""
-    async with app.job_locks[job_id]:
+    async with job_locks[job_id]:
         optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
         try:
             res = await optimizer.predict(job_id)
@@ -169,9 +181,10 @@ async def predict(
 async def report(
     result: TrainingResult,
     db_session: AsyncSession = Depends(get_db_session),
-) -> ReportResponse:
+    job_locks: defaultdict[str, asyncio.Lock] = Depends(get_job_locks),
+):
     """Endpoint for users to report the training result."""
-    async with app.job_locks[result.job_id]:
+    async with job_locks[result.job_id]:
         optimizer = ZeusBatchSizeOptimizer(ZeusService(db_session))
         try:
             logger.info("Report with result %s", str(result))

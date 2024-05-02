@@ -92,6 +92,7 @@ class PerseusOptimizer(Callback):
         self.dp_rank = dp_rank
         self.pp_rank = pp_rank
         self.tp_rank = tp_rank
+        self.device_id = device_id
 
         gpus = get_gpus()
         torch.cuda.set_device(device_id)
@@ -224,5 +225,5 @@ class PerseusOptimizer(Callback):
 
         self.frequency_controller.set_frequency(frequency)
 
-    def on_instruction_end(self, _: str) -> None:
+    def on_instruction_end(self, name: str) -> None:
         """Mark the end of an instruction, like forward and backward."""

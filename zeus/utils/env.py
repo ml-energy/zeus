@@ -30,7 +30,7 @@ def get_env(name: str, valtype: Type[T], default: T | None = None) -> T:
             if val not in ["true", "false"]:
                 raise ValueError(f"Strange boolean environment variable value '{val}'")
             return cast(T, val == "true")
-        return valtype(os.environ[name])
+        return valtype(os.environ[name])  # type: ignore
     except KeyError:
         if default is not None:
             return default
