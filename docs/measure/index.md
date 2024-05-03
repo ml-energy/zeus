@@ -1,6 +1,15 @@
-### `ZeusMonitor`
+# Measuring Energy
+
+Zeus makes it very easy to measure time, power, and energy both programmatically in Python and also on the command line.
+Measuring power and energy is also very low overhead, typically taking less than 10 ms for each call.
+
+## Programmatic measurement
 
 [`ZeusMonitor`][zeus.monitor.ZeusMonitor] makes it very simple to measure the GPU time and energy consumption of arbitrary Python code blocks.
+
+A *measurement window* is defined by a code block wrapped with [`begin_window`][zeus.monitor.ZeusMonitor.begin_window] and [`end_window`][zeus.monitor.ZeusMonitor.end_window].
+[`end_window`][zeus.monitor.ZeusMonitor.end_window] will return a [`Measurement`][zeus.monitor.energy.Measurement] object, which holds the time and energy consumption of the window.
+Users can specify and measure multiple measurement windows at the same time, and they can be arbitrarily nested or overlapping as long as they are given different names.
 
 ```python hl_lines="4 11-13"
 from zeus.monitor import ZeusMonitor
@@ -26,9 +35,20 @@ for epoch in range(100):
     print(f"One step took {avg_time} s and {avg_energy} J on average.")
 ```
 
-### CLI power and energy monitor
+!!! Tip "`gpu_indices` and `CUDA_VISIBLE_DEVICES`"
+    Zeus always respects `CUDA_VISIBLE_DEVICES` if set.
+    In other words, if `CUDA_VISIBLE_DEVICES=1,3` and `gpu_indices=[1]`, Zeus will understand that as GPU 3 in the system.
 
-```console linenums="0"
+!!! Important "`gpu_indices` and optimization"
+    In general, energy optimizers measure the energy of the GPU through a [`ZeusMonitor`][zeus.monitor.ZeusMonitor] instance that is passed to their constructor.
+    Thus, only the GPUs specified by `gpu_indices` will be the target of optimization.
+
+## CLI power and energy monitor
+
+The power monitor periodically prints out the GPU's power draw.
+It's a simple wrapper around [`PowerMonitor`][zeus.monitor.power.PowerMonitor].
+
+```console
 $ python -m zeus.monitor power
 [2023-08-22 22:39:59,787] [PowerMonitor](power.py:134) Monitoring power usage of GPUs [0, 1, 2, 3]
 2023-08-22 22:40:00.800576
@@ -45,7 +65,10 @@ Total energy (J):
 {'GPU0': 198.52566362297537, 'GPU1': 206.22215216255188, 'GPU2': 201.08565518283845, 'GPU3': 201.79834523367884}
 ```
 
-```console linenums="0"
+The energy monitor measures the total energy consumed by the GPU during the lifetime of the monitor process.
+It's a simple wrapper around [`ZeusMonitor`][zeus.monitor.ZeusMonitor].
+
+```console
 $ python -m zeus.monitor energy
 [2023-08-22 22:44:45,106] [ZeusMonitor](energy.py:157) Monitoring GPU [0, 1, 2, 3].
 [2023-08-22 22:44:46,210] [zeus.utils.framework](framework.py:38) PyTorch with CUDA support is available.

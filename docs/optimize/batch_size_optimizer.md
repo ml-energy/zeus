@@ -1,208 +1,232 @@
-# Batch Size Optimizer in Zeus
+# Batch Size Optimizer
 
-## What is it?
+The batch size optimizer (BSO) finds the optimal DNN training batch size that minimizes *cost*:
 
-Batch size optimizer(BSO) can choose the best batch size that minimizes the cost, where cost is defined as $cost = \eta \times \text{Energy consumption to accuracy} + (1-\eta) \times \text{Max power}\times \text{Time to accuracy}$.
+$$
+\eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA},
+$$
 
-## How does it work?
+where ETA and TTA stands for Energy-to-Accuracy and Time-to-Accuracy, respectively, and accuracy is the target *validation* metric of training.
+Users can trade-off between energy and time by setting the $\eta$ parameter to be between 0 and 1.
 
-The core of BSO is a multi-arm-bandit based on **recurrent** training. After each training, we feed the result cost to MAB and after a certain number of trainings, MAB can converge to the best batch size. In addition to MAB, we employed early-stopping and pruning to handle stragglers. For more details, refer to [paper](https://www.usenix.org/conference/nsdi23/presentation/you).
 
-## Should I use this?
+## Usage
 
-The key of BSO is recurrent training. If you are training your model periodically or repeatedly, BSO can be a great choice to reduce energy or time consumption.
+In production environments, it is common for a single DNN to be trained and re-trained many times over time.
+This is because the data distribution changes over time, and the model needs to be re-trained to adapt to the new data distribution.
+The batch size optimizer uses these **recurring training jobs** as opportunities to find the optimal batch size for the DNN training job.
+To do this, the batch size optimizer uses a Multi-Armed Bandit algorithm to explore the batch size space.
+For more details, please refer to the [Zeus research paper](https://www.usenix.org/conference/nsdi23/presentation/you).
 
-## Limitations
+!!! Important "Constraints"
+    Currently, the batch size optimizer only supports cases where the **number and type of GPUs** used for each recurrent training job is always the same.
 
-We currently don't support heterogeneous GPUs or different configurations. The number of GPUs, GPU models, and other configurations in JobSpec should be identical in recurrent training. If you are running your training in a various environment each time, then it might not be desirable to use BSO.
 
-## Sequence diagram of BSO
+## High-level architecture
 
 ```mermaid
 sequenceDiagram;
     participant BSO server
     participant BSO client
     loop Every recurrent training
-        BSO client->>BSO server: Register the training job and ask for the batch size
-        BSO server->>BSO client: Return the next batch size to use with a trial number
+        BSO client->>BSO server: Register the training job and ask for the batch size to use
+        BSO server->>BSO client: Return the batch size to use and an integer trial number
         loop Every epoch
-            BSO client->>BSO server: At the end of each epoch, report the result
-            BSO server->>BSO client: Compute the cost and tell the client if it should stop the training
+            BSO client->>BSO server: At the end of each epoch, report time and energy consumption
+            BSO server->>BSO client: Compute cost and determine whether the client should terminate training
         end
-        BSO client->>BSO server: Report the end of the trial on exit
+        BSO client->>BSO server: Notify the server that the trial finished
     end
 ```
 
-## Quick start (Server)
+In order to persist the state of the optimizer across all recurring training runs, we need to have a server that outlives individual training jobs.
+Therefore, the batch size optimizer consists of two parts: the server and the client.
+The server is a FastAPI server that manages the Multi-Armed Bandit algorithm and the database, while the client ([`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer]) is integrated into the training script.
 
-1. Clone the repository
 
-    ```Shell
-    git clone https://github.com/ml-energy/zeus/tree/master
+## Deploying the server
+
+Largely three steps: (1) starting the database, (2) running migration on the database, and (3) starting the BSO server.
+
+### Clone the Zeus repository
+
+To get example docker files and database migration scripts, clone the Zeus repository.
+
+```sh
+git clone https://github.com/ml-energy/zeus.git
+```
+
+### Decide on the database
+
+By default, our examples use MySQL.
+However, you can use any database [supported by SQLAlchemy](https://docs.sqlalchemy.org/en/latest/dialects/).
+Please make sure the database's corresponding async connection driver (e.g., `asyncmy` for MySQL, `aiosqlite` for SQLite) is installed.
+For instance, to adapt our examples, you can (1) add `pip install` to [`migration.Dockerfile`](https://github.com/ml-energy/zeus/blob/master/docker/batch_size_optimizer/migration.Dockerfile) and [`server.Dockerfile`](https://github.com/ml-energy/zeus/blob/master/docker/batch_size_optimizer/server.Dockerfile), and (2) change the `db` container specification in [`server-docker-compose.yaml`](https://github.com/ml-energy/zeus/blob/master/docker/batch_size_optimizer/server-docker-compose.yaml).
+
+### Server configuration
+
+You can configure the server using enviornment variables or the `.env` file.
+Below are the complete list of environment variables you can set and example values.
+
+```sh
+ZEUS_BSO_DB_USER="me" 
+ZEUS_BSO_DB_PASSWORD="secret"
+ZEUS_BSO_DATABASE_URL="mysql+asyncmy://me:secret@localhost:3306/Zeus"
+ZEUS_BSO_ROOT_PASSWORD="secret*"
+ZEUS_BSO_SERVER_PORT=8000
+ZEUS_BSO_LOG_LEVEL="INFO"
+ZEUS_BSO_ECHO_SQL="True"
+```
+
+### With Docker Compose
+
+```Shell
+cd docker/batch_size_optimizer
+docker-compose -f ./server-docker-compose.yaml up
+```
+
+Docker Compose will first build necessary images and spin up the containers.
+
+### With Kubernetes
+
+1. **Build the Docker image.**
+
+    ```sh
+    # From the repository root
+    docker build -f ./docker/batch_size_optimizer/server.Dockerfile -t bso-server . 
+    docker build -f ./docker/batch_size_optimizer/migration.Dockerfile -t bso-migration .
     ```
 
-2. Create `.env` under `/docker/batch_size_optimizer`. An example of `.env` is provided below.
+    Make sure Kubernetes has access to these build images.
+    If you are locally using `minikube`, then the images are already available.
+    However, if you are using the cloud such as AWS EKS, you should push the image to the registry and modify the image path in `server-docker-compose.yaml` to allow Kubernetes to pull the image.
 
-    By default, we are using the MySQL for the database.
+2. **Convert Docker Compose files to Kubernetes YAML files using [Kompose](https://kompose.io/).**
 
-    ```Shell
-    ZEUS_BSO_DB_USER="me" 
-    ZEUS_BSO_DB_PASSWORD="secret"
-    ZEUS_BSO_ROOT_PASSWORD="secret*"
-    ZEUS_BSO_SERVER_PORT=8000
-    ZEUS_BSO_LOG_LEVEL="INFO"
-    ZEUS_BSO_ECHO_SQL="True"
+    ```sh
+    cd docker/batch_size_optimizer
+    docker-compose -f server-docker-compose.yaml config > server-docker-compose-resolved.yaml
+    kompose convert -f server-docker-compose-resolved.yaml -o ./kube/
+    rm server-docker-compose-resolved.yaml
     ```
 
-    If you want to use different databases, you need to add `ZEUS_BSO_DATABASE_URL` as an environment variable. See [Remark](#notes-on-the-server) for detail.
-    Also, if you are running using docker-compose or Kubernetes, you need to change the image name under `db` in the docker-compose file.
+    This first resolves env files using `docker-compose`, then converts it into Kubernetes YAML files in `./kube/`.
 
-3. Running a server
+3. **Apply the Kubernetes YAML files.**
 
-    - Using docker-compose
+    ```sh
+    cd kube
+    kubectl apply -f .
+    ```
 
-        ```Shell
-        cd docker/batch_size_optimizer
-        docker-compose -f ./server-docker-compose.yaml up
+### With just Python
+
+You can also run the server without Docker or Kubernetes.
+
+1. Spin up the database of your choice.
+2. Set server configuration environment variables described [here](#server-configuration).
+3. Perform DB migration with Alembic.
+
+    1. Install dependencies
+
+        ```sh
+        # From the repository root
+        pip install asyncmy cryptography
+        pip install '.[migration]'
         ```
 
-        This will build images for each container: db, migration, and the server. Then, it will spin those containers.
+    2. Create the migration script. This will create scripts in `./versions`.
 
-    - Using Kubernetes.
+        ```sh
+        cd zeus/optimizer/batch_size
+        alembic revision --autogenerate -m "Create tables" 
+        ```
 
-        1. Build an image.
+    3. Apply migration, either online or offline.
 
-            ```Shell
-            # From the root directory
-            docker build -f ./docker/batch_size_optimizer/server.Dockerfile -t bso-server . 
-            docker build -f ./docker/batch_size_optimizer/migration.Dockerfile -t bso-migration .
-            ```
+        ```sh
+        # Online migration (applied directly to the database)
+        alembic upgrade head 
+        # Offline migration (just generate SQL)
+        alembic upgrade head --sql
+        ```
 
-            If you are using `minikube`, then you do not have to fix anything in the `server-docker-compose.yaml`. However, if you are using the cloud such as AWS, you should push the image to the registry and modify the image path in `server-docker-compose.yaml` to correctly pull the image from the registry not from the local machine.
+4. Spin up the server using `uvicorn`.
 
-        2. Create Kubernetes yaml files using Kompose. Kompose is a tool that converts docker-compose files into Kubernetes files. For more information, visit [Kompose Reference](#kompose-references)
+    ```sh
+    uvicorn zeus.optimizer.batch_size.server.router:app
+    ```
 
-            ```Shell
-            cd docker/batch_size_optimizer
-            docker-compose -f server-docker-compose.yaml config > server-docker-compose-resolved.yaml && kompose convert -f server-docker-compose-resolved.yaml -o ./kube/ && rm server-docker-compose-resolved.yaml
-            ```
+## Integrating [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer]
 
-            It first resolves env files using docker-compose, then creates Kubernetes yaml files under `./kube/`.
-            Note that the output Kubernetes yaml file is using `emptyDir` for persistent volume. In production, you should configure the corresponding volume you want to use.
+In order for your recurring training job to communicate with the BSO server, you need to integrate the [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer] class into your training script.
 
-        3. Run kubernetes.
+1. Install the Zeus package, including dependencies needed for the batch size optimizer.
 
-            ```Shell
-            cd kube
-            kubectl apply -f .
-            ```
-
-    - Using uvicorn.
-
-        If you are using the uvicorn to spin the server, you need to create a database and perform migration before starting the server.
-
-        1. Run the database of your choice.
-        2. Set the environment variables in `.env`
-
-            ```Shell
-            ZEUS_BSO_DATABASE_URL="me" 
-            ZEUS_BSO_LOG_LEVEL="INFO"
-            ZEUS_BSO_ECHO_SQL="True"
-            ```
-
-        3. Run Alembic migration
-
-            1. Install dependencies
-
-                ```Bash
-                pip install '.[migration]'
-                ```
-
-            2. Create the migration script. This will create scripts under ./versions
-
-                ```Bash
-                alembic revision --autogenerate -m "Baseline: create tables" 
-                ```
-
-            3. Apply migration
-                1. Online (apply it to database directly)
-
-                    ```Bash
-                    alembic upgrade head 
-                    ```
-
-                2. Offline (generate sql)
-
-                    ```Bash
-                    alembic upgrade head --sql
-                    ```
-
-        4. Run the server using uvicorn.
-
-            ```Shell
-            cd zeus/optimizer/batch_size/server
-            uvicorn router:app --reload 
-            ```
-
-        Now the server is good to go!
-
-### Notes on the server
-
-Zeus Batch Size Optimizer server is using Sqlalchemy to support various types of databases. However, you need to download the corresponding async connection driver.
-As a default, we are using Mysql. You can add installation code to `docker/batch_size_optimizer/migration.Dockerfile` and `docker/batch_size_optimizer/server.Dockerfile`. Refer to those files for reference.
-
-## Use BSO in your training script (Client)
-
-1. Install Zeus package.
-
-    ```Shell
+    ```sh
     pip install zeus-ml[bso]
     ```
 
-2. Add [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer] to your training script.
+2. Integrate [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer] to your training script.
 
-    ```Python
-    # Initialization
+    ```python hl_lines="19-20 25-26 33-35 37-39"
+    from zeus.monitor import ZeusMonitor
+    from zeus.optimizer.batch_size import BatchSizeOptimizer, JobSpec
+
+    monitor = ZeusMonitor()
+
+    # On instantiation, the BSO will register the job to the BSO server
     bso = BatchSizeOptimizer(
         monitor=monitor,
-        server_url="http://127.0.0.1:8000",
-        job=JobParams(
-            job_id_prefix="mnist-dev",
+        server_url="http://bso-server:8000",
+        job=JobSpec(
+            job_id=os.environ.get("ZEUS_JOB_ID"),
+            job_id_prefix="mnist",
             default_batch_size=256,
             batch_sizes=[32, 64, 256, 512, 1024, 4096, 2048],
             max_epochs=100
         ),
     )
-    # ... other codes 
 
     # Get batch size to use from the server
     batch_size = bso.get_batch_size()
 
-    # ... 
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size)
 
-    # beginning of the train
+    # Start measuring the time and energy consumption of this training run
     bso.on_train_begin()
 
-    # ...
+    for epoch in range(100):
+        for batch in train_dataloader:
+            # Training loop
+            pass
 
-    # After evaluation
-    bso.on_evaluate(metric)
+        # The BSO server needs to know whether training has converged
+        metric = evaluate(model, eval_dataloader)
+        bso.on_evaluate(metric)
+
+        # The BSO server will determine whether to stop training
+        if bso.training_finished:
+            break
     ```
 
-### Notes on the client
+### When does training stop?
 
-Training can fail if
+The BSO server will determine whether to stop training and this will be reflected in the `training_finished` attribute of the [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer] instance.
 
-1. It failed to converge within configured max_epochs
-2. It exceeded the early stopping threshold which is configured by `beta_knob` in `JobSpec`
+If the DNN reaches the target validation metric, training should stop.
+However, training fails if
 
-In that case, the optimizer will raise `ZeusBSOTrainFailError`. This means that the chosen batch size was not useful, and the BSO server will not give this batch size again. However, the user ***should re-launch the job*** so that the BSO server can give another batch size. The server will learn which batch size is useful and will converge to the batch size that causes the least cost as you launch the job multiple times.
+1. it failed to converge within the configured `JobSpec.max_epochs` epochs, or
+2. its cost exceeded the early stopping threshold configured by `JobSpec.beta_knob`.
 
-## Kompose references
+In such failure cases, the optimizer will raise a [`ZeusBSOTrainFailError`][zeus.optimizer.batch_size.exceptions.ZeusBSOTrainFailError].
+This means that the chosen batch size was not useful, and the BSO server will never try this batch size again.
+The user should re-launch the training run in this case, and the BSO server will try another batch size.
 
-Refer [Kompose](https://kompose.io/) and [Kompose labels](https://github.com/kubernetes/kompose/blob/main/docs/user-guide.md) for more information.
 
-## Examples
+## Integration examples
 
 Two full examples are given for the batch size optimizer:
 

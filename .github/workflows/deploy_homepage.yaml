@@ -10,6 +10,9 @@ on:
       - 'docker/Dockerfile'
       - '.github/workflows/deploy_homepage.yaml'
 
+env:
+  SITE_ANALYTICS: google
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

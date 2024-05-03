@@ -10,7 +10,7 @@ class ZeusBSORuntimError(ZeusBaseError):
 
 
 class ZeusBSOTrainFailError(ZeusBaseError):
-    """Training is failed for the chosen batch_size."""
+    """Training failed for the chosen batch_size."""
 
     pass
 

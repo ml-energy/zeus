@@ -361,6 +361,9 @@ def main() -> None:
         logger.info("epoch %s: %s", epoch, eval_metric)
 
         bso.on_evaluate(eval_metric["accuracy"])
+
+        if bso.training_finished:
+            break
         ##########################################################
 
 if __name__ == "__main__":

@@ -55,6 +55,8 @@ plugins:
         python:
           import:
             - https://pytorch.org/docs/stable/objects.inv
+            - https://huggingface.co/docs/transformers/master/en/objects.inv
+            - https://huggingface.co/docs/trl/main/en/objects.inv
           options:
             show_root_heading: true
             members_order: "source"
@@ -109,7 +111,7 @@ nav:
     - optimize/index.md
     - Power Limit Optimizer: optimize/global_power_limit_optimizer.md
     - Batch Size Optimizer: optimize/batch_size_optimizer.md
-    - Large Model Training Optimizer: optimize/perseus_optimizer.md
+    - Pipeline Frequency Optimizer: optimize/pipeline_frequency_optimizer.md
   - Research Overview: 
     - research_overview/index.md
     - Zeus: research_overview/zeus.md
@@ -119,7 +121,7 @@ nav:
 # Extra stuff
 extra:
   analytics:
-    provider: google
+    provider: !ENV SITE_ANALYTICS
     property: G-T3W21TQ7FJ
   social:
     - name: Zeus GitHub repository

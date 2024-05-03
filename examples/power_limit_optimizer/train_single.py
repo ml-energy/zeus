@@ -17,14 +17,11 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from torch.utils.data import Subset
 
 # ZEUS
 from zeus.monitor import ZeusMonitor
-from zeus.optimizer import GlobalPowerLimitOptimizer
-from zeus.optimizer.power_limit import MaxSlowdownConstraint
+from zeus.optimizer.power_limit import MaxSlowdownConstraint, GlobalPowerLimitOptimizer
 from zeus.utils.env import get_env
-from zeus.callback import Callback, CallbackSet
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,7 +66,7 @@ def parse_args() -> argparse.Namespace:
         default=256,
         type=int,
         metavar="N",
-        help="global mini-batch size (default: 256)",
+        help="mini-batch size (default: 256)",
     )
     parser.add_argument(
         "--lr",
@@ -103,6 +100,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--seed", default=None, type=int, help="seed for initializing training. "
     )
+    parser.add_argument(
+        "--gpu", default=0, type=int, metavar="N", help="GPU id to use (default: 0)"
+    )
 
     return parser.parse_args()
 
@@ -116,31 +116,12 @@ def main():
         torch.manual_seed(args.seed)
         cudnn.deterministic = True
 
-    args.gpu = int(os.environ["LOCAL_RANK"])
-    args.local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
-
-    if args.batch_size % args.local_world_size != 0:
-        raise ValueError(
-            "The global batch size should be divisible by the number of GPUs."
-        )
-
-    dist.init_process_group(backend="nccl")
-
     print("=> creating model '{}'".format(args.arch))
     model = models.__dict__[args.arch]()
 
     torch.cuda.set_device(args.gpu)
     model.cuda(args.gpu)
 
-    # When using a single GPU per process and per
-    # DistributedDataParallel, we need to divide the batch size
-    # ourselves based on the total number of GPUs of the current node.
-    args.batch_size = args.batch_size // args.local_world_size
-    model = torch.nn.parallel.DistributedDataParallel(
-        model, device_ids=[args.gpu], output_device=args.gpu
-    )
-
-    # define loss function (criterion), optimizer, and learning rate scheduler
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -178,57 +159,52 @@ def main():
         ),
     )
 
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    val_sampler = torch.utils.data.distributed.DistributedSampler(
-        val_dataset, shuffle=False, drop_last=True
-    )
-
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
+        shuffle=True,
         num_workers=args.workers,
         pin_memory=True,
-        sampler=train_sampler,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
+        shuffle=False,
         num_workers=args.workers,
         pin_memory=True,
-        sampler=val_sampler,
     )
 
-    # The rank 0 process will monitor and optimize the power limit of all GPUs.
-    if args.gpu == 0:
-        callback_set: list[Callback] = [
-            GlobalPowerLimitOptimizer(
-                monitor=ZeusMonitor(gpu_indices=None),  # All visible GPUs.
-                optimum_selector=MaxSlowdownConstraint(
-                    factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
-                ),
-                warmup_steps=10,
-                profile_steps=40,
-                pl_step=25,
-            )
-        ]
-    else:
-        callback_set = []
-    callbacks = CallbackSet(callback_set)
+    ################################## The important part #####################################
+    # ZeusMonitor is used to profile the time and energy consumption of the GPU.
+    monitor = ZeusMonitor(gpu_indices=[args.gpu])
+
+    # GlobalPowerLimitOptimizer profiles each power limit and selects the best one.
+    # This is the power limit optimizer that's in the Zeus paper.
+    plo = GlobalPowerLimitOptimizer(
+        monitor=monitor,
+        optimum_selector=MaxSlowdownConstraint(
+            factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
+        ),
+        warmup_steps=10,
+        profile_steps=40,
+        pl_step=25,
+    )
 
     for epoch in range(args.epochs):
-        train_sampler.set_epoch(epoch)
-
-        callbacks.on_epoch_begin()
-        train(train_loader, model, criterion, optimizer, epoch, args, callbacks)
-        callbacks.on_epoch_end()
+        plo.on_epoch_begin()
+        train(train_loader, model, criterion, optimizer, epoch, args, plo)
+        plo.on_epoch_end()
 
         acc1 = validate(val_loader, model, criterion, args)
         print(f"Top-1 accuracy: {acc1}")
 
         scheduler.step()
+    ################################## The important part #####################################
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args, callbacks):
+def train(
+    train_loader, model, criterion, optimizer, epoch, args, power_limit_optimizer
+):
     batch_time = AverageMeter("Time", ":6.3f")
     data_time = AverageMeter("Data", ":6.3f")
     losses = AverageMeter("Loss", ":.4e")
@@ -246,11 +222,11 @@ def train(train_loader, model, criterion, optimizer, epoch, args, callbacks):
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
-        callbacks.on_step_begin()  # Mark the beginning of the training step.
+        power_limit_optimizer.on_step_begin()  # Mark the beginning of one training step.
 
         # Load data to GPU
-        images = images.cuda(args.gpu)
-        target = target.cuda(args.gpu)
+        images = images.cuda(args.gpu, non_blocking=True)
+        target = target.cuda(args.gpu, non_blocking=True)
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -270,24 +246,24 @@ def train(train_loader, model, criterion, optimizer, epoch, args, callbacks):
         loss.backward()
         optimizer.step()
 
+        power_limit_optimizer.on_step_end()  # Mark the end of one training step.
+
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
-
-        callbacks.on_step_end()
 
         if i % args.print_freq == 0:
             progress.display(i + 1)
 
 
 def validate(val_loader, model, criterion, args):
+
     batch_time = AverageMeter("Time", ":6.3f", Summary.NONE)
     losses = AverageMeter("Loss", ":.4e", Summary.NONE)
     top1 = AverageMeter("Acc@1", ":6.2f", Summary.AVERAGE)
     top5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(
-        len(val_loader)
-        + (len(val_loader.sampler) * args.local_world_size < len(val_loader.dataset)),
+        len(val_loader),
         [batch_time, losses, top1, top5],
         prefix="Test: ",
     )
@@ -318,10 +294,6 @@ def validate(val_loader, model, criterion, args):
 
             if i % args.print_freq == 0:
                 progress.display(i + 1)
-
-    # aggregate metrics
-    top1.all_reduce()
-    top5.all_reduce()
 
     progress.display_summary()
 

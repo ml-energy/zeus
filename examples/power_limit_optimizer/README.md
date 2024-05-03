@@ -1,4 +1,4 @@
-# Integrating Zeus with torchvision and ImageNet
+# Integrating the power limit optimizer with ImageNet training
 
 This example will demonstrate how to integrate Zeus with `torchvision` and the ImageNet dataset.
 
