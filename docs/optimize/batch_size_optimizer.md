@@ -201,3 +201,10 @@ In that case, the optimizer will raise `ZeusBSOTrainFailError`. This means that 
 ## Kompose references
 
 Refer [Kompose](https://kompose.io/) and [Kompose labels](https://github.com/kubernetes/kompose/blob/main/docs/user-guide.md) for more information.
+
+## Examples
+
+Two full examples are given for the batch size optimizer:
+
+- [MNIST](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/mnist/): Single-GPU and data parallel training, with integration examples with Kubeflow
+- [Sentiment Analysis](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/capriccio/): Full training example with HuggingFace transformers using the Capriccio dataset, a sentiment analysis dataset with data drift.

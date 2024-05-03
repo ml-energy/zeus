@@ -10,7 +10,7 @@
 
 ## Overview
 
-<img src="img/wide-resnet.gif" width=800px>
+<img src="../img/wide-resnet.gif" width=800px>
 
 Perseus finds the training time--energy Pareto frontier of large model training.
 Users can pick any point on the frontier -- be it minimum time, minimum energy, or something in the middle, depending on the training deadline.

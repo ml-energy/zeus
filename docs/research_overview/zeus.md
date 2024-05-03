@@ -39,8 +39,8 @@ To see this, we trained[^4] the same DNN multiple times using a sweep of possibl
 
 <figure>
   <br>
-  <img src="img/eta-potential-all-v100-dark.svg#only-dark" width=600px>
-  <img src="img/eta-potential-all-v100-light.svg#only-light" width=600px>
+  <img src="../img/eta-potential-all-v100-dark.svg#only-dark" width=600px>
+  <img src="../img/eta-potential-all-v100-light.svg#only-light" width=600px>
   <figcaption>Potential energy savings on an NVIDIA V100 GPU.</figcaption>
 </figure>
 
@@ -58,15 +58,15 @@ We discover that there is a **tradeoff** between DNN training time and energy co
 
 <figure>
   <br>
-  <img src="img/pareto-annotated-librispeech-dark.svg#only-dark" width=600px>
-  <img src="img/pareto-annotated-librispeech-light.svg#only-light" width=600px>
+  <img src="../img/pareto-annotated-librispeech-dark.svg#only-dark" width=600px>
+  <img src="../img/pareto-annotated-librispeech-light.svg#only-light" width=600px>
   <figcaption>All (batch size, power limit) configurations and their time/energy consumption.</figcaption>
 </figure>
 
 <figure>
   <br>
-  <img src="img/pareto-librispeech-dark.svg#only-dark" width=600px>
-  <img src="img/pareto-librispeech-light.svg#only-light" width=600px>
+  <img src="../img/pareto-librispeech-dark.svg#only-dark" width=600px>
+  <img src="../img/pareto-librispeech-light.svg#only-light" width=600px>
   <figcaption>The energy-time Pareto frontier zoomed in.</figcaption>
 </figure>
 
@@ -124,6 +124,8 @@ This results in two main components in Zeus:
 [^7]: $\textrm{MaxPower}$ is the maximum possible power limit of the GPU. It's just a constant number introduced to equalize the units of the left and right terms to Joules.
 [^8]: Since doing this will consume so much time and energy, it may even offset or exceed the energy savings from choosing the optimal knobs if we decide to do it for every future incoming job!
 [^9]: Kim Hazelwood, Sarah Bird, David Brooks, Soumith Chintala, Utku Diril, Dmytro Dzhulgakov, Mohamed Fawzy, Bill Jia, Yangqing Jia, Aditya Kalro, et al. Applied machine learning at facebook: A datacenter infrastructure perspective. In 2018 IEEE International Symposium on High Performance Computer Architecture (HPCA), pages 620–629. IEEE, 2018.
+
+
 # Extending Zeus
 
 !!! Warning

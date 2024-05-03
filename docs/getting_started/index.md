@@ -1,138 +1,116 @@
 # Getting Started
 
-Zeus is an energy measurement and optimization toolbox for deep learning.
+Most of the common setup steps are described in this page.
+Some optimizers or examples may require some extra setup steps, which are described in the corresponding documentation.
 
-## How it works
+## Installing the Python package
 
-Zeus in action, integrated with Stable Diffusion fine-tuning:
-<iframe width="560" height="315" src="https://www.youtube.com/embed/MzlF5XNRSJY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+### From PyPI
 
+Install the Zeus Python package simply with:
 
-## Just measuring GPU time and energy
-
-### Prerequisites
-
-If your NVIDIA GPU's architecture is Volta or newer, simply do the following in your Python environment
 ```sh
 pip install zeus-ml
 ```
-and get going with [`ZeusMonitor`][zeus.monitor.ZeusMonitor].
 
-Otherwise, we recommend using our Docker container:
+### From source for development
 
-1. [Set up your environment](environment.md).
-2. [Install Zeus](installing.md).
+You can also install Zeus from source by cloning our GitHub repository.
+Specifically for development, you can do an editable installation with extra dev dependencies:
 
-### `ZeusMonitor`
-
-[`ZeusMonitor`][zeus.monitor.ZeusMonitor] makes it very simple to measure the GPU time and energy consumption of arbitrary Python code blocks.
-
-```python hl_lines="4 11-13"
-from zeus.monitor import ZeusMonitor
-
-# All GPUs are measured simultaneously if `gpu_indices` is not given.
-monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
-
-for epoch in range(100):
-    monitor.begin_window("epoch")
-
-    measurements = []
-    for x, y in train_loader:
-        monitor.begin_window("step")
-        train_one_step(x, y)
-        result = monitor.end_window("step")
-        measurements.append(result)
-
-    result = monitor.end_window("epoch")
-    print(f"Epoch {epoch} consumed {result.time} s and {result.total_energy} J.")
-
-    avg_time = sum(map(lambda m: m.time, measurements)) / len(measurements)
-    avg_energy = sum(map(lambda m: m.total_energy, measurements)) / len(measurements)
-    print(f"One step took {avg_time} s and {avg_energy} J on average.")
+```sh
+git clone https://github.com/ml-energy/zeus.git
+cd zeus
+pip install -e '.[dev]'
 ```
 
+## Using Docker
 
-## Optimizing a single training job's energy consumption
+!!! Important "Dependencies"
+    You should have the following already installed on your system:
 
-All GPU power limits can be profiled quickly *during training* and used to optimize the energy consumption of the training job.
+    - [`docker`](https://docs.docker.com/engine/install/)
+    - [`nvidia-docker2`](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+    
+Our Docker image should suit most of the use cases for Zeus.
+On top of the `nvidia/cuda:11.8.0-base-ubuntu22.04` image, we add:
 
-### Prerequisites
+- Miniconda 3, PyTorch, and Torchvision
+- A copy of the Zeus repo in `/workspace/zeus`
 
-In order to change the GPU's power limit, the process requires the Linux `SYS_ADMIN` security capability, and the easiest way to do this is to spin up a container and give it `--cap-add SYS_ADMIN`.
-We provide ready-to-go [Docker images](environment.md).
+??? Quote "docker/Dockerfile"
+    ```Dockerfile title="Dockerfile"
+    --8<-- "docker/Dockerfile"
+    ```
 
+The default command would be:
 
-### `GlobalPowerLimitOptimizer`
-
-After going through the prerequisites, [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] into your training script.
-
-Refer to
-[our integration example with ImageNet](https://github.com/ml-energy/zeus/tree/master/examples/imagenet/)
-for complete running examples for single-GPU and multi-GPU data parallel training.
-
-```python hl_lines="10"
-from zeus.monitor import ZeusMonitor
-from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
-
-# Data parallel training with four GPUs.
-# Omitting `gpu_indices` will use all GPUs, while respecting
-# `CUDA_VISIBLE_DEVICES`.
-monitor = ZeusMonitor(gpu_indices=[0,1,2,3])
-# The power limit optimizer profiles power limits during training
-# using the `ZeusMonitor` instance.
-plo = GlobalPowerLimitOptimizer(monitor)
-
-for epoch in range(100):
-    plo.on_epoch_begin()
-
-    for x, y in train_dataloader:
-        plo.on_step_begin()
-        # Learn from x and y!
-        plo.on_step_end()
-
-    plo.on_epoch_end()
-
-    # Validate the model if needed, but `plo` won't care.
+``` { .sh .annotate }
+docker run -it \
+    --gpus all \                 # (1)!
+    --cap-add SYS_ADMIN \       # (2)!
+    --ipc host \               # (3)!
+    mlenergy/zeus:latest \
+    bash
 ```
 
-!!! Important
-    What is the *optimal* power limit?
-    The [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] supports multiple [`OptimumSelector`][zeus.optimizer.power_limit.OptimumSelector]s that chooses one power limit among all the profiled power limits.
-    Selectors that are current implemented are [`Energy`][zeus.optimizer.power_limit.Energy], [`Time`][zeus.optimizer.power_limit.Time], [`ZeusCost`][zeus.optimizer.power_limit.ZeusCost] and [`MaxSlowdownConstraint`][zeus.optimizer.power_limit.MaxSlowdownConstraint].
+1. Mounts all GPUs into the Docker container. `nvidia-docker2` provides this option.
+2. `SYS_ADMIN` capability is needed to change the GPU's power limit or frequency. See [here](#system-privileges).
+3. PyTorch DataLoader workers need enough shared memory for IPC. Without this, they may run out of shared memory and die.
 
-### `HFGlobalPowerLimitOptimizer`
-For easy use with [HuggingFace 🤗 Transformers](https://huggingface.co/docs/transformers/en/index), [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] is a drop-in compatible [HuggingFace 🤗 Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback). When initializing a [HuggingFace 🤗 Trainer](https://huggingface.co/docs/transformers/main_classes/trainer) or a [TFL SFTTrainer](https://huggingface.co/docs/trl/main/en/sft_trainer), initialize and pass in [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] as shown below:
+!!! Tip "Overriding Zeus installation"
+    Inside the container, `zeus`'s installation is editable (`pip install -e`).
+    So, you can mount your locally modified Zeus repository into the right path in the container (`-v /path/to/zeus:/workspace/zeus`), and your modifications will automatically be applied without you having to run `pip install` again.
 
-```python hl_lines="10"
-from zeus.monitor import ZeusMonitor
-from zeus.optimizer.power_limit import HFGlobalPowerLimitOptimizer
+### Pulling from Docker Hub
 
-monitor = ZeusMonitor()
-optimizer = HFGlobalPowerLimitOptimizer(monitor)
+Pre-built images are hosted on [Docker Hub](https://hub.docker.com/r/mlenergy/zeus){.external}.
+There are three types of images available:
 
-# Also works with SFTTrainer.
-trainer = Trainer(
-    ...,
-    callbacks=[optimizer], # Add the `HFGlobalPowerLimitOptimizer` callback
-)
+- `latest`: The latest versioned release.
+- `v*`: Each versioned release.
+- `master`: The `HEAD` commit of Zeus. Usually stable enough, and you will get all the new features.
+
+### Building the image locally
+
+You should specify `TARGETARCH` to be one of `amd64` or `arm64` based on your environment:
+
+```sh
+git clone https://github.com/ml-energy/zeus.git
+cd zeus
+docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 -f docker/Dockerfile .
 ```
-Refer to our [HuggingFace 🤗 example integration](https://github.com/ml-energy/zeus/tree/master/examples/huggingface/) for:
 
-- Transformers [`Trainer`](https://huggingface.co/docs/transformers/main_classes/trainer) integration for **causal langauge modeling** (i.e., pre-training)
-- TRL [`SFTTrainer`](https://huggingface.co/docs/trl/main/en/sft_trainer) integration for **Gemma 7b supervised fine-tuning with QLoRA**
+## System privileges
 
-## Large model training jobs
+!!! Important "Nevermind if you're just measuring"
+    No special system-level privileges are needed if you are just measuring time and energy.
+    However, when you're looking into optimizing energy and if that method requires changing the GPU's power limit or SM frequency, special system-level privileges are required.
 
-We created [Perseus](../perseus/index.md), which can optimize the energy consumption of large model training with practically no slowdown!
+### When are extra system privileges needed?
 
-## Recurring jobs
+The Linux capability `SYS_ADMIN` is required in order to change the GPU's power limit or frequency.
+Specifically, this is needed by the [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] and the [`PipelineFrequencyPlanner`][zeus.optimizer.perseus.PerseusOptimizer].
 
-In production, it's likely that a DNN is trained and re-trained repetitively to keep it up to date.
-For these kinds of recurring jobs, we can take those recurrences as exploration opportunities to find the cost-optimal training batch size.
-This is done with a Multi-Armed Bandit algorithm.
-See [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer].
+### Obtaining privileges with Docker
 
-Two full examples are given for the batch size optimizer:
+Using Docker, you can pass `--cap-add SYS_ADMIN` to `docker run`.
+Since this significantly simplifies running Zeus, we recommend users to consider this option first.
+Also, since Zeus is running inside a container, there is less potential for damage even if things go wrong.
 
-- [MNIST](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/mnist/): Single-GPU and data parallel training, with integration examples with Kubeflow
-- [Sentiment Analysis](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/capriccio/): Full training example with HuggingFace transformers using the Capriccio dataset, a sentiment analysis dataset with data drift.
+### Obtaining privileges with `sudo`
+
+If you cannot use Docker, you can run your application with `sudo`.
+This is not recommended due to security reasons, but it will work.
+
+### GPU management server
+
+It is fair to say that granting `SYS_ADMIN` to the application is itself giving too much privilege.
+We just need to be able to change the GPU's power limit or frequency, instead of giving the process privileges to administer the system.
+Thus, to reduce the attack surface, we are considering solutions such as a separate GPU management server process on a node ([tracking issue](https://github.com/ml-energy/zeus/issues/29)), which has `SYS_ADMIN`.
+Then, an unprivileged application process can ask the GPU management server via a UDS to change the GPU's configuration on its behalf.
+
+## Next Steps
+
+- [Measuring](../measure/index.md) energy with the [`ZeusMonitor`][zeus.monitor.ZeusMonitor], programmatically or in the command line.
+- [Optimizing](../optimize/index.md) energy with Zeus energy optimizers.
