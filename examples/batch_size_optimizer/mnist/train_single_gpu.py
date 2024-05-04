@@ -251,6 +251,8 @@ def main():
         acc = test(args, model, device, test_loader, writer, epoch)
         bso.on_evaluate(acc)
 
+        if bso.training_finished:
+            break
     ##########################################################
         
     if args.save_model:

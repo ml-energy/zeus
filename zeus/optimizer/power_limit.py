@@ -83,7 +83,7 @@ class Time(OptimumSelector):
 class ZeusCost(OptimumSelector):
     r"""Selects the power limit that minimizes a linear Zeus time-energy cost function.
 
-    Cost function is $C = \eta \cdot Energy + MaxPower \cdot (1 - \eta) \cdot Time$.
+    Cost function is $\eta \cdot \text{Energy} + (1 - \eta) \cdot \text{MaxPower} \cdot \text{Time}$.
     """
 
     def __init__(self, eta_knob: float, world_size: int = 1) -> None:

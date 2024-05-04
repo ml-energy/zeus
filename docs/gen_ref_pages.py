@@ -26,10 +26,12 @@ nav = mkdocs_gen_files.Nav()
 for path in sorted(Path("zeus").rglob("*.py")):
     # Path to the generated markdown file.
     doc_path = path.relative_to("zeus").with_suffix(".md")
-    if str(doc_path).find("batch_size/migration") != -1:
-        continue
-    full_doc_path = REF_DIR / doc_path
 
+    # Skip BSO server migration-related files.
+    if str(doc_path).find("batch_size/migrations") != -1:
+        continue
+
+    full_doc_path = REF_DIR / doc_path
     module_path = path.with_suffix("")
     parts = tuple(module_path.parts)
 

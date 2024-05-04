@@ -35,6 +35,7 @@ class BatchSizeOptimizer(Callback):
     """Batch size optimizer client that talks to server.
 
     The following methods must be called in order inside the training script:
+
     - `get_batch_size`: At the beginning of the script.
     - `on_train_begin`: Before running any epochs.
     - `on_evaluate`: After each epoch when the validation metric is available.

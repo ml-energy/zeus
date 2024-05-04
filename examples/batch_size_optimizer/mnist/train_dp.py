@@ -284,6 +284,9 @@ def main():
         callbacks.on_epoch_end()
         acc = test(model, device, test_loader, writer, epoch)
         callbacks.on_evaluate(acc)
+
+        if bso.training_finished:
+            break
     ########################### ZEUS USAGE END ###########################
 
     if args.save_model:

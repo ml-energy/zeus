@@ -109,7 +109,7 @@ class BatchSizeTable(Base):
 class GaussianTsArmStateTable(Base):
     """Gaussian arm state schema. Represents a gaussian thompson arm states of a batch size.
 
-    Refer [`GaussianTsArmState`][zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmState] for attributes.
+    Refer to [`GaussianTsArmState`][zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmState] for attributes.
     """
 
     __tablename__ = "GaussianTsArmState"
@@ -164,7 +164,7 @@ class TrialStatus(enum.Enum):
 class TrialTable(Base):
     """Represents each trial of training.
 
-    Refer [`Trial`][zeus.optimizer.batch_size.server.batch_size_state.models.Trial] for attributes.
+    Refer to [`Trial`][zeus.optimizer.batch_size.server.batch_size_state.models.Trial] for attributes.
     """
 
     __tablename__ = "Trial"

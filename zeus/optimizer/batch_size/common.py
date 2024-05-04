@@ -14,13 +14,13 @@ REPORT_END_URL = "/trials"
 
 
 class JobParams(BaseModel):
-    """Job parameters.
+    r"""Job parameters.
 
     Attributes:
         job_id: unique ID for the job
         batch_sizes: list of batch sizes to try
         default_batch_size: first batch size to try
-        eta_knob: eta for computing `zeus_cost`
+        eta_knob: $\eta$ parameter for computing `zeus_cost`
         beta_knob: beta for early stopping. If min_cost*beta_knob < current_cost, job will be stopped by bso server.
                     To disable, set it to None.
         target_metric: target metric to achieve for training.
@@ -105,7 +105,7 @@ class JobSpec(JobParams):
     Attributes:
         job_id: ID of job. If none is provided, will be created by server.
 
-    Refer [`JobParams`][`zeus.optimizer.batch_size.common.JobParams`] for other attributes.
+    Refer to [`JobParams`][zeus.optimizer.batch_size.common.JobParams] for other attributes.
     """
 
     job_id: Optional[str]  # pyright: ignore[reportIncompatibleVariableOverride]
