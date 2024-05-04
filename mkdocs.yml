@@ -107,7 +107,7 @@ nav:
   - Measuring Energy: measure/index.md
   - Optimizing Energy:
     - optimize/index.md
-    - Power Limit Optimizer: optimize/global_power_limit_optimizer.md
+    - Power Limit Optimizer: optimize/power_limit_optimizer.md
     - Batch Size Optimizer: optimize/batch_size_optimizer.md
     - Pipeline Frequency Optimizer: optimize/pipeline_frequency_optimizer.md
   - Research Overview: 

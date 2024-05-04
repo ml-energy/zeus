@@ -1,10 +1,8 @@
-<div align="center">
+<div align="center" markdown>
 <h1>Zeus: Understanding and Optimizing<br>GPU Energy Consumption of DNN Training</h1>
+
+[**Paper**](https://www.usenix.org/conference/nsdi23/presentation/you) | [**Slides**](https://www.usenix.org/system/files/nsdi23_slides_chung.pdf) | [**YouTube**](https://youtu.be/aZoD-jgO3fE)
 </div>
-
-This page intends to give a high-level overview of *what* Zeus does and *why* you should care.
-
-For details, especially regarding *how*, please refer our [NSDI’23 publication](https://www.usenix.org/conference/nsdi23/presentation/you).
 
 <div class="critic-dark" markdown>
 {==
@@ -102,17 +100,8 @@ Fortunately, DNN training jobs often **recur** in production GPU clusters,[^9] a
 
 This results in two main components in Zeus:
 
-- **JIT energy profiler**: Finds the optimal power limit via online profiling.
-- **MAB + Thompson Sampling**: Finds the optimal batch size across recurrences.
-
-
-<!-- Abbreviation definitions -->
-*[DNN]: Deep Neural Network
-*[DNNs]: Deep Neural Networks
-*[GPU]: Graphics Processing Unit
-*[GPUs]: Graphics Processing Units
-*[JIT]: Just-in-Time
-*[MAB]: Multi-Armed Bandit
+- **Just-In-Time energy profiler**: Finds the optimal power limit via online profiling.
+- **Multi-Armed Bandit + Thompson Sampling**: Finds the optimal batch size across recurring training runs.
 
 
 [^1]: Jesse Dodge, Taylor Prewitt, Remi Tachet des Combes, Erika Odmark, Roy Schwartz, Emma Strubell, Alexandra Sasha Luccioni, Noah A. Smith, Nicole DeCario, and Will Buchanan. Measuring the carbon intensity of ai in cloud instances. In 2022 ACM Conference on Fairness, Accountability, and Transparency, FAccT ’22, page 1877–1894, New York, NY, USA, 2022. Association for Computing Machinery.
@@ -125,25 +114,21 @@ This results in two main components in Zeus:
 [^8]: Since doing this will consume so much time and energy, it may even offset or exceed the energy savings from choosing the optimal knobs if we decide to do it for every future incoming job!
 [^9]: Kim Hazelwood, Sarah Bird, David Brooks, Soumith Chintala, Utku Diril, Dmytro Dzhulgakov, Mohamed Fawzy, Bill Jia, Yangqing Jia, Aditya Kalro, et al. Applied machine learning at facebook: A datacenter infrastructure perspective. In 2018 IEEE International Symposium on High Performance Computer Architecture (HPCA), pages 620–629. IEEE, 2018.
 
+---
 
-# Extending Zeus
+## Research reproducibility
 
-!!! Warning
-    Content in this page pertains to Zeus when it was a research artifact of our NSDI paper.
-    We will soon refactor the simulator and replace this page with something along the lines of "How to reproduce our research results."
-    Track this issue [here](https://github.com/ml-energy/zeus/issues/38).
+We have our trace-driven simulator open-sourced [here](https://github.com/ml-energy/zeus/tree/master/examples/research_reproducibility/zeus_nsdi23){.external} with instructions.
 
-Users can implement custom policies to optimize batch size and power limits, and plug it into Zeus.
+### Extending the Zeus simulator
 
-## Interfaces
+Users can implement custom policies that optimize batch size and power limit, and plug it into the Zeus simulator.
+We have training and energy traces for 6 different DNNs and 4 different NVIDIA GPU microarchitectures [here](https://github.com/ml-energy/zeus/tree/master/trace){.external}, which the simulator runs with.
 
 Zeus defines two abstract classes [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus._legacy.policy.PowerLimitOptimizer] in [`zeus._legacy.policy.interface`][zeus._legacy.policy.interface].
 Each class optimizes the batch size and power limit of a recurring training job respectively.
 As in our paper, the batch size optimizer is first invoked to decide which batch size to use, and then the power limit optimizer is invoked with both the job and the batch size chosen to decide which power limit to use.
-
 You can find examples of policy implementations in [`zeus._legacy.policy.optimizer`][zeus._legacy.policy.optimizer].
 
-## Plugging it into Zeus
-
 The Zeus simulator ([`Simulator`][zeus._legacy.simulate.Simulator]) accepts one [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus._legacy.policy.PowerLimitOptimizer] in its constructor.
-A full-example can be found in [`examples/trace_driven`](https://github.com/ml-energy/zeus/tree/master/examples/trace_driven/).
+A full-example can be found [here](https://github.com/ml-energy/zeus/tree/master/examples/research_reproducibility/zeus_nsdi23/){.external}.

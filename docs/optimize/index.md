@@ -2,7 +2,7 @@
 
 Zeus provides multiple optimizers that tune different knobs either in the Deep Learning workload-side or the GPU-side.
 
-## [Power limit optimizer](global_power_limit_optimizer.md)
+## [Power limit optimizer](power_limit_optimizer.md)
 
 Finds the optimal GPU power limit for DNN training.
 Users can control what *optimal* means, including minimum energy, minimum energy *given* maximum training slowdown, and minimum *cost* (linear combination of time and energy).

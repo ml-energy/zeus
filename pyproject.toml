@@ -37,7 +37,8 @@ Documentation = "https://ml.energy/zeus"
 
 [project.optional-dependencies]
 # One day FastAPI will drop support for Pydantic V1. Then fastapi has to be pinned as well.
-perseus = ["fastapi[all]", "pydantic<2", "lowtime", "aiofiles", "httpx", "torch"]
+pfo = ["pydantic<2", "httpx"]
+pfo-server = ["fastapi[all]", "pydantic<2", "lowtime", "aiofiles", "httpx", "torch"]
 bso = ["pydantic<2", "httpx"]
 bso-server = ["fastapi[all]", "sqlalchemy", "pydantic<2", "python-dotenv"]
 migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv"]
@@ -45,7 +46,7 @@ lint = ["ruff", "black==22.6.0", "pyright", "pandas-stubs", "transformers"]
 test = ["fastapi[all]", "sqlalchemy", "pydantic<2", "httpx", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0"]
 docs = ["mkdocs-material[imaging]==9.5.19", "mkdocstrings[python]==0.25.0", "mkdocs-gen-files==0.5.0", "mkdocs-literate-nav==0.6.1", "mkdocs-section-index==0.3.9", "mkdocs-redirects==1.2.1", "urllib3<2", "black"]
 # greenlet is for supporting apple mac silicon for sqlalchemy(https://docs.sqlalchemy.org/en/20/faq/installation.html)
-dev = ["zeus-ml[perseus,bso,bso-server,migration,lint,test]", "greenlet"]
+dev = ["zeus-ml[pfo-server,bso,bso-server,migration,lint,test]", "greenlet"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -82,8 +83,8 @@ pydocstyle.convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401", "F403"]
-"zeus/optimizer/perseus/common.py" = ["N805"]
-"zeus/optimizer/perseus/server/router.py" = ["B008"]
+"zeus/optimizer/pipeline_frequency/common.py" = ["N805"]
+"zeus/optimizer/pipeline_frequency/server/router.py" = ["B008"]
 "zeus/utils/pydantic_v1.py" = ["F403"]
 "zeus/optimizer/batch_size/**/commands.py" = ["N805"]
 "zeus/optimizer/batch_size/**/models.py" = ["N805"]

@@ -116,9 +116,7 @@ class PipelineFrequencyOptimizer(Callback):
                 )
             job_id = response.json()
             if not isinstance(job_id, str):
-                raise RuntimeError(
-                    f"PFO server returned a strange job ID: {job_id=}"
-                )
+                raise RuntimeError(f"PFO server returned a strange job ID: {job_id=}")
 
         # Rank 0 broadcasts the job ID across all ranks.
         objects = [job_id]
@@ -212,9 +210,7 @@ class PipelineFrequencyOptimizer(Callback):
         # Retrieve the next frequency from the schedule.
         item = next(self.freq_schedule_iter, None)
         if item is None:
-            raise RuntimeError(
-                "PFO server returned fewer frequencies than expected"
-            )
+            raise RuntimeError("PFO server returned fewer frequencies than expected")
 
         # Check whether the next expected instruction matches the name of the instruction.
         instruction, frequency = item

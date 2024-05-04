@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Example script of running Perseus energy scheduling."""
+"""Example script of running pipeline frequency optimization."""
 
 from __future__ import annotations
 

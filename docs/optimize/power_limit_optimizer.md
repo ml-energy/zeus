@@ -9,7 +9,7 @@ Use cases currently supported are single GPU training and data parallel training
 For data parallel training, the power limit of all GPUs involved are changed together, since all GPUs have the same computation load.
 
 !!! Tip "Upcoming"
-    Distributed data parallel training support is planned ([tracking issue](https://github.com/ml-energy/zeus/issues/43)).
+    Distributed data parallel training support is planned ([tracking issue](https://github.com/ml-energy/zeus/issues/43){.external}).
 
 !!! Important "Extra system privileges needed"
     In order to optimize the GPU power limit, the power limit optimizer should be able to change the power limit.
@@ -40,7 +40,7 @@ for epoch in range(100):
     plo.on_epoch_end()
 ```
 
-We provide [integration examples](https://github.com/ml-energy/zeus/tree/master/examples/power_limit_optimizer/) for Torchvision & ImageNet single-GPU and data parallel training.
+We provide [integration examples](https://github.com/ml-energy/zeus/tree/master/examples/power_limit_optimizer/){.external} for Torchvision & ImageNet single-GPU and data parallel training.
 
 !!! Tip "What is the *optimal* power limit?"
     [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] accepts an optional [`OptimumSelector`][zeus.optimizer.power_limit.OptimumSelector] in its constructor, which defines how to choose one power limit among all the profiled power limits.
@@ -49,8 +49,8 @@ We provide [integration examples](https://github.com/ml-energy/zeus/tree/master/
 
 ## `HFGlobalPowerLimitOptimizer`
 
-For easy use with HuggingFace Transformers, [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] is implemented as a [HuggingFace Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback) by inheriting from [`TrainerCallback`][transformers.TrainerCallback].
-When initializing a [HuggingFace Trainer](https://huggingface.co/docs/transformers/main_classes/trainer) or a [TFL SFTTrainer](https://huggingface.co/docs/trl/main/en/sft_trainer), initialize and pass in [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] as shown below:
+For easy use with HuggingFace Transformers, [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] is implemented as a [HuggingFace Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback){.external} by inheriting from [`TrainerCallback`][transformers.TrainerCallback].
+When initializing a [HuggingFace Trainer][transformers.Trainer] or a [TFL SFTTrainer][trl.SFTTrainer], initialize and pass in [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] as shown below:
 
 ```python hl_lines="11"
 from transformers import Trainer
@@ -67,7 +67,7 @@ trainer = Trainer(
 )
 ```
 
-Refer to our [HuggingFace integration examples](https://github.com/ml-energy/zeus/tree/master/examples/huggingface/) for:
+Refer to our [HuggingFace integration examples](https://github.com/ml-energy/zeus/tree/master/examples/huggingface/){.external} for:
 
-- Transformers [`Trainer`][transformers.Trainer] integration for **causal language modeling** (i.e., pre-training)
-- TRL [`SFTTrainer`][trl.SFTTrainer] integration for **Gemma 7B supervised fine-tuning with QLoRA**
+- Transformers `Trainer` integration for **causal language modeling** (i.e., pre-training)
+- TRL `SFTTrainer` integration for **Gemma 7B supervised fine-tuning with QLoRA**

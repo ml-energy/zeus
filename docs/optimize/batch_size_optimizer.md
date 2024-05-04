@@ -16,7 +16,7 @@ In production environments, it is common for a single DNN to be trained and re-t
 This is because the data distribution changes over time, and the model needs to be re-trained to adapt to the new data distribution.
 The batch size optimizer uses these **recurring training jobs** as opportunities to find the optimal batch size for the DNN training job.
 To do this, the batch size optimizer uses a Multi-Armed Bandit algorithm to explore the batch size space.
-For more details, please refer to the [Zeus research paper](https://www.usenix.org/conference/nsdi23/presentation/you).
+For more details, please refer to the [Zeus paper](../research_overview/zeus.md).
 
 !!! Important "Constraints"
     Currently, the batch size optimizer only supports cases where the **number and type of GPUs** used for each recurrent training job is always the same.
@@ -59,7 +59,7 @@ git clone https://github.com/ml-energy/zeus.git
 ### Decide on the database
 
 By default, our examples use MySQL.
-However, you can use any database [supported by SQLAlchemy](https://docs.sqlalchemy.org/en/latest/dialects/).
+However, you can use any database [supported by SQLAlchemy](https://docs.sqlalchemy.org/en/latest/dialects/){.external}.
 Please make sure the database's corresponding async connection driver (e.g., `asyncmy` for MySQL, `aiosqlite` for SQLite) is installed.
 For instance, to adapt our examples, you can (1) add `pip install` to [`migration.Dockerfile`](https://github.com/ml-energy/zeus/blob/master/docker/batch_size_optimizer/migration.Dockerfile) and [`server.Dockerfile`](https://github.com/ml-energy/zeus/blob/master/docker/batch_size_optimizer/server.Dockerfile), and (2) change the `db` container specification in [`server-docker-compose.yaml`](https://github.com/ml-energy/zeus/blob/master/docker/batch_size_optimizer/server-docker-compose.yaml).
 
@@ -89,7 +89,7 @@ Docker Compose will first build necessary images and spin up the containers.
 
 ### With Kubernetes
 
-1. **Build the Docker image.**
+1. Build the Docker image.
 
     ```sh
     # From the repository root
@@ -101,7 +101,7 @@ Docker Compose will first build necessary images and spin up the containers.
     If you are locally using `minikube`, then the images are already available.
     However, if you are using the cloud such as AWS EKS, you should push the image to the registry and modify the image path in `server-docker-compose.yaml` to allow Kubernetes to pull the image.
 
-2. **Convert Docker Compose files to Kubernetes YAML files using [Kompose](https://kompose.io/).**
+2. Convert Docker Compose files to Kubernetes YAML files using [Kompose](https://kompose.io/){.external}.
 
     ```sh
     cd docker/batch_size_optimizer
@@ -112,7 +112,7 @@ Docker Compose will first build necessary images and spin up the containers.
 
     This first resolves env files using `docker-compose`, then converts it into Kubernetes YAML files in `./kube/`.
 
-3. **Apply the Kubernetes YAML files.**
+3. Apply the Kubernetes YAML files.
 
     ```sh
     cd kube
@@ -230,5 +230,5 @@ The user should re-launch the training run in this case, and the BSO server will
 
 Two full examples are given for the batch size optimizer:
 
-- [MNIST](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/mnist/): Single-GPU and data parallel training, with integration examples with Kubeflow
-- [Sentiment Analysis](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/capriccio/): Full training example with HuggingFace transformers using the Capriccio dataset, a sentiment analysis dataset with data drift.
+- [MNIST](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/mnist/){.external}: Single-GPU and data parallel training, with integration examples with Kubeflow
+- [Sentiment Analysis](https://github.com/ml-energy/zeus/tree/master/examples/batch_size_optimizer/capriccio/){.external}: Full training example with HuggingFace transformers using the Capriccio dataset, a sentiment analysis dataset with data drift.

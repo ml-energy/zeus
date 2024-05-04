@@ -29,8 +29,8 @@ pip install -e '.[dev]'
 !!! Important "Dependencies"
     You should have the following already installed on your system:
 
-    - [`docker`](https://docs.docker.com/engine/install/)
-    - [`nvidia-docker2`](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+    - [Docker](https://docs.docker.com/engine/install/)
+    - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
     
 Our Docker image should suit most of the use cases for Zeus.
 On top of the `nvidia/cuda:11.8.0-base-ubuntu22.04` image, we add:
@@ -54,7 +54,7 @@ docker run -it \
     bash
 ```
 
-1. Mounts all GPUs into the Docker container. `nvidia-docker2` provides this option.
+1. Mounts all GPUs into the Docker container.
 2. `SYS_ADMIN` capability is needed to change the GPU's power limit or frequency. See [here](#system-privileges).
 3. PyTorch DataLoader workers need enough shared memory for IPC. Without this, they may run out of shared memory and die.
 
@@ -90,7 +90,7 @@ docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 -f docker/Dock
 ### When are extra system privileges needed?
 
 The Linux capability `SYS_ADMIN` is required in order to change the GPU's power limit or frequency.
-Specifically, this is needed by the [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] and the [`PipelineFrequencyPlanner`][zeus.optimizer.perseus.PerseusOptimizer].
+Specifically, this is needed by the [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] and the [`PipelineFrequencyOptimizer`][zeus.optimizer.pipeline_frequency.PipelineFrequencyOptimizer].
 
 ### Obtaining privileges with Docker
 
