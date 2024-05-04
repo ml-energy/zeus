@@ -3,7 +3,7 @@
 The batch size optimizer (BSO) finds the optimal DNN training batch size that minimizes *cost*:
 
 $$
-\eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA},
+\eta \cdot \textrm{ETA} + (1 - \eta) \cdot \textrm{MaxPower} \cdot \textrm{TTA}
 $$
 
 where ETA and TTA stands for Energy-to-Accuracy and Time-to-Accuracy, respectively, and accuracy is the target *validation* metric of training.
@@ -218,8 +218,8 @@ The BSO server will determine whether to stop training and this will be reflecte
 If the DNN reaches the target validation metric, training should stop.
 However, training fails if
 
-1. it failed to converge within the configured `JobSpec.max_epochs` epochs, or
-2. its cost exceeded the early stopping threshold configured by `JobSpec.beta_knob`.
+1. it failed to converge within the configured `JobSpec.max_epochs` ([reference][zeus.optimizer.batch_size.common.JobSpec]) epochs, or
+2. its cost exceeded the early stopping threshold configured by `JobSpec.beta_knob`([reference][zeus.optimizer.batch_size.common.JobSpec]) .
 
 In such failure cases, the optimizer will raise a [`ZeusBSOTrainFailError`][zeus.optimizer.batch_size.exceptions.ZeusBSOTrainFailError].
 This means that the chosen batch size was not useful, and the BSO server will never try this batch size again.

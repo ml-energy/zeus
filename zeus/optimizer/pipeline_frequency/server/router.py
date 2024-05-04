@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Perseus server FastAPI router."""
+"""Pipeline frequency optimizer server FastAPI router."""
 
 from __future__ import annotations
 
@@ -23,18 +23,18 @@ from fastapi import Depends, FastAPI, Response, Request
 from fastapi.routing import APIRoute
 
 from zeus.utils.logging import get_logger
-from zeus.optimizer.perseus.common import (
+from zeus.optimizer.pipeline_frequency.common import (
     REGISTER_JOB_URL,
     REGISTER_RANK_URL,
     GET_FREQUENCY_SCHEDULE_URL,
     REPORT_PROFILING_RESULT_URL,
     JobInfo,
     RankInfo,
-    PerseusSettings,
+    PFOServerSettings,
     ProfilingResult,
     FrequencySchedule,
 )
-from zeus.optimizer.perseus.server.job_manager import (
+from zeus.optimizer.pipeline_frequency.server.job_manager import (
     JobManager,
     init_global_job_manager,
     get_global_job_manager,
@@ -65,7 +65,7 @@ class LoggingRoute(APIRoute):
         return custom_route_handler
 
 
-settings = PerseusSettings()
+settings = PFOServerSettings()
 logging.basicConfig(level=logging.getLevelName(settings.log_level))
 if logging.getLevelName(settings.log_level) <= logging.DEBUG:
     app.router.route_class = LoggingRoute

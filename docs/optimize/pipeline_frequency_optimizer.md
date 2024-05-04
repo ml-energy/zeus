@@ -1,32 +1,17 @@
-# Perseus: Energy Scheduling in Large Model Training
+# Pipeline Frequency Optimizer
 
-!!! Warning
-    Perseus is under active development, and breaking changes may happen.
-    Currently, we have all the low-level APIs in place, but it's not a turnkey solution yet.
-    This document always reflects the master `HEAD`.
+The pipeline frequency optimizer optimizes the energy consumption of large model training, e.g., LLM pretraining.
 
-!!! Tip
-    Our preprint is out on [arXiv](https://arxiv.org/abs/2312.06902)! :)
+The core observation is that in pipeline parallel training, it is very difficult to split pipeline stages in perfectly equal size.
+Even for models like GPT, the first stage has the embeddings and the last stage has the language model head, making perfect balance nearly impossible to achieve.
+The pipeline frequency optimizer is based on our research paper [Perseus](../research_overview/perseus.md).
 
-## Overview
+<figure>
+  <img src="../../research_overview/img/wide-resnet.gif" width=600px>
+  <figcaption>The pipeline frequency optimizer in action</figcaption>
+</figure>
 
-<img src="img/wide-resnet.gif" width=800px>
-
-Perseus finds the training time--energy Pareto frontier of large model training.
-Users can pick any point on the frontier -- be it minimum time, minimum energy, or something in the middle, depending on the training deadline.
-
-Large model training requires the distribution of work to multiple GPUs.
-The core observation of Perseus is that work cannot be perfectly split and balanced across every GPU; some GPUs have more work to do and some less.
-GPUs with smaller amounts of work finish before GPUs with more amounts of work, but ultimately training throughput is bound by GPUs with the most amount of work.
-In other words, GPUs with lighter load are running unnecessarily fast and wasting energy (i.e., there is **energy bloat**).
-
-We reduce energy bloat by controlling the execution speed of each pipeline instruction (forward and backward) in each stage by controlling the GPU's frequency in a fine-grained manner.
-We call the assignment of a GPU frequency to each pipeline instruction *frequency plan*, and Perseus gives you **every Pareto-optimal frequency plan** that you can choose any point on the iteration time--energy Pareto frontier.
-These plans include frequency plans that do not make training any slower compared to not using Perseus at all, but yield free energy savings.
-If you have a bit more leeway as to when training should finish (e.g., You're good as long as training finishes by tomorrow morning), you can pick the frequency plan that slows down training by a couple percentages and save more energy.
-Our core algorithm, implemented as a separate library called [`lowtime`](https://github.com/ml-energy/lowtime), **provably guarantees** that for any time deadline, energy consumption is minimal.
-
-## How it's done
+## Usage
 
 Currently, it's a three-step process:
 
@@ -38,7 +23,7 @@ We have a reference integration with the large model training framework [Merak](
 We've smoothed out some rough edges, integrated Zeus and Perseus, and maintained example scripts for GPT3, BERT, and Wide-ResNet (pretty much any `torchvision` model).
 
 You don't have to be tied to Merak.
-If you have your own training framework, and you can integrate Perseus following [our integration guide](integrating.md).
+If you have your own training framework, and you can integrate Perseus following [the integration guide](#integrating-with-training-frameworks).
 
 ### Profile
 
@@ -96,33 +81,27 @@ $ docker exec -it merak-zeus bash
 ```
 
 When you run training (with the same `run.sh` but without `--profile true`), the [`PerseusOptimizer`][zeus.optimizer.perseus.optimizer.PerseusOptimizer] integrated into your training framework will automatically talk with the Perseus server to figure out the right GPU frequency to set for the upcoming pipeline instruction and transparently set the GPU's frequency.
-# Integrating Perseus with Training Frameworks
 
-!!! Warning
-    Perseus is under active development, and breaking changes may happen.
-    Currently, we have all the low-level APIs in place, but it's not a turnkey solution yet.
-    This document always reflects the master `HEAD`.
+## Integrating with training frameworks
 
 This page aims to walk you through the process of integrating Perseus with arbitrary training frameworks.
 We also have a reference integration with [Merak](https://github.com/ml-energy/merak-zeus).
 Especially take a look at `Merak.runtime.pipe_engine`.
 
-## Assumptions
+### Assumptions
 
 We assume that there are concrete regions of the framework's code where the forward pass and the backward pass exclusively happens.
 For instance, in DeepSpeed, `PipelineEngine` has [`_exec_forward_pass`](https://github.com/microsoft/DeepSpeed/blob/4fc181b01077521ba42379013ce91a1c294e5d8e/deepspeed/runtime/pipe/engine.py#L626) and [`_exec_backward_pass`](https://github.com/microsoft/DeepSpeed/blob/4fc181b01077521ba42379013ce91a1c294e5d8e/deepspeed/runtime/pipe/engine.py#L703).
 As another example, in Megatron-LM, users can pass in their custom `forward_step_func` to `pretrain`, and [`forward_step`](https://github.com/NVIDIA/Megatron-LM/blob/79a9feef261352ac1ee80b36f2cf73c20f864965/megatron/core/pipeline_parallel/schedules.py#L149) in the codebase calls it. The backward pass is done (roughly) in the [`backward_step`](https://github.com/NVIDIA/Megatron-LM/blob/79a9feef261352ac1ee80b36f2cf73c20f864965/megatron/core/pipeline_parallel/schedules.py#L216) function.
 
-## Integrate `PerseusOptimizer`
+### Integrate `PerseusOptimizer`
 
 1. Instantiate the [`PerseusOptimizer`][zeus.optimizer.perseus.optimizer.PerseusOptimizer] somewhere before actual training runs. Let's call the object `opt`.
 1. Surround one training step with `opt.on_step_begin()` and `opt.on_step_end()`.
 1. Wrap the forward pass region with `opt.on_instruction_begin("forward")` and `opt.on_instruction_end("forward")`.
 1. Wrap the backward pass region with `opt.on_instruction_begin("backward")` and `opt.on_instruction_end("backward")`.
 
-That's it.
-
-## Profiling Instructions
+### Profiling Instructions
 
 It's important to optimize on top of accurate measurements of forward and backward instructions.
 For now, we're taking an offline approach, where we run each instruction under a given GPU frequency N times and average time and energy consumption.

@@ -24,7 +24,7 @@ We reduce energy bloat by controlling the execution speed of each pipeline instr
 We call the assignment of a GPU frequency to each pipeline instruction *frequency plan*, and Perseus gives you **every Pareto-optimal frequency plan** that you can choose any point on the iteration time--energy Pareto frontier.
 These plans include frequency plans that do not make training any slower compared to not using Perseus at all, but yield free energy savings.
 If you have a bit more leeway as to when training should finish (e.g., You're good as long as training finishes by tomorrow morning), you can pick the frequency plan that slows down training by a couple percentages and save more energy.
-Our core algorithm, implemented as a separate library called [`lowtime`](https://github.com/ml-energy/lowtime), **provably guarantees** that for any time deadline, energy consumption is minimal.
+Our core algorithm is implemented as a separate library called [`lowtime`](https://github.com/ml-energy/lowtime).
 
 ## How it's done
 

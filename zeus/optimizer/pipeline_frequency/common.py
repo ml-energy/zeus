@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared constants and models between the Perseus server and the client (optimizer)."""
+"""Shared constants and models between the server and the client (optimizer)."""
 
 from __future__ import annotations
 
@@ -33,12 +33,11 @@ GET_FREQUENCY_SCHEDULE_URL = "/schedule/{job_id}"
 REPORT_PROFILING_RESULT_URL = "/result/{job_id}"
 
 
-class PerseusSettings(BaseSettings):
-    """Perseus settings, configurable via environment variables.
+class PFOServerSettings(BaseSettings):
+    """PFO server settings, configurable via environment variables.
 
-    For instance, setting `PERSEUS_SCHEDULER=AllMaxFrequency` will automatically
-    import `zeus.optimizer.perseus.server.scheduler.AllMaxFrequency` and
-    the `scheduler` variable will hold it a reference to the class.
+    For instance, setting `ZEUS_PFO_LOG_LEVEL=INFO` will automatically set
+    the `log_level` variable to `"INFO"`.
 
     Attributes:
         scheduler: Name of the `FrequencyScheduler` to use.
@@ -60,14 +59,14 @@ class PerseusSettings(BaseSettings):
 
     @validator("scheduler", pre=True)
     def _fix_scheduler_import_path(cls, value):
-        """Prepend `zeus.optimizer.perseus.server.scheduler.` to the scheduler type name."""
-        return f"zeus.optimizer.perseus.server.scheduler.{value}"
+        """Prepend `zeus.optimizer.pipeline_frequency.server.scheduler.` to the scheduler type name."""
+        return f"zeus.optimizer.pipeline_frequency.server.scheduler.{value}"
 
     @validator("scheduler_args")
     def _validate_scheduler_args(cls, args, values):
         """Check whether args are as expected by the scheduler's constructor."""
         scheduler = values["scheduler"]
-        full_args = args | dict(job_info=None, rank_infos=None, perseus_settings=None)
+        full_args = args | dict(job_info=None, rank_infos=None, pfo_settings=None)
         constructor_args = inspect.signature(scheduler)
         try:
             constructor_args.bind(**full_args)
@@ -82,7 +81,7 @@ class PerseusSettings(BaseSettings):
     class Config:  # type: ignore
         """Configuration class read by pydantic."""
 
-        env_prefix = "perseus_"
+        env_prefix = "zeus_pfo_"
 
 
 class JobInfo(BaseModel):

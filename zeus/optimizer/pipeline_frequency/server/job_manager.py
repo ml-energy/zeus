@@ -22,9 +22,9 @@ import traceback
 
 from fastapi import HTTPException
 
-from zeus.optimizer.perseus.common import (
+from zeus.optimizer.pipeline_frequency.common import (
     JobInfo,
-    PerseusSettings,
+    PFOServerSettings,
     FrequencySchedule,
     ProfilingResult,
     RankInfo,
@@ -43,9 +43,9 @@ logger = get_logger(__name__)
 class JobManager:
     """A singleton class that manages all states."""
 
-    def __init__(self, perseus_settings: PerseusSettings) -> None:
+    def __init__(self, pfo_settings: PFOServerSettings) -> None:
         """Initialize the job manager."""
-        self.perseus_settings = perseus_settings
+        self.pfo_settings = pfo_settings
 
         self._job_infos: dict[str, JobInfo] = {}
         self._job_rank_infos: dict[str, list[RankInfo]] = {}
@@ -60,7 +60,7 @@ class JobManager:
         create_task(
             self._cleanup_task(
                 cleanup_period=60,
-                max_idle_time=perseus_settings.max_job_idle_time,
+                max_idle_time=pfo_settings.max_job_idle_time,
             ),
             logger=logger,
         )
@@ -80,7 +80,7 @@ class JobManager:
             asyncio.Queue(maxsize=1) for _ in range(world_size)
         ]
         self._job_tasks[job_id] = create_task(
-            self._job_task(job_id, self.perseus_settings.dump_data),
+            self._job_task(job_id, self.pfo_settings.dump_data),
             logger=logger,
         )
         self._job_last_active_time[job_id] = time.monotonic()
@@ -173,17 +173,17 @@ class JobManager:
             # Sort `RankInfo`s in rank order.
             rank_infos.sort(key=lambda r: r.rank)
 
-            # Create directory to dump Perseus states.
-            dump_dir = f"{self.perseus_settings.dump_dir}/{job_id}"
+            # Create directory to dump PFO server states.
+            dump_dir = f"{self.pfo_settings.dump_dir}/{job_id}"
             if dump_data:
                 await save_ranks(rank_infos, dump_dir)
 
             # Instantiate the frequency scheduler.
-            scheduler = self.perseus_settings.scheduler(
+            scheduler = self.pfo_settings.scheduler(
                 job_info,
                 rank_infos,
-                self.perseus_settings,
-                **self.perseus_settings.scheduler_args,
+                self.pfo_settings,
+                **self.pfo_settings.scheduler_args,
             )
 
             # Provide next schedules, observe profiling results, and repeat.
@@ -228,10 +228,10 @@ class JobManager:
             raise
 
 
-def init_global_job_manager(perseus_settings: PerseusSettings) -> None:
+def init_global_job_manager(pfo_settings: PFOServerSettings) -> None:
     """Instantiate the global singleton `JobManager`."""
     global GLOBAL_JOB_MANAGER
-    GLOBAL_JOB_MANAGER = JobManager(perseus_settings=perseus_settings)
+    GLOBAL_JOB_MANAGER = JobManager(pfo_settings=pfo_settings)
 
 
 def get_global_job_manager() -> JobManager:

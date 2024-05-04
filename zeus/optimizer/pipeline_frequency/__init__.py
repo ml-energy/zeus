@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The Perseus server guides the PerseusOptimizer with frequency plans.
+"""Optimize the energy consumption of large model training with Perseus.
 
-The server is agnostic to the training framework the PerseusOptimizer
-is integrated with. A server is useful because large model training is
-typically distributed, and we still need one place to coordinate the
-frequency plans. Later, the server will be extended to support complete
-online profiling and optimization.
+A a high-level, this optimizer assigns each forward and backward computation
+in a pipeline parallel training iteration with a GPU frequency that leads to
+a Pareto-optimal training iteration time and energy consumption.
+
+Currently, this optimizer depends on PyTorch.
 """
+
+from zeus.optimizer.pipeline_frequency.optimizer import PipelineFrequencyOptimizer

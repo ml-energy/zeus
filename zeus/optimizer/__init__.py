@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A collection of optimizers for various knobs."""
+"""Zeus energy optimizers."""

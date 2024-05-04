@@ -26,8 +26,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.top
-    - navigation.instant
-    - navigation.instant.prefetch
     - content.tooltips
     - announce.dismiss
   palette:

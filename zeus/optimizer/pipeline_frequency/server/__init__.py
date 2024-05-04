@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Optimizer that schedules energy consumption with Perseus.
+"""The server guides the `PipelineFrequencyOptimizer` with frequency plans.
 
-Currently, this optimizer depends on PyTorch.
+The server is agnostic to the training framework the
+[`PipelineFrequencyOptimizer`][zeus.optimizer.pipeline_frequency.optimizer.PipelineFrequencyOptimizer]
+is integrated with. A server is useful because large model training is
+typically distributed, and we still need one place to coordinate the
+frequency plans. Later, the server will be extended to support complete
+online profiling and optimization.
 """
-
-from zeus.optimizer.perseus.optimizer import PerseusOptimizer

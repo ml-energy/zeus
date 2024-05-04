@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Perseus optimizer implementation.
+"""Pipeline frequency optimizer implementation.
 
-The `PerseusOptimizer` is to be integrated into the user-side framework.
-It is responsible for communicating with the Perseus server and managing
+The `PipelineFrequencyOptimizer` is to be integrated into the training framework.
+It is responsible for communicating with the PFO server and managing
 the `FrequencyController` instance, which is responsible for controlling
 the frequency of the CPU of the current process.
 """
@@ -28,8 +28,8 @@ import torch.distributed as dist
 
 from zeus.callback import Callback
 from zeus.device import get_gpus
-from zeus.optimizer.perseus.frequency_controller import FrequencyController
-from zeus.optimizer.perseus.common import (
+from zeus.optimizer.pipeline_frequency.frequency_controller import FrequencyController
+from zeus.optimizer.pipeline_frequency.common import (
     GET_FREQUENCY_SCHEDULE_URL,
     REGISTER_JOB_URL,
     REGISTER_RANK_URL,
@@ -40,8 +40,8 @@ from zeus.optimizer.perseus.common import (
 from zeus.utils.framework import cuda_sync
 
 
-class PerseusOptimizer(Callback):
-    """Perseus optimizer."""
+class PipelineFrequencyOptimizer(Callback):
+    """Pipeline frequency optimizer."""
 
     def __init__(
         self,
@@ -57,7 +57,7 @@ class PerseusOptimizer(Callback):
         server_url: str,
         job_metadata: str | None = None,
     ) -> None:
-        """Initialize the Perseus optimizer.
+        """Initialize the Pipeline frequency optimizer.
 
         Assumptions:
             - `torch.distributed` has been initialized.
@@ -66,7 +66,7 @@ class PerseusOptimizer(Callback):
 
         The master process (rank 0) will register the job with the Peresus
         server and retrieve the job ID of this job. Then, each rank will
-        report itself to the Perseus server with the job ID.
+        report itself to the PFO server with the job ID.
 
         Args:
             rank: Global rank of the current process.
@@ -78,13 +78,13 @@ class PerseusOptimizer(Callback):
             pp_degree: Size of the pipeline parallel group.
             tp_degree: Size of the tensor parallel group.
             world_size: Total number of ranks that participate in training.
-            server_url: URL of the Perseus server.
+            server_url: URL of the PFO server.
             job_metadata: An optional arbitrary string that describes the job. This will
                 be appended to the job ID if given. Typically for logging purposes.
         """
         if not dist.is_initialized():
             raise RuntimeError(
-                "Instantiate `PerseusOptimizer` after `init_process_group`."
+                "Instantiate `PipelineFrequencyOptimizer` after `init_process_group`."
             )
 
         self.server_url = server_url
@@ -97,7 +97,7 @@ class PerseusOptimizer(Callback):
         gpus = get_gpus()
         torch.cuda.set_device(device_id)
 
-        # Rank 0 registers the job with the Perseus server and retrieves the job ID.
+        # Rank 0 registers the job with the PFO server and retrieves the job ID.
         job_id = None
         if rank == 0:
             job_info = JobInfo(
@@ -112,12 +112,12 @@ class PerseusOptimizer(Callback):
             )
             if (code := response.status_code) != 200:
                 raise RuntimeError(
-                    f"Perseus server returned status code {code}: {response.text}"
+                    f"PFO server returned status code {code}: {response.text}"
                 )
             job_id = response.json()
             if not isinstance(job_id, str):
                 raise RuntimeError(
-                    f"Perseus server returned a strange job ID: {job_id=}"
+                    f"PFO server returned a strange job ID: {job_id=}"
                 )
 
         # Rank 0 broadcasts the job ID across all ranks.
@@ -134,7 +134,7 @@ class PerseusOptimizer(Callback):
             reverse=True,
         )
 
-        # Each rank reports itself to the Perseus server with the job ID.
+        # Each rank reports itself to the PFO server with the job ID.
         rank_info = RankInfo(
             rank=self.rank,
             dp_rank=self.dp_rank,
@@ -148,19 +148,19 @@ class PerseusOptimizer(Callback):
         )
         if (code := response.status_code) != 200:
             raise RuntimeError(
-                f"Perseus server returned status code {code}: {response.text}"
+                f"PFO server returned status code {code}: {response.text}"
             )
 
         # The frequency controller is responsible for controlling the frequency
         # of the GPU (device_id) asynchronously.
         self.frequency_controller = FrequencyController(device_id=device_id)
 
-        # Fetch the frequency schedule from the Perseus server.
+        # Fetch the frequency schedule from the PFO server.
         self.freq_schedule = self._get_frequency_schedule()
         self.freq_schedule_iter = iter(self.freq_schedule)
 
     def _get_frequency_schedule(self) -> list[tuple[str, int]]:
-        """Get the frequency schedule from the Perseus server."""
+        """Get the frequency schedule from the PFO server."""
         response = httpx.get(
             self.server_url + GET_FREQUENCY_SCHEDULE_URL.format(job_id=self.job_id),
             params={"rank": self.rank},
@@ -168,12 +168,12 @@ class PerseusOptimizer(Callback):
         )
         if (code := response.status_code) != 200:
             raise RuntimeError(
-                f"Perseus server returned status code {code}: {response.text}"
+                f"PFO server returned status code {code}: {response.text}"
             )
         schedule = FrequencySchedule.parse_raw(response.text)
         if schedule.rank != self.rank:
             raise RuntimeError(
-                f"Perseus server returned a schedule for rank {schedule.rank} to rank {self.rank}"
+                f"PFO server returned a schedule for rank {schedule.rank} to rank {self.rank}"
             )
         return schedule.frequencies
 
@@ -188,14 +188,14 @@ class PerseusOptimizer(Callback):
         """Mark the end of a step.
 
         TODO(jaywonchung): InstructionProfiler iteration end mark.
-        Also report the profiling result to the Perseus server after N iterations.
+        Also report the profiling result to the PFO server after N iterations.
         """
         # Frequency schedule holds one iteration-worth of frequencies, so at
         # the end of each iteration, the iterator should be exhausted.
         item = next(self.freq_schedule_iter, None)
         if item is not None:
             raise RuntimeError(
-                "Perseus server returned more frequencies than expected. "
+                "PFO server returned more frequencies than expected. "
                 f"Next expected instruction and frequency is {item}"
             )
         self.freq_schedule_iter = iter(self.freq_schedule)
@@ -213,7 +213,7 @@ class PerseusOptimizer(Callback):
         item = next(self.freq_schedule_iter, None)
         if item is None:
             raise RuntimeError(
-                "Perseus server returned fewer frequencies than expected"
+                "PFO server returned fewer frequencies than expected"
             )
 
         # Check whether the next expected instruction matches the name of the instruction.
