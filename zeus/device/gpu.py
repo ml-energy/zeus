@@ -268,8 +268,8 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def getPowerUsage(self) -> int:
-        """Return the current power usage of the GPU. Units: mW."""
+    def getInstantPowerUsage(self) -> int:
+        """Returns the current power usage of the GPU. Units: mW."""
         pass
 
     @abc.abstractmethod
@@ -411,9 +411,14 @@ class NVIDIAGPU(GPU):
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
 
     @_handle_nvml_errors
-    def getPowerUsage(self) -> int:
-        """Returns the power usage of the specified GPU. Units: mW."""
-        return pynvml.nvmlDeviceGetPowerUsage(self.handle)
+    def getInstantPowerUsage(self) -> int:
+        """Returns the current power usage of the specified GPU. Units: mW."""
+        metric = pynvml.nvmlDeviceGetFieldValues(
+            self.handle, [pynvml.NVML_FI_DEV_POWER_INSTANT]
+        )[0]
+        if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
+            raise pynvml.NVMLError(ret)
+        return metric.value.siVal
 
     @_handle_nvml_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
@@ -602,11 +607,12 @@ class AMDGPU(GPU):
         )  # expects MHz
 
     @_handle_amdsmi_errors
-    def getPowerUsage(self) -> int:
-        """Returns the power usage of the specified GPU. Units: mW."""
+    def getInstantPowerUsage(self) -> int:
+        """Returns the current power usage of the specified GPU. Units: mW."""
+        # returns in W, convert to mW
         return int(
             amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000
-        )  # returns in W, convert to mW
+        )
 
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
@@ -723,9 +729,9 @@ class GPUs(abc.ABC):
         """Resets the GPU locked clocks of the specified GPU to their default values."""
         self.gpus[index].resetGpuLockedClocks()
 
-    def getPowerUsage(self, index: int) -> int:
+    def getInstantPowerUsage(self, index: int) -> int:
         """Returns the power usage of the specified GPU. Units: mW."""
-        return self.gpus[index].getPowerUsage()
+        return self.gpus[index].getInstantPowerUsage()
 
     def supportsGetTotalEnergyConsumption(self, index: int) -> bool:
         """Returns True if the specified GPU supports retrieving the total energy consumption."""

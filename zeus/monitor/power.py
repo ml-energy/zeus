@@ -83,10 +83,11 @@ def _infer_counter_update_period_single(gpu_index: int) -> float:
     for i in range(len(time_power_samples)):
         time_power_samples[i] = (
             time(),
-            gpus.getPowerUsage(gpu_index),
+            gpus.getInstantPowerUsage(gpu_index),
         )
 
     # Find the timestamps when the power readings changed.
+    time_power_samples = time_power_samples[10:]
     changed_times = []
     prev_power = time_power_samples[0][1]
     for t, p in time_power_samples:
@@ -95,7 +96,12 @@ def _infer_counter_update_period_single(gpu_index: int) -> float:
             prev_power = p
 
     # Compute the minimum time difference between power change timestamps.
-    return min(time2 - time1 for time1, time2 in zip(changed_times, changed_times[1:]))
+    intervals = [
+        time2 - time1 for time1, time2 in zip(changed_times, changed_times[1:])
+    ]
+    if len(intervals) == 0:
+        return 0.1
+    return min(intervals)
 
 
 class PowerMonitor:
@@ -120,7 +126,8 @@ class PowerMonitor:
         """Initialize the power monitor.
 
         Initialization should not be done in global scope due to python's protection.
-        Refer to the "Safe importing of main module" section in https://docs.python.org/3/library/multiprocessing.html for more detail.
+        Refer to the "Safe importing of main module" section in
+        https://docs.python.org/3/library/multiprocessing.html for more details.
 
         Args:
             gpu_indices: Indices of the GPUs to monitor. If None, monitor all GPUs.
@@ -257,7 +264,7 @@ def _polling_process(
                 power: list[float] = []
                 now = time()
                 for index in gpu_indices:
-                    power.append(gpus.getPowerUsage(index))
+                    power.append(gpus.getInstantPowerUsage(index))
                 power_str = ",".join(map(lambda p: str(p / 1000), power))
                 power_f.write(f"{now},{power_str}\n")
                 if (sleep_time := update_period - (time() - now)) > 0:
