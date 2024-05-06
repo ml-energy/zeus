@@ -3,8 +3,7 @@ name: Check format, lint, and test
 on:
   push:
     paths:
-      - '.github/workflows/lint.yaml'
-      - '.github/workflows/test.yaml'
+      - '.github/workflows/fmt_lint_test.yaml'
       - 'zeus/**'
       - 'tests/**'
       - 'capriccio/*.py'
