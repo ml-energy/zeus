@@ -85,7 +85,7 @@ class ZeusMonitor:
 
     if __name__ == "__main__":
         # Time/Energy measurements for four GPUs will begin and end at the same time.
-        gpu_indices = [0]
+        gpu_indices = [0, 1, 2, 3]
         monitor = ZeusMonitor(gpu_indices)
 
         # Mark the beginning of a measurement window. You can use any string
