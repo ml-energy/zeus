@@ -76,27 +76,33 @@ class ZeusMonitor:
     ## Integration Example
 
     ```python
+    import time
     from zeus.monitor import ZeusMonitor
 
-    # Time/Energy measurements for four GPUs will begin and end at the same time.
-    gpu_indices = [0, 1, 2, 3]
-    monitor = ZeusMonitor(gpu_indices)
+    def training():
+        # A dummy training function
+        time.sleep(5)
 
-    # Mark the beginning of a measurement window. You can use any string
-    # as the window name, but make sure it's unique.
-    monitor.begin_window("entire_training")
+    if __name__ == "__main__":
+        # Time/Energy measurements for four GPUs will begin and end at the same time.
+        gpu_indices = [0]
+        monitor = ZeusMonitor(gpu_indices)
 
-    # Actual work
-    training(x, y)
+        # Mark the beginning of a measurement window. You can use any string
+        # as the window name, but make sure it's unique.
+        monitor.begin_window("entire_training")
 
-    # Mark the end of a measurement window and retrieve the measurment result.
-    result = monitor.end_window("entire_training")
+        # Actual work
+        training()
 
-    # Print the measurement result.
-    print(f"Training took {result.time} seconds.")
-    print(f"Training consumed {result.total_energy} Joules.")
-    for gpu_idx, gpu_energy in result.energy.items():
-        print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
+        # Mark the end of a measurement window and retrieve the measurment result.
+        result = monitor.end_window("entire_training")
+
+        # Print the measurement result.
+        print(f"Training took {result.time} seconds.")
+        print(f"Training consumed {result.total_energy} Joules.")
+        for gpu_idx, gpu_energy in result.energy.items():
+            print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
     ```
 
     Attributes:
