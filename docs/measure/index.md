@@ -11,34 +11,35 @@ A *measurement window* is defined by a code block wrapped with [`begin_window`][
 [`end_window`][zeus.monitor.ZeusMonitor.end_window] will return a [`Measurement`][zeus.monitor.energy.Measurement] object, which holds the time and energy consumption of the window.
 Users can specify and measure multiple measurement windows at the same time, and they can be arbitrarily nested or overlapping as long as they are given different names.
 
-```python hl_lines="4 11-13"
+```python hl_lines="5 12-14"
 from zeus.monitor import ZeusMonitor
 
-# All GPUs are measured simultaneously if `gpu_indices` is not given.
-monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
+if __name__ == "__main__":
+    # All GPUs are measured simultaneously if `gpu_indices` is not given.
+    monitor = ZeusMonitor(gpu_indices=[torch.cuda.current_device()])
 
-for epoch in range(100):
-    monitor.begin_window("epoch")
+    for epoch in range(100):
+        monitor.begin_window("epoch")
 
-    measurements = []
-    for x, y in train_loader:
-        monitor.begin_window("step")
-        train_one_step(x, y)
-        result = monitor.end_window("step")
-        measurements.append(result)
+        steps = []
+        for x, y in train_loader:
+            monitor.begin_window("step")
+            train_one_step(x, y)
+            result = monitor.end_window("step")
+            steps.append(result)
 
-    result = monitor.end_window("epoch")
-    print(f"Epoch {epoch} consumed {result.time} s and {result.total_energy} J.")
+        mes = monitor.end_window("epoch")
+        print(f"Epoch {epoch} consumed {mes.time} s and {mes.total_energy} J.")
 
-    avg_time = sum(map(lambda m: m.time, measurements)) / len(measurements)
-    avg_energy = sum(map(lambda m: m.total_energy, measurements)) / len(measurements)
-    print(f"One step took {avg_time} s and {avg_energy} J on average.")
+        avg_time = sum(map(lambda m: m.time, steps)) / len(steps)
+        avg_energy = sum(map(lambda m: m.total_energy, steps)) / len(steps)
+        print(f"One step took {avg_time} s and {avg_energy} J on average.")
 ```
 
-!!! Warning "On GPUs older than Volta"
-    On older GPUs, **do not** instantiate [`ZeusMonitor`][zeus.monitor.ZeusMonitor] as a global variable, without protecting it with `if __name__ == "__main__"`.
+!!! Warning "Use of global variables on GPUs older than Volta"
+    On older GPUs, **you should not** instantiate [`ZeusMonitor`][zeus.monitor.ZeusMonitor] as a global variable without protecting it with `if __name__ == "__main__"`.
     It's because the energy query API is only available on Volta or newer NVIDIA GPU microarchitectures, and for older GPUs, a separate process that polls the power API has to be spawned.
-    In this case, global code that spawns the process should be guarded with `if __nam__ == "__main__"`.
+    In this case, global code that spawns the process should be guarded with `if __name__ == "__main__"`.
     More details in [Python docs](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods){.external}.
 
 !!! Tip "`gpu_indices` and `CUDA_VISIBLE_DEVICES`"
