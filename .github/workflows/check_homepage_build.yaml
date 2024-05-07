@@ -1,18 +1,19 @@
-name: Deploy homepage
+name: Check homepage build
+
 on:
-  push:
-    branches:
-      - master
+  pull_request:
     paths:
       - 'examples/**'
       - 'docs/**'
       - 'zeus/**'
       - 'mkdocs.yml'
       - 'docker/Dockerfile'
-      - '.github/workflows/deploy_homepage.yaml'
+      - '.github/workflows/check_homepage_build.yaml'
 
-env:
-  SITE_ANALYTICS: google
+# Jobs initiated by previous pushes get cancelled by a new push.
+concurrency:
+  group: ${{ github.ref }}-check-homepage-build
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -20,9 +21,9 @@ jobs:
     if: github.event.repository.fork == false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v2
         with:
           python-version: 3.9
           cache: 'pip'
@@ -33,7 +34,7 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - name: Install homepage build dependencies
+      - name: Install other homepage dependencies
         run: pip install '.[docs]'
       - name: Build homepage
-        run: mkdocs gh-deploy --force
+        run: mkdocs build --verbose
