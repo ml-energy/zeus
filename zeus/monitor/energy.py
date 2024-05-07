@@ -172,7 +172,9 @@ class ZeusMonitor:
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""
         power_measurement_start_time: float = time()
-        power = {i: self.gpus.getPowerUsage(i) / 1000.0 for i in self.gpu_indices}
+        power = {
+            i: self.gpus.getInstantPowerUsage(i) / 1000.0 for i in self.gpu_indices
+        }
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
