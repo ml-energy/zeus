@@ -76,7 +76,7 @@ class ZeusMonitor:
     ## Integration Example
 
     ```python
-    from zeus.monitor import ZeusMontior
+    from zeus.monitor import ZeusMonitor
 
     # Time/Energy measurements for four GPUs will begin and end at the same time.
     gpu_indices = [0, 1, 2, 3]
