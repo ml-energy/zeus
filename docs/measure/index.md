@@ -35,6 +35,12 @@ for epoch in range(100):
     print(f"One step took {avg_time} s and {avg_energy} J on average.")
 ```
 
+!!! Warning "On GPUs older than Volta"
+    On older GPUs, **do not** instantiate [`ZeusMonitor`][zeus.monitor.ZeusMonitor] as a global variable, without protecting it with `if __name__ == "__main__"`.
+    It's because the energy query API is only available on Volta or newer NVIDIA GPU microarchitectures, and for older GPUs, a separate process that polls the power API has to be spawned.
+    In this case, global code that spawns the process should be guarded with `if __nam__ == "__main__"`.
+    More details in [Python docs](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods){.external}.
+
 !!! Tip "`gpu_indices` and `CUDA_VISIBLE_DEVICES`"
     Zeus always respects `CUDA_VISIBLE_DEVICES` if set.
     In other words, if `CUDA_VISIBLE_DEVICES=1,3` and `gpu_indices=[1]`, Zeus will understand that as GPU 3 in the system.
