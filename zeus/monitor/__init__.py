@@ -21,3 +21,4 @@ module can come in handy.
 """
 
 from zeus.monitor.energy import ZeusMonitor, Measurement
+from zeus.monitor.power import PowerMonitor

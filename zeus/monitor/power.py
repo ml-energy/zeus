@@ -112,6 +112,13 @@ class PowerMonitor:
     [`ZeusMonitor`][zeus.monitor.ZeusMonitor] for older architecture GPUs that
     do not support the nvmlDeviceGetTotalEnergyConsumption API.
 
+    !!! Warning
+        Since the monitor spawns a child process, **it should not be instantiated as a global variable**.
+        Python puts a protection to prevent creating a process in global scope.
+        Refer to the "Safe importing of main module" section in the
+        [Python documentation](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods)
+        for more details.
+
     Attributes:
         gpu_indices (list[int]): Indices of the GPUs to monitor.
         update_period (int): Update period of the power monitor in seconds.
@@ -122,18 +129,17 @@ class PowerMonitor:
         self,
         gpu_indices: list[int] | None = None,
         update_period: float | None = None,
+        power_csv_path: str | None = None,
     ) -> None:
         """Initialize the power monitor.
-
-        Initialization should not be done in global scope due to python's protection.
-        Refer to the "Safe importing of main module" section in
-        https://docs.python.org/3/library/multiprocessing.html for more details.
 
         Args:
             gpu_indices: Indices of the GPUs to monitor. If None, monitor all GPUs.
             update_period: Update period of the power monitor in seconds. If None,
                 infer the update period by max speed polling the power counter for
                 each GPU model.
+            power_csv_path: If given, the power polling process will write measurements
+                to this path. Otherwise, a temporary file will be used.
         """
         if gpu_indices is not None and not gpu_indices:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
@@ -155,17 +161,19 @@ class PowerMonitor:
             update_period = infer_counter_update_period(self.gpu_indices)
         self.update_period = update_period
 
-        # Create the CSV file for power measurements.
-        power_csv = tempfile.mkstemp(suffix=".csv", text=True)[1]
-        open(power_csv, "w").close()
-        self.power_f = open(power_csv)
+        # Create and open the CSV to record power measurements.
+        if power_csv_path is None:
+            power_csv_path = tempfile.mkstemp(suffix=".csv", text=True)[1]
+        open(power_csv_path, "w").close()
+        self.power_f = open(power_csv_path)
         self.power_df_columns = ["time"] + [f"power{i}" for i in self.gpu_indices]
         self.power_df = pd.DataFrame(columns=self.power_df_columns)
 
         # Spawn the power polling process.
         atexit.register(self._stop)
         self.process = mp.get_context("spawn").Process(
-            target=_polling_process, args=(self.gpu_indices, power_csv, update_period)
+            target=_polling_process,
+            args=(self.gpu_indices, power_csv_path, update_period),
         )
         self.process.start()
 
@@ -182,11 +190,23 @@ class PowerMonitor:
         try:
             additional_df = typing.cast(
                 pd.DataFrame,
-                pd.read_csv(self.power_f, header=None, names=self.power_df_columns),  # type: ignore
+                pd.read_csv(self.power_f, header=None, names=self.power_df_columns),
             )
         except pd.errors.EmptyDataError:
             return
-        self.power_df = pd.concat([self.power_df, additional_df], axis=0)
+
+        if additional_df.empty:
+            return
+
+        if self.power_df.empty:
+            self.power_df = additional_df
+        else:
+            self.power_df = pd.concat(
+                [self.power_df, additional_df],
+                axis=0,
+                ignore_index=True,
+                copy=False,
+            )
 
     def get_energy(self, start_time: float, end_time: float) -> dict[int, float] | None:
         """Get the energy used by the GPUs between two times.
@@ -228,7 +248,7 @@ class PowerMonitor:
             A dictionary mapping GPU indices to the power usage of the GPU at the
             specified time point. GPU indices are from the DL framework's perspective
             after applying `CUDA_VISIBLE_DEVICES`.
-            If there are no power readings, return None.
+            If there are no power readings (e.g., future timestamps), return None.
         """
         self._update_df()
 
@@ -250,7 +270,7 @@ class PowerMonitor:
 
 def _polling_process(
     gpu_indices: list[int],
-    power_csv: str,
+    power_csv_path: str,
     update_period: float,
 ) -> None:
     """Run the power monitor."""
@@ -259,7 +279,7 @@ def _polling_process(
         gpus = get_gpus()
 
         # Use line buffering.
-        with open(power_csv, "w", buffering=1) as power_f:
+        with open(power_csv_path, "w", buffering=1) as power_f:
             while True:
                 power: list[float] = []
                 now = time()
