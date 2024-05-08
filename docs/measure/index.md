@@ -36,9 +36,13 @@ if __name__ == "__main__":
         print(f"One step took {avg_time} s and {avg_energy} J on average.")
 ```
 
+!!! Tip "[`zeus.monitor.PowerMonitor`][zeus.monitor.power.PowerMonitor]"
+    This monitor spawns a process that polls the instantaneous GPU power consumption API and exposes two methods: [`get_power`][zeus.monitor.power.PowerMonitor.get_power] and [`get_energy`][zeus.monitor.power.PowerMonitor.get_energy].
+    For older GPUs that do not support querying energy directly, [`ZeusMonitor`][zeus.monitor.ZeusMonitor] automatically uses the [`PowerMonitor`][zeus.monitor.power.PowerMonitor] internally.
+
 !!! Warning "Use of global variables on GPUs older than Volta"
     On older GPUs, **you should not** instantiate [`ZeusMonitor`][zeus.monitor.ZeusMonitor] as a global variable without protecting it with `if __name__ == "__main__"`.
-    It's because the energy query API is only available on Volta or newer NVIDIA GPU microarchitectures, and for older GPUs, a separate process that polls the power API has to be spawned.
+    It's because the energy query API is only available on Volta or newer NVIDIA GPU microarchitectures, and for older GPUs, a separate process that polls the power API has to be spawned (i.e., [`PowerMonitor`][zeus.monitor.power.PowerMonitor]).
     In this case, global code that spawns the process should be guarded with `if __name__ == "__main__"`.
     More details in [Python docs](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods){.external}.
 
@@ -52,8 +56,21 @@ if __name__ == "__main__":
 
 ## CLI power and energy monitor
 
+The energy monitor measures the total energy consumed by the GPU during the lifetime of the monitor process.
+It's a simple wrapper around [`ZeusMonitor`][zeus.monitor.ZeusMonitor].
+
+```console
+$ python -m zeus.monitor energy
+[2023-08-22 22:44:45,106] [ZeusMonitor](energy.py:157) Monitoring GPU [0, 1, 2, 3].
+[2023-08-22 22:44:46,210] [zeus.utils.framework](framework.py:38) PyTorch with CUDA support is available.
+[2023-08-22 22:44:46,760] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' started.
+^C[2023-08-22 22:44:50,205] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' ended.
+Total energy (J):
+Measurement(time=3.4480526447296143, energy={0: 224.2969999909401, 1: 232.83799999952316, 2: 233.3100000023842, 3: 234.53700000047684})
+```
+
 The power monitor periodically prints out the GPU's power draw.
-It's a simple wrapper around [`PowerMonitor`][zeus.monitor.power.PowerMonitor].
+It's a simple wrapper around [`PowerMonitor`][zeus.monitor.PowerMonitor].
 
 ```console
 $ python -m zeus.monitor power
@@ -70,17 +87,4 @@ $ python -m zeus.monitor power
 Total time (s): 4.421529293060303
 Total energy (J):
 {'GPU0': 198.52566362297537, 'GPU1': 206.22215216255188, 'GPU2': 201.08565518283845, 'GPU3': 201.79834523367884}
-```
-
-The energy monitor measures the total energy consumed by the GPU during the lifetime of the monitor process.
-It's a simple wrapper around [`ZeusMonitor`][zeus.monitor.ZeusMonitor].
-
-```console
-$ python -m zeus.monitor energy
-[2023-08-22 22:44:45,106] [ZeusMonitor](energy.py:157) Monitoring GPU [0, 1, 2, 3].
-[2023-08-22 22:44:46,210] [zeus.utils.framework](framework.py:38) PyTorch with CUDA support is available.
-[2023-08-22 22:44:46,760] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' started.
-^C[2023-08-22 22:44:50,205] [ZeusMonitor](energy.py:329) Measurement window 'zeus.monitor.energy' ended.
-Total energy (J):
-Measurement(time=3.4480526447296143, energy={0: 224.2969999909401, 1: 232.83799999952316, 2: 233.3100000023842, 3: 234.53700000047684})
 ```
