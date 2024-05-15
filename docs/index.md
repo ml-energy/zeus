@@ -14,6 +14,7 @@ hide:
 ---
 **Project News** ⚡ 
 
+- \[2024/05\] Zeus is now a PyTorch ecosystem project. Read the PyTorch blog post [here](https://pytorch.org/blog/zeus/){.external}!
 - \[2024/02\] Zeus was selected as a [2024 Mozilla Technology Fund awardee](https://foundation.mozilla.org/en/blog/open-source-AI-for-environmental-justice/){.external}!
 - \[2023/12\] We released Perseus, an energy optimizer for large model training: [Preprint](https://arxiv.org/abs/2312.06902){.external} | [Blog](research_overview/perseus.md) | [Optimizer](optimize/pipeline_frequency_optimizer.md)
 - \[2023/07\] We used the [`ZeusMonitor`][zeus.monitor.ZeusMonitor] to profile GPU time and energy consumption for the [ML.ENERGY leaderboard & Colosseum](https://ml.energy/leaderboard){.external}.
