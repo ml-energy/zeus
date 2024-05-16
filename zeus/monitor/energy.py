@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import os
-from time import time
+from time import perf_counter
 from pathlib import Path
 from dataclasses import dataclass
 from functools import cached_property
@@ -182,11 +182,11 @@ class ZeusMonitor:
 
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""
-        power_measurement_start_time: float = time()
+        power_measurement_start_time: float = perf_counter()
         power = {
             i: self.gpus.getInstantPowerUsage(i) / 1000.0 for i in self.gpu_indices
         }
-        power_measurement_time = time() - power_measurement_start_time
+        power_measurement_time = perf_counter() - power_measurement_start_time
         return power, power_measurement_time
 
     def begin_window(self, key: str, sync_cuda: bool = True) -> None:
@@ -207,7 +207,7 @@ class ZeusMonitor:
                 cuda_sync(gpu_index)
 
         # Freeze the start time of the profiling window.
-        timestamp: float = time()
+        timestamp: float = perf_counter()
         energy_state: dict[int, float] = {}
         for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
@@ -262,7 +262,7 @@ class ZeusMonitor:
             logger.debug("Measurement window '%s' cancelled.", key)
             return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_indices})
 
-        end_time: float = time()
+        end_time: float = perf_counter()
         time_consumption: float = end_time - start_time
         energy_consumption: dict[int, float] = {}
         for gpu_index in self.gpu_indices:
