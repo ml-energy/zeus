@@ -2,19 +2,28 @@
 
 ## Welcome!
 
-We're excited that you're considering contributing to Zeus! Your contributions are vital for keeping Zeus innovative, robust, and user-friendly.
+We're excited that you're considering contributing to Zeus! Your contributions are vital to making Zeus getting better and better.
 
-## What to Know Before You Contribute
-
-### Dual Purpose
+## Dual Purpose
 
 Zeus serves two main goals:
 1. **Research Artifact**: A platform for disseminating cutting-edge research in the field of machine learning energy (i.e., [ML.ENERGY](https://ml.energy)).
 2. **Practical Tool**: We aim to make Zeus highly usable in real-world scenarios.
 
-### Governance
+## Governance
 
-Zeus follows a **BDFL (Benevolent Dictator For Life)** governance model. The project founder (Jae-Won Chung) retains decisive authority to ensure alignment with the goals of Zeus.
+Zeus is guided by the **Benevolent Dictator For Life (BDFL)** model, where the project founder, [Jae-Won Chung](https://github.com/jaywonchung), holds the primary decision-making authority. This model ensures consistent vision and leadership for the project.
+
+### Community Input
+
+- Community feedback is highly valued and can be provided through GitHub issues and discussions.
+- The BDFL can also be reached over email.
+
+### Decision-Making Process
+
+- Efforts are to be made to reach consensus for all decisions, including but not limited to project direction, code acceptance, and feature inclusion.
+- If unresolved, the BDFL has the final say.
+- Routine decisions may be delegated to specific maintainers.
 
 ## Ways to Contribute
 
@@ -33,15 +42,11 @@ Zeus follows a **BDFL (Benevolent Dictator For Life)** governance model. The pro
 
 ## Coding Standards
 
-- Python >= 3.9
-- Run [`scripts/lint.sh`](/scripts/lint.sh) to format and lint code.
+- We want to support Python 3.9 and later.
+- The formatting and linting script [`scripts/lint.sh`](/scripts/lint.sh) should pass for PRs to be merged.
 - Strictly type-annotate all code.
 - Tests should accompany new features and be placed in the `tests/` directory. Tests should not require GPUs to run.
 - Changes, whenever appropriate, should be accompanied by documentation changes in the `docs/` directory.
-
-## Review Process
-
-Your PR will undergo review by the maintainers. Approval is based on its alignment with Zeus's dual goals and overall vision.
 
 ## License
 
