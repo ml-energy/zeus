@@ -1,0 +1,13 @@
+[package]
+name = "zeusd"
+version = "0.1.0"
+authors = ["Jae-Won Chung <jwnchung@umich.edu>"]
+edition = "2021"
+
+[dependencies]
+actix-web = "4"
+nvml-wrapper = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+thiserror = "1"
+clap = { version = "4.5.4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
