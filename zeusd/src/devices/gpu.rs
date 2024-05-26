@@ -7,17 +7,22 @@ use tracing::Span;
 
 use crate::error::ZeusdError;
 
-pub trait GpuManager {
-    fn init(index: u32) -> Result<Self, ZeusdError>
-    where
-        Self: Sized;
+pub trait GpuManager: Send + 'static {
     fn device_count() -> Result<u32, ZeusdError>
     where
         Self: Sized;
     fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError>;
     fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), ZeusdError>;
-    fn set_gpu_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError>;
-    fn set_mem_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError>;
+    fn set_gpu_locked_clocks(
+        &mut self,
+        min_clock_mhz: u32,
+        max_clock_mhz: u32,
+    ) -> Result<(), ZeusdError>;
+    fn set_mem_locked_clocks(
+        &mut self,
+        min_clock_mhz: u32,
+        max_clock_mhz: u32,
+    ) -> Result<(), ZeusdError>;
 }
 
 pub struct NvmlGpu<'n> {
@@ -25,35 +30,54 @@ pub struct NvmlGpu<'n> {
     device: Device<'n>,
 }
 
-impl GpuManager for NvmlGpu<'_> {
-    fn init(index: u32) -> Result<Self, ZeusdError> {
+impl NvmlGpu<'static> {
+    pub fn init(index: u32) -> Result<Self, ZeusdError> {
         // `Device` needs to hold a reference to `Nvml`, meaning that `Nvml` must outlive `Device`.
         // We can achieve this by leaking a `Box` containing `Nvml` and holding a reference to it.
         let _nvml = Box::leak(Box::new(Nvml::init()?));
         let device = _nvml.device_by_index(index)?;
         Ok(Self { _nvml, device })
     }
+}
 
+impl GpuManager for NvmlGpu<'static> {
     fn device_count() -> Result<u32, ZeusdError> {
         let nvml = Nvml::init()?;
         Ok(nvml.device_count()?)
     }
 
+    #[inline]
     fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
         Ok(self.device.set_persistent(enabled)?)
     }
 
+    #[inline]
     fn set_power_management_limit(&mut self, power_limit_mw: u32) -> Result<(), ZeusdError> {
         Ok(self.device.set_power_management_limit(power_limit_mw)?)
     }
 
-    fn set_gpu_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError> {
-        let setting = GpuLockedClocksSetting::Numeric {min_clock_mhz, max_clock_mhz};
+    #[inline]
+    fn set_gpu_locked_clocks(
+        &mut self,
+        min_clock_mhz: u32,
+        max_clock_mhz: u32,
+    ) -> Result<(), ZeusdError> {
+        let setting = GpuLockedClocksSetting::Numeric {
+            min_clock_mhz,
+            max_clock_mhz,
+        };
         Ok(self.device.set_gpu_locked_clocks(setting)?)
     }
 
-    fn set_mem_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError> {
-        Ok(self.device.set_mem_locked_clocks(min_clock_mhz, max_clock_mhz)?)
+    #[inline]
+    fn set_mem_locked_clocks(
+        &mut self,
+        min_clock_mhz: u32,
+        max_clock_mhz: u32,
+    ) -> Result<(), ZeusdError> {
+        Ok(self
+            .device
+            .set_mem_locked_clocks(min_clock_mhz, max_clock_mhz)?)
     }
 }
 
@@ -124,7 +148,7 @@ impl GpuManagementTasks {
             .map_err(ZeusdError::from)?;
         match rx.recv().await {
             Some(result) => result,
-            None => Err(ZeusdError::GpuHandlerTerminatedError(gpu_id)),
+            None => Err(ZeusdError::GpuManagementTaskTerminatedError(gpu_id)),
         }
     }
 }
@@ -140,7 +164,7 @@ async fn gpu_management_task<T: GpuManager>(
         let _span_guard = span.enter();
         let result = command.execute(&mut gpu);
         if let Some(response) = response {
-            if response.send(result.map_err(|e| e.into())).await.is_err() {
+            if response.send(result).await.is_err() {
                 tracing::error!("Failed to send response to caller");
             }
         }
@@ -153,7 +177,7 @@ pub enum GpuCommand {
     /// Enable or disable persistent mode.
     SetPersistentMode { enabled: bool },
     /// Set the power management limit in milliwatts.
-    SetPowerLimit { power_limit: u32 },
+    SetPowerLimit { power_limit_mw: u32 },
     /// Set the GPU's locked clock range in MHz.
     SetGpuLockedClocks {
         min_clock_mhz: u32,
@@ -187,7 +211,9 @@ impl GpuCommand {
                 }
                 result
             }
-            Self::SetPowerLimit { power_limit } => {
+            Self::SetPowerLimit {
+                power_limit_mw: power_limit,
+            } => {
                 let result = device.set_power_management_limit(power_limit);
                 if result.is_ok() {
                     tracing::info!("Power limit set to {} W", power_limit / 1000);
@@ -196,7 +222,10 @@ impl GpuCommand {
                 }
                 result
             }
-            Self::SetGpuLockedClocks { min_clock_mhz, max_clock_mhz } => {
+            Self::SetGpuLockedClocks {
+                min_clock_mhz,
+                max_clock_mhz,
+            } => {
                 let result = device.set_gpu_locked_clocks(min_clock_mhz, max_clock_mhz);
                 if result.is_ok() {
                     tracing::info!(
@@ -213,7 +242,10 @@ impl GpuCommand {
                 }
                 result
             }
-            Self::SetMemLockedClocks { min_clock_mhz, max_clock_mhz } => {
+            Self::SetMemLockedClocks {
+                min_clock_mhz,
+                max_clock_mhz,
+            } => {
                 let result = device.set_mem_locked_clocks(min_clock_mhz, max_clock_mhz);
                 if result.is_ok() {
                     tracing::info!(

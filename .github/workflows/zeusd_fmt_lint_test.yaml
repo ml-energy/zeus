@@ -1,0 +1,31 @@
+name: Check format, lint, and test for Zeusd
+
+on:
+  push:
+    paths:
+      - '.github/workflows/zeusd/fmt_lint_test.yaml'
+      - 'zeusd/**'
+
+# Jobs initiated by previous pushes get cancelled by a new push.
+concurrency:
+  group: ${{ github.ref }}-zeusd-lint-and-test
+  cancel-in-progress: true
+
+jobs:
+  format_lint_test:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Check format
+        run: cargo fmt --all --check
+      - name: Run clippy
+        run: cargo clippy --all -- -D warnings
+      - name: Run tests
+        run: cargo test --features testing

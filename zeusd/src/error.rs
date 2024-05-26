@@ -18,8 +18,8 @@ pub enum ZeusdError {
     NvmlError(#[from] NvmlError),
     #[error("GPU command send error: {0}")]
     GpuCommandSendError(#[from] SendError<GpuCommandRequest>),
-    #[error("Handler for GPU {0} unexpectedly terminated while handling the request.")]
-    GpuHandlerTerminatedError(usize),
+    #[error("Management task for GPU {0} unexpectedly terminated while handling the request.")]
+    GpuManagementTaskTerminatedError(usize),
 }
 
 impl ResponseError for ZeusdError {
@@ -32,7 +32,7 @@ impl ResponseError for ZeusdError {
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ZeusdError::GpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            ZeusdError::GpuHandlerTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::GpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

@@ -1,36 +1,16 @@
-use zeusd::error::ZeusdError;
-use zeusd::devices::gpu::GpuManager;
+mod helpers;
 
-struct TestGpu {
-    pub index: u32,
-    pub enabled_persistent: Option<bool>,
-    pub power_limit: Option<u32>,
-    pub locked_clocks_setting: Option<(u32, u32)>,
-    pub call_count: usize,
-}
+use crate::helpers::TestApp;
 
-impl GpuManager for TestGpu {
-    fn init(index: u32) -> Result<Self, ZeusdError> {
-        todo!()
-    }
+#[tokio::test]
+async fn test_set_persistent_mode() {
+    let mut app = TestApp::start().await;
 
-    fn device_count() -> Result<u32, ZeusdError> {
-        Ok(4)
-    }
+    let resp = app.set_persistent_mode(0, true, true).await;
 
-    fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
-        todo!()
-    }
-
-    fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), ZeusdError> {
-        todo!()
-    }
-
-    fn set_gpu_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError> {
-        todo!()
-    }
-
-    fn set_mem_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError> {
-        todo!()
-    }
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        app.observers[0].persistent_mode_rx.recv().await.unwrap(),
+        true
+    );
 }
