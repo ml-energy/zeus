@@ -1,0 +1,215 @@
+//! GPU management module that interfaces with NVML
+
+use nvml_wrapper::enums::device::GpuLockedClocksSetting;
+use nvml_wrapper::error::NvmlError;
+use nvml_wrapper::{Device, Nvml};
+use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
+use tracing::Span;
+
+use crate::error::ZeusdError;
+
+pub trait GpuManager {
+    fn init(index: u32) -> Result<Self, NvmlError>
+    where
+        Self: Sized;
+    fn device_count() -> Result<u32, NvmlError>
+    where
+        Self: Sized;
+    fn set_persistent(&mut self, enabled: bool) -> Result<(), NvmlError>;
+    fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), NvmlError>;
+    fn set_gpu_locked_clocks(&mut self, setting: GpuLockedClocksSetting) -> Result<(), NvmlError>;
+}
+
+pub struct NvmlGpu<'n> {
+    _nvml: &'static Nvml,
+    device: Device<'n>,
+}
+
+impl GpuManager for NvmlGpu<'_> {
+    fn init(index: u32) -> Result<Self, NvmlError> {
+        // `Device` needs to hold a reference to `Nvml`, meaning that `Nvml` must outlive `Device`.
+        // We can achieve this by leaking a `Box` containing `Nvml` and holding a reference to it.
+        let _nvml = Box::leak(Box::new(Nvml::init()?));
+        let device = _nvml.device_by_index(index)?;
+        Ok(Self { _nvml, device })
+    }
+
+    fn device_count() -> Result<u32, NvmlError> {
+        let nvml = Nvml::init()?;
+        nvml.device_count()
+    }
+
+    fn set_persistent(&mut self, enabled: bool) -> Result<(), NvmlError> {
+        self.device.set_persistent(enabled)
+    }
+
+    fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), NvmlError> {
+        self.device.set_power_management_limit(power_limit)
+    }
+
+    fn set_gpu_locked_clocks(&mut self, setting: GpuLockedClocksSetting) -> Result<(), NvmlError> {
+        self.device.set_gpu_locked_clocks(setting)
+    }
+}
+
+/// A request to execute a GPU command.
+///
+/// This is the type that is sent to the GPU management background task.
+/// The optional `Sender` is used to send a response back to the caller if the
+/// user wanted to block until the command is executed.
+/// The `Span` is used to propagate tracing context starting from the request.
+pub type GpuCommandRequest = (GpuCommand, Option<Sender<Result<(), ZeusdError>>>, Span);
+
+/// A collection of GPU management tasks.
+///
+/// This struct is used to send commands to the GPU management tasks.
+/// It's also application state that gets cloned and passed to request handlers by actix-web.
+#[derive(Clone)]
+pub struct GpuManagementTasks {
+    // Senders to the GPU management tasks. index is the GPU ID.
+    senders: Vec<UnboundedSender<GpuCommandRequest>>,
+}
+
+impl GpuManagementTasks {
+    /// Start GPU management tasks for the given GPUs.
+    /// It's generic over the type of GPU manager to allow for testing.
+    pub fn start<T>(gpus: Vec<T>) -> anyhow::Result<Self>
+    where
+        T: GpuManager + Send + 'static,
+    {
+        let mut senders = Vec::with_capacity(gpus.len());
+        for (gpu_id, gpu) in gpus.into_iter().enumerate() {
+            // Channel to send commands to the GPU management task.
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            senders.push(tx);
+            // The GPU management task will automatically terminate
+            // when the server terminates and the last sender is dropped.
+            tokio::spawn(gpu_management_task(gpu, rx));
+            tracing::info!("Background task for GPU {} successfully spawned", gpu_id);
+        }
+        Ok(Self { senders })
+    }
+
+    /// Send a command to the corresponding GPU management task and immediately return
+    /// without checking the result. Results will be logged via tracing.
+    /// Returns `Ok(())` if the command was *sent* successfully.
+    pub fn send_command_nonblocking(
+        &self,
+        gpu_id: usize,
+        command: GpuCommand,
+    ) -> Result<(), ZeusdError> {
+        if gpu_id >= self.senders.len() {
+            return Err(ZeusdError::GpuNotFoundError(gpu_id));
+        }
+        self.senders[gpu_id]
+            .send((command, None, Span::current()))
+            .map_err(|e| e.into())
+    }
+
+    /// Send a command to the corresponding GPU management task and wait for completion.
+    /// Returns `Ok(())` if the command was *executed* successfully.
+    pub async fn send_command_blocking(
+        &self,
+        gpu_id: usize,
+        command: GpuCommand,
+    ) -> Result<(), ZeusdError> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        self.senders[gpu_id]
+            .send((command, Some(tx), Span::current()))
+            .map_err(ZeusdError::from)?;
+        match rx.recv().await {
+            Some(result) => result,
+            None => Err(ZeusdError::GpuHandlerTerminatedError(gpu_id)),
+        }
+    }
+}
+
+/// A asynchronous Tokio background task that manages one GPU.
+///
+/// Listens for commands on a channel and executes them on the GPU it manages.
+async fn gpu_management_task<T: GpuManager>(
+    mut gpu: T,
+    mut rx: UnboundedReceiver<GpuCommandRequest>,
+) {
+    while let Some((command, response, span)) = rx.recv().await {
+        let _span_guard = span.enter();
+        let result = command.execute(&mut gpu);
+        if let Some(response) = response {
+            if response.send(result.map_err(|e| e.into())).await.is_err() {
+                tracing::error!("Failed to send response to caller");
+            }
+        }
+    }
+}
+
+/// A GPU command that can be executed on a GPU.
+#[derive(Debug)]
+pub enum GpuCommand {
+    /// Enable or disable persistent mode.
+    SetPersistentMode { enabled: bool },
+    /// Set the power management limit in milliwatts.
+    SetPowerLimit { power_limit: u32 },
+    /// Set the SM's locked frequency range in MHz.
+    SetGpuFrequency {
+        max_frequency: u32,
+        min_frequency: u32,
+    },
+}
+
+impl GpuCommand {
+    fn execute<T>(&self, device: &mut T) -> Result<(), NvmlError>
+    where
+        T: GpuManager,
+    {
+        match *self {
+            Self::SetPersistentMode { enabled } => {
+                let result = device.set_persistent(enabled);
+                if result.is_ok() {
+                    tracing::info!(
+                        "Persistent mode {}",
+                        if enabled { "enabled" } else { "disabled" }
+                    );
+                } else {
+                    tracing::warn!(
+                        "Cannot {} persistent mode",
+                        if enabled { "enable" } else { "disable" }
+                    );
+                }
+                result
+            }
+            Self::SetPowerLimit { power_limit } => {
+                let result = device.set_power_management_limit(power_limit);
+                if result.is_ok() {
+                    tracing::info!("Power limit set to {} W", power_limit / 1000);
+                } else {
+                    tracing::warn!("Cannot set power limit to {} W", power_limit / 1000);
+                }
+                result
+            }
+            Self::SetGpuFrequency {
+                max_frequency,
+                min_frequency,
+            } => {
+                let clock_settings = GpuLockedClocksSetting::Numeric {
+                    min_clock_mhz: min_frequency,
+                    max_clock_mhz: max_frequency,
+                };
+                let result = device.set_gpu_locked_clocks(clock_settings);
+                if result.is_ok() {
+                    tracing::info!(
+                        "GPU frequency set to [{}, {}] MHz",
+                        min_frequency,
+                        max_frequency
+                    );
+                } else {
+                    tracing::warn!(
+                        "Cannot set GPU frequency to [{}, {}] MHz",
+                        min_frequency,
+                        max_frequency
+                    );
+                }
+                result
+            }
+        }
+    }
+}

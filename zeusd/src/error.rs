@@ -7,9 +7,8 @@ use actix_web::http::StatusCode;
 use actix_web::ResponseError;
 use nvml_wrapper::error::NvmlError;
 use tokio::sync::mpsc::error::SendError;
-use tokio::sync::mpsc::Sender;
 
-use crate::device::gpu::GpuCommand;
+use crate::devices::gpu::GpuCommandRequest;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ZeusdError {
@@ -18,7 +17,7 @@ pub enum ZeusdError {
     #[error("NVML error: {0}")]
     NvmlError(#[from] NvmlError),
     #[error("GPU command send error: {0}")]
-    GpuCommandSendError(#[from] SendError<(GpuCommand, Option<Sender<Result<(), ZeusdError>>>)>),
+    GpuCommandSendError(#[from] SendError<GpuCommandRequest>),
     #[error("Handler for GPU {0} unexpectedly terminated while handling the request.")]
     GpuHandlerTerminatedError(usize),
 }

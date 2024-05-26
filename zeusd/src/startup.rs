@@ -7,19 +7,22 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
+use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
-use crate::device::gpu::GpuHandlers;
+use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::gpu::{set_frequency, set_power_limit};
-use crate::routes::info::info;
 
-pub fn init_tracing() -> anyhow::Result<()> {
+pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
+where
+    S: for<'a> MakeWriter<'a> + Send + Sync + 'static,
+{
     LogTracer::init()?;
 
-    let subscriber = Registry::default()
-        .with(tracing_subscriber::fmt::layer())
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")));
+    let formatter = tracing_subscriber::fmt::layer().with_writer(sink);
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let subscriber = Registry::default().with(formatter).with(env_filter);
     set_global_default(subscriber)?;
 
     Ok(())
@@ -38,18 +41,28 @@ pub fn get_listener(socket_path: &str) -> anyhow::Result<UnixListener> {
     Ok(listener)
 }
 
-/// Start the GPU handlers.
+/// Initialize NVML and start GPU management tasks.
 ///
 /// When we add CPU (RAPL) support, we want to generalize this function to start all handlers.
-pub async fn start_device_handlers() -> anyhow::Result<GpuHandlers> {
-    GpuHandlers::start().await
+pub fn start_device_handlers() -> anyhow::Result<GpuManagementTasks> {
+    let num_gpus = NvmlGpu::device_count()?;
+    let mut gpus = Vec::with_capacity(num_gpus as usize);
+    for gpu_id in 0..num_gpus {
+        let gpu = NvmlGpu::init(gpu_id)?;
+        tracing::info!("Initialized NVML for GPU {}", gpu_id);
+        gpus.push(gpu);
+    }
+    GpuManagementTasks::start(gpus)
 }
 
 /// Set up routing and start the server.
-pub fn start_server(listener: UnixListener, gpu_handlers: GpuHandlers) -> std::io::Result<Server> {
+pub fn start_server(
+    listener: UnixListener,
+    gpu_handlers: GpuManagementTasks,
+) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
-            .service(info)
+            .wrap(tracing_actix_web::TracingLogger::default())
             .service(set_power_limit)
             .service(set_frequency)
             .app_data(web::Data::new(gpu_handlers.clone()))

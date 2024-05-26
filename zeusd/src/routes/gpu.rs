@@ -2,7 +2,8 @@
 
 use actix_web::{web, HttpResponse};
 
-use crate::device::gpu::{GpuCommand, GpuHandlers};
+use crate::devices::gpu::{GpuCommand, GpuManagementTasks};
+use crate::error::ZeusdError;
 
 #[derive(serde::Deserialize, Debug)]
 struct SetPowerLimitRequest {
@@ -22,8 +23,8 @@ struct SetPowerLimitRequest {
 pub async fn set_power_limit(
     gpu: web::Path<usize>,
     request: web::Json<SetPowerLimitRequest>,
-    gpu_handlers: web::Data<GpuHandlers>,
-) -> Result<HttpResponse, actix_web::Error> {
+    gpu_handlers: web::Data<GpuManagementTasks>,
+) -> Result<HttpResponse, ZeusdError> {
     tracing::info!("Setting power limit to {} W", request.power_limit / 1000);
 
     let gpu = gpu.into_inner();
@@ -32,14 +33,13 @@ pub async fn set_power_limit(
 
     if request.block {
         gpu_handlers
-            .send_command_block(
+            .send_command_blocking(
                 gpu,
                 GpuCommand::SetPowerLimit {
                     power_limit: request.power_limit,
                 },
             )
             .await?;
-        tracing::info!("Power limit set successfully");
     } else {
         gpu_handlers.send_command_nonblocking(
             gpu,
@@ -48,6 +48,9 @@ pub async fn set_power_limit(
             },
         )?;
     }
+    // let response = HttpResponse::Ok().finish();
+    // tracing::info!("{:?}", &response);
+    // Ok(response)
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -55,7 +58,7 @@ pub async fn set_power_limit(
 pub async fn set_frequency(
     gpu: web::Path<usize>,
     body: web::Json<usize>,
-    GpuHandlers: web::Data<GpuHandlers>,
-) -> Result<HttpResponse, actix_web::Error> {
+    gpu_handlers: web::Data<GpuManagementTasks>,
+) -> Result<HttpResponse, ZeusdError> {
     Ok(HttpResponse::Ok().finish())
 }
