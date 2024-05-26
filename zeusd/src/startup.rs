@@ -12,7 +12,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
-use crate::routes::gpu::{set_frequency, set_power_limit};
+use crate::routes::gpu_routes;
 
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
 where
@@ -63,8 +63,7 @@ pub fn start_server(
     let server = HttpServer::new(move || {
         App::new()
             .wrap(tracing_actix_web::TracingLogger::default())
-            .service(set_power_limit)
-            .service(set_frequency)
+            .service(web::scope("/gpu").configure(gpu_routes))
             .app_data(web::Data::new(gpu_handlers.clone()))
     })
     .listen_uds(listener)?

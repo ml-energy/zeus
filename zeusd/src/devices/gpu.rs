@@ -1,7 +1,6 @@
 //! GPU management module that interfaces with NVML
 
 use nvml_wrapper::enums::device::GpuLockedClocksSetting;
-use nvml_wrapper::error::NvmlError;
 use nvml_wrapper::{Device, Nvml};
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tracing::Span;
@@ -9,15 +8,16 @@ use tracing::Span;
 use crate::error::ZeusdError;
 
 pub trait GpuManager {
-    fn init(index: u32) -> Result<Self, NvmlError>
+    fn init(index: u32) -> Result<Self, ZeusdError>
     where
         Self: Sized;
-    fn device_count() -> Result<u32, NvmlError>
+    fn device_count() -> Result<u32, ZeusdError>
     where
         Self: Sized;
-    fn set_persistent(&mut self, enabled: bool) -> Result<(), NvmlError>;
-    fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), NvmlError>;
-    fn set_gpu_locked_clocks(&mut self, setting: GpuLockedClocksSetting) -> Result<(), NvmlError>;
+    fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError>;
+    fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), ZeusdError>;
+    fn set_gpu_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError>;
+    fn set_mem_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError>;
 }
 
 pub struct NvmlGpu<'n> {
@@ -26,7 +26,7 @@ pub struct NvmlGpu<'n> {
 }
 
 impl GpuManager for NvmlGpu<'_> {
-    fn init(index: u32) -> Result<Self, NvmlError> {
+    fn init(index: u32) -> Result<Self, ZeusdError> {
         // `Device` needs to hold a reference to `Nvml`, meaning that `Nvml` must outlive `Device`.
         // We can achieve this by leaking a `Box` containing `Nvml` and holding a reference to it.
         let _nvml = Box::leak(Box::new(Nvml::init()?));
@@ -34,21 +34,26 @@ impl GpuManager for NvmlGpu<'_> {
         Ok(Self { _nvml, device })
     }
 
-    fn device_count() -> Result<u32, NvmlError> {
+    fn device_count() -> Result<u32, ZeusdError> {
         let nvml = Nvml::init()?;
-        nvml.device_count()
+        Ok(nvml.device_count()?)
     }
 
-    fn set_persistent(&mut self, enabled: bool) -> Result<(), NvmlError> {
-        self.device.set_persistent(enabled)
+    fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
+        Ok(self.device.set_persistent(enabled)?)
     }
 
-    fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), NvmlError> {
-        self.device.set_power_management_limit(power_limit)
+    fn set_power_management_limit(&mut self, power_limit_mw: u32) -> Result<(), ZeusdError> {
+        Ok(self.device.set_power_management_limit(power_limit_mw)?)
     }
 
-    fn set_gpu_locked_clocks(&mut self, setting: GpuLockedClocksSetting) -> Result<(), NvmlError> {
-        self.device.set_gpu_locked_clocks(setting)
+    fn set_gpu_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError> {
+        let setting = GpuLockedClocksSetting::Numeric {min_clock_mhz, max_clock_mhz};
+        Ok(self.device.set_gpu_locked_clocks(setting)?)
+    }
+
+    fn set_mem_locked_clocks(&mut self, min_clock_mhz: u32, max_clock_mhz: u32) -> Result<(), ZeusdError> {
+        Ok(self.device.set_mem_locked_clocks(min_clock_mhz, max_clock_mhz)?)
     }
 }
 
@@ -149,21 +154,26 @@ pub enum GpuCommand {
     SetPersistentMode { enabled: bool },
     /// Set the power management limit in milliwatts.
     SetPowerLimit { power_limit: u32 },
-    /// Set the SM's locked frequency range in MHz.
-    SetGpuFrequency {
-        max_frequency: u32,
-        min_frequency: u32,
+    /// Set the GPU's locked clock range in MHz.
+    SetGpuLockedClocks {
+        min_clock_mhz: u32,
+        max_clock_mhz: u32,
+    },
+    /// Set the GPU's memory locked clock range in MHz.
+    SetMemLockedClocks {
+        min_clock_mhz: u32,
+        max_clock_mhz: u32,
     },
 }
 
 impl GpuCommand {
-    fn execute<T>(&self, device: &mut T) -> Result<(), NvmlError>
+    fn execute<T>(&self, device: &mut T) -> Result<(), ZeusdError>
     where
         T: GpuManager,
     {
         match *self {
             Self::SetPersistentMode { enabled } => {
-                let result = device.set_persistent(enabled);
+                let result = device.set_persistent_mode(enabled);
                 if result.is_ok() {
                     tracing::info!(
                         "Persistent mode {}",
@@ -186,26 +196,36 @@ impl GpuCommand {
                 }
                 result
             }
-            Self::SetGpuFrequency {
-                max_frequency,
-                min_frequency,
-            } => {
-                let clock_settings = GpuLockedClocksSetting::Numeric {
-                    min_clock_mhz: min_frequency,
-                    max_clock_mhz: max_frequency,
-                };
-                let result = device.set_gpu_locked_clocks(clock_settings);
+            Self::SetGpuLockedClocks { min_clock_mhz, max_clock_mhz } => {
+                let result = device.set_gpu_locked_clocks(min_clock_mhz, max_clock_mhz);
                 if result.is_ok() {
                     tracing::info!(
                         "GPU frequency set to [{}, {}] MHz",
-                        min_frequency,
-                        max_frequency
+                        min_clock_mhz,
+                        max_clock_mhz
                     );
                 } else {
                     tracing::warn!(
                         "Cannot set GPU frequency to [{}, {}] MHz",
-                        min_frequency,
-                        max_frequency
+                        min_clock_mhz,
+                        max_clock_mhz
+                    );
+                }
+                result
+            }
+            Self::SetMemLockedClocks { min_clock_mhz, max_clock_mhz } => {
+                let result = device.set_mem_locked_clocks(min_clock_mhz, max_clock_mhz);
+                if result.is_ok() {
+                    tracing::info!(
+                        "Memory locked clocks set to [{}, {}] MHz",
+                        min_clock_mhz,
+                        max_clock_mhz,
+                    );
+                } else {
+                    tracing::warn!(
+                        "Cannot set memory locked clocks to [{}, {}] MHz",
+                        min_clock_mhz,
+                        max_clock_mhz,
                     );
                 }
                 result
