@@ -19,15 +19,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Change working directory
-        run: cd zeusd
+        with:
+          sparse-checkout: zeusd
       - name: Install the Rust toolchain
         run: rustup toolchain install stable --profile minimal
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - name: Check format
         run: cargo fmt --all --check
+        working-directory: zeusd
       - name: Run clippy
         run: cargo clippy --all -- -D warnings
+        working-directory: zeusd
       - name: Run tests
         run: cargo test --features testing
+        working-directory: zeusd
