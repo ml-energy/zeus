@@ -3,7 +3,7 @@ name: Check format, lint, and test for Zeusd
 on:
   push:
     paths:
-      - '.github/workflows/zeusd/fmt_lint_test.yaml'
+      - '.github/workflows/zeusd_fmt_lint_test.yaml'
       - 'zeusd/**'
 
 # Jobs initiated by previous pushes get cancelled by a new push.
