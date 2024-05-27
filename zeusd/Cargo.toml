@@ -15,7 +15,6 @@ name = "zeusd"
 
 [dependencies]
 actix-web = "4"
-nvml-wrapper = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 thiserror = "1"
 clap = { version = "4.5.4", features = ["derive"] }
@@ -27,6 +26,9 @@ tracing-log = "0.2.0"
 tracing-actix-web = "0.7.10"
 nix = { version = "0.29", default-features = false, features = ["user"] }
 paste = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nvml-wrapper = "0.10"
 
 [dev-dependencies]
 once_cell = "1.7.2"
