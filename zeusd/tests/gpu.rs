@@ -94,4 +94,26 @@ async fn test_set_power_limit() {
     );
     assert_eq!(app.power_limit_history_for_gpu(2), vec![120_000, 160_000]);
     assert_eq!(app.power_limit_history_for_gpu(3), vec![130_000, 170_000]);
+
+    let resp = app
+        .send(
+            0,
+            SetPowerLimit {
+                power_limit_mw: 99_000,
+                block: true,
+            },
+        )
+        .await;
+    assert_eq!(resp.status(), 400);
+
+    let resp = app
+        .send(
+            0,
+            SetPowerLimit {
+                power_limit_mw: 330_000,
+                block: true,
+            },
+        )
+        .await;
+    assert_eq!(resp.status(), 400);
 }
