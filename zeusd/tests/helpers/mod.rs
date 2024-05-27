@@ -6,6 +6,7 @@
 use nvml_wrapper::error::NvmlError;
 use once_cell::sync::Lazy;
 use paste::paste;
+use std::future::Future;
 use std::net::TcpListener;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
@@ -173,7 +174,7 @@ impl TestApp {
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
-        let server = start_server_tcp(listener, test_tasks, 4).expect("Failed to start server");
+        let server = start_server_tcp(listener, test_tasks, 8).expect("Failed to start server");
         let _ = tokio::spawn(async move { server.await });
 
         TestApp {
@@ -182,16 +183,15 @@ impl TestApp {
         }
     }
 
-    pub async fn send<T: ZeusdRequest>(&mut self, gpu_id: u32, payload: T) -> reqwest::Response {
+    pub fn send<T: ZeusdRequest>(
+        &mut self,
+        gpu_id: u32,
+        payload: T,
+    ) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
         let client = reqwest::Client::new();
         let url = T::build_url(self, gpu_id);
 
-        client
-            .post(url)
-            .json(&payload)
-            .send()
-            .await
-            .expect("Failed to send request")
+        client.post(url).json(&payload).send()
     }
 
     pub fn persistent_mode_history_for_gpu(&mut self, gpu_id: usize) -> Vec<bool> {

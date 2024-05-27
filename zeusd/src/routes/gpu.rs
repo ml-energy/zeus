@@ -60,6 +60,7 @@ macro_rules! impl_handler_for_gpu_command {
             request: web::Json<[<$action:camel $api:camel>]>,
             device_tasks: web::Data<GpuManagementTasks>,
         ) -> Result<HttpResponse, ZeusdError> {
+            let now = std::time::Instant::now();
             let gpu = gpu.into_inner();
             let request = request.into_inner();
 
@@ -71,10 +72,10 @@ macro_rules! impl_handler_for_gpu_command {
 
             if request.block {
                 device_tasks
-                    .send_command_blocking(gpu, request.into())
+                    .send_command_blocking(gpu, request.into(), now)
                     .await?;
             } else {
-                device_tasks.send_command_nonblocking(gpu, request.into())?;
+                device_tasks.send_command_nonblocking(gpu, request.into(), now)?;
             }
 
             Ok(HttpResponse::Ok().finish())

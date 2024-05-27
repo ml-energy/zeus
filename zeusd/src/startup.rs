@@ -4,7 +4,7 @@ use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use std::fs;
 use std::net::TcpListener;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{chown, PermissionsExt};
 use std::os::unix::net::UnixListener;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
@@ -30,7 +30,12 @@ where
 }
 
 /// Create a socket at the given path and bind a UnixListener to it.
-pub fn get_listener(socket_path: &str) -> anyhow::Result<UnixListener> {
+pub fn get_unix_listener(
+    socket_path: &str,
+    permissions: u32,
+    uid: Option<u32>,
+    gid: Option<u32>,
+) -> anyhow::Result<UnixListener> {
     if fs::metadata(socket_path).is_ok() {
         tracing::error!(
             "Socket file {} already exists. Please remove it and restart Zeusd.",
@@ -39,7 +44,8 @@ pub fn get_listener(socket_path: &str) -> anyhow::Result<UnixListener> {
         anyhow::bail!("Socket file already exists");
     }
     let listener = UnixListener::bind(socket_path)?;
-    fs::set_permissions(socket_path, fs::Permissions::from_mode(0o666))?;
+    fs::set_permissions(socket_path, fs::Permissions::from_mode(permissions))?;
+    chown(socket_path, uid, gid)?;
     Ok(listener)
 }
 

@@ -4,7 +4,8 @@ use std::net::TcpListener;
 
 use zeusd::config::{get_config, ConnectionMode};
 use zeusd::startup::{
-    ensure_root, get_listener, init_tracing, start_device_tasks, start_server_tcp, start_server_uds,
+    ensure_root, get_unix_listener, init_tracing, start_device_tasks, start_server_tcp,
+    start_server_uds,
 };
 
 #[tokio::main]
@@ -28,7 +29,12 @@ async fn main() -> anyhow::Result<()> {
     });
     match config.mode {
         ConnectionMode::UDS => {
-            let listener = get_listener(&config.socket_path)?;
+            let listener = get_unix_listener(
+                &config.socket_path,
+                config.socket_permissions()?,
+                config.socket_uid,
+                config.socket_gid,
+            )?;
             tracing::info!("Listening on {}", &config.socket_path);
 
             start_server_uds(listener, device_tasks, num_workers)?.await?;
