@@ -21,18 +21,23 @@ async fn main() -> anyhow::Result<()> {
     let device_tasks = start_device_tasks()?;
     tracing::info!("Started device tasks");
 
+    let num_workers = config.num_workers.unwrap_or_else(|| {
+        std::thread::available_parallelism()
+            .expect("Failed to get number of logical CPUs")
+            .into()
+    });
     match config.mode {
         ConnectionMode::UDS => {
             let listener = get_listener(&config.socket_path)?;
             tracing::info!("Listening on {}", &config.socket_path);
 
-            start_server_uds(listener, device_tasks)?.await?;
+            start_server_uds(listener, device_tasks, num_workers)?.await?;
         }
         ConnectionMode::TCP => {
             let listener = TcpListener::bind(&config.tcp_bind_address)?;
             tracing::info!("Listening on {}", &config.tcp_bind_address);
 
-            start_server_tcp(listener, device_tasks)?.await?;
+            start_server_tcp(listener, device_tasks, num_workers)?.await?;
         }
     }
 

@@ -27,6 +27,10 @@ pub struct Config {
     /// If set, Zeusd will not complain about running as non-root.
     #[clap(long, default_value = "false")]
     pub allow_unprivileged: bool,
+
+    /// Number of worker threads to use. Default is the number of logical CPUs.
+    #[clap(long)]
+    pub num_workers: Option<usize>,
 }
 
 pub fn get_config() -> Config {

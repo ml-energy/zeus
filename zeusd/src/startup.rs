@@ -71,6 +71,7 @@ pub fn ensure_root() -> anyhow::Result<()> {
 pub fn start_server_uds(
     listener: UnixListener,
     device_tasks: GpuManagementTasks,
+    num_workers: usize,
 ) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
@@ -78,6 +79,7 @@ pub fn start_server_uds(
             .service(web::scope("/gpu").configure(gpu_routes))
             .app_data(web::Data::new(device_tasks.clone()))
     })
+    .workers(num_workers)
     .listen_uds(listener)?
     .run();
 
@@ -88,6 +90,7 @@ pub fn start_server_uds(
 pub fn start_server_tcp(
     listener: TcpListener,
     device_tasks: GpuManagementTasks,
+    num_workers: usize,
 ) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
@@ -95,6 +98,7 @@ pub fn start_server_tcp(
             .service(web::scope("/gpu").configure(gpu_routes))
             .app_data(web::Data::new(device_tasks.clone()))
     })
+    .workers(num_workers)
     .listen(listener)?
     .run();
 
