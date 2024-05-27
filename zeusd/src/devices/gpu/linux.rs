@@ -1,5 +1,5 @@
 use nvml_wrapper::enums::device::GpuLockedClocksSetting;
-use nvml_wrapper::error::{Device, Nvml};
+use nvml_wrapper::{Device, Nvml};
 
 use crate::devices::gpu::GpuManager;
 use crate::error::ZeusdError;
