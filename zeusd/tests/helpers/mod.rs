@@ -3,6 +3,7 @@
 //! It has to be under `tests/helpers/mod.rs` instead of `tests/helpers.rs`
 //! to avoid it from being treated as another test module.
 
+use nvml_wrapper::error::NvmlError;
 use once_cell::sync::Lazy;
 use paste::paste;
 use std::net::TcpListener;
@@ -23,17 +24,18 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 
 #[derive(Clone)]
 pub struct TestGpu {
-    pub persistent_mode_tx: UnboundedSender<bool>,
-    pub power_limit_tx: UnboundedSender<u32>,
-    pub gpu_locked_clocks_tx: UnboundedSender<(u32, u32)>,
-    pub mem_locked_clocks_tx: UnboundedSender<(u32, u32)>,
+    persistent_mode_tx: UnboundedSender<bool>,
+    power_limit_tx: UnboundedSender<u32>,
+    gpu_locked_clocks_tx: UnboundedSender<(u32, u32)>,
+    mem_locked_clocks_tx: UnboundedSender<(u32, u32)>,
+    valid_power_limit_range: (u32, u32),
 }
 
 pub struct TestGpuObserver {
-    pub persistent_mode_rx: UnboundedReceiver<bool>,
-    pub power_limit_rx: UnboundedReceiver<u32>,
-    pub gpu_locked_clocks_rx: UnboundedReceiver<(u32, u32)>,
-    pub mem_locked_clocks_rx: UnboundedReceiver<(u32, u32)>,
+    persistent_mode_rx: UnboundedReceiver<bool>,
+    power_limit_rx: UnboundedReceiver<u32>,
+    gpu_locked_clocks_rx: UnboundedReceiver<(u32, u32)>,
+    mem_locked_clocks_rx: UnboundedReceiver<(u32, u32)>,
 }
 
 impl TestGpu {
@@ -48,6 +50,7 @@ impl TestGpu {
             power_limit_tx,
             gpu_locked_clocks_tx,
             mem_locked_clocks_tx,
+            valid_power_limit_range: (100_000, 300_000),
         };
         let observer = TestGpuObserver {
             persistent_mode_rx,
@@ -71,6 +74,11 @@ impl GpuManager for TestGpu {
     }
 
     fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), ZeusdError> {
+        if power_limit < self.valid_power_limit_range.0
+            || power_limit > self.valid_power_limit_range.1
+        {
+            return Err(ZeusdError::from(NvmlError::InvalidArg));
+        }
         self.power_limit_tx.send(power_limit).unwrap();
         Ok(())
     }
