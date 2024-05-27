@@ -3,8 +3,8 @@
 //! It has to be under `tests/helpers/mod.rs` instead of `tests/helpers.rs`
 //! to avoid it from being treated as another test module.
 
-use paste::paste;
 use once_cell::sync::Lazy;
+use paste::paste;
 use std::net::TcpListener;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
@@ -139,7 +139,7 @@ macro_rules! impl_zeusd_request {
                 }
             }
         }
-    }
+    };
 }
 
 impl_zeusd_request!(SetPersistentMode);
