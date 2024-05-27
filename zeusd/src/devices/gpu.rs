@@ -7,7 +7,11 @@ use tracing::Span;
 
 use crate::error::ZeusdError;
 
-pub trait GpuManager: Send + 'static {
+/// A trait for structs that manage one GPU.
+///
+/// This trait can be used to abstract over different GPU management libraries.
+/// Currently, this was done to facilitate testing.
+pub trait GpuManager {
     fn device_count() -> Result<u32, ZeusdError>
     where
         Self: Sized;
@@ -18,11 +22,13 @@ pub trait GpuManager: Send + 'static {
         min_clock_mhz: u32,
         max_clock_mhz: u32,
     ) -> Result<(), ZeusdError>;
+    fn reset_gpu_locked_clocks(&mut self) -> Result<(), ZeusdError>;
     fn set_mem_locked_clocks(
         &mut self,
         min_clock_mhz: u32,
         max_clock_mhz: u32,
     ) -> Result<(), ZeusdError>;
+    fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError>;
 }
 
 pub struct NvmlGpu<'n> {
@@ -34,6 +40,7 @@ impl NvmlGpu<'static> {
     pub fn init(index: u32) -> Result<Self, ZeusdError> {
         // `Device` needs to hold a reference to `Nvml`, meaning that `Nvml` must outlive `Device`.
         // We can achieve this by leaking a `Box` containing `Nvml` and holding a reference to it.
+        // `Nvml` will actually live until the server terminates inside the GPU management task.
         let _nvml = Box::leak(Box::new(Nvml::init()?));
         let device = _nvml.device_by_index(index)?;
         Ok(Self { _nvml, device })
@@ -70,6 +77,11 @@ impl GpuManager for NvmlGpu<'static> {
     }
 
     #[inline]
+    fn reset_gpu_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        Ok(self.device.reset_gpu_locked_clocks()?)
+    }
+
+    #[inline]
     fn set_mem_locked_clocks(
         &mut self,
         min_clock_mhz: u32,
@@ -78,6 +90,11 @@ impl GpuManager for NvmlGpu<'static> {
         Ok(self
             .device
             .set_mem_locked_clocks(min_clock_mhz, max_clock_mhz)?)
+    }
+
+    #[inline]
+    fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        Ok(self.device.reset_mem_locked_clocks()?)
     }
 }
 
@@ -183,11 +200,15 @@ pub enum GpuCommand {
         min_clock_mhz: u32,
         max_clock_mhz: u32,
     },
+    /// Reset the GPU's locked clocks.
+    ResetGpuLockedClocks,
     /// Set the GPU's memory locked clock range in MHz.
     SetMemLockedClocks {
         min_clock_mhz: u32,
         max_clock_mhz: u32,
     },
+    /// Reset the GPU's memory locked clocks.
+    ResetMemLockedClocks,
 }
 
 impl GpuCommand {
@@ -242,6 +263,15 @@ impl GpuCommand {
                 }
                 result
             }
+            Self::ResetGpuLockedClocks => {
+                let result = device.reset_gpu_locked_clocks();
+                if result.is_ok() {
+                    tracing::info!("GPU locked clocks reset");
+                } else {
+                    tracing::warn!("Cannot reset GPU locked clocks");
+                }
+                result
+            }
             Self::SetMemLockedClocks {
                 min_clock_mhz,
                 max_clock_mhz,
@@ -259,6 +289,15 @@ impl GpuCommand {
                         min_clock_mhz,
                         max_clock_mhz,
                     );
+                }
+                result
+            }
+            Self::ResetMemLockedClocks => {
+                let result = device.reset_mem_locked_clocks();
+                if result.is_ok() {
+                    tracing::info!("Memory locked clocks reset");
+                } else {
+                    tracing::warn!("Cannot reset memory locked clocks");
                 }
                 result
             }

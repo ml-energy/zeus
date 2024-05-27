@@ -2032,6 +2032,7 @@ dependencies = [
  "nix",
  "nvml-wrapper",
  "once_cell",
+ "paste",
  "reqwest",
  "serde",
  "thiserror",

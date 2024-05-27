@@ -5,15 +5,13 @@ authors = ["Jae-Won Chung <jwnchung@umich.edu>"]
 edition = "2021"
 
 [lib]
+name = "zeusd"
 path = "src/lib.rs"
 doctest = false
 
 [[bin]]
 path = "src/main.rs"
 name = "zeusd"
-
-[features]
-testing = []
 
 [dependencies]
 actix-web = "4"
@@ -28,6 +26,7 @@ tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 tracing-log = "0.2.0"
 tracing-actix-web = "0.7.10"
 nix = { version = "0.29", default-features = false, features = ["user"] }
+paste = "1"
 
 [dev-dependencies]
 once_cell = "1.7.2"

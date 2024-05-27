@@ -1,211 +1,136 @@
 //! Routes for interacting with GPUs
 
 use actix_web::{web, HttpResponse};
+use paste::paste;
+use serde::{Deserialize, Serialize};
 
 use crate::devices::gpu::{GpuCommand, GpuManagementTasks};
 use crate::error::ZeusdError;
 
-#[derive(serde::Deserialize, Debug)]
-#[cfg_attr(feature = "testing", derive(serde::Serialize))]
-pub struct SetPersistentModeRequest {
+macro_rules! impl_handler_for_gpu_command {
+    ($action:ident, $api:ident, $path:expr, $($field:ident),*) => {
+        // Implement conversion to the GpuCommand variant.
+        paste! {
+        impl From<[<$action:camel $api:camel>]> for GpuCommand {
+            // Prefixing with underscore to avoid lint errors when $field is empty.
+            fn from(_request: [<$action:camel $api:camel>]) -> Self {
+                GpuCommand::[<$action:camel $api:camel>] {
+                    $($field: _request.$field),*
+                }
+            }
+        }
+
+        // Generate the request handler.
+        #[actix_web::post($path)]
+        #[tracing::instrument(
+            skip(gpu, request, device_tasks),
+            fields(
+                gpu_id = %gpu,
+                block = %request.block,
+                $($field = %request.$field),*
+            )
+        )]
+        pub async fn [<$action:snake _ $api:snake _handler>](
+            gpu: web::Path<usize>,
+            request: web::Json<[<$action:camel $api:camel>]>,
+            device_tasks: web::Data<GpuManagementTasks>,
+        ) -> Result<HttpResponse, ZeusdError> {
+            let gpu = gpu.into_inner();
+            let request = request.into_inner();
+
+            tracing::info!(
+                "Received reqeust to GPU {} ({:?})",
+                gpu,
+                request,
+            );
+
+            if request.block {
+                device_tasks
+                    .send_command_blocking(gpu, request.into())
+                    .await?;
+            } else {
+                device_tasks.send_command_nonblocking(gpu, request.into())?;
+            }
+
+            Ok(HttpResponse::Ok().finish())
+        }
+        }
+    };
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetPersistentMode {
     pub enabled: bool,
     pub block: bool,
 }
 
-impl From<SetPersistentModeRequest> for GpuCommand {
-    fn from(request: SetPersistentModeRequest) -> Self {
-        GpuCommand::SetPersistentMode {
-            enabled: request.enabled,
-        }
-    }
-}
+impl_handler_for_gpu_command!(set, persistent_mode, "/{gpu_id}/set_persistent_mode", enabled);
 
-#[actix_web::post("/{gpu_id}/persistent_mode")]
-#[tracing::instrument(
-    skip(gpu, request, device_tasks),
-    fields(
-        gpu_id = %gpu,
-        enabled = %request.enabled,
-        block = %request.block
-    )
-)]
-pub async fn set_persistent_mode_handler(
-    gpu: web::Path<usize>,
-    request: web::Json<SetPersistentModeRequest>,
-    device_tasks: web::Data<GpuManagementTasks>,
-) -> Result<HttpResponse, ZeusdError> {
-    let gpu = gpu.into_inner();
-    let request = request.into_inner();
-
-    tracing::info!(
-        "Received reqeust to set GPU {}'s persistent mode to {} W",
-        gpu,
-        if request.enabled {
-            "enabled"
-        } else {
-            "disabled"
-        },
-    );
-
-    if request.block {
-        device_tasks
-            .send_command_blocking(gpu, request.into())
-            .await?;
-    } else {
-        device_tasks.send_command_nonblocking(gpu, request.into())?;
-    }
-
-    Ok(HttpResponse::Ok().finish())
-}
-
-#[derive(serde::Deserialize, Debug)]
-struct SetPowerLimitRequest {
-    power_limit_uw: u32,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetPowerLimit {
+    power_limit_mw: u32,
     block: bool,
 }
 
-impl From<SetPowerLimitRequest> for GpuCommand {
-    fn from(request: SetPowerLimitRequest) -> Self {
-        GpuCommand::SetPowerLimit {
-            power_limit_mw: request.power_limit_uw,
-        }
-    }
-}
+impl_handler_for_gpu_command!(set, power_limit, "/{gpu_id}/set_power_limit", power_limit_mw);
 
-#[actix_web::post("/{gpu_id}/power_limit")]
-#[tracing::instrument(
-    skip(gpu, request, device_tasks),
-    fields(
-        gpu_id = %gpu,
-        power_limit = %request.power_limit_uw,
-        block = %request.block
-    )
-)]
-pub async fn set_power_limit_handler(
-    gpu: web::Path<usize>,
-    request: web::Json<SetPowerLimitRequest>,
-    device_tasks: web::Data<GpuManagementTasks>,
-) -> Result<HttpResponse, ZeusdError> {
-    let gpu = gpu.into_inner();
-    let request = request.into_inner();
-
-    tracing::info!(
-        "Received reqeust to set GPU {}'s power limit to {} W",
-        gpu,
-        request.power_limit_uw / 1000,
-    );
-
-    if request.block {
-        device_tasks
-            .send_command_blocking(gpu, request.into())
-            .await?;
-    } else {
-        device_tasks.send_command_nonblocking(gpu, request.into())?;
-    }
-
-    Ok(HttpResponse::Ok().finish())
-}
-
-#[derive(serde::Deserialize, Debug)]
-struct SetGpuLockedClocksRequest {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetGpuLockedClocks {
     min_clock_mhz: u32,
     max_clock_mhz: u32,
     block: bool,
 }
 
-impl From<SetGpuLockedClocksRequest> for GpuCommand {
-    fn from(request: SetGpuLockedClocksRequest) -> Self {
-        GpuCommand::SetGpuLockedClocks {
-            min_clock_mhz: request.min_clock_mhz,
-            max_clock_mhz: request.max_clock_mhz,
-        }
-    }
-}
+impl_handler_for_gpu_command!(
+    set,
+    gpu_locked_clocks,
+    "/{gpu_id}/set_gpu_locked_clocks",
+    min_clock_mhz,
+    max_clock_mhz
+);
 
-#[actix_web::post("/{gpu_id}/gpu_locked_clocks")]
-#[tracing::instrument(
-    skip(gpu, request, device_tasks),
-    fields(
-        gpu_id = %gpu,
-        min_clock_mhz = %request.min_clock_mhz,
-        max_clock_mhz = %request.max_clock_mhz,
-        block = %request.block
-    )
-)]
-pub async fn set_gpu_locked_clocks_handler(
-    gpu: web::Path<usize>,
-    request: web::Json<SetGpuLockedClocksRequest>,
-    device_tasks: web::Data<GpuManagementTasks>,
-) -> Result<HttpResponse, ZeusdError> {
-    let gpu = gpu.into_inner();
-    let request = request.into_inner();
-
-    tracing::info!(
-        "Received reqeust to set GPU {}'s gpu locked clocks to [{}, {}] MHz",
-        gpu,
-        request.min_clock_mhz,
-        request.max_clock_mhz,
-    );
-
-    if request.block {
-        device_tasks
-            .send_command_blocking(gpu, request.into())
-            .await?;
-    } else {
-        device_tasks.send_command_nonblocking(gpu, request.into())?;
-    }
-
-    Ok(HttpResponse::Ok().finish())
-}
-
-#[derive(serde::Deserialize, Debug)]
-struct SetMemLockedClocksRequest {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetMemLockedClocks {
     min_clock_mhz: u32,
     max_clock_mhz: u32,
     block: bool,
 }
 
-impl From<SetMemLockedClocksRequest> for GpuCommand {
-    fn from(request: SetMemLockedClocksRequest) -> Self {
-        GpuCommand::SetMemLockedClocks {
-            min_clock_mhz: request.min_clock_mhz,
-            max_clock_mhz: request.max_clock_mhz,
-        }
-    }
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResetGpuLockedClocks {
+    block: bool,
 }
 
-#[actix_web::post("/{gpu_id}/mem_locked_clocks")]
-#[tracing::instrument(
-    skip(gpu, request, device_tasks),
-    fields(
-        gpu_id = %gpu,
-        min_clock_mhz = %request.min_clock_mhz,
-        max_clock_mhz = %request.max_clock_mhz,
-        block = %request.block
-    )
-)]
-pub async fn set_mem_locked_clocks_handler(
-    gpu: web::Path<usize>,
-    request: web::Json<SetMemLockedClocksRequest>,
-    device_tasks: web::Data<GpuManagementTasks>,
-) -> Result<HttpResponse, ZeusdError> {
-    let gpu = gpu.into_inner();
-    let request = request.into_inner();
+impl_handler_for_gpu_command!(
+    reset,
+    gpu_locked_clocks,
+    "/{gpu_id}/reset_gpu_locked_clocks",
+);
 
-    tracing::info!(
-        "Received reqeust to set GPU {}'s memory locked clocks to [{}, {}] MHz",
-        gpu,
-        request.min_clock_mhz,
-        request.max_clock_mhz,
-    );
 
-    if request.block {
-        device_tasks
-            .send_command_blocking(gpu, request.into())
-            .await?;
-    } else {
-        device_tasks.send_command_nonblocking(gpu, request.into())?;
-    }
+impl_handler_for_gpu_command!(
+    set,
+    mem_locked_clocks,
+    "/{gpu_id}/set_mem_locked_clocks",
+    min_clock_mhz,
+    max_clock_mhz
+);
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResetMemLockedClocks {
+    block: bool,
+}
 
-    Ok(HttpResponse::Ok().finish())
+impl_handler_for_gpu_command!(
+    reset,
+    mem_locked_clocks,
+    "/{gpu_id}/reset_mem_locked_clocks",
+);
+
+pub fn gpu_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(set_persistent_mode_handler)
+        .service(set_power_limit_handler)
+        .service(set_gpu_locked_clocks_handler)
+        .service(reset_gpu_locked_clocks_handler)
+        .service(set_mem_locked_clocks_handler)
+        .service(reset_mem_locked_clocks_handler);
 }

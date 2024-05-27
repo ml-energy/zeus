@@ -1,9 +1,14 @@
+//! Helpers for running integration tests.
+//!
+//! It has to be under `tests/helpers/mod.rs` instead of `tests/helpers.rs`
+//! to avoid it from being treated as another test module.
+
+use paste::paste;
 use once_cell::sync::Lazy;
 use std::net::TcpListener;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
-use zeusd::routes::gpu::SetPersistentModeRequest;
 use zeusd::startup::{init_tracing, start_server_tcp};
 
 static NUM_GPUS: u32 = 4;
@@ -81,6 +86,11 @@ impl GpuManager for TestGpu {
         Ok(())
     }
 
+    fn reset_gpu_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        self.gpu_locked_clocks_tx.send((0, 0)).unwrap();
+        Ok(())
+    }
+
     fn set_mem_locked_clocks(
         &mut self,
         min_clock_mhz: u32,
@@ -89,6 +99,11 @@ impl GpuManager for TestGpu {
         self.mem_locked_clocks_tx
             .send((min_clock_mhz, max_clock_mhz))
             .unwrap();
+        Ok(())
+    }
+
+    fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        self.mem_locked_clocks_tx.send((0, 0)).unwrap();
         Ok(())
     }
 }
@@ -107,9 +122,38 @@ pub fn start_test_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<TestGpuObse
     Ok((tasks, observers))
 }
 
+/// A helper trait for building URLs to send requests to.
+pub trait ZeusdRequest: serde::Serialize {
+    fn build_url(app: &TestApp, gpu_id: u32) -> String;
+}
+
+macro_rules! impl_zeusd_request {
+    ($api:ident) => {
+        paste! {
+            impl ZeusdRequest for zeusd::routes::gpu::[<$api:camel>] {
+                fn build_url(app: &TestApp, gpu_id: u32) -> String {
+                    format!(
+                        "http://127.0.0.1:{}/gpu/{}/{}",
+                        app.port, gpu_id, stringify!([<$api:snake>]),
+                    )
+                }
+            }
+        }
+    }
+}
+
+impl_zeusd_request!(SetPersistentMode);
+impl_zeusd_request!(SetPowerLimit);
+impl_zeusd_request!(SetGpuLockedClocks);
+impl_zeusd_request!(ResetGpuLockedClocks);
+impl_zeusd_request!(SetMemLockedClocks);
+impl_zeusd_request!(ResetMemLockedClocks);
+
+/// A test application that starts a server over TCP and provides helper methods
+/// for sending requests and fetching what happened to the fake GPUs.
 pub struct TestApp {
     port: u16,
-    pub observers: Vec<TestGpuObserver>,
+    observers: Vec<TestGpuObserver>,
 }
 
 impl TestApp {
@@ -130,24 +174,35 @@ impl TestApp {
         }
     }
 
-    pub async fn set_persistent_mode(
-        &mut self,
-        gpu_id: u32,
-        enabled: bool,
-        block: bool,
-    ) -> reqwest::Response {
+    pub async fn send<T: ZeusdRequest>(&mut self, gpu_id: u32, payload: T) -> reqwest::Response {
         let client = reqwest::Client::new();
-        let url = format!(
-            "http://127.0.0.1:{}/gpu/{}/persistent_mode",
-            self.port, gpu_id
-        );
-        let payload = SetPersistentModeRequest { enabled, block };
+        let url = T::build_url(self, gpu_id);
 
         client
-            .post(&url)
+            .post(url)
             .json(&payload)
             .send()
             .await
             .expect("Failed to send request")
+    }
+
+    pub fn persistent_mode_history_for_gpu(&mut self, gpu_id: usize) -> Vec<bool> {
+        let rx = &mut self.observers[gpu_id].persistent_mode_rx;
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    pub fn power_limit_history_for_gpu(&mut self, gpu_id: usize) -> Vec<u32> {
+        let rx = &mut self.observers[gpu_id].power_limit_rx;
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    pub fn gpu_locked_clocks_history_for_gpu(&mut self, gpu_id: usize) -> Vec<(u32, u32)> {
+        let rx = &mut self.observers[gpu_id].gpu_locked_clocks_rx;
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    pub fn mem_locked_clocks_history_for_gpu(&mut self, gpu_id: usize) -> Vec<(u32, u32)> {
+        let rx = &mut self.observers[gpu_id].mem_locked_clocks_rx;
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
     }
 }
