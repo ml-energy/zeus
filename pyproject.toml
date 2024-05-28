@@ -91,7 +91,7 @@ pydocstyle.convention = "google"
 "zeus/optimizer/batch_size/server/config.py" = ["N805"]
 "zeus/optimizer/batch_size/server/router.py" = ["B008"]
 "zeus/optimizer/batch_size/common.py" = ["N805"]
-"zeus/device/gpu.py" = ["N802", "N803"]
+"zeus/device/gpu/*.py" = ["N802", "N803"]
 
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"
