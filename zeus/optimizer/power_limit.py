@@ -45,7 +45,8 @@ from zeus.monitor import ZeusMonitor
 from zeus.utils.logging import get_logger
 from zeus.utils.metric import zeus_cost
 from zeus.utils.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
-from zeus.device import get_gpus, ZeusGPUNoPermissionError
+from zeus.device import get_gpus
+from zeus.device.gpu import ZeusGPUNoPermissionError
 
 from typing import TYPE_CHECKING
 

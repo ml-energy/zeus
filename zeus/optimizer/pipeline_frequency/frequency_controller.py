@@ -20,7 +20,8 @@ import atexit
 import contextlib
 import multiprocessing as mp
 
-from zeus.device import get_gpus, ZeusGPUNotSupportedError
+from zeus.device import get_gpus
+from zeus.device.gpu import ZeusGPUNotSupportedError
 
 
 class FrequencyController:
