@@ -49,7 +49,7 @@ def reset_gpus() -> None:
 def pynvml_mock(mocker: MockerFixture):
     """Mock the entire pynvml module."""
     # Mock the pynvml import in the gpu module.
-    mock = mocker.patch("zeus.device.gpu.pynvml", autospec=True)
+    mock = mocker.patch("zeus.device.gpu.nvidia.pynvml", autospec=True)
 
     # Except for the arch constants.
     mock.NVML_DEVICE_ARCH_PASCAL = pynvml.NVML_DEVICE_ARCH_PASCAL

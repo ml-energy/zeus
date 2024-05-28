@@ -58,6 +58,8 @@ The following exceptions are defined in this module:
 
 
 """
+from __future__ import annotations
+
 from zeus.device.gpu.common import *
 from zeus.device.gpu.common import GPUs, ZeusGPUInitError
 from zeus.device.gpu.nvidia import nvml_is_available, NVIDIAGPUs
