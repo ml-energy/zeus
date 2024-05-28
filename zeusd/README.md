@@ -18,7 +18,7 @@ To make this as low latency as possible, `zeusd` was written with Rust.
 To install `zeusd`:
 
 ```sh
-cargo install zeusd
+cargo install zeus
 ```
 
 With the following, `zeusd` will listen to a unix domain socket at `/var/run/zeusd.sock`, which is writable to anyone (since file permission is 666).
