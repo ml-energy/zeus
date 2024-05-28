@@ -160,15 +160,15 @@ impl GpuCommand {
                 let result = device.set_persistent_mode(enabled);
                 if result.is_ok() {
                     tracing::info!(
-                        "Persistent mode {} (took {:?})",
+                        elapsed = ?request_start_time.elapsed(),
+                        "Persistent mode {}",
                         if enabled { "enabled" } else { "disabled" },
-                        request_start_time.elapsed()
                     );
                 } else {
                     tracing::warn!(
-                        "Cannot {} persistent mode (took {:?})",
+                        elapsed = ?request_start_time.elapsed(),
+                        "Cannot {} persistent mode",
                         if enabled { "enable" } else { "disable" },
-                        request_start_time.elapsed()
                     );
                 }
                 result
@@ -179,15 +179,15 @@ impl GpuCommand {
                 let result = device.set_power_management_limit(power_limit);
                 if result.is_ok() {
                     tracing::info!(
-                        "Power limit set to {} W (took {:?})",
+                        elapsed = ?request_start_time.elapsed(),
+                        "Power limit set to {} W",
                         power_limit / 1000,
-                        request_start_time.elapsed()
                     );
                 } else {
                     tracing::warn!(
-                        "Cannot set power limit to {} W (took {:?}",
+                        elapsed = ?request_start_time.elapsed(),
+                        "Cannot set power limit to {} W ",
                         power_limit / 1000,
-                        request_start_time.elapsed()
                     );
                 }
                 result
@@ -199,17 +199,17 @@ impl GpuCommand {
                 let result = device.set_gpu_locked_clocks(min_clock_mhz, max_clock_mhz);
                 if result.is_ok() {
                     tracing::info!(
-                        "GPU frequency set to [{}, {}] MHz (took {:?})",
+                        elapsed = ?request_start_time.elapsed(),
+                        "GPU frequency set to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
-                        request_start_time.elapsed()
                     );
                 } else {
                     tracing::warn!(
-                        "Cannot set GPU frequency to [{}, {}] MHz (took {:?})",
+                        elapsed = ?request_start_time.elapsed(),
+                        "Cannot set GPU frequency to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
-                        request_start_time.elapsed()
                     );
                 }
                 result
@@ -218,13 +218,13 @@ impl GpuCommand {
                 let result = device.reset_gpu_locked_clocks();
                 if result.is_ok() {
                     tracing::info!(
-                        "GPU locked clocks reset (took {:?})",
-                        request_start_time.elapsed()
+                        elapsed = ?request_start_time.elapsed(),
+                        "GPU locked clocks reset",
                     );
                 } else {
                     tracing::warn!(
-                        "Cannot reset GPU locked clocks (took {:?})",
-                        request_start_time.elapsed()
+                        elapsed = ?request_start_time.elapsed(),
+                        "Cannot reset GPU locked clocks",
                     );
                 }
                 result
@@ -236,17 +236,17 @@ impl GpuCommand {
                 let result = device.set_mem_locked_clocks(min_clock_mhz, max_clock_mhz);
                 if result.is_ok() {
                     tracing::info!(
-                        "Memory locked clocks set to [{}, {}] MHz (took {:?})",
+                        elapsed = ?request_start_time.elapsed(),
+                        "Memory locked clocks set to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
-                        request_start_time.elapsed()
                     );
                 } else {
                     tracing::warn!(
-                        "Cannot set memory locked clocks to [{}, {}] MHz (took {:?})",
+                        elapsed = ?request_start_time.elapsed(),
+                        "Cannot set memory locked clocks to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
-                        request_start_time.elapsed()
                     );
                 }
                 result
@@ -255,13 +255,13 @@ impl GpuCommand {
                 let result = device.reset_mem_locked_clocks();
                 if result.is_ok() {
                     tracing::info!(
-                        "Memory locked clocks reset (took {:?})",
-                        request_start_time.elapsed()
+                        elapsed = ?request_start_time.elapsed(),
+                        "Memory locked clocks reset",
                     );
                 } else {
                     tracing::warn!(
-                        "Cannot reset memory locked clocks (took {:?})",
-                        request_start_time.elapsed()
+                        elapsed = ?request_start_time.elapsed(),
+                        "Cannot reset memory locked clocks",
                     );
                 }
                 result
