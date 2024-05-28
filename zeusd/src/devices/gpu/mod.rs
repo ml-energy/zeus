@@ -4,13 +4,13 @@
 mod linux;
 
 #[cfg(target_os = "linux")]
-pub use linux::NvmlGpu;
+pub use linux::NvmlGpu; // Real NVML interface.
 
 #[cfg(target_os = "macos")]
 mod macos;
 
 #[cfg(target_os = "macos")]
-pub use macos::NvmlGpu;
+pub use macos::NvmlGpu; // Fake NVML interface for dev and testing on macOS.
 
 use std::time::Instant;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
