@@ -31,7 +31,7 @@ Full help message:
 
 ```console
 $ zeusd --help
-The Zeus daemon runs with elevated provileges and communicates with unprivileged Zeus clients over a Unix domain socket to allow them to interact with and control compute devices on the node
+The Zeus daemon runs with elevated provileges and communicates with unprivileged Zeus clients to allow them to interact with and control compute devices on the node
 
 Usage: zeusd [OPTIONS]
 
