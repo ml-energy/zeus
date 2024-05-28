@@ -3,6 +3,7 @@
 use actix_web::{web, HttpResponse};
 use paste::paste;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 use crate::devices::gpu::{GpuCommand, GpuManagementTasks};
 use crate::error::ZeusdError;
@@ -59,16 +60,15 @@ macro_rules! impl_handler_for_gpu_command {
             request: web::Json<[<$api:camel>]>,
             device_tasks: web::Data<GpuManagementTasks>,
         ) -> Result<HttpResponse, ZeusdError> {
-            let now = std::time::Instant::now();
-            let gpu_id = gpu_id.into_inner();
-            let request = request.into_inner();
+            let now = Instant::now();
 
             tracing::info!("Received request");
 
+            let gpu_id = gpu_id.into_inner();
+            let request = request.into_inner();
+
             if request.block {
-                device_tasks
-                    .send_command_blocking(gpu_id, request.into(), now)
-                    .await?;
+                device_tasks.send_command_blocking(gpu_id, request.into(), now).await?;
             } else {
                 device_tasks.send_command_nonblocking(gpu_id, request.into(), now)?;
             }

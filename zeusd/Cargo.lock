@@ -2023,7 +2023,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zeusd"
+name = "zeus"
 version = "0.1.0"
 dependencies = [
  "actix-web",

@@ -1,5 +1,5 @@
 [package]
-name = "zeusd"
+name = "zeus"
 version = "0.1.0"
 authors = ["Jae-Won Chung <jwnchung@umich.edu>"]
 description = "Zeus daemon"
