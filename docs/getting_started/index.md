@@ -92,23 +92,37 @@ docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 -f docker/Dock
 The Linux capability `SYS_ADMIN` is required in order to change the GPU's power limit or frequency.
 Specifically, this is needed by the [`GlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.GlobalPowerLimitOptimizer] and the [`PipelineFrequencyOptimizer`][zeus.optimizer.pipeline_frequency.PipelineFrequencyOptimizer].
 
-### Obtaining privileges with Docker
+### Option 1: Running applications in a Docker container
 
 Using Docker, you can pass `--cap-add SYS_ADMIN` to `docker run`.
 Since this significantly simplifies running Zeus, we recommend users to consider this option first.
-Also, since Zeus is running inside a container, there is less potential for damage even if things go wrong.
+This is also possible for Kubernetes Pods with `securityContext.capabilities.add` in container specs ([docs](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container){.external}).
 
-### Obtaining privileges with `sudo`
+### Option 2: Deploying the Zeus daemon (`zeusd`)
 
-If you cannot use Docker, you can run your application with `sudo`.
-This is not recommended due to security reasons, but it will work.
+Granting `SYS_ADMIN` to the entire application just to be able to change the GPU's configuration is [granting too much](https://en.wikipedia.org/wiki/Principle_of_least_privilege){.external}.
+Instead, Zeus provides the [**Zeus daemon** or `zeusd`](https://github.com/ml-energy/zeus/tree/master/zeusd){.external}, which is a simple server/daemon process that is designed to run with admin privileges and exposes the minimal set of APIs wrapping NVML methods for changing the GPU's configuration.
+Then, an unprivileged (i.e., run normally by any user) application can ask `zeusd` via a Unix Domain Socket to change the local node's GPU configuration on its behalf.
 
-### GPU management server
+To deploy `zeusd`:
 
-It is fair to say that granting `SYS_ADMIN` to the application is itself giving too much privilege.
-We just need to be able to change the GPU's power limit or frequency, instead of giving the process privileges to administer the system.
-Thus, to reduce the attack surface, we are considering solutions such as a separate GPU management server process on a node ([tracking issue](https://github.com/ml-energy/zeus/issues/29)), which has `SYS_ADMIN`.
-Then, an unprivileged application process can ask the GPU management server via a UDS to change the GPU's configuration on its behalf.
+``` { .sh .annotate }
+# Install zeusd
+cargo install zeusd
+
+# Run zeusd with admin privileges
+sudo zeusd \
+    --socket-path /var/run/zeusd.sock \  # (1)!
+    --socket-permissions 666            # (2)!
+```
+
+1. Unix domain socket path that `zeusd` listens to.
+2. Applications need *write* access to the socket to be able to talk to `zeusd`. This string is interpreted as [UNIX file permissions](https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation).
+
+### Option 3: Running applications with `sudo`
+
+This is probably the worst option.
+However, if none of the options above work, you can run your application with `sudo`, which automatically has `SYS_ADMIN`.
 
 ## Next Steps
 
