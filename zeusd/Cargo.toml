@@ -2,6 +2,10 @@
 name = "zeusd"
 version = "0.1.0"
 authors = ["Jae-Won Chung <jwnchung@umich.edu>"]
+description = "Zeus daemon"
+license-file = "../LICENSE"
+homepage = "https://ml.energy/zeus"
+repository = "https://github.com/ml-energy/zeus"
 edition = "2021"
 
 [lib]
