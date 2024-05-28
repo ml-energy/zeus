@@ -2,8 +2,8 @@
 //!
 //! Note that NVML is only available on Linux.
 
-use nvml_wrapper::{Device, Nvml};
 use nvml_wrapper::enums::device::GpuLockedClocksSetting;
+use nvml_wrapper::{Device, Nvml};
 
 use crate::devices::gpu::GpuManager;
 use crate::error::ZeusdError;

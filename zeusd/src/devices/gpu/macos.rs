@@ -1,7 +1,7 @@
 //! Fake `NvmlGpu` implementation to allow development and testing on MacOS.
 
-use crate::error::ZeusdError;
 use crate::devices::gpu::GpuManager;
+use crate::error::ZeusdError;
 
 pub struct NvmlGpu;
 
