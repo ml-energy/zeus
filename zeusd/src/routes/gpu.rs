@@ -63,11 +63,7 @@ macro_rules! impl_handler_for_gpu_command {
             let gpu_id = gpu_id.into_inner();
             let request = request.into_inner();
 
-            tracing::info!(
-                request = ?request,
-                "Received reqeust for GPU {}",
-                gpu_id,
-            );
+            tracing::info!("Received request");
 
             if request.block {
                 device_tasks
