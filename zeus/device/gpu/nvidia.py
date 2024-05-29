@@ -5,11 +5,14 @@ from __future__ import annotations
 import functools
 import os
 import contextlib
+from pathlib import Path
 from typing import Sequence
 
+import httpx
 import pynvml
 
 import zeus.device.gpu.common as gpu_common
+from zeus.device.exception import ZeusdError
 from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
@@ -21,7 +24,7 @@ def nvml_is_available() -> bool:
         import pynvml
     except ImportError:
         logger.info(
-            "Failed to import `pynvml`. Make sure you have package `nvidia-ml-py` installed."
+            "Failed to import `pynvml`. Make sure you have `nvidia-ml-py` installed."
         )
         return False
 
@@ -61,15 +64,10 @@ def _handle_nvml_errors(func):
 
 
 class NVIDIAGPU(gpu_common.GPU):
-    """Control a Single NVIDIA GPU.
-
-    Uses NVML Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the NVML library functions.
-    Zeus GPU Exceptions are raised when NVML errors occur.
-    To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to NVML.
-    """
+    """Implementation of `GPU` for NVIDIA GPUs."""
 
     def __init__(self, gpu_index: int) -> None:
-        """Initializes the NVIDIAGPU object with a specified GPU index. Acquires a handle to the GPU using `pynvml.nvmlDeviceGetHandleByIndex`."""
+        """Initialize the GPU object."""
         super().__init__(gpu_index)
         self._get_handle()
         self._supportsGetTotalEnergyConsumption = None
@@ -102,14 +100,37 @@ class NVIDIAGPU(gpu_common.GPU):
         self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
 
     @_handle_nvml_errors
+    def getName(self) -> str:
+        """Return the name of the GPU model."""
+        return pynvml.nvmlDeviceGetName(self.handle)
+
+    @property
+    def supports_nonblocking_setters(self) -> bool:
+        """Return True if the GPU object supports non-blocking configuration setters."""
+        return False
+
+    @_handle_nvml_errors
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
-        """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
+        """Return the minimum and maximum power management limits. Units: mW."""
         min_, max_ = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
         return (min_, max_)
 
     @_handle_nvml_errors
-    def setPersistenceMode(self, enable: bool) -> None:
-        """If enable = True, enables persistence mode for the specified GPU. If enable = False, disables persistence mode."""
+    def setPowerManagementLimit(self, power_limit_mw: int, _block: bool = True) -> None:
+        """Set the GPU's power management limit. Unit: mW."""
+        pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, power_limit_mw)
+
+    @_handle_nvml_errors
+    def resetPowerManagementLimit(self, _block: bool = True) -> None:
+        """Reset the GPU's power management limit to the default value."""
+        pynvml.nvmlDeviceSetPowerManagementLimit(
+            self.handle,
+            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
+        )
+
+    @_handle_nvml_errors
+    def setPersistenceMode(self, enable: bool, _block: bool = True) -> None:
+        """Set persistence mode."""
         if enable:
             pynvml.nvmlDeviceSetPersistenceMode(
                 self.handle, pynvml.NVML_FEATURE_ENABLED
@@ -120,58 +141,54 @@ class NVIDIAGPU(gpu_common.GPU):
             )
 
     @_handle_nvml_errors
-    def setPowerManagementLimit(self, value: int) -> None:
-        """Sets the power management limit for the specified GPU to the given value. Unit: mW."""
-        pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, value)
-
-    @_handle_nvml_errors
-    def resetPowerManagementLimit(self) -> None:
-        """Resets the power management limit for the specified GPU to the default value."""
-        pynvml.nvmlDeviceSetPowerManagementLimit(
-            self.handle,
-            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
-        )
-
-    @_handle_nvml_errors
-    def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
-        """Locks the memory clock of the specified GPU to a range defined by the minimum and maximum memory clock frequencies.  Units: MHz."""
-        pynvml.nvmlDeviceSetMemoryLockedClocks(
-            self.handle, minMemClockMHz, maxMemClockMHz
-        )
-
-    @_handle_nvml_errors
     def getSupportedMemoryClocks(self) -> list[int]:
-        """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
+        """Return a list of supported memory clock frequencies. Units: MHz."""
         return pynvml.nvmlDeviceGetSupportedMemoryClocks(self.handle)
 
     @_handle_nvml_errors
-    def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
-        """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
-        return pynvml.nvmlDeviceGetSupportedGraphicsClocks(self.handle, freq)
+    def setMemoryLockedClocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+    ) -> None:
+        """Lock the memory clock to a specified range. Units: MHz."""
+        pynvml.nvmlDeviceSetMemoryLockedClocks(
+            self.handle, min_clock_mhz, max_clock_mhz
+        )
 
     @_handle_nvml_errors
-    def getName(self) -> str:
-        """Returns the name of the specified GPU."""
-        return pynvml.nvmlDeviceGetName(self.handle)
-
-    @_handle_nvml_errors
-    def setGpuLockedClocks(self, minGpuClockMHz: int, maxGpuClockMHz: int) -> None:
-        """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies. Units: MHz."""
-        pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, minGpuClockMHz, maxGpuClockMHz)
-
-    @_handle_nvml_errors
-    def resetMemoryLockedClocks(self) -> None:
-        """Resets the memory locked clocks of the specified GPU to their default values."""
+    def resetMemoryLockedClocks(self, _block: bool = True) -> None:
+        """Reset the locked memory clocks to the default."""
         pynvml.nvmlDeviceResetMemoryLockedClocks(self.handle)
 
     @_handle_nvml_errors
-    def resetGpuLockedClocks(self) -> None:
-        """Resets the GPU locked clocks of the specified GPU to their default values."""
+    def getSupportedGraphicsClocks(
+        self, memory_clock_mhz: int | None = None
+    ) -> list[int]:
+        """Return a list of supported graphics clock frequencies. Units: MHz.
+
+        Args:
+            memory_clock_mhz: Memory clock frequency to use. Some GPUs have
+                different supported graphics clocks depending on the memory clock.
+        """
+        pass
+        return pynvml.nvmlDeviceGetSupportedGraphicsClocks(
+            self.handle, memory_clock_mhz
+        )
+
+    @_handle_nvml_errors
+    def setGpuLockedClocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+    ) -> None:
+        """Lock the GPU clock to a specified range. Units: MHz."""
+        pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, min_clock_mhz, max_clock_mhz)
+
+    @_handle_nvml_errors
+    def resetGpuLockedClocks(self, _block: bool = True) -> None:
+        """Reset the locked GPU clocks to the default."""
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
 
     @_handle_nvml_errors
     def getInstantPowerUsage(self) -> int:
-        """Returns the current power usage of the specified GPU. Units: mW."""
+        """Return the current power draw of the GPU. Units: mW."""
         metric = pynvml.nvmlDeviceGetFieldValues(
             self.handle, [pynvml.NVML_FI_DEV_POWER_INSTANT]
         )[0]
@@ -181,8 +198,8 @@ class NVIDIAGPU(gpu_common.GPU):
 
     @_handle_nvml_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
-        """Returns True if the specified GPU supports retrieving the total energy consumption."""
-        # NVIDIA GPUs Volta or newer support this method
+        """Check if the GPU supports retrieving total energy consumption."""
+        # Supported on Volta or newer microarchitectures
         if self._supportsGetTotalEnergyConsumption is None:
             self._supportsGetTotalEnergyConsumption = (
                 pynvml.nvmlDeviceGetArchitecture(self.handle)
@@ -193,49 +210,132 @@ class NVIDIAGPU(gpu_common.GPU):
 
     @_handle_nvml_errors
     def getTotalEnergyConsumption(self) -> int:
-        """Returns the total energy consumption of the specified GPU. Units: mJ."""
+        """Return the total energy consumption of the specified GPU. Units: mJ."""
         return pynvml.nvmlDeviceGetTotalEnergyConsumption(self.handle)
 
 
-class UnprivilegedNVIDIAGPU(NVIDIAGPU):
-    """Control a Single NVIDIA GPU with no SYS_ADMIN privileges.
+class ZeusdNVIDIAGPU(NVIDIAGPU):
+    """An NVIDIAGPU that sets GPU knobs that require `SYS_ADMIN` via zeusd.
 
-    Uses NVML Library to control and query GPU. There is a 1:1 mapping between the methods in this class and the NVML library functions.
-    Zeus GPU Exceptions are raised when NVML errors occur.
-    To ensure computational efficiency, this class utilizes caching (ex. saves the handle) to avoid repeated calls to NVML.
+    Some NVML APIs (e.g., setting persistence mode, power limit, frequency)
+    requires the Linux security capability `SYS_ADMIN`, which is virtually `sudo`.
+    This class overrides those methods so that they send a request to the
+    Zeus daemon.
+
+    See [here](https://ml.energy/zeus/getting_started/#system-privileges)
+    for details on system privileges required.
     """
 
-    pass
+    def __init__(
+        self,
+        gpu_index: int,
+        zeusd_sock_path: str = "/var/run/zeusd.sock",
+    ) -> None:
+        """Initialize NVML and sets up the GPUs.
+
+        Args:
+            gpu_index (int): Index of the GPU.
+            zeusd_sock_path (str): Path to the Zeus daemon socket.
+        """
+        super().__init__(gpu_index)
+        self.zeusd_sock_path = zeusd_sock_path
+
+        self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
+        self._url_prefix = f"http://zeusd/gpu/{gpu_index}"
+
+    @property
+    def supports_nonblocking_setters(self) -> bool:
+        """Return True if the GPU object supports non-blocking configuration setters."""
+        return True
+
+    def setPowerManagementLimit(self, power_limit_mw: int, block: bool = True) -> None:
+        """Set the GPU's power management limit. Unit: mW."""
+        resp = self._client.post(
+            self._url_prefix + "/set_power_limit",
+            json=dict(power_limit_mw=power_limit_mw, block=block),
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to set power management limit: {resp.text}")
+
+    @_handle_nvml_errors
+    def resetPowerManagementLimit(self, block: bool = True) -> None:
+        """Reset the GPU's power management limit to the default value."""
+        self.setPowerManagementLimit(
+            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
+            block,
+        )
+
+    def setPersistenceMode(self, enable: bool, block: bool = False) -> None:
+        """Set persistence mode."""
+        resp = self._client.post(
+            self._url_prefix + "/set_persistence_mode",
+            json=dict(enable=enable, block=block),
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to set persistence mode: {resp.text}")
+
+    def setMemoryLockedClocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
+    ) -> None:
+        """Lock the memory clock to a specified range. Units: MHz."""
+        resp = self._client.post(
+            self._url_prefix + "/set_memory_locked_clocks",
+            json=dict(
+                min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block
+            ),
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to set memory locked clocks: {resp.text}")
+
+    def resetMemoryLockedClocks(self, block: bool = True) -> None:
+        """Reset the locked memory clocks to the default."""
+        resp = self._client.post(
+            self._url_prefix + "/reset_memory_locked_clocks", json=dict(block=block)
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to reset memory locked clocks: {resp.text}")
+
+    def setGpuLockedClocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
+    ) -> None:
+        """Lock the GPU clock to a specified range. Units: MHz."""
+        resp = self._client.post(
+            self._url_prefix + "/set_gpu_locked_clocks",
+            json=dict(
+                min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block
+            ),
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to set GPU locked clocks: {resp.text}")
+
+    def resetGpuLockedClocks(self, block: bool = True) -> None:
+        """Reset the locked GPU clocks to the default."""
+        resp = self._client.post(
+            self._url_prefix + "/reset_gpu_locked_clocks", json=dict(block=block)
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to reset GPU locked clocks: {resp.text}")
 
 
 class NVIDIAGPUs(gpu_common.GPUs):
-    """NVIDIA GPU Manager object, containing individual NVIDIAGPU objects, abstracting pyNVML calls and handling related exceptions.
+    """Implementation of `GPUs` for NVIDIA GPUs.
 
-    This class provides a high-level interface to interact with NVIDIA GPUs. `CUDA_VISIBLE_DEVICES` environment variable is respected if set. For example, if there are
-    4 GPUs and `CUDA_VISIBLE_DEVICES=0,2`, only GPUs 0 and 2 are instantiated. In this case, to access
+    `CUDA_VISIBLE_DEVICES` environment variable is respected if set.
+    For example, if there are 4 GPUs on the node and `CUDA_VISIBLE_DEVICES=0,2`,
+    only GPUs 0 and 2 are instantiated. In this case, to access
     GPU of CUDA index 0, use the index 0, and for CUDA index 2, use the index 1.
 
-    This class provides a 1:1 mapping between the methods and NVML library functions. For example, if you want to do the following:
-
-    ```python
-    handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
-    constraints = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
-    ```
-
-    You can now do:
-    ```python
-    gpus = get_gpus() # returns a NVIDIAGPUs object
-    constraints =  gpus.getPowerManagementLimitConstraints(gpu_index)
-    ```
-
-    Note: This class instantiates (grabs the handle, by calling `pynvml.nvmlDeviceGetHandleByIndex`) all GPUs that are visible to the system, as determined by the `CUDA_VISIBLE_DEVICES` environment variable if set.
+    If you have the Zeus daemon deployed, make sure you have set the `ZEUSD_SOCK_PATH`
+    environment variable to the path of the Zeus daemon socket. This class will
+    automatically use [`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU]
+    if `ZEUSD_SOCK_PATH` is set.
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:
-        """Instantiates NVIDIAGPUs object, setting up tracking for specified NVIDIA GPUs.
+        """Initialize NVML and sets up the GPUs.
 
         Args:
-            ensure_homogeneous (bool): If True, ensures that all tracked GPUs have the same name (return value of `nvmlDeviceGetName`). False by default.
+            ensure_homogeneous (bool): If True, ensures that all tracked GPUs have the same name.
         """
         try:
             pynvml.nvmlInit()
@@ -253,20 +353,35 @@ class NVIDIAGPUs(gpu_common.GPUs):
 
     @property
     def gpus(self) -> Sequence[gpu_common.GPU]:
-        """Returns a list of NVIDIAGPU objects being tracked."""
+        """Return a list of NVIDIAGPU objects being tracked."""
         return self._gpus
 
     def _init_gpus(self) -> None:
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
-            self.visible_indices = [int(idx) for idx in visible_device.split(",")]
+            visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
-            self.visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
+            visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
 
-        # initialize all GPUs
-        self._gpus = [NVIDIAGPU(gpu_num) for gpu_num in self.visible_indices]
+        # If `ZEUSD_SOCK_PATH` is set, always use ZeusdNVIDIAGPU
+        if (sock_path := os.environ.get("ZEUSD_SOCK_PATH")) is not None:
+            if not Path(sock_path).exists():
+                raise ZeusdError(
+                    f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}"
+                )
+            if not os.access(sock_path, os.W_OK):
+                raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
+            self._gpus = [
+                ZeusdNVIDIAGPU(gpu_num, sock_path) for gpu_num in visible_indices
+            ]
+            # Disable the warning about SYS_ADMIN capabilities
+            self._disable_sys_admin_warning = True
+
+        # Otherwise just use NVIDIAGPU
+        else:
+            self._gpus = [NVIDIAGPU(gpu_num) for gpu_num in visible_indices]
 
     def __del__(self) -> None:
-        """Shuts down the NVIDIA GPU monitoring library to release resources and clean up."""
+        """Shut down NVML."""
         with contextlib.suppress(pynvml.NVMLError):
             pynvml.nvmlShutdown()

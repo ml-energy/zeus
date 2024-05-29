@@ -3,240 +3,102 @@
 from __future__ import annotations
 
 import abc
+import warnings
 from typing import Sequence
 
 from zeus.device.exception import ZeusBaseGPUError
+from zeus.utils.logging import get_logger
+from zeus.device.common import has_sys_admin
 
-
-class ZeusGPUInitError(ZeusBaseGPUError):
-    """Import error or GPU library initialization failures."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUInvalidArgError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Invalid Argument."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUNotSupportedError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Not Supported Operation on GPU."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUNoPermissionError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for No Permission to perform GPU operation."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUAlreadyInitializedError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Already Initialized GPU."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUNotFoundError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Not Found GPU."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUInsufficientSizeError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Insufficient Size."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUInsufficientPowerError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Insufficient Power."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUDriverNotLoadedError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Driver Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUTimeoutError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Timeout Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUIRQError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for IRQ Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPULibraryNotFoundError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Library Not Found Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUFunctionNotFoundError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Function Not Found Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUCorruptedInfoROMError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Corrupted Info ROM Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPULostError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Lost GPU Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUResetRequiredError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Reset Required Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUOperatingSystemError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Operating System Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPULibRMVersionMismatchError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for LibRM Version Mismatch Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUMemoryError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Insufficient Memory Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
-
-
-class ZeusGPUUnknownError(ZeusBaseGPUError):
-    """Zeus GPU exception class Wrapper for Unknown Error."""
-
-    def __init__(self, message: str) -> None:
-        """Initialize Zeus Exception."""
-        super().__init__(message)
+logger = get_logger(__name__)
 
 
 class GPU(abc.ABC):
-    """Abstract base class for GPU management.
+    """Abstract base class for managing one GPU.
 
-    This class defines the interface for interacting with GPUs, subclasses should implement the methods to interact with specific GPU libraries
-    (e.g., NVML for NVIDIA GPUs).
+    For each method, child classes should call into vendor-specific
+    GPU management libraries (e.g., NVML for NVIDIA GPUs).
     """
 
     def __init__(self, gpu_index: int) -> None:
-        """Initialize the GPU with a specified index."""
+        """Initializ the GPU with a specified index."""
         self.gpu_index = gpu_index
+
+    @property
+    @abc.abstractmethod
+    def supports_nonblocking_setters(self) -> bool:
+        """Return True if the GPU object supports non-blocking configuration setters."""
+        return False
+
+    @abc.abstractmethod
+    def getName(self) -> str:
+        """Return the name of the GPU model."""
+        pass
 
     @abc.abstractmethod
     def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
-        """Return the minimum and maximum power management limits for the GPU. Units: mW."""
+        """Return the minimum and maximum power management limits. Units: mW."""
         pass
 
     @abc.abstractmethod
-    def setPersistenceMode(self, enable: bool) -> None:
-        """Enable persistence mode for the GPU."""
+    def setPowerManagementLimit(self, power_limit_mw: int, _block: bool = True) -> None:
+        """Set the GPU's power management limit. Unit: mW."""
         pass
 
     @abc.abstractmethod
-    def setPowerManagementLimit(self, value: int) -> None:
-        """Set the power management limit for the GPU to a specified value or default. Unit: mW."""
+    def resetPowerManagementLimit(self, _block: bool = True) -> None:
+        """Reset the GPU's power management limit to the default value."""
         pass
 
     @abc.abstractmethod
-    def resetPowerManagementLimit(self) -> None:
-        """Resets the power management limit for the specified GPU to the default value."""
-        pass
-
-    @abc.abstractmethod
-    def setMemoryLockedClocks(self, minMemClockMHz: int, maxMemClockMHz: int) -> None:
-        """Lock the memory clock to a specified range. Units: MHz."""
+    def setPersistenceMode(self, enable: bool, _block: bool = True) -> None:
+        """Set persistence mode."""
         pass
 
     @abc.abstractmethod
     def getSupportedMemoryClocks(self) -> list[int]:
-        """Return a list of supported memory clock frequencies for the GPU. Units: MHz."""
+        """Return a list of supported memory clock frequencies. Units: MHz."""
         pass
 
     @abc.abstractmethod
-    def getSupportedGraphicsClocks(self, freq: int) -> list[int]:
-        """Return a list of supported graphics clock frequencies for a given memory frequency. Units: MHz."""
+    def setMemoryLockedClocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+    ) -> None:
+        """Lock the memory clock to a specified range. Units: MHz."""
         pass
 
     @abc.abstractmethod
-    def getName(self) -> str:
-        """Return the name of the GPU."""
+    def resetMemoryLockedClocks(self, _block: bool = True) -> None:
+        """Reset the locked memory clocks to the default."""
         pass
 
     @abc.abstractmethod
-    def setGpuLockedClocks(self, minGpuClockMHz: int, maxGpuClockMHz: int) -> None:
+    def getSupportedGraphicsClocks(
+        self, memory_clock_mhz: int | None = None
+    ) -> list[int]:
+        """Return a list of supported graphics clock frequencies. Units: MHz.
+
+        Args:
+            memory_clock_mhz: Memory clock frequency to use. Some GPUs have
+                different supported graphics clocks depending on the memory clock.
+        """
+        pass
+
+    @abc.abstractmethod
+    def setGpuLockedClocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+    ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         pass
 
     @abc.abstractmethod
-    def resetMemoryLockedClocks(self) -> None:
-        """Reset the memory locked clocks to default values."""
-        pass
-
-    @abc.abstractmethod
-    def resetGpuLockedClocks(self) -> None:
-        """Reset the GPU locked clocks to default values."""
+    def resetGpuLockedClocks(self, _block: bool = True) -> None:
+        """Reset the locked GPU clocks to the default."""
         pass
 
     @abc.abstractmethod
     def getInstantPowerUsage(self) -> int:
-        """Returns the current power usage of the GPU. Units: mW."""
+        """Return the current power draw of the GPU. Units: mW."""
         pass
 
     @abc.abstractmethod
@@ -251,95 +113,313 @@ class GPU(abc.ABC):
 
 
 class GPUs(abc.ABC):
-    """An abstract base class for GPU manager object.
+    """An abstract base class for a collection of `GPU` objects.
 
-    This class defines the essential interface and common functionality for GPU management, instantiating multiple `GPU` objects for each GPU being tracked.
-    Forwards the call for a specific method to the corresponding GPU object.
+    This is basically a list of [`GPU`][zeus.device.gpu.common.GPU] objects and forwards
+    most API calls to the individual `GPU` objects. Still, a separate wrapper class is
+    is needed to for group-level operations like:
+
+    - `ensure_homogeneous` that ensures that all GPUs have the same name
+    - handling vendor-specific environment variables (e.g., `CUDA_VISIBLE_DEVICES` for NVIDIA)
     """
 
     @abc.abstractmethod
     def __init__(self, ensure_homogeneous: bool = False) -> None:
-        """Initializes the GPU management library to communicate with the GPU driver and sets up tracking for specified GPUs."""
+        """Initialize the GPU management library and initializes `GPU` objects."""
         pass
 
     @abc.abstractmethod
     def __del__(self) -> None:
-        """Shuts down the GPU monitoring library to release resources and clean up."""
+        """Shut down the GPU monitoring library to release resources and clean up."""
         pass
 
     @property
     @abc.abstractmethod
     def gpus(self) -> Sequence[GPU]:
-        """Returns a list of GPU objects being tracked."""
+        """Return a list of GPU objects being tracked."""
         pass
+
+    def __len__(self) -> int:
+        """Return the number of GPUs being tracked."""
+        return len(self.gpus)
 
     def _ensure_homogeneous(self) -> None:
         """Ensures that all tracked GPUs are homogeneous in terms of name."""
         gpu_names = [gpu.getName() for gpu in self.gpus]
         # Both zero (no GPUs found) and one are fine.
         if len(set(gpu_names)) > 1:
-            raise ZeusBaseGPUError(f"Heterogeneous GPUs found: {gpu_names}")
+            raise ZeusGPUHeterogeneousError(f"Heterogeneous GPUs found: {gpu_names}")
 
-    def getPowerManagementLimitConstraints(self, index: int) -> tuple[int, int]:
-        """Returns the minimum and maximum power management limits for the specified GPU. Units: mW."""
-        return self.gpus[index].getPowerManagementLimitConstraints()
+    def _warn_sys_admin(self) -> None:
+        """Warn the user if the current process doesn't have `SYS_ADMIN` privileges."""
+        # Deriving classes can disable this warning by setting this attribute.
+        if (
+            not getattr(self, "_disable_sys_admin_warning", False)
+            and not has_sys_admin()
+        ):
+            warnings.warn(
+                "You are about to call a GPU management API that requires "
+                "`SYS_ADMIN` privileges. Some energy optimizers that change the "
+                "GPU's power settings need this.\nSee "
+                "https://ml.energy/zeus/getting_started/#system-privileges "
+                "for more information and how to obtain `SYS_ADMIN`.",
+                stacklevel=2,
+            )
+            # Only warn once.
+            self._disable_sys_admin_warning = True
 
-    def setPersistenceMode(self, index: int, enable: bool) -> None:
-        """Enables persistence mode for the specified GPU."""
-        self.gpus[index].setPersistenceMode(enable)
+    def getName(self, gpu_index: int) -> str:
+        """Return the name of the specified GPU."""
+        return self.gpus[gpu_index].getName()
 
-    def setPowerManagementLimit(self, index: int, value: int) -> None:
-        """Sets the power management limit for the specified GPU to the given value. Unit: mW."""
-        self.gpus[index].setPowerManagementLimit(value)
+    def getPowerManagementLimitConstraints(self, gpu_index: int) -> tuple[int, int]:
+        """Return the minimum and maximum power management limits. Units: mW."""
+        return self.gpus[gpu_index].getPowerManagementLimitConstraints()
 
-    def resetPowerManagementLimit(self, index: int) -> None:
-        """Resets the power management limit for the specified GPU to the default value."""
-        self.gpus[index].resetPowerManagementLimit()
+    def setPowerManagementLimit(
+        self, gpu_index: int, power_limit_mw: int, _block: bool = True
+    ) -> None:
+        """Set the GPU's power management limit. Unit: mW."""
+        self._warn_sys_admin()
+        self.gpus[gpu_index].setPowerManagementLimit(power_limit_mw, _block)
+
+    def resetPowerManagementLimit(self, gpu_index: int, _block: bool = True) -> None:
+        """Reset the GPU's power management limit to the default value."""
+        self._warn_sys_admin()
+        self.gpus[gpu_index].resetPowerManagementLimit(_block)
+
+    def setPersistenceMode(
+        self, gpu_index: int, enable: bool, _block: bool = True
+    ) -> None:
+        """Set persistence mode for the specified GPU."""
+        self._warn_sys_admin()
+        self.gpus[gpu_index].setPersistenceMode(enable, _block)
+
+    def getSupportedMemoryClocks(self, gpu_index: int) -> list[int]:
+        """Return a list of supported memory clock frequencies. Units: MHz."""
+        return self.gpus[gpu_index].getSupportedMemoryClocks()
 
     def setMemoryLockedClocks(
-        self, index: int, minMemClockMHz: int, maxMemClockMHz: int
+        self,
+        gpu_index: int,
+        min_clock_mhz: int,
+        max_clock_mhz: int,
+        _block: bool = True,
     ) -> None:
-        """Locks the memory clock of the specified GPU to a range defined by the minimum and maximum memory clock frequencies. Units: MHz."""
-        self.gpus[index].setMemoryLockedClocks(minMemClockMHz, maxMemClockMHz)
+        """Lock the memory clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
+        self.gpus[gpu_index].setMemoryLockedClocks(min_clock_mhz, max_clock_mhz, _block)
 
-    def getSupportedMemoryClocks(self, index: int) -> list[int]:
-        """Returns a list of supported memory clock frequencies for the specified GPU. Units: MHz."""
-        return self.gpus[index].getSupportedMemoryClocks()
+    def resetMemoryLockedClocks(self, gpu_index: int, _block: bool = True) -> None:
+        """Reset the locked memory clocks to the default."""
+        self._warn_sys_admin()
+        self.gpus[gpu_index].resetMemoryLockedClocks(_block)
 
-    def getSupportedGraphicsClocks(self, index: int, freq: int) -> list[int]:
-        """Returns a list of supported graphics clock frequencies for the specified GPU at a given frequency. Units: MHz."""
-        return self.gpus[index].getSupportedGraphicsClocks(freq)
+    def getSupportedGraphicsClocks(
+        self, gpu_index: int, memory_clock_mhz: int | None = None
+    ) -> list[int]:
+        """Return a list of supported graphics clock frequencies. Units: MHz.
 
-    def getName(self, index: int) -> str:
-        """Returns the name of the specified GPU."""
-        return self.gpus[index].getName()
+        Args:
+            gpu_index: Index of the GPU to query.
+            memory_clock_mhz: Memory clock frequency to use. Some GPUs have
+                different supported graphics clocks depending on the memory clock.
+        """
+        pass
+        return self.gpus[gpu_index].getSupportedGraphicsClocks(memory_clock_mhz)
 
     def setGpuLockedClocks(
-        self, index: int, minGpuClockMHz: int, maxGpuClockMHz: int
+        self,
+        gpu_index: int,
+        min_clock_mhz: int,
+        max_clock_mhz: int,
+        _block: bool = True,
     ) -> None:
-        """Locks the GPU clock of the specified GPU to a range defined by the minimum and maximum GPU clock frequencies. Units: MHz."""
-        self.gpus[index].setGpuLockedClocks(minGpuClockMHz, maxGpuClockMHz)
+        """Lock the GPU clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
+        self.gpus[gpu_index].setGpuLockedClocks(min_clock_mhz, max_clock_mhz, _block)
 
-    def resetMemoryLockedClocks(self, index: int) -> None:
-        """Resets the memory locked clocks of the specified GPU to their default values."""
-        self.gpus[index].resetMemoryLockedClocks()
+    def resetGpuLockedClocks(self, gpu_index: int, _block: bool = True) -> None:
+        """Reset the locked GPU clocks to the default."""
+        self._warn_sys_admin()
+        self.gpus[gpu_index].resetGpuLockedClocks(_block)
 
-    def resetGpuLockedClocks(self, index: int) -> None:
-        """Resets the GPU locked clocks of the specified GPU to their default values."""
-        self.gpus[index].resetGpuLockedClocks()
+    def getInstantPowerUsage(self, gpu_index: int) -> int:
+        """Return the current power draw of the GPU. Units: mW."""
+        return self.gpus[gpu_index].getInstantPowerUsage()
 
-    def getInstantPowerUsage(self, index: int) -> int:
-        """Returns the power usage of the specified GPU. Units: mW."""
-        return self.gpus[index].getInstantPowerUsage()
+    def supportsGetTotalEnergyConsumption(self, gpu_index: int) -> bool:
+        """Check if the GPU supports retrieving total energy consumption."""
+        return self.gpus[gpu_index].supportsGetTotalEnergyConsumption()
 
-    def supportsGetTotalEnergyConsumption(self, index: int) -> bool:
-        """Returns True if the specified GPU supports retrieving the total energy consumption."""
-        return self.gpus[index].supportsGetTotalEnergyConsumption()
+    def getTotalEnergyConsumption(self, gpu_index: int) -> int:
+        """Return the total energy consumption of the GPU since driver load. Units: mJ."""
+        return self.gpus[gpu_index].getTotalEnergyConsumption()
 
-    def getTotalEnergyConsumption(self, index: int) -> int:
-        """Returns the total energy consumption of the specified GPU. Units: mJ."""
-        return self.gpus[index].getTotalEnergyConsumption()
 
-    def __len__(self) -> int:
-        """Returns the number of GPUs being tracked."""
-        return len(self.gpus)
+class ZeusGPUInitError(ZeusBaseGPUError):
+    """Import error or GPU library initialization failures."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUInvalidArgError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Invalid Argument."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUNotSupportedError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Not Supported Operation on GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUNoPermissionError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps No Permission to perform GPU operation."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUAlreadyInitializedError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Already Initialized GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUNotFoundError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Not Found GPU."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUInsufficientSizeError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Insufficient Size."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUInsufficientPowerError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Insufficient Power."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUDriverNotLoadedError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Driver Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUTimeoutError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Timeout Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUIRQError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps IRQ Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPULibraryNotFoundError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Library Not Found Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUFunctionNotFoundError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Function Not Found Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUCorruptedInfoROMError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Corrupted Info ROM Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPULostError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Lost GPU Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUResetRequiredError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Reset Required Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUOperatingSystemError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Operating System Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPULibRMVersionMismatchError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps LibRM Version Mismatch Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUMemoryError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Insufficient Memory Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUUnknownError(ZeusBaseGPUError):
+    """Zeus GPU exception that wraps Unknown Error."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
+
+
+class ZeusGPUHeterogeneousError(ZeusBaseGPUError):
+    """Exception for when GPUs are not homogeneous."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)

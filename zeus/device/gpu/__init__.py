@@ -3,6 +3,10 @@
 The main function of this module is [`get_gpus`][zeus.device.gpu.get_gpus],
 which returns a GPU Manager object specific to the platform.
 
+!!! Important
+    In theory, any NVIDIA GPU would be supported.
+    On the other hand, for AMD GPUs, we currently only support ROCm 6.0 and later.
+
 ## Getting handles to GPUs
 
 The main API exported from this module is the `get_gpus` function. It returns either
@@ -31,6 +35,19 @@ With the Zeus GPU abstraction layer, you would now call:
 gpus = get_gpus() # returns an NVIDIAGPUs object
 constraints = gpus.getPowerManagementLimitConstraints(gpu_index)
 ```
+
+## Non-blocking calls
+
+Some implementations of `GPU` support non-blocking calls to setters.
+If non-blocking calls are not supported, setting `block` will be ignored and the call will block.
+Check [`GPU.supports_non_blocking`][zeus.device.gpu.common.GPU.supports_nonblocking_setters]
+to see if non-blocking calls are supported.
+Note that non-blocking calls will not raise exceptions even if the call fails.
+
+Currently, only [`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU] supports non-blocking calls
+to methods that set the GPU's power limit, GPU frequency, memory frequency, and persistence mode.
+This is possible because the Zeus daemon supports a `block: bool` parameter in HTTP requests,
+which can be set to `False` to make the call return immediately without checking the result.
 
 ## Error handling
 
@@ -61,7 +78,7 @@ The following exceptions are defined in this module:
 from __future__ import annotations
 
 from zeus.device.gpu.common import *
-from zeus.device.gpu.common import GPUs, ZeusGPUInitError  # To make the type checker happy
+from zeus.device.gpu.common import GPUs, ZeusGPUInitError
 from zeus.device.gpu.nvidia import nvml_is_available, NVIDIAGPUs
 from zeus.device.gpu.amd import amdsmi_is_available, AMDGPUs
 

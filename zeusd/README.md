@@ -1,7 +1,3 @@
-# Now maintained at [`zeus`](https://crates.io/crates/zeus)
-
-Please contact @jaywonchung if you'd like to take ownership of this handle.
-
 # Zeus daemon (`zeusd`)
 
 `zeusd` is a daemon designed to run with admin privileges and expose API endpoints that wrap privileged NVML methods.
@@ -19,7 +15,7 @@ To make this as low latency as possible, `zeusd` was written with Rust.
 
 ## How to use `zeusd`
 
-To install `zeusd`:
+First, install `zeusd`:
 
 ```sh
 cargo install zeusd
@@ -31,7 +27,15 @@ With the following, `zeusd` will listen to a unix domain socket at `/var/run/zeu
 sudo zeusd --socket-path /var/run/zeusd.sock --socket-permissions 666
 ```
 
-Full help message:
+To allow the Zeus Python library to recognize that `zeusd` is available, set:
+
+```sh
+export ZEUSD_SOCK_PATH=/var/run/zeusd.sock
+```
+
+When Zeus detects `ZEUSD_SOCK_PATH`, it'll automatically instantiate the right GPU backand and relay privileged GPU management method calls to `zeusd`.
+
+### Full help message
 
 ```console
 $ zeusd --help

@@ -83,8 +83,8 @@ docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 -f docker/Dock
 
 ## System privileges
 
-!!! Important "Nevermind if you're just measuring"
-    No special system-level privileges are needed if you are just measuring time and energy.
+!!! Important "Nevermind if you're just measuring GPU energy"
+    No special system-level privileges are needed if you are just measuring GPU time and energy.
     However, when you're looking into optimizing energy and if that method requires changing the GPU's power limit or SM frequency, special system-level privileges are required.
 
 ### When are extra system privileges needed?
