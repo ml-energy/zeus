@@ -170,23 +170,25 @@ pub enum GpuCommand {
 }
 
 impl GpuCommand {
-    #[inline(never)]
-    fn execute<T>(&self, device: &mut T, request_start_time: Instant) -> Result<(), ZeusdError>
+    fn execute<T>(&self, device: &mut T, request_arrival_time: Instant) -> Result<(), ZeusdError>
     where
         T: GpuManager,
     {
         match *self {
             Self::SetPersistenceMode { enabled } => {
+                let command_start_time = Instant::now();
                 let result = device.set_persistence_mode(enabled);
                 if result.is_ok() {
                     tracing::info!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Persistence mode {}",
                         if enabled { "enabled" } else { "disabled" },
                     );
                 } else {
                     tracing::warn!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Cannot {} persistence mode",
                         if enabled { "enable" } else { "disable" },
                     );
@@ -196,16 +198,19 @@ impl GpuCommand {
             Self::SetPowerLimit {
                 power_limit_mw: power_limit,
             } => {
+                let command_start_time = Instant::now();
                 let result = device.set_power_management_limit(power_limit);
                 if result.is_ok() {
                     tracing::info!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Power limit set to {} W",
                         power_limit / 1000,
                     );
                 } else {
                     tracing::warn!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Cannot set power limit to {} W ",
                         power_limit / 1000,
                     );
@@ -216,17 +221,20 @@ impl GpuCommand {
                 min_clock_mhz,
                 max_clock_mhz,
             } => {
+                let command_start_time = Instant::now();
                 let result = device.set_gpu_locked_clocks(min_clock_mhz, max_clock_mhz);
                 if result.is_ok() {
                     tracing::info!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "GPU frequency set to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
                     );
                 } else {
                     tracing::warn!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Cannot set GPU frequency to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
@@ -235,15 +243,18 @@ impl GpuCommand {
                 result
             }
             Self::ResetGpuLockedClocks => {
+                let command_start_time = Instant::now();
                 let result = device.reset_gpu_locked_clocks();
                 if result.is_ok() {
                     tracing::info!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "GPU locked clocks reset",
                     );
                 } else {
                     tracing::warn!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Cannot reset GPU locked clocks",
                     );
                 }
@@ -253,17 +264,20 @@ impl GpuCommand {
                 min_clock_mhz,
                 max_clock_mhz,
             } => {
+                let command_start_time = Instant::now();
                 let result = device.set_mem_locked_clocks(min_clock_mhz, max_clock_mhz);
                 if result.is_ok() {
                     tracing::info!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Memory locked clocks set to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
                     );
                 } else {
                     tracing::warn!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Cannot set memory locked clocks to [{}, {}] MHz",
                         min_clock_mhz,
                         max_clock_mhz,
@@ -272,15 +286,18 @@ impl GpuCommand {
                 result
             }
             Self::ResetMemLockedClocks => {
+                let command_start_time = Instant::now();
                 let result = device.reset_mem_locked_clocks();
                 if result.is_ok() {
                     tracing::info!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Memory locked clocks reset",
                     );
                 } else {
                     tracing::warn!(
-                        elapsed = ?request_start_time.elapsed(),
+                        time_to_command_exec = ?request_arrival_time.elapsed(),
+                        zeusd_overhead = ?command_start_time - request_arrival_time,
                         "Cannot reset memory locked clocks",
                     );
                 }
