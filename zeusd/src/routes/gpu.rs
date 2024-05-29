@@ -11,7 +11,7 @@ use crate::error::ZeusdError;
 /// Macro to generate a handler for a GPU command.
 ///
 /// This macro takes
-/// - the API name (set_power_limit, set_persistent_mode, etc.),
+/// - the API name (set_power_limit, set_persistence_mode, etc.),
 /// - the method and path for the request handler,
 /// - and a list of `field name <type>` pairs of the corresponding `GpuCommand` variant.
 ///
@@ -80,8 +80,8 @@ macro_rules! impl_handler_for_gpu_command {
 }
 
 impl_handler_for_gpu_command!(
-    set_persistent_mode,
-    post("/{gpu_id}/set_persistent_mode"),
+    set_persistence_mode,
+    post("/{gpu_id}/set_persistence_mode"),
     enabled<bool>,
 );
 
@@ -116,7 +116,7 @@ impl_handler_for_gpu_command!(
 );
 
 pub fn gpu_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(set_persistent_mode_handler)
+    cfg.service(set_persistence_mode_handler)
         .service(set_power_limit_handler)
         .service(set_gpu_locked_clocks_handler)
         .service(reset_gpu_locked_clocks_handler)

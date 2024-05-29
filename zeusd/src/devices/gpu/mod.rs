@@ -30,7 +30,7 @@ pub trait GpuManager {
     fn device_count() -> Result<u32, ZeusdError>
     where
         Self: Sized;
-    fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError>;
+    fn set_persistence_mode(&mut self, enabled: bool) -> Result<(), ZeusdError>;
     fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), ZeusdError>;
     fn set_gpu_locked_clocks(
         &mut self,
@@ -101,9 +101,6 @@ impl GpuManagementTasks {
         if gpu_id >= self.senders.len() {
             return Err(ZeusdError::GpuNotFoundError(gpu_id));
         }
-        if gpu_id >= self.senders.len() {
-            return Err(ZeusdError::GpuNotFoundError(gpu_id));
-        }
         self.senders[gpu_id]
             .send((command, None, request_start_time, Span::current()))
             .map_err(|e| e.into())
@@ -152,8 +149,8 @@ async fn gpu_management_task<T: GpuManager>(
 /// A GPU command that can be executed on a GPU.
 #[derive(Debug)]
 pub enum GpuCommand {
-    /// Enable or disable persistent mode.
-    SetPersistentMode { enabled: bool },
+    /// Enable or disable persistence mode.
+    SetPersistenceMode { enabled: bool },
     /// Set the power management limit in milliwatts.
     SetPowerLimit { power_limit_mw: u32 },
     /// Set the GPU's locked clock range in MHz.
@@ -179,18 +176,18 @@ impl GpuCommand {
         T: GpuManager,
     {
         match *self {
-            Self::SetPersistentMode { enabled } => {
-                let result = device.set_persistent_mode(enabled);
+            Self::SetPersistenceMode { enabled } => {
+                let result = device.set_persistence_mode(enabled);
                 if result.is_ok() {
                     tracing::info!(
                         elapsed = ?request_start_time.elapsed(),
-                        "Persistent mode {}",
+                        "Persistence mode {}",
                         if enabled { "enabled" } else { "disabled" },
                     );
                 } else {
                     tracing::warn!(
                         elapsed = ?request_start_time.elapsed(),
-                        "Cannot {} persistent mode",
+                        "Cannot {} persistence mode",
                         if enabled { "enable" } else { "disable" },
                     );
                 }

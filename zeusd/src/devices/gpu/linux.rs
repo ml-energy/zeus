@@ -31,7 +31,7 @@ impl GpuManager for NvmlGpu<'static> {
     }
 
     #[inline]
-    fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
+    fn set_persistence_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
         Ok(self.device.set_persistent(enabled)?)
     }
 

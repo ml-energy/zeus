@@ -4,19 +4,19 @@ use std::collections::HashSet;
 use tokio::task::JoinSet;
 use zeusd::routes::gpu::{
     ResetGpuLockedClocks, ResetMemLockedClocks, SetGpuLockedClocks, SetMemLockedClocks,
-    SetPersistentMode, SetPowerLimit,
+    SetPersistenceMode, SetPowerLimit,
 };
 
 use crate::helpers::{TestApp, ZeusdRequest};
 
 #[tokio::test]
-async fn test_set_persistent_mode_single() {
+async fn test_set_persistence_mode_single() {
     let mut app = TestApp::start().await;
 
     let resp = app
         .send(
             0,
-            SetPersistentMode {
+            SetPersistenceMode {
                 enabled: true,
                 block: true,
             },
@@ -25,13 +25,13 @@ async fn test_set_persistent_mode_single() {
         .expect("Failed to send request");
 
     assert_eq!(resp.status(), 200);
-    let history = app.persistent_mode_history_for_gpu(0);
+    let history = app.persistence_mode_history_for_gpu(0);
     assert_eq!(history.len(), 1);
     assert_eq!(history[0], true);
 }
 
 #[tokio::test]
-async fn test_set_persistent_mode_multiple() {
+async fn test_set_persistence_mode_multiple() {
     let mut app = TestApp::start().await;
 
     let num_requests = 10;
@@ -39,7 +39,7 @@ async fn test_set_persistent_mode_multiple() {
         let resp = app
             .send(
                 i % 4,
-                SetPersistentMode {
+                SetPersistenceMode {
                     enabled: (i / 4) % 2 == 0,
                     block: true,
                 },
@@ -51,23 +51,23 @@ async fn test_set_persistent_mode_multiple() {
     }
 
     assert_eq!(
-        app.persistent_mode_history_for_gpu(0),
+        app.persistence_mode_history_for_gpu(0),
         vec![true, false, true]
     );
     assert_eq!(
-        app.persistent_mode_history_for_gpu(1),
+        app.persistence_mode_history_for_gpu(1),
         vec![true, false, true]
     );
-    assert_eq!(app.persistent_mode_history_for_gpu(2), vec![true, false]);
-    assert_eq!(app.persistent_mode_history_for_gpu(3), vec![true, false]);
+    assert_eq!(app.persistence_mode_history_for_gpu(2), vec![true, false]);
+    assert_eq!(app.persistence_mode_history_for_gpu(3), vec![true, false]);
 }
 
 #[tokio::test]
-async fn test_set_persistent_mode_invalid() {
+async fn test_set_persistence_mode_invalid() {
     let app = TestApp::start().await;
 
     let client = reqwest::Client::new();
-    let url = SetPersistentMode::build_url(&app, 0);
+    let url = SetPersistenceMode::build_url(&app, 0);
     let resp = client
         .post(url)
         .json(&serde_json::json!(
@@ -86,7 +86,7 @@ async fn test_set_persistent_mode_invalid() {
         .expect("Failed to read response")
         .contains("missing field"));
 
-    let url = SetPersistentMode::build_url(&app, 0);
+    let url = SetPersistenceMode::build_url(&app, 0);
     let resp = client
         .post(url)
         .json(&serde_json::json!(
@@ -105,7 +105,7 @@ async fn test_set_persistent_mode_invalid() {
         .expect("Failed to read response")
         .contains("invalid type"));
 
-    let url = SetPersistentMode::build_url(&app, 5); // Invalid GPU ID
+    let url = SetPersistenceMode::build_url(&app, 5); // Invalid GPU ID
     let resp = client
         .post(url)
         .json(&serde_json::json!(
@@ -121,14 +121,14 @@ async fn test_set_persistent_mode_invalid() {
 }
 
 #[tokio::test]
-async fn test_set_persistent_mode_bulk() {
+async fn test_set_persistence_mode_bulk() {
     let mut app = TestApp::start().await;
 
     let mut set = JoinSet::new();
     for i in 0..10 {
         set.spawn(app.send(
             0,
-            SetPersistentMode {
+            SetPersistenceMode {
                 enabled: i % 3 == 0,
                 block: false,
             },
@@ -152,7 +152,7 @@ async fn test_set_persistent_mode_bulk() {
     assert_eq!(
         app.send(
             0,
-            SetPersistentMode {
+            SetPersistenceMode {
                 enabled: false,
                 block: true,
             },
@@ -163,7 +163,7 @@ async fn test_set_persistent_mode_bulk() {
         200
     );
 
-    let history = app.persistent_mode_history_for_gpu(0);
+    let history = app.persistence_mode_history_for_gpu(0);
     assert_eq!(history.len(), 11);
     assert_eq!(history.iter().filter(|enabled| **enabled).count(), 4);
     assert_eq!(history.iter().filter(|enabled| !**enabled).count(), 6 + 1);
