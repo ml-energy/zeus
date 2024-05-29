@@ -129,9 +129,9 @@ class NVIDIAGPU(gpu_common.GPU):
         )
 
     @_handle_nvml_errors
-    def setPersistenceMode(self, enable: bool, _block: bool = True) -> None:
+    def setPersistenceMode(self, enabled: bool, _block: bool = True) -> None:
         """Set persistence mode."""
-        if enable:
+        if enabled:
             pynvml.nvmlDeviceSetPersistenceMode(
                 self.handle, pynvml.NVML_FEATURE_ENABLED
             )
@@ -265,11 +265,11 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
             block,
         )
 
-    def setPersistenceMode(self, enable: bool, block: bool = False) -> None:
+    def setPersistenceMode(self, enabled: bool, block: bool = False) -> None:
         """Set persistence mode."""
         resp = self._client.post(
             self._url_prefix + "/set_persistence_mode",
-            json=dict(enable=enable, block=block),
+            json=dict(enabled=enabled, block=block),
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set persistence mode: {resp.text}")

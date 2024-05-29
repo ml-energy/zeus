@@ -136,7 +136,7 @@ class AMDGPU(gpu_common.GPU):
         )  # expects value in microwatts
 
     @_handle_amdsmi_errors
-    def setPersistenceMode(self, enable: bool, _block: bool = True) -> None:
+    def setPersistenceMode(self, enabled: bool, _block: bool = True) -> None:
         """Set persistence mode."""
         raise gpu_common.ZeusGPUNotSupportedError(
             "Persistence mode is not supported on AMD GPUs."

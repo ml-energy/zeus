@@ -51,7 +51,7 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def setPersistenceMode(self, enable: bool, _block: bool = True) -> None:
+    def setPersistenceMode(self, enabled: bool, _block: bool = True) -> None:
         """Set persistence mode."""
         pass
 
@@ -189,11 +189,11 @@ class GPUs(abc.ABC):
         self.gpus[gpu_index].resetPowerManagementLimit(_block)
 
     def setPersistenceMode(
-        self, gpu_index: int, enable: bool, _block: bool = True
+        self, gpu_index: int, enabled: bool, _block: bool = True
     ) -> None:
         """Set persistence mode for the specified GPU."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].setPersistenceMode(enable, _block)
+        self.gpus[gpu_index].setPersistenceMode(enabled, _block)
 
     def getSupportedMemoryClocks(self, gpu_index: int) -> list[int]:
         """Return a list of supported memory clock frequencies. Units: MHz."""
