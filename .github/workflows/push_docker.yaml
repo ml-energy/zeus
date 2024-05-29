@@ -5,7 +5,7 @@ on:
     branches:
       - master
     tags:
-      - v*
+      - zeus-v*
     paths:
       - '.github/workflows/push_docker.yaml'
       - 'capriccio/**'
@@ -21,6 +21,7 @@ on:
 
 jobs:
   build_and_push:
+    if: github.repository_owner == 'ml-energy'
     runs-on: ubuntu-latest
     steps:
       - name: Remove unnecessary files

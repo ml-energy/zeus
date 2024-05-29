@@ -13,7 +13,7 @@ impl NvmlGpu {
 
 impl GpuManager for NvmlGpu {
     fn device_count() -> Result<u32, ZeusdError> {
-        Ok(1)
+        Ok(0)
     }
 
     fn set_persistent_mode(&mut self, _enabled: bool) -> Result<(), ZeusdError> {

@@ -1,6 +1,6 @@
 [package]
-name = "zeus"
-version = "0.1.0"
+name = "zeusd"
+version = "0.1.1"
 authors = ["Jae-Won Chung <jwnchung@umich.edu>"]
 description = "Zeus daemon"
 license = "Apache-2.0"

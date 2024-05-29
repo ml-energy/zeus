@@ -101,6 +101,9 @@ impl GpuManagementTasks {
         if gpu_id >= self.senders.len() {
             return Err(ZeusdError::GpuNotFoundError(gpu_id));
         }
+        if gpu_id >= self.senders.len() {
+            return Err(ZeusdError::GpuNotFoundError(gpu_id));
+        }
         self.senders[gpu_id]
             .send((command, None, request_start_time, Span::current()))
             .map_err(|e| e.into())
@@ -114,6 +117,9 @@ impl GpuManagementTasks {
         command: GpuCommand,
         request_start_time: Instant,
     ) -> Result<(), ZeusdError> {
+        if gpu_id >= self.senders.len() {
+            return Err(ZeusdError::GpuNotFoundError(gpu_id));
+        }
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         self.senders[gpu_id]
             .send((command, Some(tx), request_start_time, Span::current()))

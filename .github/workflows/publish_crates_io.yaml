@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - zeusd-v*
+
+jobs:
+  cargo-publish:
+    if: github.repository_owner == 'ml-energy'
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: zeusd
+      - name: Publish to crates.io
+        uses: katyo/publish-crates@v2
+        with:
+          path: zeusd
+          registry-token: ${{ secrets.CRATES_IO_TOKEN }}
+          check-repo: false
