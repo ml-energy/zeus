@@ -8,3 +8,10 @@ class ZeusBaseGPUError(ZeusBaseError):
     def __init__(self, message: str) -> None:
         """Initialize Base Zeus Exception."""
         super().__init__(message)
+
+class ZeusBaseCPUError(ZeusBaseError):
+    """Zeus base CPU exception class."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Base Zeus Exception."""
+        super().__init__(message)
