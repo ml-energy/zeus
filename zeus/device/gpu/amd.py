@@ -148,7 +148,7 @@ class AMDGPU(gpu_common.GPU):
         info = amdsmi.amdsmi_get_clock_info(
             self.handle, amdsmi.AmdSmiClkType.MEM
         )  # returns MHz
-        return [info["min_clk"], info["max_clk"]]
+        return [info["max_clk"], info["min_clk"]]
 
     @_handle_amdsmi_errors
     def setMemoryLockedClocks(
@@ -191,7 +191,7 @@ class AMDGPU(gpu_common.GPU):
         info = amdsmi.amdsmi_get_clock_info(
             self.handle, amdsmi.AmdSmiClkType.GFX
         )  # returns MHz
-        return [info["min_clk"], info["max_clk"]]
+        return [info["max_clk"], info["min_clk"]]
 
     @_handle_amdsmi_errors
     def setGpuLockedClocks(

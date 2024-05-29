@@ -279,7 +279,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         resp = self._client.post(
-            self._url_prefix + "/set_memory_locked_clocks",
+            self._url_prefix + "/set_mem_locked_clocks",
             json=dict(
                 min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block
             ),
@@ -290,7 +290,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     def resetMemoryLockedClocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
         resp = self._client.post(
-            self._url_prefix + "/reset_memory_locked_clocks", json=dict(block=block)
+            self._url_prefix + "/reset_mem_locked_clocks", json=dict(block=block)
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to reset memory locked clocks: {resp.text}")
