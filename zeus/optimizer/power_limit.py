@@ -287,9 +287,9 @@ class GlobalPowerLimitOptimizer(Callback):
                 gpus.setPersistenceMode(index, enabled=True)
         except ZeusGPUNoPermissionError as ze:
             raise RuntimeError(
-                "SYS_ADMIN capability is required to modify GPU power limits. "
-                "Using --cap-add SYS_ADMIN when running the Docker container "
-                "is the easiest way to do this."
+                "SYS_ADMIN capability is required to modify GPU power limits. See "
+                "https://ml.energy/zeus/getting_started/#system-privileges "
+                "for more information."
             ) from ze
         self.current_power_limit = 0
 
