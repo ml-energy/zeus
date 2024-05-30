@@ -2,6 +2,9 @@
 //!
 //! This module defines the `ZeusdError` enum, which is used to represent errors
 //! that can occur when handling requests to the Zeus daemon.
+//!
+//! Note that errors that occur during the initialization of the daemon are
+//! handled with `anyhow` and eventually end up terminating the process.
 
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
@@ -22,6 +25,7 @@ pub enum ZeusdError {
     GpuManagementTaskTerminatedError(usize),
 }
 
+/// This allows us to return a custom HTTP status code for each error variant.
 impl ResponseError for ZeusdError {
     fn status_code(&self) -> StatusCode {
         match self {

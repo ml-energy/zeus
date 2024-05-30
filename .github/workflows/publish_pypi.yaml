@@ -3,12 +3,12 @@ name: Publish Python package to PyPI
 on:
   push:
     tags:
-      - v*
+      - zeus-v*
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: github.event.repository.fork == false
+    if: github.repository_owner = 'ml-energy'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3

@@ -1,3 +1,5 @@
+//! Fake `NvmlGpu` implementation to allow development and testing on MacOS.
+
 use crate::devices::gpu::GpuManager;
 use crate::error::ZeusdError;
 
@@ -14,7 +16,7 @@ impl GpuManager for NvmlGpu {
         Ok(1)
     }
 
-    fn set_persistent_mode(&mut self, _enabled: bool) -> Result<(), ZeusdError> {
+    fn set_persistence_mode(&mut self, _enabled: bool) -> Result<(), ZeusdError> {
         Ok(())
     }
 

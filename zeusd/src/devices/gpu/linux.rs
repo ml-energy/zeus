@@ -1,16 +1,18 @@
+//! Implements `NvmlGpu`, a GPU manager for NVIDIA GPUs using the NVML library.
+//!
+//! Note that NVML is only available on Linux.
+
 use nvml_wrapper::enums::device::GpuLockedClocksSetting;
 use nvml_wrapper::{Device, Nvml};
 
 use crate::devices::gpu::GpuManager;
 use crate::error::ZeusdError;
 
-#[cfg(target_os = "linux")]
 pub struct NvmlGpu<'n> {
     _nvml: &'static Nvml,
     device: Device<'n>,
 }
 
-#[cfg(target_os = "linux")]
 impl NvmlGpu<'static> {
     pub fn init(index: u32) -> Result<Self, ZeusdError> {
         // `Device` needs to hold a reference to `Nvml`, meaning that `Nvml` must outlive `Device`.
@@ -22,7 +24,6 @@ impl NvmlGpu<'static> {
     }
 }
 
-#[cfg(target_os = "linux")]
 impl GpuManager for NvmlGpu<'static> {
     fn device_count() -> Result<u32, ZeusdError> {
         let nvml = Nvml::init()?;
@@ -30,7 +31,7 @@ impl GpuManager for NvmlGpu<'static> {
     }
 
     #[inline]
-    fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
+    fn set_persistence_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
         Ok(self.device.set_persistent(enabled)?)
     }
 

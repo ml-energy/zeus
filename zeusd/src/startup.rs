@@ -15,6 +15,7 @@ use tracing_subscriber::{EnvFilter, Registry};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::gpu_routes;
 
+/// Initialize tracing with the given where to write logs to.
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
 where
     S: for<'a> MakeWriter<'a> + Send + Sync + 'static,
@@ -51,6 +52,7 @@ pub fn get_unix_listener(
 
 /// Initialize NVML and start GPU management tasks.
 pub fn start_device_tasks() -> anyhow::Result<GpuManagementTasks> {
+    tracing::info!("Starting NVML and GPU management tasks.");
     let num_gpus = NvmlGpu::device_count()?;
     let mut gpus = Vec::with_capacity(num_gpus as usize);
     for gpu_id in 0..num_gpus {

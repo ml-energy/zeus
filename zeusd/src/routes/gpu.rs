@@ -3,6 +3,7 @@
 use actix_web::{web, HttpResponse};
 use paste::paste;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 use crate::devices::gpu::{GpuCommand, GpuManagementTasks};
 use crate::error::ZeusdError;
@@ -10,36 +11,35 @@ use crate::error::ZeusdError;
 /// Macro to generate a handler for a GPU command.
 ///
 /// This macro takes
-/// - the action (set, reset, etc.),
-/// - the API name (power_limit, persistent_mode, etc.),
+/// - the API name (set_power_limit, set_persistence_mode, etc.),
 /// - the method and path for the request handler,
 /// - and a list of `field name <type>` pairs of the corresponding `GpuCommand` variant.
 ///
 /// Gien this, the macro generates
-/// - a request payload struct named action + API name (e.g., SetPowerLimit) and all the
+/// - a request payload struct named API name (e.g., SetPowerLimit) and all the
 ///  fields specified plus `block: bool` to indicate whether the request should block,
 /// - an implementation of `From` for the payload struct to convert it to the
 /// - a handler function that takes the request payload, converts it to a `GpuCommand` variant,
 ///  and sends it to the `GpuManagementTasks` actor.
 ///
 ///  Assumptions:
-///  - The `GpuCommand` variant name is a concatenation of the action and API name
-///   (e.g., set and power_limit -> SetPowerLimit).
+///  - The `GpuCommand` variant name is the same as the API name, but the former is camel case
+///  and the latter is snake case (e.g., SetPowerLimit vs. set_power_limit).
 macro_rules! impl_handler_for_gpu_command {
-    ($action:ident, $api:ident, $path:expr, $($field:ident <$ftype:ty>,)*) => {
+    ($api:ident, $path:expr, $($field:ident <$ftype:ty>,)*) => {
         paste! {
         // Request payload structure.
         #[derive(Serialize, Deserialize, Debug)]
-        pub struct [<$action:camel $api:camel>] {
+        pub struct [<$api:camel>] {
             $(pub $field: $ftype,)*
             pub block: bool,
         }
 
         // Implement conversion to the GpuCommand variant.
-        impl From<[<$action:camel $api:camel>]> for GpuCommand {
+        impl From<[<$api:camel>]> for GpuCommand {
             // Prefixing with underscore to avoid lint errors when $field is empty.
-            fn from(_request: [<$action:camel $api:camel>]) -> Self {
-                GpuCommand::[<$action:camel $api:camel>] {
+            fn from(_request: [<$api:camel>]) -> Self {
+                GpuCommand::[<$api:camel>] {
                     $($field: _request.$field),*
                 }
             }
@@ -48,34 +48,29 @@ macro_rules! impl_handler_for_gpu_command {
         // Generate the request handler.
         #[actix_web::$path]
         #[tracing::instrument(
-            skip(gpu, request, device_tasks),
+            skip(gpu_id, request, device_tasks),
             fields(
-                gpu_id = %gpu,
+                gpu_id = %gpu_id,
                 block = %request.block,
                 $($field = %request.$field),*
             )
         )]
-        pub async fn [<$action:snake _ $api:snake _handler>](
-            gpu: web::Path<usize>,
-            request: web::Json<[<$action:camel $api:camel>]>,
+        async fn [<$api:snake _handler>](
+            gpu_id: web::Path<usize>,
+            request: web::Json<[<$api:camel>]>,
             device_tasks: web::Data<GpuManagementTasks>,
         ) -> Result<HttpResponse, ZeusdError> {
-            let now = std::time::Instant::now();
-            let gpu = gpu.into_inner();
+            let now = Instant::now();
+
+            tracing::info!("Received request");
+
+            let gpu_id = gpu_id.into_inner();
             let request = request.into_inner();
 
-            tracing::info!(
-                "Received reqeust to GPU {} ({:?})",
-                gpu,
-                request,
-            );
-
             if request.block {
-                device_tasks
-                    .send_command_blocking(gpu, request.into(), now)
-                    .await?;
+                device_tasks.send_command_blocking(gpu_id, request.into(), now).await?;
             } else {
-                device_tasks.send_command_nonblocking(gpu, request.into(), now)?;
+                device_tasks.send_command_nonblocking(gpu_id, request.into(), now)?;
             }
 
             Ok(HttpResponse::Ok().finish())
@@ -85,49 +80,43 @@ macro_rules! impl_handler_for_gpu_command {
 }
 
 impl_handler_for_gpu_command!(
-    set,
-    persistent_mode,
-    post("/{gpu_id}/set_persistent_mode"),
+    set_persistence_mode,
+    post("/{gpu_id}/set_persistence_mode"),
     enabled<bool>,
 );
 
 impl_handler_for_gpu_command!(
-    set,
-    power_limit,
+    set_power_limit,
     post("/{gpu_id}/set_power_limit"),
     power_limit_mw<u32>,
 );
 
 impl_handler_for_gpu_command!(
-    set,
-    gpu_locked_clocks,
+    set_gpu_locked_clocks,
     post("/{gpu_id}/set_gpu_locked_clocks"),
     min_clock_mhz<u32>,
     max_clock_mhz<u32>,
 );
 
 impl_handler_for_gpu_command!(
-    reset,
-    gpu_locked_clocks,
+    reset_gpu_locked_clocks,
     post("/{gpu_id}/reset_gpu_locked_clocks"),
 );
 
 impl_handler_for_gpu_command!(
-    set,
-    mem_locked_clocks,
+    set_mem_locked_clocks,
     post("/{gpu_id}/set_mem_locked_clocks"),
     min_clock_mhz<u32>,
     max_clock_mhz<u32>,
 );
 
 impl_handler_for_gpu_command!(
-    reset,
-    mem_locked_clocks,
+    reset_mem_locked_clocks,
     post("/{gpu_id}/reset_mem_locked_clocks"),
 );
 
 pub fn gpu_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(set_persistent_mode_handler)
+    cfg.service(set_persistence_mode_handler)
         .service(set_power_limit_handler)
         .service(set_gpu_locked_clocks_handler)
         .service(reset_gpu_locked_clocks_handler)
