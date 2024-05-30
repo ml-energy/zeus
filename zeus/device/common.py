@@ -19,7 +19,7 @@ def has_sys_admin() -> bool:
         with open("/proc/self/status") as f:
             for line in f:
                 if line.startswith("CapEff"):
-                    bitmask = int(line.strip().split("")[1], 16)
+                    bitmask = int(line.strip().split()[1], 16)
                     has = bool(bitmask & (1 << 21))
                     logger.info(
                         "Read security capabilities from /proc/self/status -- SYS_ADMIN: %s",
