@@ -1,4 +1,4 @@
-name: Check format, lint, and test for Zeusd
+name: (Zeusd) Check format, lint, and test
 
 on:
   push:

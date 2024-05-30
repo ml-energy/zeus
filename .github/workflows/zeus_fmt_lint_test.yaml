@@ -1,9 +1,9 @@
-name: Check format, lint, and test
+name: (Zeus) Check format, lint, and test
 
 on:
   push:
     paths:
-      - '.github/workflows/fmt_lint_test.yaml'
+      - '.github/workflows/zeus_fmt_lint_test.yaml'
       - 'zeus/**'
       - 'tests/**'
       - 'capriccio/*.py'
