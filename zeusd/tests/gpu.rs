@@ -105,19 +105,21 @@ async fn test_set_persistence_mode_invalid() {
         .expect("Failed to read response")
         .contains("invalid type"));
 
-    let url = SetPersistenceMode::build_url(&app, 5); // Invalid GPU ID
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "enabled": true,
-                "block": true
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
+    for block in [true, false] {
+        let url = SetPersistenceMode::build_url(&app, 5); // Invalid GPU ID
+        let resp = client
+            .post(url)
+            .json(&serde_json::json!(
+                {
+                    "enabled": true,
+                    "block": block
+                }
+            ))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 400);
+    }
 }
 
 #[tokio::test]
@@ -294,19 +296,21 @@ async fn test_set_power_limit_invalid() {
         .expect("Failed to read response")
         .contains("missing field"));
 
-    let url = SetPowerLimit::build_url(&app, 5); // Invalid GPU ID
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "power_limit_mw": 100_000,
-                "block": true
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
+    for block in [true, false] {
+        let url = SetPowerLimit::build_url(&app, 5); // Invalid GPU ID
+        let resp = client
+            .post(url)
+            .json(&serde_json::json!(
+                {
+                    "power_limit_mw": 100_000,
+                    "block": block
+                }
+            ))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 400);
+    }
 }
 
 #[tokio::test]
@@ -495,18 +499,20 @@ async fn test_gpu_locked_clocks_invalid() {
         .expect("Failed to read response")
         .contains("missing field"));
 
-    let url = ResetGpuLockedClocks::build_url(&app, 5); // Invalid GPU ID
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "block": true
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
+    for block in [true, false] {
+        let url = ResetGpuLockedClocks::build_url(&app, 5); // Invalid GPU ID
+        let resp = client
+            .post(url)
+            .json(&serde_json::json!(
+                {
+                    "block": block
+                }
+            ))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 400);
+    }
 }
 
 #[tokio::test]
@@ -697,18 +703,20 @@ async fn test_mem_locked_clocks_invalid() {
         .expect("Failed to read response")
         .contains("missing field"));
 
-    let url = ResetMemLockedClocks::build_url(&app, 5); // Invalid GPU ID
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "block": true
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
+    for block in [true, false] {
+        let url = ResetMemLockedClocks::build_url(&app, 5); // Invalid GPU ID
+        let resp = client
+            .post(url)
+            .json(&serde_json::json!(
+                {
+                    "block": block
+                }
+            ))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 400);
+    }
 }
 
 #[tokio::test]
