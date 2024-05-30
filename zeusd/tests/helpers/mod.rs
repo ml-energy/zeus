@@ -25,7 +25,7 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 
 #[derive(Clone)]
 pub struct TestGpu {
-    persistent_mode_tx: UnboundedSender<bool>,
+    persistence_mode_tx: UnboundedSender<bool>,
     power_limit_tx: UnboundedSender<u32>,
     gpu_locked_clocks_tx: UnboundedSender<(u32, u32)>,
     mem_locked_clocks_tx: UnboundedSender<(u32, u32)>,
@@ -33,7 +33,7 @@ pub struct TestGpu {
 }
 
 pub struct TestGpuObserver {
-    persistent_mode_rx: UnboundedReceiver<bool>,
+    persistence_mode_rx: UnboundedReceiver<bool>,
     power_limit_rx: UnboundedReceiver<u32>,
     gpu_locked_clocks_rx: UnboundedReceiver<(u32, u32)>,
     mem_locked_clocks_rx: UnboundedReceiver<(u32, u32)>,
@@ -41,20 +41,20 @@ pub struct TestGpuObserver {
 
 impl TestGpu {
     fn init() -> Result<(Self, TestGpuObserver), ZeusdError> {
-        let (persistent_mode_tx, persistent_mode_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (persistence_mode_tx, persistence_mode_rx) = tokio::sync::mpsc::unbounded_channel();
         let (power_limit_tx, power_limit_rx) = tokio::sync::mpsc::unbounded_channel();
         let (gpu_locked_clocks_tx, gpu_locked_clocks_rx) = tokio::sync::mpsc::unbounded_channel();
         let (mem_locked_clocks_tx, mem_locked_clocks_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let gpu = TestGpu {
-            persistent_mode_tx,
+            persistence_mode_tx,
             power_limit_tx,
             gpu_locked_clocks_tx,
             mem_locked_clocks_tx,
             valid_power_limit_range: (100_000, 300_000),
         };
         let observer = TestGpuObserver {
-            persistent_mode_rx,
+            persistence_mode_rx,
             power_limit_rx,
             gpu_locked_clocks_rx,
             mem_locked_clocks_rx,
@@ -69,8 +69,8 @@ impl GpuManager for TestGpu {
         Ok(NUM_GPUS)
     }
 
-    fn set_persistent_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
-        self.persistent_mode_tx.send(enabled).unwrap();
+    fn set_persistence_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
+        self.persistence_mode_tx.send(enabled).unwrap();
         Ok(())
     }
 
@@ -151,7 +151,7 @@ macro_rules! impl_zeusd_request {
     };
 }
 
-impl_zeusd_request!(SetPersistentMode);
+impl_zeusd_request!(SetPersistenceMode);
 impl_zeusd_request!(SetPowerLimit);
 impl_zeusd_request!(SetGpuLockedClocks);
 impl_zeusd_request!(ResetGpuLockedClocks);
@@ -194,8 +194,8 @@ impl TestApp {
         client.post(url).json(&payload).send()
     }
 
-    pub fn persistent_mode_history_for_gpu(&mut self, gpu_id: usize) -> Vec<bool> {
-        let rx = &mut self.observers[gpu_id].persistent_mode_rx;
+    pub fn persistence_mode_history_for_gpu(&mut self, gpu_id: usize) -> Vec<bool> {
+        let rx = &mut self.observers[gpu_id].persistence_mode_rx;
         std::iter::from_fn(|| rx.try_recv().ok()).collect()
     }
 

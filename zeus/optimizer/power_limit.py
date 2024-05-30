@@ -284,7 +284,7 @@ class GlobalPowerLimitOptimizer(Callback):
         # Turn on persistence mode and set to the highest power limit.
         try:
             for index in monitor.gpu_indices:
-                gpus.setPersistenceMode(index, enable=True)
+                gpus.setPersistenceMode(index, enabled=True)
         except ZeusGPUNoPermissionError as ze:
             raise RuntimeError(
                 "SYS_ADMIN capability is required to modify GPU power limits. "

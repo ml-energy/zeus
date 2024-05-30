@@ -1,9 +1,9 @@
-name: Check format, lint, and test
+name: (Zeus) Check format, lint, and test
 
 on:
   push:
     paths:
-      - '.github/workflows/fmt_lint_test.yaml'
+      - '.github/workflows/zeus_fmt_lint_test.yaml'
       - 'zeus/**'
       - 'tests/**'
       - 'capriccio/*.py'
@@ -14,7 +14,7 @@ on:
 
 # Jobs initiated by previous pushes get cancelled by a new push.
 concurrency:
-  group: ${{ github.ref }}-lint-and-test
+  group: ${{ github.ref }}-zeus-lint-and-test
   cancel-in-progress: true
 
 jobs:

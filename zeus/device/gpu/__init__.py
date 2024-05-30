@@ -1,37 +1,55 @@
-"""GPU device module for Zeus. Abstraction of GPU devices.
+"""Abstraction layer for GPU devices.
 
-The main function of this module is [`get_gpus`][zeus.device.gpu.get_gpus], which returns a GPU Manager object specific to the platform.
-To instantiate a GPU Manager object, you can do the following:
-    
+The main function of this module is [`get_gpus`][zeus.device.gpu.get_gpus],
+which returns a GPU Manager object specific to the platform.
+
+!!! Important
+    In theory, any NVIDIA GPU would be supported.
+    On the other hand, for AMD GPUs, we currently only support ROCm 6.0 and later.
+
+## Getting handles to GPUs
+
+The main API exported from this module is the `get_gpus` function. It returns either
+[`NVIDIAGPUs`][zeus.device.gpu.nvidia.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.amd.AMDGPUs]
+depending on the platform. 
+
 ```python
 from zeus.device import get_gpus
-gpus = get_gpus() # Returns NVIDIAGPUs() or AMDGPUs() depending on the platform.
+gpus = get_gpus()  
 ```
 
-There exists a 1:1 mapping between specific library functions and methods implemented in the GPU Manager object.
-For example, for NVIDIA systems, if you wanted to do:
+## Calling GPU management APIs
+
+GPU management library APIs are mapped to methods on [`GPU`][zeus.device.gpu.common.GPU].
+
+For example, for NVIDIA GPUs (which uses `pynvml`), you would have called:
 
 ```python
 handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
 constraints = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(handle)
 ```
 
-You can now do:
+With the Zeus GPU abstraction layer, you would now call:
 
 ```python
-gpus = get_gpus() # returns a NVIDIAGPUs object
-constraints =  gpus.getPowerManagementLimitConstraints(gpu_index)
+gpus = get_gpus() # returns an NVIDIAGPUs object
+constraints = gpus.getPowerManagementLimitConstraints(gpu_index)
 ```
 
-Class hierarchy:
+## Non-blocking calls
 
-- [`GPUs`][zeus.device.gpu.GPUs]: Abstract class for GPU managers.
-    - [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs]: GPU manager for NVIDIA GPUs, initialize NVIDIAGPU objects.
-    - [`AMDGPUs`][zeus.device.gpu.AMDGPUs]: GPU manager for AMD GPUs, initialize AMDGPU objects.
-- [`GPU`][zeus.device.gpu.GPU]: Abstract class for GPU objects.
-    - [`NVIDIAGPU`][zeus.device.gpu.NVIDIAGPU]: GPU object for NVIDIA GPUs.
-    - [`AMDGPU`][zeus.device.gpu.AMDGPU]: GPU object for AMD GPUs.
+Some implementations of `GPU` support non-blocking calls to setters.
+If non-blocking calls are not supported, setting `block` will be ignored and the call will block.
+Check [`GPU.supports_non_blocking`][zeus.device.gpu.common.GPU.supports_nonblocking_setters]
+to see if non-blocking calls are supported.
+Note that non-blocking calls will not raise exceptions even if the call fails.
 
+Currently, only [`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU] supports non-blocking calls
+to methods that set the GPU's power limit, GPU frequency, memory frequency, and persistence mode.
+This is possible because the Zeus daemon supports a `block: bool` parameter in HTTP requests,
+which can be set to `False` to make the call return immediately without checking the result.
+
+## Error handling
 
 The following exceptions are defined in this module:
 
@@ -55,9 +73,8 @@ The following exceptions are defined in this module:
 - [`ZeusGPULibRMVersionMismatchError`][zeus.device.gpu.ZeusGPULibRMVersionMismatchError]: Error for library version mismatch.
 - [`ZeusGPUMemoryError`][zeus.device.gpu.ZeusGPUMemoryError]: Error for memory issues.
 - [`ZeusGPUUnknownError`][zeus.device.gpu.ZeusGPUUnknownError]: Error for unknown issues.
-
-
 """
+
 from __future__ import annotations
 
 from zeus.device.gpu.common import *
@@ -70,17 +87,21 @@ _gpus: GPUs | None = None
 
 
 def get_gpus(ensure_homogeneous: bool = False) -> GPUs:
-    """Initialize and return a singleton GPU monitoring object for NVIDIA or AMD GPUs.
+    """Initialize and return a singleton object for GPU management.
 
-    The function returns a GPU management object that aims to abstract the underlying GPU monitoring libraries
-    (pynvml for NVIDIA GPUs and amdsmi for AMD GPUs), and provides a 1:1 mapping between the methods in the object and related library functions.
+    This function returns a GPU management object that aims to abstract
+    the underlying GPU vendor and their specific monitoring library
+    (pynvml for NVIDIA GPUs and amdsmi for AMD GPUs). Management APIs
+    are mapped to methods on the returned [`GPUs`][zeus.device.gpu.GPUs] object.
 
-    This function attempts to initialize GPU monitoring using the pynvml library for NVIDIA GPUs
-    first. If pynvml is not available or fails to initialize, it then tries to use the amdsmi
-    library for AMD GPUs. If both attempts fail, it raises a ZeusErrorInit exception.
+    GPU availability is checked in the following order:
+
+    1. NVIDIA GPUs using `pynvml`
+    1. AMD GPUs using `amdsmi`
+    1. If both are unavailable, a `ZeusGPUInitError` is raised.
 
     Args:
-        ensure_homogeneous (bool, optional): If True, ensures that all tracked GPUs have the same name. False by default.
+        ensure_homogeneous (bool): If True, ensures that all tracked GPUs have the same name.
     """
     global _gpus
     if _gpus is not None:

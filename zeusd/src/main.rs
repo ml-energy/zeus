@@ -1,4 +1,4 @@
-//! Entry point for the daemon.
+//! Entry point for the Zeus daemon.
 
 use std::net::TcpListener;
 
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let device_tasks = start_device_tasks()?;
-    tracing::info!("Started device tasks");
+    tracing::info!("Started all device tasks");
 
     let num_workers = config.num_workers.unwrap_or_else(|| {
         std::thread::available_parallelism()
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         }
         ConnectionMode::TCP => {
             let listener = TcpListener::bind(&config.tcp_bind_address)?;
-            tracing::info!("Listening on {}", &config.tcp_bind_address);
+            tracing::info!("Listening on {}", &listener.local_addr()?);
 
             start_server_tcp(listener, device_tasks, num_workers)?.await?;
         }

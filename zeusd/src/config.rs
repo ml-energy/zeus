@@ -1,11 +1,11 @@
-//! Configuration.
+//! Zeus daemon configuration.
 
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
 
 /// The Zeus daemon runs with elevated provileges and communicates with
-/// unprivileged Zeus clients over a Unix domain socket to allow them to
-/// interact with and control compute devices on the node.
+/// unprivileged Zeus clients to allow them to interact with and control
+/// compute devices on the node.
 #[derive(Parser, Debug)]
 #[command(version)]
 pub struct Config {
@@ -50,10 +50,6 @@ impl Config {
     }
 }
 
-pub fn get_config() -> Config {
-    Config::parse()
-}
-
 /// The mode of connection to use for the daemon.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum ConnectionMode {
@@ -61,4 +57,9 @@ pub enum ConnectionMode {
     UDS,
     /// TCP.
     TCP,
+}
+
+/// Parse command line arguments and return the resulting configuration object.
+pub fn get_config() -> Config {
+    Config::parse()
 }
