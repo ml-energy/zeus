@@ -17,7 +17,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.repository_owner = 'ml-energy'
+    if: github.repository_owner == 'ml-energy'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
