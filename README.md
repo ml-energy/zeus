@@ -74,6 +74,17 @@ Even more research is ongoing, and Zeus will continue to expand and get better a
 1. Chase (2023): [Paper](https://arxiv.org/abs/2303.02508)
 1. Perseus (2023): [Paper](https://arxiv.org/abs/2312.06902) | [Blog](https://ml.energy/zeus/research_overview/perseus)
 
+If you find Zeus relevant to your research, please consider citing:
+
+```bibtex
+@inproceedings{zeus-nsdi23,
+    title     = {Zeus: Understanding and Optimizing {GPU} Energy Consumption of {DNN} Training},
+    author    = {Jie You and Jae-Won Chung and Mosharaf Chowdhury},
+    booktitle = {USENIX NSDI},
+    year      = {2023}
+}
+```
+
 ## Other Resources
 
 1. Energy-Efficient Deep Learning with PyTorch and Zeus (PyTorch conference 2023): [Recording](https://youtu.be/veM3x9Lhw2A) | [Slides](https://ml.energy/assets/attachments/pytorch_conf_2023_slides.pdf)
