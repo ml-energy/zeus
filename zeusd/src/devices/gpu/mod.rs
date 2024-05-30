@@ -27,22 +27,29 @@ use crate::error::ZeusdError;
 /// This trait can be used to abstract over different GPU management libraries.
 /// Currently, this was done to facilitate testing.
 pub trait GpuManager {
+    /// Get the number of GPUs visible in the node.
     fn device_count() -> Result<u32, ZeusdError>
     where
         Self: Sized;
+    /// Set the persistence mode of the GPU.
     fn set_persistence_mode(&mut self, enabled: bool) -> Result<(), ZeusdError>;
+    /// Set the power management limit in milliwatts.
     fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), ZeusdError>;
+    /// Set the GPU's locked clock range in MHz.
     fn set_gpu_locked_clocks(
         &mut self,
         min_clock_mhz: u32,
         max_clock_mhz: u32,
     ) -> Result<(), ZeusdError>;
+    /// Reset the GPU's locked clocks.
     fn reset_gpu_locked_clocks(&mut self) -> Result<(), ZeusdError>;
+    /// Set the memory locked clock range in MHz.
     fn set_mem_locked_clocks(
         &mut self,
         min_clock_mhz: u32,
         max_clock_mhz: u32,
     ) -> Result<(), ZeusdError>;
+    /// Reset the memory locked clocks.
     fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError>;
 }
 
@@ -50,8 +57,10 @@ pub trait GpuManager {
 ///
 /// This is the type that is sent to the GPU management background task.
 /// The optional `Sender` is used to send a response back to the caller if the
-/// user wanted to block until the command is executed.
-/// The `Span` is used to propagate tracing context starting from the request.
+/// user wanted to block until the command is done executing.
+/// The `Instant` object is when the request was received by the server.
+/// It's used to log how long it took until the command was executed on the GPU.
+/// The `Span` object is used to propagate tracing context starting from the request.
 pub type GpuCommandRequest = (
     GpuCommand,
     Option<Sender<Result<(), ZeusdError>>>,

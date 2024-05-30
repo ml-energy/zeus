@@ -256,6 +256,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set power management limit: {resp.text}")
+        logger.debug("Took %s ms to set power limit", resp.elapsed.microseconds / 1000)
 
     @_handle_nvml_errors
     def resetPowerManagementLimit(self, block: bool = True) -> None:
@@ -273,6 +274,9 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set persistence mode: {resp.text}")
+        logger.debug(
+            "Took %s ms to set persistence mode", resp.elapsed.microseconds / 1000
+        )
 
     def setMemoryLockedClocks(
         self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
@@ -286,6 +290,9 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set memory locked clocks: {resp.text}")
+        logger.debug(
+            "Took %s ms to set memory locked clocks", resp.elapsed.microseconds / 1000
+        )
 
     def resetMemoryLockedClocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
@@ -369,6 +376,8 @@ class NVIDIAGPUs(gpu_common.GPUs):
                 raise ZeusdError(
                     f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}"
                 )
+            if not Path(sock_path).is_socket():
+                raise ZeusdError(f"ZEUSD_SOCK_PATH is not a socket: {sock_path}")
             if not os.access(sock_path, os.W_OK):
                 raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
             self._gpus = [

@@ -115,6 +115,7 @@ impl_handler_for_gpu_command!(
     post("/{gpu_id}/reset_mem_locked_clocks"),
 );
 
+/// Register GPU routes with the Actix web server.
 pub fn gpu_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(set_persistence_mode_handler)
         .service(set_power_limit_handler)
