@@ -26,7 +26,7 @@ use crate::error::ZeusdError;
 ///  - The `GpuCommand` variant name is the same as the API name, but the former is camel case
 ///  and the latter is snake case (e.g., SetPowerLimit vs. set_power_limit).
 macro_rules! impl_handler_for_gpu_command {
-    ($api:ident, $path:expr, $($field:ident <$ftype:ty>,)*) => {
+    ($api:ident, $path:expr, $($field:ident: $ftype:ty,)*) => {
         paste! {
         // Request payload structure.
         #[derive(Serialize, Deserialize, Debug)]
@@ -82,20 +82,20 @@ macro_rules! impl_handler_for_gpu_command {
 impl_handler_for_gpu_command!(
     set_persistence_mode,
     post("/{gpu_id}/set_persistence_mode"),
-    enabled<bool>,
+    enabled: bool,
 );
 
 impl_handler_for_gpu_command!(
     set_power_limit,
     post("/{gpu_id}/set_power_limit"),
-    power_limit_mw<u32>,
+    power_limit_mw: u32,
 );
 
 impl_handler_for_gpu_command!(
     set_gpu_locked_clocks,
     post("/{gpu_id}/set_gpu_locked_clocks"),
-    min_clock_mhz<u32>,
-    max_clock_mhz<u32>,
+    min_clock_mhz: u32,
+    max_clock_mhz: u32,
 );
 
 impl_handler_for_gpu_command!(
@@ -106,8 +106,8 @@ impl_handler_for_gpu_command!(
 impl_handler_for_gpu_command!(
     set_mem_locked_clocks,
     post("/{gpu_id}/set_mem_locked_clocks"),
-    min_clock_mhz<u32>,
-    max_clock_mhz<u32>,
+    min_clock_mhz: u32,
+    max_clock_mhz: u32,
 );
 
 impl_handler_for_gpu_command!(
@@ -115,6 +115,7 @@ impl_handler_for_gpu_command!(
     post("/{gpu_id}/reset_mem_locked_clocks"),
 );
 
+/// Register GPU routes with the Actix web server.
 pub fn gpu_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(set_persistence_mode_handler)
         .service(set_power_limit_handler)
