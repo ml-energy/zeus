@@ -37,6 +37,8 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 │   ├── device.py        #    - Abstraction layer over compute devices
 │   └── callback.py      #    - Base class for callbacks during training
 │
+├── zeusd/               # 🌩️ Zeus daemon
+│
 ├── docker/              # 🐳 Dockerfiles and Docker Compose files
 │
 ├── examples/            # 🛠️ Zeus usage examples
