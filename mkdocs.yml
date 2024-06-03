@@ -116,6 +116,10 @@ nav:
     - Perseus: research_overview/perseus.md
   - Source Code Reference: reference/
 
+# File to ignore
+exclude_docs: |
+  gen_ref_pages.py
+
 # Extra stuff
 extra:
   analytics:
