@@ -230,8 +230,8 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     def assert_window_begin(name: str, begin_time: int):
         """Assert monitor measurement states right after a window begins."""
-        assert monitor.measurement_states[name][0] == begin_time
-        assert monitor.measurement_states[name][1] == {
+        assert monitor.gpu_measurement_states[name][0] == begin_time
+        assert monitor.gpu_measurement_states[name][1] == {
             # `4` is the time origin of `time_counter`.
             i: pytest.approx((1000 + 3 * (begin_time - 4)) / 1000.0)
             for i in torch_gpu_indices
@@ -258,7 +258,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
             elapsed_time: The time elapsed when the window ended.
             assert_calls: Whether to assert calls to mock functions. (Default: `True`)
         """
-        assert name not in monitor.measurement_states
+        assert name not in monitor.gpu_measurement_states
         assert num_gpus == len(measurement.energy)
         assert elapsed_time == measurement.time
         assert set(measurement.energy.keys()) == set(torch_gpu_indices)

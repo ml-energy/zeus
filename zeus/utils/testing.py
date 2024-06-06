@@ -139,7 +139,9 @@ class ReplayZeusMonitor(ZeusMonitor):
         if cancel:
             self.logger.info("Measurement window '%s' cancelled.", key)
             return Measurement(
-                time=0.0, energy={gpu_index: 0.0 for gpu_index in self.gpu_indices}
+                time=0.0,
+                gpu_energy={gpu_index: 0.0 for gpu_index in self.gpu_indices},
+                cpu_energy={cpu_index: 0.0 for cpu_index in self.cpu_indices},
             )
 
         # Read the next line from the log file.
@@ -155,7 +157,9 @@ class ReplayZeusMonitor(ZeusMonitor):
             )
         time_consumption, *energy_consumptions = map(float, nums)
         energy = dict(zip(self.gpu_indices, energy_consumptions))
-        measurement = Measurement(time=time_consumption, energy=energy)
+        measurement = Measurement(
+            time=time_consumption, gpu_energy=energy, cpu_energy={}
+        )
 
         self.logger.info("Measurement window '%s' ended (%s).", key, measurement)
 

@@ -3,9 +3,70 @@
 from __future__ import annotations
 
 import abc
-from typing import Sequence
+from typing import Sequence, Optional
+from dataclasses import dataclass
 
 from zeus.device.exception import ZeusBaseCPUError
+
+
+@dataclass
+class CpuDramMeasurement:
+    """Represents a measurement of CPU and DRAM energy consumption.
+
+    Attributes:
+        cpu_mj (int): The CPU energy consumption in millijoules.
+        dram_mj (Optional[int]): The DRAM energy consumption in millijoules. Defaults to None.
+
+    Methods:
+        __sub__(self, other: CpuDramMeasurement) -> CpuDramMeasurement:
+            Subtracts the values of another CpuDramMeasurement from this one.
+
+        __truediv__(self, other: Union[CpuDramMeasurement, float]) -> CpuDramMeasurement:
+            Divides the values of this CpuDramMeasurement by a float.
+    """
+
+    cpu_mj: int
+    dram_mj: Optional[int] = None
+
+    def __sub__(self, other: CpuDramMeasurement) -> CpuDramMeasurement:
+        """Subtracts the values of another CpuDramMeasurement from this one.
+
+        Args:
+            other (CpuDramMeasurement): The other CpuDramMeasurement to subtract.
+
+        Returns:
+            CpuDramMeasurement: A new CpuDramMeasurement with the result of the subtraction.
+        """
+        dram_mj = None
+        if self.dram_mj is not None and other.dram_mj is not None:
+            dram_mj = self.dram_mj - other.dram_mj
+        elif self.dram_mj is not None:
+            dram_mj = self.dram_mj
+        elif other.dram_mj is not None:
+            dram_mj = -other.dram_mj
+        return CpuDramMeasurement(self.cpu_mj - other.cpu_mj, dram_mj)
+
+    def __truediv__(self, other: CpuDramMeasurement | float) -> CpuDramMeasurement:
+        """Divides the values of this CpuDramMeasurement by a float.
+
+        Args:
+            other (float): The float to divide by.
+
+        Returns:
+            CpuDramMeasurement: A new CpuDramMeasurement with the result of the division.
+
+        Raises:
+            ZeroDivisionError: If division by zero is attempted.
+        """
+        if isinstance(other, (int, float)):
+            if other == 0:
+                raise ZeroDivisionError("Division by zero is not allowed")
+            dram_mj = None
+            if self.dram_mj is not None:
+                dram_mj = int(self.dram_mj / other)
+            return CpuDramMeasurement(int(self.cpu_mj / other), dram_mj)
+        else:
+            raise TypeError("Division only supported with a number")
 
 
 class ZeusCPUInitError(ZeusBaseCPUError):
@@ -43,18 +104,13 @@ class CPU(abc.ABC):
         self.cpu_index = cpu_index
 
     @abc.abstractmethod
-    def getTotalEnergyConsumption(self) -> int:
+    def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         pass
 
     @abc.abstractmethod
     def supportsGetSubpackageEnergyConsumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
-        pass
-
-    @abc.abstractmethod
-    def getSubpackageEnergyConsumption(self) -> int:
-        """Returns the energy consumption of the subpackages inside the specified powerzone. Units: mJ."""
         pass
 
 
@@ -81,7 +137,7 @@ class CPUs(abc.ABC):
         """Returns a list of CPU objects being tracked."""
         pass
 
-    def getTotalEnergyConsumption(self, index: int) -> int:
+    def getTotalEnergyConsumption(self, index: int) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         return self.cpus[index].getTotalEnergyConsumption()
 
@@ -89,11 +145,6 @@ class CPUs(abc.ABC):
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.cpus[index].supportsGetSubpackageEnergyConsumption()
 
-    def getSubpackageEnergyConsumption(self, index: int) -> int:
-        """Returns the energy consumption of the subpackages inside the specified powerzone. Units: mJ."""
-        return self.cpus[index].getSubpackageEnergyConsumption()
-
     def __len__(self) -> int:
         """Returns the number of CPUs being tracked."""
         return len(self.cpus)
-
