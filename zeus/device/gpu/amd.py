@@ -69,7 +69,10 @@ class AMDGPU(gpu_common.GPU):
         """Initialize the GPU object."""
         super().__init__(gpu_index)
         self._get_handle()
-        self._supportsGetTotalEnergyConsumption = None
+        # XXX(Jae-Won): Right now, the energy API's unit is broken (either the
+        # `power` field or the `counter_resolution` field). Before that, we're
+        # disabling the energy API.
+        self._supportsGetTotalEnergyConsumption = False
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -258,7 +261,7 @@ class AMDGPUs(gpu_common.GPUs):
     """AMD GPU Manager object, containing individual AMDGPU objects, abstracting amdsmi calls and handling related exceptions.
 
     !!! Important
-        Currently only ROCM 6.0 is supported.
+        Currently only ROCm >= 6.1 is supported.
 
     `HIP_VISIBLE_DEVICES` environment variable is respected if set.
     For example, if there are 4 GPUs on the node and `HIP_VISIBLE_DEVICES=0,2`,

@@ -5,7 +5,7 @@ which returns a GPU Manager object specific to the platform.
 
 !!! Important
     In theory, any NVIDIA GPU would be supported.
-    On the other hand, for AMD GPUs, we currently only support ROCm 6.0 and later.
+    On the other hand, for AMD GPUs, we currently only support ROCm 6.1 and later.
 
 ## Getting handles to GPUs
 
