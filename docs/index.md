@@ -34,6 +34,19 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 
 We also provide usage [examples](https://github.com/ml-energy/zeus/tree/master/examples) in our GitHub repository.
 
+---
+
+If you find Zeus relevant to your research, please consider citing:
+
+```bibtex
+@inproceedings{zeus-nsdi23,
+    title     = {Zeus: Understanding and Optimizing {GPU} Energy Consumption of {DNN} Training},
+    author    = {Jie You and Jae-Won Chung and Mosharaf Chowdhury},
+    booktitle = {USENIX NSDI},
+    year      = {2023}
+}
+```
+
 ## Contact
 
 Jae-Won Chung (jwnchung@umich.edu)
