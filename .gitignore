@@ -16,5 +16,4 @@ env/
 .pytest_cache/
 /envs
 .nvim
-test.py
 gpg
