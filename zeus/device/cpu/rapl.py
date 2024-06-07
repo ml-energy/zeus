@@ -17,7 +17,6 @@ import os
 import contextlib
 from typing import Sequence
 import warnings
-import re
 from glob import glob
 
 import zeus.device.cpu.common as cpu_common
@@ -95,7 +94,7 @@ class RAPLFile:
         """Read the current energy value from the energy_uj file.
 
         Returns:
-            int: The current energy value in millijoules.
+            The current energy value in millijoules.
         """
         with open(self.energy_uj_path) as energy_file:
             new_energy_uj = float(energy_file.read().strip())
@@ -167,9 +166,8 @@ class RAPLCPUs(cpu_common.CPUs):
     def _init_cpus(self) -> None:
         """Initialize all Intel CPUs."""
         self._cpus = []
-        pattern = re.compile(r"intel-rapl:(\d+)")
         for dir in sorted(glob(f"{RAPL_DIR}/intel-rapl:*")):
-            parts = dir.split(':')
+            parts = dir.split(":")
             if len(parts) > 1 and parts[1].isdigit():
                 self._cpus.append(RAPLCPU(int(parts[1])))
 

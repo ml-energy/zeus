@@ -300,8 +300,8 @@ class ZeusMonitor:
         self.measurement_states[key] = MeasurementState(
             time=timestamp,
             gpu_energy=gpu_energy_state,
-            cpu_energy=cpu_energy_state if cpu_energy_state else None,
-            dram_energy=dram_energy_state if dram_energy_state else None,
+            cpu_energy=cpu_energy_state or None,
+            dram_energy=dram_energy_state or None,
         )
         logger.debug("Measurement window '%s' started.", key)
 
@@ -324,10 +324,6 @@ class ZeusMonitor:
             measurement_state = self.measurement_states.pop(key)
         except KeyError:
             raise ValueError(f"Measurement window '{key}' does not exist") from None
-        start_time = measurement_state.time
-        gpu_start_energy = measurement_state.gpu_energy
-        cpu_start_energy = measurement_state.cpu_energy
-        dram_start_energy = measurement_state.dram_energy
 
         # Take instant power consumption measurements.
         # This, in theory, is introducing extra NVMLs call in the critical path
@@ -354,6 +350,11 @@ class ZeusMonitor:
             )
 
         end_time: float = time()
+        start_time = measurement_state.time
+        gpu_start_energy = measurement_state.gpu_energy
+        cpu_start_energy = measurement_state.cpu_energy
+        dram_start_energy = measurement_state.dram_energy
+
         time_consumption: float = end_time - start_time
         gpu_energy_consumption: dict[int, float] = {}
         for gpu_index in self.gpu_indices:
@@ -409,5 +410,5 @@ class ZeusMonitor:
             time=time_consumption,
             gpu_energy=gpu_energy_consumption,
             cpu_energy=cpu_energy_consumption or None,
-            dram_energy=dram_energy_consumption if dram_energy_consumption else None,
+            dram_energy=dram_energy_consumption or None,
         )
