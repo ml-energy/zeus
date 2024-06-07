@@ -130,7 +130,7 @@ class RAPLCPU(cpu_common.CPU):
                     rapl_file = RAPLFile(os.path.join(self.path, dir))
                 except ZeusRAPLFileInitError as err:
                     warnings.warn(
-                        f"Failed to initialize subpackage {err}", stacklevel=2
+                        f"Failed to initialize subpackage {err}", stacklevel=1
                     )
                     continue
                 if rapl_file.name == "dram":

@@ -69,7 +69,7 @@ class MeasurementState:
     Used in ZeusMonitor to map string keys of measurements to this dataclass.
 
     Attributes:
-        time: Time elapsed (in seconds) during the measurement window.
+        time: The beginning timestamp of the measurement window.
         gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
             measurement window. GPU indices are from the DL framework's perspective
             after applying `CUDA_VISIBLE_DEVICES`.
