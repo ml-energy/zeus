@@ -16,13 +16,6 @@ class CpuDramMeasurement:
     Attributes:
         cpu_mj (int): The CPU energy consumption in millijoules.
         dram_mj (Optional[int]): The DRAM energy consumption in millijoules. Defaults to None.
-
-    Methods:
-        __sub__(self, other: CpuDramMeasurement) -> CpuDramMeasurement:
-            Subtracts the values of another CpuDramMeasurement from this one.
-
-        __truediv__(self, other: Union[CpuDramMeasurement, float]) -> CpuDramMeasurement:
-            Divides the values of this CpuDramMeasurement by a float.
     """
 
     cpu_mj: int
