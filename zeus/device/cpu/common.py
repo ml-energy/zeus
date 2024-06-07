@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Sequence, Optional
+from typing import Sequence
 from dataclasses import dataclass
 
 from zeus.device.exception import ZeusBaseCPUError
@@ -59,7 +59,7 @@ class CpuDramMeasurement:
                 dram_mj = int(self.dram_mj / other)
             return CpuDramMeasurement(int(self.cpu_mj / other), dram_mj)
         else:
-            raise TypeError("Division only supported with a number")
+            return NotImplemented
 
 
 class ZeusCPUInitError(ZeusBaseCPUError):
@@ -141,3 +141,35 @@ class CPUs(abc.ABC):
     def __len__(self) -> int:
         """Returns the number of CPUs being tracked."""
         return len(self.cpus)
+
+
+class EMPTYCPUs(CPUs):
+    """Empty CPUs management object to be used when CPUs management object is unavailable.
+
+    Calls to any methods will return a value error and the length of this object will be 0
+    """
+
+    def __init__(self) -> None:
+        """Instantiates empty CPUs object."""
+        pass
+
+    def __del__(self) -> None:
+        """Shuts down the Intel CPU monitoring."""
+        pass
+
+    @property
+    def cpus(self) -> Sequence[CPU]:
+        """Returns a list of CPU objects being tracked."""
+        return []
+
+    def getTotalEnergyConsumption(self, index: int) -> CpuDramMeasurement:
+        """Returns the total energy consumption of the specified powerzone. Units: mJ."""
+        raise ValueError("No CPUs available.")
+
+    def supportsGetSubpackageEnergyConsumption(self, index: int) -> bool:
+        """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
+        raise ValueError("No CPUs available.")
+
+    def __len__(self) -> int:
+        """Returns 0 since the object is empty."""
+        return 0

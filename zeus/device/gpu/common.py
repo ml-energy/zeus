@@ -257,6 +257,119 @@ class GPUs(abc.ABC):
         return self.gpus[gpu_index].getTotalEnergyConsumption()
 
 
+class EMPTYGPUs(GPUs):
+    """A concrete class implementing the GPUs abstract base class, but representing an empty collection of GPUs.
+
+    This class is used to represent a scenario where no GPUs are available or detected.
+    Any method call attempting to interact with a GPU will raise a ValueError.
+    """
+
+    def __init__(self, ensure_homogeneous: bool = False) -> None:
+        """Initialize the EMPTYGPUs class.
+
+        Since this class represents an empty collection of GPUs, no actual initialization of GPU objects is performed.
+        """
+        pass
+
+    def __del__(self) -> None:
+        """Clean up any resources if necessary.
+
+        As this class represents an empty collection of GPUs, no specific cleanup is required.
+        """
+        pass
+
+    @property
+    def gpus(self) -> Sequence["GPU"]:
+        """Return an empty list as no GPUs are being tracked."""
+        return []
+
+    def __len__(self) -> int:
+        """Return 0, indicating no GPUs are being tracked."""
+        return 0
+
+    def _ensure_homogeneous(self) -> None:
+        """Raise a ValueError as no GPUs are being tracked."""
+        raise ValueError("No GPUs available to ensure homogeneity.")
+
+    def _warn_sys_admin(self) -> None:
+        """Raise a ValueError as no GPUs are being tracked."""
+        raise ValueError("No GPUs available to warn about SYS_ADMIN privileges.")
+
+    def getName(self, gpu_index: int) -> str:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def getPowerManagementLimitConstraints(self, gpu_index: int) -> tuple[int, int]:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def setPowerManagementLimit(
+        self, gpu_index: int, power_limit_mw: int, _block: bool = True
+    ) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def resetPowerManagementLimit(self, gpu_index: int, _block: bool = True) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def setPersistenceMode(
+        self, gpu_index: int, enabled: bool, _block: bool = True
+    ) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def getSupportedMemoryClocks(self, gpu_index: int) -> list[int]:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def setMemoryLockedClocks(
+        self,
+        gpu_index: int,
+        min_clock_mhz: int,
+        max_clock_mhz: int,
+        _block: bool = True,
+    ) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def resetMemoryLockedClocks(self, gpu_index: int, _block: bool = True) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def getSupportedGraphicsClocks(
+        self, gpu_index: int, memory_clock_mhz: int | None = None
+    ) -> list[int]:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def setGpuLockedClocks(
+        self,
+        gpu_index: int,
+        min_clock_mhz: int,
+        max_clock_mhz: int,
+        _block: bool = True,
+    ) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def resetGpuLockedClocks(self, gpu_index: int, _block: bool = True) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def getInstantPowerUsage(self, gpu_index: int) -> int:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def supportsGetTotalEnergyConsumption(self, gpu_index: int) -> bool:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def getTotalEnergyConsumption(self, gpu_index: int) -> int:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+
 class ZeusGPUInitError(ZeusBaseGPUError):
     """Import error or GPU library initialization failures."""
 

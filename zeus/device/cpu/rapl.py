@@ -152,7 +152,7 @@ class RAPLCPU(cpu_common.CPU):
 
 
 class RAPLCPUs(cpu_common.CPUs):
-    """Intel CPU Manager object, containing individual IntelCPU objects, abstracting RAPL calls and handling related exceptions."""
+    """RAPL CPU Manager object, containing individual RAPLCPU objects, abstracting RAPL calls and handling related exceptions."""
 
     def __init__(self) -> None:
         """Instantiates IntelCPUs object, setting up tracking for specified Intel CPUs."""

@@ -21,13 +21,13 @@ from time import time
 from pathlib import Path
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Optional
-import contextlib
 
 from zeus.monitor.power import PowerMonitor
 from zeus.utils.logging import get_logger
 from zeus.utils.framework import cuda_sync
 from zeus.device import get_gpus, get_cpus
+from zeus.device.gpu.common import ZeusGPUInitError, EMPTYGPUs
+from zeus.device.cpu.common import ZeusCPUInitError, EMPTYCPUs
 
 logger = get_logger(__name__)
 
@@ -48,7 +48,31 @@ class Measurement:
     time: float
     gpu_energy: dict[int, float]
     cpu_energy: dict[int, float]
-    dram_energy: Optional[dict[int, float]] = None
+    dram_energy: dict[int, float] | None = None
+
+    @cached_property
+    def total_energy(self) -> float:
+        """Total energy consumed (in Joules) during the measurement window."""
+        return sum(self.gpu_energy.values())
+
+
+@dataclass
+class MeasurementState:
+    """Measurement state object for internal use.
+
+    Attributes:
+        time: Time elapsed (in seconds) during the measurement window.
+        gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
+            measurement window. GPU indices are from the DL framework's perspective
+            after applying `CUDA_VISIBLE_DEVICES`.
+        cpu_energy: CPU energy consumption (in J) during the measurement window.
+        dram_energy: DRAM energy consumption (in J) during the measurement window.
+    """
+
+    time: float
+    gpu_energy: dict[int, float]
+    cpu_energy: dict[int, float]
+    dram_energy: dict[int, float] | None = None
 
     @cached_property
     def total_energy(self) -> float:
@@ -147,23 +171,29 @@ class ZeusMonitor:
         self.approx_instant_energy = approx_instant_energy
 
         # Get gpus
-        with contextlib.suppress(Exception):
+        try:
             self.gpus = get_gpus()
+        except ZeusGPUInitError:
+            self.gpus = EMPTYGPUs()
 
         # Get cpus
-        self.cpus = None
-        with contextlib.suppress(Exception):
+        try:
             self.cpus = get_cpus()
+        except ZeusCPUInitError:
+            self.cpus = EMPTYCPUs()
 
         # Get GPU indices:
         self.gpu_indices = (
-            gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
+            gpu_indices
+            if gpu_indices is not None
+            else list(range(len(self.gpus)))
+            if self.gpus is not None
+            else []
         )
 
         # Get CPU indices:
         self.cpu_indices = (
-            cpu_indices if cpu_indices is not None else list(range(len(self.cpus))) if self.cpus is
-                not None else []
+            cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
         )
 
         # Initialize loggers.
@@ -180,13 +210,14 @@ class ZeusMonitor:
             self.log_file.flush()
 
         logger.info("Monitoring GPU indices %s.", self.gpu_indices)
+        logger.info("Monitoring CPU indices %s", self.cpu_indices)
 
         # A dictionary that maps the string keys of active measurement windows to
         # the state of the measurement window. Each element in the dictionary is a tuple of:
         #     1) Time elapsed at the beginning of this window.
         #     2) Total energy consumed by each >= Volta GPU at the beginning of
         #        this window (`None` for older GPUs).
-        self.measurement_states: dict[str, Measurement] = {}
+        self.measurement_states: dict[str, MeasurementState] = {}
 
         # Initialize power monitors for older architecture GPUs.
         old_gpu_indices = [
@@ -244,14 +275,11 @@ class ZeusMonitor:
         for cpu_index in self.cpu_indices:
             cpu_measurement = self.cpus.getTotalEnergyConsumption(cpu_index) / 1000.0
             cpu_energy_state[cpu_index] = cpu_measurement.cpu_mj
-            if (
-                self.cpus.supportsGetSubpackageEnergyConsumption(cpu_index)
-                and cpu_measurement.dram_mj is not None
-            ):
+            if cpu_measurement.dram_mj is not None:
                 dram_energy_state[cpu_index] = cpu_measurement.dram_mj
 
         # Add measurement state to dictionary.
-        self.measurement_states[key] = Measurement(
+        self.measurement_states[key] = MeasurementState(
             time=timestamp,
             gpu_energy=gpu_energy_state,
             cpu_energy=cpu_energy_state,
@@ -276,12 +304,12 @@ class ZeusMonitor:
         # Retrieve the start time and energy consumption of this window.
         try:
             measurement_state = self.measurement_states.pop(key)
-            start_time = measurement_state.time
-            gpu_start_energy = measurement_state.gpu_energy
-            cpu_start_energy = measurement_state.cpu_energy
-            dram_start_energy = measurement_state.dram_energy
         except KeyError:
             raise ValueError(f"Measurement window '{key}' does not exist") from None
+        start_time = measurement_state.time
+        gpu_start_energy = measurement_state.gpu_energy
+        cpu_start_energy = measurement_state.cpu_energy
+        dram_start_energy = measurement_state.dram_energy
 
         # Take instant power consumption measurements.
         # This, in theory, is introducing extra NVMLs call in the critical path
@@ -325,11 +353,7 @@ class ZeusMonitor:
             cpu_energy_consumption[cpu_index] = (
                 cpu_measurement.cpu_mj - cpu_start_energy[cpu_index]
             )
-            if (
-                self.cpus.supportsGetSubpackageEnergyConsumption(cpu_index)
-                and dram_start_energy is not None
-                and cpu_measurement.dram_mj is not None
-            ):
+            if dram_start_energy is not None and cpu_measurement.dram_mj is not None:
                 dram_energy_consumption[cpu_index] = (
                     cpu_measurement.dram_mj - dram_start_energy[cpu_index]
                 )
