@@ -76,7 +76,9 @@ class RAPLFile:
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError("Error reading package energy") from err
         try:
-            with open(os.path.join(path, "max_energy_range_uj"), "r") as max_energy_file:
+            with open(
+                os.path.join(path, "max_energy_range_uj"), "r"
+            ) as max_energy_file:
                 self.max_energy_range_uj = float(max_energy_file.read().strip())
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError(
@@ -127,7 +129,7 @@ class RAPLCPU(cpu_common.CPU):
                     rapl_file = RAPLFile(os.path.join(self.path, dir))
                 except ZeusRAPLFileInitError as err:
                     warnings.warn(
-                        f"Failed to initialize subpackage {err}"
+                        f"Failed to initialize subpackage {err}", stacklevel=2
                     )
                     continue
                 if rapl_file.name == "dram":
@@ -164,7 +166,7 @@ class RAPLCPUs(cpu_common.CPUs):
     def _init_cpus(self) -> None:
         """Initialize all Intel CPUs."""
         self._cpus = []
-        pattern = re.compile(r'intel-rapl:(\d+)')
+        pattern = re.compile(r"intel-rapl:(\d+)")
         for dir in os.listdir(RAPL_DIR):
             match = pattern.match(dir)
             if match:
@@ -172,7 +174,6 @@ class RAPLCPUs(cpu_common.CPUs):
                     self._cpus.append(RAPLCPU(int(match.group(1))))
                 except ZeusRAPLFileInitError:
                     continue
-
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""

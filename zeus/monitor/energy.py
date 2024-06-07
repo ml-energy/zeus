@@ -46,7 +46,7 @@ class Measurement:
             be 'None' if CPU measurement is not available.
         dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
-            measurements are taken from sub-packages within each powerzone. This can be 'None' if 
+            measurements are taken from sub-packages within each powerzone. This can be 'None' if
             CPU measurement is not available or DRAM measurement is not available.
     """
 
@@ -64,8 +64,9 @@ class Measurement:
 
 @dataclass
 class MeasurementState:
-    """Measurement state to keep track of measurements in start_window. Used in ZeusMonitor to map
-    string keys of measurements to this dataclass.
+    """Measurement state to keep track of measurements in start_window.
+
+    Used in ZeusMonitor to map string keys of measurements to this dataclass.
 
     Attributes:
         time: Time elapsed (in seconds) during the measurement window.
@@ -77,7 +78,7 @@ class MeasurementState:
             be 'None' if CPU measurement is not available.
         dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
-            measurements are taken from sub-packages within each powerzone. This can be 'None' if 
+            measurements are taken from sub-packages within each powerzone. This can be 'None' if
             CPU measurement is not available or DRAM measurement is not available.
     """
 
