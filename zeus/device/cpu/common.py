@@ -19,7 +19,7 @@ class CpuDramMeasurement:
     """
 
     cpu_mj: int
-    dram_mj: Optional[int] = None
+    dram_mj: int | None = None
 
     def __sub__(self, other: CpuDramMeasurement) -> CpuDramMeasurement:
         """Subtracts the values of another CpuDramMeasurement from this one.
