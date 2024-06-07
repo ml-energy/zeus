@@ -39,7 +39,7 @@ class CpuDramMeasurement:
             dram_mj = -other.dram_mj
         return CpuDramMeasurement(self.cpu_mj - other.cpu_mj, dram_mj)
 
-    def __truediv__(self, other: CpuDramMeasurement | float) -> CpuDramMeasurement:
+    def __truediv__(self, other: int | float) -> CpuDramMeasurement:
         """Divides the values of this CpuDramMeasurement by a float.
 
         Args:
