@@ -41,37 +41,49 @@ class Measurement:
         gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
             measurement window. GPU indices are from the DL framework's perspective
             after applying `CUDA_VISIBLE_DEVICES`.
-        cpu_energy: CPU energy consumption (in J) during the measurement window.
-        dram_energy: DRAM energy consumption (in J) during the measurement window.
+        cpu_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
+            be 'None' if CPU measurement is not available.
+        dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
+            measurements are taken from sub-packages within each powerzone. This can be 'None' if 
+            CPU measurement is not available or DRAM measurement is not available.
     """
 
     time: float
     gpu_energy: dict[int, float]
-    cpu_energy: dict[int, float]
+    cpu_energy: dict[int, float] | None = None
     dram_energy: dict[int, float] | None = None
 
     @cached_property
     def total_energy(self) -> float:
         """Total energy consumed (in Joules) during the measurement window."""
+        # TODO: Update method to total_gpu_energy, which may cause breaking changes in the examples/
         return sum(self.gpu_energy.values())
 
 
 @dataclass
 class MeasurementState:
-    """Measurement state object for internal use.
+    """Measurement state to keep track of measurements in start_window. Used in ZeusMonitor to map
+    string keys of measurements to this dataclass.
 
     Attributes:
         time: Time elapsed (in seconds) during the measurement window.
         gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
             measurement window. GPU indices are from the DL framework's perspective
             after applying `CUDA_VISIBLE_DEVICES`.
-        cpu_energy: CPU energy consumption (in J) during the measurement window.
-        dram_energy: DRAM energy consumption (in J) during the measurement window.
+        cpu_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
+            be 'None' if CPU measurement is not available.
+        dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
+            measurements are taken from sub-packages within each powerzone. This can be 'None' if 
+            CPU measurement is not available or DRAM measurement is not available.
     """
 
     time: float
     gpu_energy: dict[int, float]
-    cpu_energy: dict[int, float]
+    cpu_energy: dict[int, float] | None = None
     dram_energy: dict[int, float] | None = None
 
     @cached_property
@@ -213,10 +225,15 @@ class ZeusMonitor:
         logger.info("Monitoring CPU indices %s", self.cpu_indices)
 
         # A dictionary that maps the string keys of active measurement windows to
-        # the state of the measurement window. Each element in the dictionary is a tuple of:
+        # the state of the measurement window. Each element in the dictionary is a Measurement State
+        # object with:
         #     1) Time elapsed at the beginning of this window.
         #     2) Total energy consumed by each >= Volta GPU at the beginning of
         #        this window (`None` for older GPUs).
+        #     3) Total energy consumed by each CPU powerzone at the beginning of this window.
+        #        ('None' if CPU measurement is not supported)
+        #     4) Total energy consumed by each DRAM in powerzones at the beginning of this window.
+        #        ('None' if DRAM measurement is not supported)
         self.measurement_states: dict[str, MeasurementState] = {}
 
         # Initialize power monitors for older architecture GPUs.
@@ -282,7 +299,7 @@ class ZeusMonitor:
         self.measurement_states[key] = MeasurementState(
             time=timestamp,
             gpu_energy=gpu_energy_state,
-            cpu_energy=cpu_energy_state,
+            cpu_energy=cpu_energy_state if cpu_energy_state else None,
             dram_energy=dram_energy_state if dram_energy_state else None,
         )
         logger.debug("Measurement window '%s' started.", key)
@@ -350,9 +367,10 @@ class ZeusMonitor:
         dram_energy_consumption: dict[int, float] = {}
         for cpu_index in self.cpu_indices:
             cpu_measurement = self.cpus.getTotalEnergyConsumption(cpu_index) / 1000.0
-            cpu_energy_consumption[cpu_index] = (
-                cpu_measurement.cpu_mj - cpu_start_energy[cpu_index]
-            )
+            if cpu_start_energy is not None:
+                cpu_energy_consumption[cpu_index] = (
+                    cpu_measurement.cpu_mj - cpu_start_energy[cpu_index]
+                )
             if dram_start_energy is not None and cpu_measurement.dram_mj is not None:
                 dram_energy_consumption[cpu_index] = (
                     cpu_measurement.dram_mj - dram_start_energy[cpu_index]
@@ -389,6 +407,6 @@ class ZeusMonitor:
         return Measurement(
             time=time_consumption,
             gpu_energy=gpu_energy_consumption,
-            cpu_energy=cpu_energy_consumption,
+            cpu_energy=cpu_energy_consumption if cpu_energy_consumption else None,
             dram_energy=dram_energy_consumption if dram_energy_consumption else None,
         )
