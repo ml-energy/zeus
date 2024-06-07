@@ -18,6 +18,7 @@ import contextlib
 from typing import Sequence
 import warnings
 import re
+import glob
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
@@ -174,6 +175,8 @@ class RAPLCPUs(cpu_common.CPUs):
                     self._cpus.append(RAPLCPU(int(match.group(1))))
                 except ZeusRAPLFileInitError:
                     continue
+        for dir in sorted(glob(f"{RAPL_DIR}/intel-rapl:*")):
+            print(dir)
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""

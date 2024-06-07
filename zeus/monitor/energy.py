@@ -26,8 +26,8 @@ from zeus.monitor.power import PowerMonitor
 from zeus.utils.logging import get_logger
 from zeus.utils.framework import cuda_sync
 from zeus.device import get_gpus, get_cpus
-from zeus.device.gpu.common import ZeusGPUInitError, EMPTYGPUs
-from zeus.device.cpu.common import ZeusCPUInitError, EMPTYCPUs
+from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
+from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
 
 logger = get_logger(__name__)
 
@@ -187,13 +187,13 @@ class ZeusMonitor:
         try:
             self.gpus = get_gpus()
         except ZeusGPUInitError:
-            self.gpus = EMPTYGPUs()
+            self.gpus = EmptyGPUs()
 
         # Get cpus
         try:
             self.cpus = get_cpus()
         except ZeusCPUInitError:
-            self.cpus = EMPTYCPUs()
+            self.cpus = EmptyCPUs()
 
         # Get GPU indices:
         self.gpu_indices = (

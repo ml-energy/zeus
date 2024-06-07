@@ -143,7 +143,7 @@ class CPUs(abc.ABC):
         return len(self.cpus)
 
 
-class EMPTYCPUs(CPUs):
+class EmptyCPUs(CPUs):
     """Empty CPUs management object to be used when CPUs management object is unavailable.
 
     Calls to any methods will return a value error and the length of this object will be 0
