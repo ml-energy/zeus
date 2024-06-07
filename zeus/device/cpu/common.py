@@ -16,17 +16,10 @@ class CpuDramMeasurement:
     Attributes:
         cpu_mj (int): The CPU energy consumption in millijoules.
         dram_mj (Optional[int]): The DRAM energy consumption in millijoules. Defaults to None.
-
-    Methods:
-        __sub__(self, other: CpuDramMeasurement) -> CpuDramMeasurement:
-            Subtracts the values of another CpuDramMeasurement from this one.
-
-        __truediv__(self, other: Union[CpuDramMeasurement, float]) -> CpuDramMeasurement:
-            Divides the values of this CpuDramMeasurement by a float.
     """
 
     cpu_mj: int
-    dram_mj: Optional[int] = None
+    dram_mj: int | None = None
 
     def __sub__(self, other: CpuDramMeasurement) -> CpuDramMeasurement:
         """Subtracts the values of another CpuDramMeasurement from this one.
@@ -46,11 +39,11 @@ class CpuDramMeasurement:
             dram_mj = -other.dram_mj
         return CpuDramMeasurement(self.cpu_mj - other.cpu_mj, dram_mj)
 
-    def __truediv__(self, other: CpuDramMeasurement | float) -> CpuDramMeasurement:
+    def __truediv__(self, other: int | float) -> CpuDramMeasurement:
         """Divides the values of this CpuDramMeasurement by a float.
 
         Args:
-            other (float): The float to divide by.
+            other: The float to divide by.
 
         Returns:
             CpuDramMeasurement: A new CpuDramMeasurement with the result of the division.
