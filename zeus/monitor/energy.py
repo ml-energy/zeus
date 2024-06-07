@@ -408,6 +408,6 @@ class ZeusMonitor:
         return Measurement(
             time=time_consumption,
             gpu_energy=gpu_energy_consumption,
-            cpu_energy=cpu_energy_consumption if cpu_energy_consumption else None,
+            cpu_energy=cpu_energy_consumption or None,
             dram_energy=dram_energy_consumption if dram_energy_consumption else None,
         )
