@@ -103,7 +103,7 @@ class RAPLFile:
             self.last_energy = new_energy_uj
             return (new_energy_uj + self.max_energy_range_uj) / 1000.0
         self.last_energy = new_energy_uj
-        return self.last_energy / 1000.0
+        return new_energy_uj / 1000.0
 
 
 class RAPLCPU(cpu_common.CPU):
