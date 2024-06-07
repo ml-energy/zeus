@@ -16,6 +16,8 @@ from __future__ import annotations
 import os
 import contextlib
 from typing import Sequence
+import warnings
+import re
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
@@ -37,7 +39,7 @@ def rapl_is_available() -> bool:
 
 
 class ZeusRAPLNotSupportedError(ZeusBaseCPUError):
-    """Zeus CPU exception class Wrapper for RAPL not supported on CPU."""
+    """Zeus CPU exception class wrapper for RAPL not supported on CPU."""
 
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
@@ -45,7 +47,7 @@ class ZeusRAPLNotSupportedError(ZeusBaseCPUError):
 
 
 class ZeusRAPLFileInitError(ZeusBaseCPUError):
-    """Zeus CPU exception class Wrapper for RAPL file initialization error on CPU."""
+    """Zeus CPU exception class wrapper for RAPL file initialization error on CPU."""
 
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
@@ -70,16 +72,12 @@ class RAPLFile:
             raise ZeusRAPLFileInitError("Error reading package name") from err
         try:
             with open(self.energy_uj_path) as energy_file:
-                self.last_energy = int(float(energy_file.read().strip()) / 10**3)
+                self.last_energy = float(energy_file.read().strip())
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError("Error reading package energy") from err
         try:
-            with open(
-                os.path.join(path, "max_energy_range_uj"), "r"
-            ) as max_energy_file:
-                self.max_energy_range_uj = int(
-                    float(max_energy_file.read().strip()) / 10**3
-                )
+            with open(os.path.join(path, "max_energy_range_uj"), "r") as max_energy_file:
+                self.max_energy_range_uj = float(max_energy_file.read().strip())
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError(
                 "Error reading package max energy range"
@@ -90,27 +88,19 @@ class RAPLFile:
         return f"Path: {self.path}\nEnergy_uj_path: {self.energy_uj_path}\nName: {self.name}\
         \nLast_energy: {self.last_energy}\nMax_energy: {self.max_energy_range_uj}"
 
-    def _read(self) -> int:
+    def read(self) -> float:
         """Read the current energy value from the energy_uj file.
 
         Returns:
             int: The current energy value in millijoules.
         """
         with open(self.energy_uj_path) as energy_file:
-            self.last_energy = int(float(energy_file.read().strip()) / 10**3)
-        return self.last_energy
-
-    def _read_delta(self) -> int:
-        """Read the delta energy value since the last read.
-
-        Returns:
-            int: The delta energy value in millijoules.
-        """
-        last_energy: int = self.last_energy
-        new_energy: int = self._read()
-        if new_energy < last_energy:
-            return new_energy + self.max_energy_range_uj - last_energy
-        return new_energy - last_energy
+            new_energy_uj = float(energy_file.read().strip())
+        if new_energy_uj < self.last_energy:
+            self.last_energy = new_energy_uj
+            return (new_energy_uj + self.max_energy_range_uj) / 1000.0
+        self.last_energy = new_energy_uj
+        return self.last_energy / 1000.0
 
 
 class RAPLCPU(cpu_common.CPU):
@@ -133,20 +123,26 @@ class RAPLCPU(cpu_common.CPU):
         self.dram: RAPLFile | None = None
         for dir in os.listdir(self.path):
             if "intel-rapl" in dir:
-                rapl_file = RAPLFile(os.path.join(self.path, dir))
+                try:
+                    rapl_file = RAPLFile(os.path.join(self.path, dir))
+                except ZeusRAPLFileInitError as err:
+                    warnings.warn(
+                        f"Failed to initialize subpackage {err}"
+                    )
+                    continue
                 if rapl_file.name == "dram":
                     self.dram = rapl_file
 
     def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
-        cpu_mj = self.rapl_file._read()
+        cpu_mj = self.rapl_file.read()
         dram_mj = None
         if self.dram is not None:
-            dram_mj = self.dram._read()
+            dram_mj = self.dram.read()
             cpu_mj -= dram_mj
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
-    def supportsGetSubpackageEnergyConsumption(self) -> bool:
+    def supportsGetDramEnergyConsumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram is not None
 
@@ -168,11 +164,15 @@ class RAPLCPUs(cpu_common.CPUs):
     def _init_cpus(self) -> None:
         """Initialize all Intel CPUs."""
         self._cpus = []
-        for index in range(2):
-            try:
-                self._cpus.append(RAPLCPU(index))
-            except ZeusRAPLFileInitError:
-                continue
+        pattern = re.compile(r'intel-rapl:(\d+)')
+        for dir in os.listdir(RAPL_DIR):
+            match = pattern.match(dir)
+            if match:
+                try:
+                    self._cpus.append(RAPLCPU(int(match.group(1))))
+                except ZeusRAPLFileInitError:
+                    continue
+
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""
