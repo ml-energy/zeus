@@ -265,7 +265,9 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         for i in torch_gpu_indices:
             if not is_old_torch[i]:
                 # The energy counter increments with step size 3.
-                assert measurement.gpu_energy[i] == pytest.approx(elapsed_time * 3 / 1000.0)
+                assert measurement.gpu_energy[i] == pytest.approx(
+                    elapsed_time * 3 / 1000.0
+                )
 
         if not assert_calls:
             return
