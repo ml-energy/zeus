@@ -141,7 +141,7 @@ class ReplayZeusMonitor(ZeusMonitor):
             return Measurement(
                 time=0.0,
                 gpu_energy={gpu_index: 0.0 for gpu_index in self.gpu_indices},
-                cpu_energy={cpu_index: 0.0 for cpu_index in self.cpu_indices},
+                cpu_energy={},
             )
 
         # Read the next line from the log file.

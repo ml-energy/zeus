@@ -151,6 +151,7 @@ class ZeusMonitor:
             self.gpus = get_gpus()
 
         # Get cpus
+        self.cpus = None
         with contextlib.suppress(Exception):
             self.cpus = get_cpus()
 
@@ -161,7 +162,8 @@ class ZeusMonitor:
 
         # Get CPU indices:
         self.cpu_indices = (
-            cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
+            cpu_indices if cpu_indices is not None else list(range(len(self.cpus))) if self.cpus is
+                not None else []
         )
 
         # Initialize loggers.
