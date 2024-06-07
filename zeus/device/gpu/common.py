@@ -257,7 +257,7 @@ class GPUs(abc.ABC):
         return self.gpus[gpu_index].getTotalEnergyConsumption()
 
 
-class EMPTYGPUs(GPUs):
+class EmptyGPUs(GPUs):
     """A concrete class implementing the GPUs abstract base class, but representing an empty collection of GPUs.
 
     This class is used to represent a scenario where no GPUs are available or detected.
