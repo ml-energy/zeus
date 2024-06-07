@@ -43,7 +43,7 @@ class CpuDramMeasurement:
         """Divides the values of this CpuDramMeasurement by a float.
 
         Args:
-            other (float): The float to divide by.
+            other: The float to divide by.
 
         Returns:
             CpuDramMeasurement: A new CpuDramMeasurement with the result of the division.
