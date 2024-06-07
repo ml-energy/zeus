@@ -114,7 +114,7 @@ class RAPLFile:
 
 
 class RAPLCPU(cpu_common.CPU):
-    """Control a Single Intel CPU using RAPL interface."""
+    """Control a single CPU that supports RAPL."""
 
     def __init__(self, cpu_index: int) -> None:
         """Initialize the Intel CPU with a specified index."""
