@@ -27,7 +27,6 @@ def mock_monitor(mocker: MockerFixture):
             2: 4342.869000002742,
             3: 4158.034000009298,
         },
-        cpu_energy={},
     )
 
     mocker.patch(
