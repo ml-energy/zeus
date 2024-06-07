@@ -18,8 +18,8 @@ class CpuDramMeasurement:
         dram_mj (Optional[int]): The DRAM energy consumption in millijoules. Defaults to None.
     """
 
-    cpu_mj: int
-    dram_mj: int | None = None
+    cpu_mj: float
+    dram_mj: float | None = None
 
     def __sub__(self, other: CpuDramMeasurement) -> CpuDramMeasurement:
         """Subtracts the values of another CpuDramMeasurement from this one.
@@ -56,8 +56,8 @@ class CpuDramMeasurement:
                 raise ZeroDivisionError("Division by zero is not allowed")
             dram_mj = None
             if self.dram_mj is not None:
-                dram_mj = int(self.dram_mj / other)
-            return CpuDramMeasurement(int(self.cpu_mj / other), dram_mj)
+                dram_mj = self.dram_mj / other
+            return CpuDramMeasurement(self.cpu_mj / other, dram_mj)
         else:
             return NotImplemented
 
@@ -71,7 +71,7 @@ class ZeusCPUInitError(ZeusBaseCPUError):
 
 
 class ZeusCPUNoPermissionError(ZeusBaseCPUError):
-    """Zeus CPU exception class Wrapper for No Permission to perform CPU operation."""
+    """Zeus CPU exception class wrapper for No Permission to perform CPU operation."""
 
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
@@ -79,7 +79,7 @@ class ZeusCPUNoPermissionError(ZeusBaseCPUError):
 
 
 class ZeusCPUNotFoundError(ZeusBaseCPUError):
-    """Zeus CPU exception class Wrapper for Not Found CPU."""
+    """Zeus CPU exception class wrapper for Not Found CPU."""
 
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
@@ -102,7 +102,7 @@ class CPU(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def supportsGetSubpackageEnergyConsumption(self) -> bool:
+    def supportsGetDramEnergyConsumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         pass
 
@@ -134,9 +134,9 @@ class CPUs(abc.ABC):
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         return self.cpus[index].getTotalEnergyConsumption()
 
-    def supportsGetSubpackageEnergyConsumption(self, index: int) -> bool:
+    def supportsGetDramEnergyConsumption(self, index: int) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
-        return self.cpus[index].supportsGetSubpackageEnergyConsumption()
+        return self.cpus[index].supportsGetDramEnergyConsumption()
 
     def __len__(self) -> int:
         """Returns the number of CPUs being tracked."""
@@ -166,7 +166,7 @@ class EMPTYCPUs(CPUs):
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         raise ValueError("No CPUs available.")
 
-    def supportsGetSubpackageEnergyConsumption(self, index: int) -> bool:
+    def supportsGetDramEnergyConsumption(self, index: int) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         raise ValueError("No CPUs available.")
 
