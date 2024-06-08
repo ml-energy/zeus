@@ -15,3 +15,5 @@ dist/
 env/
 .pytest_cache/
 /envs
+.nvim
+gpg

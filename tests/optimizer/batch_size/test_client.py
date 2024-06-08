@@ -21,7 +21,7 @@ def mock_monitor(mocker: MockerFixture):
     zeus_monitor_mock_instance.gpu_indices = [0, 1, 2, 3]
     zeus_monitor_mock_instance.end_window.return_value = Measurement(
         time=37.24807469360,
-        energy={
+        gpu_energy={
             0: 4264.87199999392,
             1: 4367.186999991536,
             2: 4342.869000002742,

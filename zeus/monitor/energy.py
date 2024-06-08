@@ -25,7 +25,9 @@ from functools import cached_property
 from zeus.monitor.power import PowerMonitor
 from zeus.utils.logging import get_logger
 from zeus.utils.framework import cuda_sync
-from zeus.device import get_gpus
+from zeus.device import get_gpus, get_cpus
+from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
+from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
 
 logger = get_logger(__name__)
 
@@ -36,18 +38,59 @@ class Measurement:
 
     Attributes:
         time: Time elapsed (in seconds) during the measurement window.
-        energy: Maps GPU indices to the energy consumed (in Joules) during the
+        gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
             measurement window. GPU indices are from the DL framework's perspective
             after applying `CUDA_VISIBLE_DEVICES`.
+        cpu_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
+            be 'None' if CPU measurement is not available.
+        dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
+            measurements are taken from sub-packages within each powerzone. This can be 'None' if
+            CPU measurement is not available or DRAM measurement is not available.
     """
 
     time: float
-    energy: dict[int, float]
+    gpu_energy: dict[int, float]
+    cpu_energy: dict[int, float] | None = None
+    dram_energy: dict[int, float] | None = None
 
     @cached_property
     def total_energy(self) -> float:
         """Total energy consumed (in Joules) during the measurement window."""
-        return sum(self.energy.values())
+        # TODO: Update method to total_gpu_energy, which may cause breaking changes in the examples/
+        return sum(self.gpu_energy.values())
+
+
+@dataclass
+class MeasurementState:
+    """Measurement state to keep track of measurements in start_window.
+
+    Used in ZeusMonitor to map string keys of measurements to this dataclass.
+
+    Attributes:
+        time: The beginning timestamp of the measurement window.
+        gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
+            measurement window. GPU indices are from the DL framework's perspective
+            after applying `CUDA_VISIBLE_DEVICES`.
+        cpu_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
+            be 'None' if CPU measurement is not available.
+        dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
+            measurements are taken from sub-packages within each powerzone. This can be 'None' if
+            CPU measurement is not available or DRAM measurement is not available.
+    """
+
+    time: float
+    gpu_energy: dict[int, float]
+    cpu_energy: dict[int, float] | None = None
+    dram_energy: dict[int, float] | None = None
+
+    @cached_property
+    def total_energy(self) -> float:
+        """Total energy consumed (in Joules) during the measurement window."""
+        return sum(self.gpu_energy.values())
 
 
 class ZeusMonitor:
@@ -114,6 +157,7 @@ class ZeusMonitor:
     def __init__(
         self,
         gpu_indices: list[int] | None = None,
+        cpu_indices: list[int] | None = None,
         approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
     ) -> None:
@@ -126,6 +170,8 @@ class ZeusMonitor:
                 is respected if set, e.g., GPU index `1` passed into `gpu_indices` when
                 `CUDA_VISIBLE_DEVICES=2,3` will be interpreted as CUDA device `3`.
                 `CUDA_VISIBLE_DEVICES`s formatted with comma-separated indices are supported.
+            cpu_indices: Indices of the CPU packages to monitor. If None, all CPU packages will
+                be used.
             approx_instant_energy: When the execution time of a measurement window is
                 shorter than the NVML energy counter's update period, energy consumption may
                 be observed as zero. In this case, if `approx_instant_energy` is True, the
@@ -138,11 +184,29 @@ class ZeusMonitor:
         self.approx_instant_energy = approx_instant_energy
 
         # Get gpus
-        self.gpus = get_gpus()
+        try:
+            self.gpus = get_gpus()
+        except ZeusGPUInitError:
+            self.gpus = EmptyGPUs()
+
+        # Get cpus
+        try:
+            self.cpus = get_cpus()
+        except ZeusCPUInitError:
+            self.cpus = EmptyCPUs()
 
         # Get GPU indices:
         self.gpu_indices = (
-            gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
+            gpu_indices
+            if gpu_indices is not None
+            else list(range(len(self.gpus)))
+            if self.gpus is not None
+            else []
+        )
+
+        # Get CPU indices:
+        self.cpu_indices = (
+            cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
         )
 
         # Initialize loggers.
@@ -159,13 +223,19 @@ class ZeusMonitor:
             self.log_file.flush()
 
         logger.info("Monitoring GPU indices %s.", self.gpu_indices)
+        logger.info("Monitoring CPU indices %s", self.cpu_indices)
 
         # A dictionary that maps the string keys of active measurement windows to
-        # the state of the measurement window. Each element in the dictionary is a tuple of:
+        # the state of the measurement window. Each element in the dictionary is a Measurement State
+        # object with:
         #     1) Time elapsed at the beginning of this window.
         #     2) Total energy consumed by each >= Volta GPU at the beginning of
         #        this window (`None` for older GPUs).
-        self.measurement_states: dict[str, tuple[float, dict[int, float]]] = {}
+        #     3) Total energy consumed by each CPU powerzone at the beginning of this window.
+        #        ('None' if CPU measurement is not supported)
+        #     4) Total energy consumed by each DRAM in powerzones at the beginning of this window.
+        #        ('None' if DRAM measurement is not supported)
+        self.measurement_states: dict[str, MeasurementState] = {}
 
         # Initialize power monitors for older architecture GPUs.
         old_gpu_indices = [
@@ -208,18 +278,31 @@ class ZeusMonitor:
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
-        energy_state: dict[int, float] = {}
+        gpu_energy_state: dict[int, float] = {}
         for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
             # Otherwise, the Zeus power monitor is running in the background to
             # collect power consumption, so we just need to read the log file later.
             if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
-                energy_state[gpu_index] = (
+                gpu_energy_state[gpu_index] = (
                     self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
                 )
 
+        cpu_energy_state: dict[int, float] = {}
+        dram_energy_state: dict[int, float] = {}
+        for cpu_index in self.cpu_indices:
+            cpu_measurement = self.cpus.getTotalEnergyConsumption(cpu_index) / 1000.0
+            cpu_energy_state[cpu_index] = cpu_measurement.cpu_mj
+            if cpu_measurement.dram_mj is not None:
+                dram_energy_state[cpu_index] = cpu_measurement.dram_mj
+
         # Add measurement state to dictionary.
-        self.measurement_states[key] = (timestamp, energy_state)
+        self.measurement_states[key] = MeasurementState(
+            time=timestamp,
+            gpu_energy=gpu_energy_state,
+            cpu_energy=cpu_energy_state or None,
+            dram_energy=dram_energy_state or None,
+        )
         logger.debug("Measurement window '%s' started.", key)
 
     def end_window(
@@ -238,7 +321,7 @@ class ZeusMonitor:
         """
         # Retrieve the start time and energy consumption of this window.
         try:
-            start_time, start_energy = self.measurement_states.pop(key)
+            measurement_state = self.measurement_states.pop(key)
         except KeyError:
             raise ValueError(f"Measurement window '{key}' does not exist") from None
 
@@ -260,16 +343,40 @@ class ZeusMonitor:
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:
             logger.debug("Measurement window '%s' cancelled.", key)
-            return Measurement(time=0.0, energy={gpu: 0.0 for gpu in self.gpu_indices})
+            return Measurement(
+                time=0.0,
+                gpu_energy={gpu: 0.0 for gpu in self.gpu_indices},
+                cpu_energy={cpu: 0.0 for cpu in self.cpu_indices},
+            )
 
         end_time: float = time()
+        start_time = measurement_state.time
+        gpu_start_energy = measurement_state.gpu_energy
+        cpu_start_energy = measurement_state.cpu_energy
+        dram_start_energy = measurement_state.dram_energy
+
         time_consumption: float = end_time - start_time
-        energy_consumption: dict[int, float] = {}
+        gpu_energy_consumption: dict[int, float] = {}
         for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
             if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
                 end_energy = self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
-                energy_consumption[gpu_index] = end_energy - start_energy[gpu_index]
+                gpu_energy_consumption[gpu_index] = (
+                    end_energy - gpu_start_energy[gpu_index]
+                )
+
+        cpu_energy_consumption: dict[int, float] = {}
+        dram_energy_consumption: dict[int, float] = {}
+        for cpu_index in self.cpu_indices:
+            cpu_measurement = self.cpus.getTotalEnergyConsumption(cpu_index) / 1000.0
+            if cpu_start_energy is not None:
+                cpu_energy_consumption[cpu_index] = (
+                    cpu_measurement.cpu_mj - cpu_start_energy[cpu_index]
+                )
+            if dram_start_energy is not None and cpu_measurement.dram_mj is not None:
+                dram_energy_consumption[cpu_index] = (
+                    cpu_measurement.dram_mj - dram_start_energy[cpu_index]
+                )
 
         # If there are older GPU architectures, the PowerMonitor will take care of those.
         if self.power_monitor is not None:
@@ -278,13 +385,13 @@ class ZeusMonitor:
             # have the power samples.
             if energy is None:
                 energy = {gpu: 0.0 for gpu in self.power_monitor.gpu_indices}
-            energy_consumption |= energy
+            gpu_energy_consumption |= energy
 
         # Approximate energy consumption if the measurement window is too short.
         if self.approx_instant_energy:
             for gpu_index in self.gpu_indices:
-                if energy_consumption[gpu_index] == 0.0:
-                    energy_consumption[gpu_index] = power[gpu_index] * (
+                if gpu_energy_consumption[gpu_index] == 0.0:
+                    gpu_energy_consumption[gpu_index] = power[gpu_index] * (
                         time_consumption - power_measurement_time
                     )
 
@@ -294,9 +401,14 @@ class ZeusMonitor:
         if self.log_file is not None:
             self.log_file.write(
                 f"{start_time},{key},{time_consumption},"
-                + ",".join(str(energy_consumption[gpu]) for gpu in self.gpu_indices)
+                + ",".join(str(gpu_energy_consumption[gpu]) for gpu in self.gpu_indices)
                 + "\n"
             )
             self.log_file.flush()
 
-        return Measurement(time_consumption, energy_consumption)
+        return Measurement(
+            time=time_consumption,
+            gpu_energy=gpu_energy_consumption,
+            cpu_energy=cpu_energy_consumption or None,
+            dram_energy=dram_energy_consumption or None,
+        )
