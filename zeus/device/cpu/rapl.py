@@ -141,7 +141,6 @@ class RAPLCPU(cpu_common.CPU):
         dram_mj = None
         if self.dram is not None:
             dram_mj = self.dram.read()
-            cpu_mj -= dram_mj
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
     def supportsGetDramEnergyConsumption(self) -> bool:
