@@ -395,9 +395,7 @@ class ZeusMonitor:
                         time_consumption - power_measurement_time
                     )
         # Trigger a warning if energy consumption is zero and approx_instant_energy is not enabled.
-        if not self.approx_instant_energy and all(
-            energy == 0.0 for energy in gpu_energy_consumption.values()
-        ):
+        if not self.approx_instant_energy and all(energy == 0.0 for energy in gpu_energy_consumption.values()):
             warnings.warn(
                 "Energy consumption is observed as zero. Consider turning on approx_instant_energy option.",
                 UserWarning,

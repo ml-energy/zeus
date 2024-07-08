@@ -201,8 +201,9 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         if not is_old_nvml[i]
     }
 
-    original_side_effect = lambda handle: next(energy_counters[handle])
-
+    original_side_effect = lambda handle: next(
+        energy_counters[handle]
+    )
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = original_side_effect
 
     log_file = tmp_path / "log.csv"
@@ -459,15 +460,12 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = (
         zero_energy_side_effect
     )
-
     with pytest.warns(
         UserWarning,
         match="Energy consumption is observed as zero. Consider turning on approx_instant_energy option.",
     ):
         monitor.begin_window("window0", sync_cuda=False)
         test_measurement = monitor.end_window("window0", sync_cuda=False)
-
-        # Check that the energy consumption is zero
         assert all(value == 0.0 for value in test_measurement.gpu_energy.values())
 
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = original_side_effect
