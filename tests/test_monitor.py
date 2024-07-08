@@ -100,6 +100,7 @@ def gpu_cases():
     for gpu_archs in product(ARCHS, repeat=NUM_GPUS):
         yield None, None, list(gpu_archs)
 
+
 @pytest.fixture(params=gpu_cases())
 def mock_gpus(
     request, mocker: MockerFixture, pynvml_mock: MagicMock
@@ -151,6 +152,7 @@ def mock_gpus(
 
     return request.param
 
+
 def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     """Test the `ZeusMonitor` class."""
     cuda_visible_devices, gpu_indices, gpu_archs = mock_gpus
@@ -201,9 +203,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         if not is_old_nvml[i]
     }
 
-    original_side_effect = lambda handle: next(
-        energy_counters[handle]
-    )
+    original_side_effect = lambda handle: next(energy_counters[handle])
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = original_side_effect
 
     log_file = tmp_path / "log.csv"
@@ -466,6 +466,6 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     ):
         monitor.begin_window("window0", sync_cuda=False)
         test_measurement = monitor.end_window("window0", sync_cuda=False)
-        assert all(value == 0.0 for value in test_measurement.gpu_energy.values())
+        assert all(value is 0.0 for value in test_measurement.gpu_energy.values())
 
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = original_side_effect
