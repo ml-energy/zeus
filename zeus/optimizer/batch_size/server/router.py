@@ -20,7 +20,9 @@ from zeus.optimizer.batch_size.common import (
 )
 from zeus.optimizer.batch_size.server.config import settings
 from zeus.optimizer.batch_size.server.database.db_connection import get_db_session
-from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerBaseError
+from zeus.optimizer.batch_size.server.exceptions import (
+    ZeusBSOServerBaseError,
+)
 from zeus.optimizer.batch_size.server.optimizer import ZeusBatchSizeOptimizer
 from zeus.optimizer.batch_size.server.services.service import ZeusService
 from zeus.utils.logging import get_logger
