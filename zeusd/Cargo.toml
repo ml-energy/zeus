@@ -20,7 +20,7 @@ name = "zeusd"
 [dependencies]
 nvml-wrapper = "0.10"
 actix-web = "4"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
 thiserror = "1"
 clap = { version = "4.5.4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

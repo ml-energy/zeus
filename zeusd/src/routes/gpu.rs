@@ -13,7 +13,7 @@ use crate::error::ZeusdError;
 /// This macro takes
 /// - the API name (set_power_limit, set_persistence_mode, etc.),
 /// - the method and path for the request handler,
-/// - and a list of `field name <type>` pairs of the corresponding `GpuCommand` variant.
+/// - and a list of `field name: type` pairs of the corresponding `GpuCommand` variant.
 ///
 /// Gien this, the macro generates
 /// - a request payload struct named API name (e.g., SetPowerLimit) and all the
