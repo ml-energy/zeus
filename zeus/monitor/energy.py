@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from time import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -143,7 +144,6 @@ class ZeusMonitor:
         result = monitor.end_window("entire_training")
 
         # Print the measurement result.
-        print(f"Training took {result.time} seconds.")
         print(f"Training consumed {result.total_energy} Joules.")
         for gpu_idx, gpu_energy in result.gpu_energy.items():
             print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
@@ -394,6 +394,15 @@ class ZeusMonitor:
                     gpu_energy_consumption[gpu_index] = power[gpu_index] * (
                         time_consumption - power_measurement_time
                     )
+        # Trigger a warning if energy consumption is zero and approx_instant_energy is not enabled.
+        if not self.approx_instant_energy and all(
+            energy == 0.0 for energy in gpu_energy_consumption.values()
+        ):
+            warnings.warn(
+                "Energy consumption is observed as zero. Consider turning on approx_instant_energy option.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         logger.debug("Measurement window '%s' ended.", key)
 

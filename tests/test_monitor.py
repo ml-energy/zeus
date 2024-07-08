@@ -21,6 +21,7 @@ from typing import Generator, TYPE_CHECKING, Sequence
 
 import pynvml
 import pytest
+import warnings
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.utils.testing import ReplayZeusMonitor
@@ -99,7 +100,6 @@ def gpu_cases():
     for gpu_archs in product(ARCHS, repeat=NUM_GPUS):
         yield None, None, list(gpu_archs)
 
-
 @pytest.fixture(params=gpu_cases())
 def mock_gpus(
     request, mocker: MockerFixture, pynvml_mock: MagicMock
@@ -151,7 +151,6 @@ def mock_gpus(
 
     return request.param
 
-
 def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     """Test the `ZeusMonitor` class."""
     cuda_visible_devices, gpu_indices, gpu_archs = mock_gpus
@@ -201,9 +200,10 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         for i in nvml_gpu_indices
         if not is_old_nvml[i]
     }
-    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(
-        energy_counters[handle]
-    )
+
+    original_side_effect = lambda handle: next(energy_counters[handle])
+
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = original_side_effect
 
     log_file = tmp_path / "log.csv"
 
@@ -276,6 +276,18 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
             [call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]]
         )
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
+
+    def zero_energy_side_effect(handle):
+
+        energy_counters = {
+            f"handle{i}": itertools.count(start=1000, step=3)
+            for i in nvml_gpu_indices
+            if not is_old_nvml[i]
+        }
+
+        if "window0" in monitor.measurement_states:
+            return 0.0
+        return next(energy_counters[handle])
 
     # Serial non-overlapping windows.
     monitor.begin_window("window1", sync_cuda=False)
@@ -440,3 +452,22 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     assert_measurement(
         "window5", measurement, begin_time=25, elapsed_time=8, assert_calls=False
     )
+
+    ########################################
+    # Test content of `energy.py`.
+    ########################################
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = (
+        zero_energy_side_effect
+    )
+
+    with pytest.warns(
+        UserWarning,
+        match="Energy consumption is observed as zero. Consider turning on approx_instant_energy option.",
+    ):
+        monitor.begin_window("window0", sync_cuda=False)
+        test_measurement = monitor.end_window("window0", sync_cuda=False)
+
+        # Check that the energy consumption is zero
+        assert all(value == 0.0 for value in test_measurement.gpu_energy.values())
+
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = original_side_effect
