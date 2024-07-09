@@ -145,7 +145,7 @@ class ZeusMonitor:
         # Print the measurement result.
         print(f"Training took {result.time} seconds.")
         print(f"Training consumed {result.total_energy} Joules.")
-        for gpu_idx, gpu_energy in result.energy.items():
+        for gpu_idx, gpu_energy in result.gpu_energy.items():
             print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
     ```
 
