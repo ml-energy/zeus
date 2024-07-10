@@ -394,14 +394,14 @@ class ZeusMonitor:
                     gpu_energy_consumption[gpu_index] = power[gpu_index] * (
                         time_consumption - power_measurement_time
                     )
+
         # Trigger a warning if energy consumption is zero and approx_instant_energy is not enabled.
-        if not self.approx_instant_energy and all(
+        if not self.approx_instant_energy and any(
             energy == 0.0 for energy in gpu_energy_consumption.values()
         ):
             warnings.warn(
-                "Energy consumption is observed as zero. Consider turning on approx_instant_energy option.",
-                UserWarning,
-                stacklevel=2,
+                "The energy consumption of one or more GPUs was measured as zero. This means that the time duration of the measurement window was shorter than the GPU's energy counter update period. Consider turning on the `approx_instant_energy` option in `ZeusMonitor`, which approximates the energy consumption of a short time window as instant power draw x window duration.",
+                stacklevel=1,
             )
 
         logger.debug("Measurement window '%s' ended.", key)
