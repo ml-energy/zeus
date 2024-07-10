@@ -160,6 +160,7 @@ class ZeusMonitor:
         cpu_indices: list[int] | None = None,
         approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
+        backend: str | None = "torch"
     ) -> None:
         """Instantiate the monitor.
 
@@ -179,6 +180,7 @@ class ZeusMonitor:
                 instantaneous power consumption with the window's execution time. This should
                 be a better estimate than zero, but it's still an approximation.
             log_file: Path to the log CSV file. If `None`, logging will be disabled.
+            backend: The backend framework. Defaults to `torch`
         """
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy
@@ -250,6 +252,8 @@ class ZeusMonitor:
         else:
             self.power_monitor = None
 
+        self.backend = backend
+
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""
         power_measurement_start_time: float = time()
@@ -274,7 +278,7 @@ class ZeusMonitor:
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
             for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+                cuda_sync(gpu_index, self.backend)
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
@@ -338,7 +342,7 @@ class ZeusMonitor:
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
             for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+                cuda_sync(gpu_index, self.backend)
 
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:

@@ -41,19 +41,45 @@ def torch_is_available():
         logger.info("PyTorch is not available.")
         return False
 
+@lru_cache(maxsize=1)
+def jax_is_available():
+    """Check if JAX is available."""
+    try:
+        import jax
 
-def cuda_sync(device: int | None = None) -> None:
-    """Synchronize CPU and CUDA.
+        assert (
+            jax.devices('gpu')
+        ), "JAX is available but does not have CUDA support."
+        MODULE_CACHE["jax"] = jax
+        logger.info("JAX with CUDA support is available.")
+        return True
+    except ImportError:
+        logger.info("JAX is not available")
+        return False
+        
+
+
+def cuda_sync(device: int | None = None, backend: str | None = "torch") -> None:
+    """Synchronize CPU with CUDA.
 
     Note: `cupy.cuda.Device.synchronize` may be a good choice to make
           CUDA device synchronization more general. Haven't tested it yet.
 
     Args:
         device: The device to synchronize.
+        backend: The backend framework. Defaults to `torch`
     """
-    if torch_is_available():
+    if backend == "torch" and torch_is_available():
         torch = MODULE_CACHE["torch"]
-        torch.cuda.synchronize(device)
-        return
+        synchronize_cuda_fn = lambda device: torch.cuda.synchronize(device)
+    elif backend == "jax" and jax_is_available():
+        jax = MODULE_CACHE["jax"]
+        synchronize_cuda_fn = lambda device: (jax.device_put(0., device=jax.devices('gpu')[device]) + 0).block_until_ready() 
+    else:
+        raise RuntimeError("No framework is available.")
 
-    raise RuntimeError("No frameworks are available.")
+    synchronize_cuda_fn(device)
+
+    return
+
+
