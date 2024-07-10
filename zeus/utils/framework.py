@@ -57,7 +57,7 @@ def jax_is_available():
         return False
 
 
-def cuda_sync(device: int | None = None, backend: str | None = "torch") -> None:
+def cuda_sync(device: int | None = None, backend: str = "torch") -> None:
     """Synchronize CPU with CUDA.
 
     Note: `cupy.cuda.Device.synchronize` may be a good choice to make

@@ -160,7 +160,7 @@ class ZeusMonitor:
         cpu_indices: list[int] | None = None,
         approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
-        backend: str | None = "torch",
+        backend: str = "torch",
     ) -> None:
         """Instantiate the monitor.
 
