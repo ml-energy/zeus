@@ -25,7 +25,7 @@ T = TypeVar("T")
 def get_env(name: str, valtype: Type[T], default: T | None = None) -> T:
     """Fetch an environment variable and cast it to the given type."""
     try:
-        if valtype == bool:
+        if valtype is bool:
             val = os.environ[name].lower()
             if val not in ["true", "false"]:
                 raise ValueError(f"Strange boolean environment variable value '{val}'")
