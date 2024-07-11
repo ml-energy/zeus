@@ -40,7 +40,7 @@ def torch_is_available(ensure_available: bool = False):
     except ImportError as e:
         logger.info("PyTorch is not available.")
         if ensure_available:
-            raise RunTimeError("Failed to import Pytorch") from e
+            raise RuntimeError("Failed to import Pytorch") from e
         return False
 
 
@@ -57,7 +57,7 @@ def jax_is_available(ensure_available: bool = False):
     except ImportError as e:
         logger.info("JAX is not available")
         if ensure_available:
-            raise RunTimeError("Failed to import JAX") from e
+            raise RuntimeError("Failed to import JAX") from e
         return False
 
 
@@ -79,7 +79,12 @@ def cuda_sync(device: int | None = None, backend: str = "torch") -> None:
     elif backend == "jax" and jax_is_available(ensure_available=True):
         jax = MODULE_CACHE["jax"]
 
-        (jax.device_put(0.0, device=None if device is None else jax.devices("gpu")[device]) + 0).block_until_ready()
+        (
+            jax.device_put(
+                0.0, device=None if device is None else jax.devices("gpu")[device]
+            )
+            + 0
+        ).block_until_ready()
 
     else:
         raise RuntimeError("No framework is available.")
