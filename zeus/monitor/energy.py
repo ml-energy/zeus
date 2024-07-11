@@ -186,6 +186,7 @@ class ZeusMonitor:
         """
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy
+        self.backend: Literal["torch", "jax"] = backend
 
         # Get gpus
         try:
@@ -253,8 +254,6 @@ class ZeusMonitor:
             )
         else:
             self.power_monitor = None
-
-        self.backend = backend
 
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""

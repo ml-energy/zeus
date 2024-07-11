@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import types
+from typing import Literal
 from functools import lru_cache
 
 from zeus.utils.logging import get_logger
@@ -48,7 +49,7 @@ def torch_is_available(ensure_available: bool = False):
 def jax_is_available(ensure_available: bool = False):
     """Check if JAX is available."""
     try:
-        import jax
+        import jax  # type: ignore
 
         assert jax.devices("gpu"), "JAX is available but does not have CUDA support."
         MODULE_CACHE["jax"] = jax
@@ -61,7 +62,9 @@ def jax_is_available(ensure_available: bool = False):
         return False
 
 
-def cuda_sync(device: int | None = None, backend: str = "torch") -> None:
+def cuda_sync(
+    device: int | None = None, backend: Literal["torch", "jax"] = "torch"
+) -> None:
     """Synchronize CPU with CUDA.
 
     Note: `cupy.cuda.Device.synchronize` may be a good choice to make
@@ -69,7 +72,8 @@ def cuda_sync(device: int | None = None, backend: str = "torch") -> None:
 
     Args:
         device: The device to synchronize.
-        backend: The backend framework. Defaults to `torch`
+        backend: Deep learning framework to use to synchronize GPU computations.
+            Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
     """
     if backend == "torch" and torch_is_available(ensure_available=True):
         torch = MODULE_CACHE["torch"]
