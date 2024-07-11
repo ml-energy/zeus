@@ -74,18 +74,12 @@ def cuda_sync(device: int | None = None, backend: str = "torch") -> None:
     if backend == "torch" and torch_is_available(ensure_available=True):
         torch = MODULE_CACHE["torch"]
 
-        def synchronize_cuda_fn(device):
-            torch.cuda.synchronize(device)
+        torch.cuda.synchronize(device)
 
     elif backend == "jax" and jax_is_available(ensure_available=True):
         jax = MODULE_CACHE["jax"]
 
-        def synchronize_cuda_fn(device):
-            (
-                jax.device_put(0.0, device=jax.devices("gpu")[device]) + 0
-            ).block_until_ready()
+        (jax.device_put(0.0, device=None if device is None else jax.devices("gpu")[device]) + 0).block_until_ready()
 
     else:
         raise RuntimeError("No framework is available.")
-
-    synchronize_cuda_fn(device)
