@@ -440,3 +440,15 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     assert_measurement(
         "window5", measurement, begin_time=25, elapsed_time=8, assert_calls=False
     )
+
+    # Calling `end_window` when the energy consumption of one or more GPUs was measured as zero should raise a warning.
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: 0.0
+
+    monitor.begin_window("window0", sync_cuda=False)
+
+    with pytest.warns(
+        match="The energy consumption of one or more GPUs was measured as zero. This means that the time duration of the measurement window was shorter than the GPU's energy counter update period. Consider turning on the `approx_instant_energy` option in `ZeusMonitor`, which approximates the energy consumption of a short time window as instant power draw x window duration.",
+    ):
+        test_measurement = monitor.end_window("window0", sync_cuda=False)
+
+    assert all(value == 0.0 for value in test_measurement.gpu_energy.values())

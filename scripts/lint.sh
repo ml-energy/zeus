@@ -3,7 +3,7 @@
 set -ev
 
 if [[ -z $GITHUB_ACTION ]]; then
-  black zeus capriccio tests
+  black --check zeus capriccio tests
 else
   black zeus capriccio tests
 fi

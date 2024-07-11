@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from typing import Literal
 from time import time
 from pathlib import Path
@@ -144,7 +145,6 @@ class ZeusMonitor:
         result = monitor.end_window("entire_training")
 
         # Print the measurement result.
-        print(f"Training took {result.time} seconds.")
         print(f"Training consumed {result.total_energy} Joules.")
         for gpu_idx, gpu_energy in result.gpu_energy.items():
             print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
@@ -400,6 +400,15 @@ class ZeusMonitor:
                     gpu_energy_consumption[gpu_index] = power[gpu_index] * (
                         time_consumption - power_measurement_time
                     )
+
+        # Trigger a warning if energy consumption is zero and approx_instant_energy is not enabled.
+        if not self.approx_instant_energy and any(
+            energy == 0.0 for energy in gpu_energy_consumption.values()
+        ):
+            warnings.warn(
+                "The energy consumption of one or more GPUs was measured as zero. This means that the time duration of the measurement window was shorter than the GPU's energy counter update period. Consider turning on the `approx_instant_energy` option in `ZeusMonitor`, which approximates the energy consumption of a short time window as instant power draw x window duration.",
+                stacklevel=1,
+            )
 
         logger.debug("Measurement window '%s' ended.", key)
 

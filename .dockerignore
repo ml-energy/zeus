@@ -5,9 +5,17 @@ docker/
 **/*.pyo
 **/__pycache__/
 zeus.egg-info/
+.cache/
+.ruff_cache/
+.pytest_cache/
 
 .gitignore
 .git/
 
+docs/
+site/
+
 **/data/
 **/versions/*.py
+
+.envrc

@@ -1,2 +1,0 @@
-# Exclude date.h from language statistics
-zeus_monitor/zemo/date.h linguist-vendored
