@@ -26,7 +26,7 @@ MODULE_CACHE: dict[str, types.ModuleType] = {}
 
 
 @lru_cache(maxsize=1)
-def torch_is_available():
+def torch_is_available(ensure_available: bool = False):
     """Check if PyTorch is available."""
     try:
         import torch
@@ -37,13 +37,15 @@ def torch_is_available():
         MODULE_CACHE["torch"] = torch
         logger.info("PyTorch with CUDA support is available.")
         return True
-    except ImportError:
+    except ImportError as e:
         logger.info("PyTorch is not available.")
+        if ensure_available:
+            raise RunTimeError("Failed to import Pytorch") from e
         return False
 
 
 @lru_cache(maxsize=1)
-def jax_is_available():
+def jax_is_available(ensure_available: bool = False):
     """Check if JAX is available."""
     try:
         import jax
@@ -52,8 +54,10 @@ def jax_is_available():
         MODULE_CACHE["jax"] = jax
         logger.info("JAX with CUDA support is available.")
         return True
-    except ImportError:
+    except ImportError as e:
         logger.info("JAX is not available")
+        if ensure_available:
+            raise RunTimeError("Failed to import JAX") from e
         return False
 
 
@@ -67,13 +71,13 @@ def cuda_sync(device: int | None = None, backend: str = "torch") -> None:
         device: The device to synchronize.
         backend: The backend framework. Defaults to `torch`
     """
-    if backend == "torch" and torch_is_available():
+    if backend == "torch" and torch_is_available(ensure_available=True):
         torch = MODULE_CACHE["torch"]
 
         def synchronize_cuda_fn(device):
             torch.cuda.synchronize(device)
 
-    elif backend == "jax" and jax_is_available():
+    elif backend == "jax" and jax_is_available(ensure_available=True):
         jax = MODULE_CACHE["jax"]
 
         def synchronize_cuda_fn(device):
