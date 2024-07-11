@@ -5,6 +5,7 @@ docker/
 **/*.pyo
 **/__pycache__/
 zeus.egg-info/
+.ruff_cache/
 
 .gitignore
 .git/
