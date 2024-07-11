@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from typing import Literal
 from time import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -160,6 +161,7 @@ class ZeusMonitor:
         cpu_indices: list[int] | None = None,
         approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
+        backend: Literal["torch", "jax"] = "torch",
     ) -> None:
         """Instantiate the monitor.
 
@@ -179,9 +181,12 @@ class ZeusMonitor:
                 instantaneous power consumption with the window's execution time. This should
                 be a better estimate than zero, but it's still an approximation.
             log_file: Path to the log CSV file. If `None`, logging will be disabled.
+            backend: Deep learning framework to use to synchronize GPU computations.
+                Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
         """
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy
+        self.backend: Literal["torch", "jax"] = backend
 
         # Get gpus
         try:
@@ -274,7 +279,7 @@ class ZeusMonitor:
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
             for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+                cuda_sync(gpu_index, self.backend)
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
@@ -338,7 +343,7 @@ class ZeusMonitor:
         # Call cudaSynchronize to make sure we freeze at the right time.
         if sync_cuda:
             for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+                cuda_sync(gpu_index, self.backend)
 
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:

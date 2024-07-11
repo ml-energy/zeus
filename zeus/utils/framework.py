@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import types
+from typing import Literal
 from functools import lru_cache
 
 from zeus.utils.logging import get_logger
@@ -26,7 +27,7 @@ MODULE_CACHE: dict[str, types.ModuleType] = {}
 
 
 @lru_cache(maxsize=1)
-def torch_is_available():
+def torch_is_available(ensure_available: bool = False):
     """Check if PyTorch is available."""
     try:
         import torch
@@ -37,23 +38,57 @@ def torch_is_available():
         MODULE_CACHE["torch"] = torch
         logger.info("PyTorch with CUDA support is available.")
         return True
-    except ImportError:
+    except ImportError as e:
         logger.info("PyTorch is not available.")
+        if ensure_available:
+            raise RuntimeError("Failed to import Pytorch") from e
         return False
 
 
-def cuda_sync(device: int | None = None) -> None:
-    """Synchronize CPU and CUDA.
+@lru_cache(maxsize=1)
+def jax_is_available(ensure_available: bool = False):
+    """Check if JAX is available."""
+    try:
+        import jax  # type: ignore
+
+        assert jax.devices("gpu"), "JAX is available but does not have CUDA support."
+        MODULE_CACHE["jax"] = jax
+        logger.info("JAX with CUDA support is available.")
+        return True
+    except ImportError as e:
+        logger.info("JAX is not available")
+        if ensure_available:
+            raise RuntimeError("Failed to import JAX") from e
+        return False
+
+
+def cuda_sync(
+    device: int | None = None, backend: Literal["torch", "jax"] = "torch"
+) -> None:
+    """Synchronize CPU with CUDA.
 
     Note: `cupy.cuda.Device.synchronize` may be a good choice to make
           CUDA device synchronization more general. Haven't tested it yet.
 
     Args:
         device: The device to synchronize.
+        backend: Deep learning framework to use to synchronize GPU computations.
+            Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
     """
-    if torch_is_available():
+    if backend == "torch" and torch_is_available(ensure_available=True):
         torch = MODULE_CACHE["torch"]
-        torch.cuda.synchronize(device)
-        return
 
-    raise RuntimeError("No frameworks are available.")
+        torch.cuda.synchronize(device)
+
+    elif backend == "jax" and jax_is_available(ensure_available=True):
+        jax = MODULE_CACHE["jax"]
+
+        (
+            jax.device_put(
+                0.0, device=None if device is None else jax.devices("gpu")[device]
+            )
+            + 0
+        ).block_until_ready()
+
+    else:
+        raise RuntimeError("No framework is available.")
