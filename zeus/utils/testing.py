@@ -17,9 +17,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Sequence
+import itertools
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.utils.framework import sync_execution as sync_execution_fn
+from zeus.device.cpu.common import CpuDramMeasurement, CPUs, CPU
 from zeus.utils.logging import get_logger
 
 
@@ -159,3 +162,33 @@ class ReplayZeusMonitor(ZeusMonitor):
         self.logger.info("Measurement window '%s' ended (%s).", key, measurement)
 
         return measurement
+
+NUM_CPUS=2
+
+class MOCKCPU(CPU):
+    def __init__(self, index):
+        self.index = index
+        self.cpu_energy = itertools.count(start=1000, step=10)
+        self.dram_energy = itertools.count(start=200, step=5) if self.index % 2 == 0 else None
+
+    def getTotalEnergyConsumption(self):
+        return CpuDramMeasurement(
+            cpu_mj=float(next(self.cpu_energy)),
+            dram_mj=float(next(self.dram_energy)) if self.dram_energy is not None else None
+        )
+
+    def supportsGetDramEnergyConsumption(self):
+        return self.dram_energy is not None
+
+class MOCKCPUs(CPUs):
+    def __init__(self):
+        self._cpus = [MOCKCPU(i) for i in range(NUM_CPUS)]
+
+    @property
+    def cpus(self) -> Sequence[CPU]:
+        """Returns a list of CPU objects being tracked."""
+        return self._cpus
+
+    def __del__(self) -> None:
+        """Shuts down the Mock CPU monitoring."""
+        return

@@ -23,8 +23,9 @@ import pynvml
 import pytest
 
 from zeus.monitor import Measurement, ZeusMonitor
-from zeus.utils.testing import ReplayZeusMonitor
+from zeus.utils.testing import ReplayZeusMonitor, MOCKCPUs, NUM_CPUS
 import zeus.device.gpu
+import zeus.device.cpu
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,11 +39,11 @@ ARCHS = [
     pynvml.NVML_DEVICE_ARCH_AMPERE,
 ]
 
-
 @pytest.fixture(autouse=True, scope="function")
-def reset_gpus() -> None:
-    """Reset the global variable `_gpus` to None on every test."""
+def reset_gpus_and_cpus() -> None:
+    """Reset the global variable `_gpus` and `_cpus` to None on every test."""
     zeus.device.gpu._gpus = None
+    zeus.device.cpu._cpus = None
 
 
 @pytest.fixture
@@ -151,8 +152,13 @@ def mock_gpus(
 
     return request.param
 
+@pytest.fixture
+def mock_cpus(mocker):
+    """Mock CPU energy consumption with incrementing values."""
+    mock = mocker.patch("zeus.device.cpu.get_cpus", return_value=MOCKCPUs())
+    return mock
 
-def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
+def test_monitor(pynvml_mock, mock_gpus, mock_cpus, mocker: MockerFixture, tmp_path: Path):
     """Test the `ZeusMonitor` class."""
     cuda_visible_devices, gpu_indices, gpu_archs = mock_gpus
     if cuda_visible_devices is None:
@@ -213,7 +219,9 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     ########################################
     # Test ZeusMonitor initialization.
     ########################################
-    monitor = ZeusMonitor(gpu_indices=gpu_indices, log_file=log_file)
+    monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=list(range(NUM_CPUS)), log_file=log_file)
+    # Mocking didn't work so setting manually
+    monitor.cpus = MOCKCPUs()
 
     # Check GPU index parsing from the log file.
     replay_monitor = ReplayZeusMonitor(gpu_indices=None, log_file=log_file)
@@ -227,6 +235,10 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         next(time_counter)
         for counter in energy_counters.values():
             next(counter)
+        for i in range(len(monitor.cpu_indices)):
+            next(monitor.cpus._cpus[i].cpu_energy)
+            if i%2 == 0:
+                next(monitor.cpus._cpus[i].dram_energy)
 
     def assert_window_begin(name: str, begin_time: int):
         """Assert monitor measurement states right after a window begins."""
@@ -236,6 +248,14 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
             i: pytest.approx((1000 + 3 * (begin_time - 4)) / 1000.0)
             for i in torch_gpu_indices
             if not is_old_torch[i]
+        }
+        assert monitor.measurement_states[name].cpu_energy == {
+            i: pytest.approx((1000 + 10 * (begin_time - 4)) / 1000.0)
+            for i in range(len(monitor.cpu_indices))
+        }
+        assert monitor.measurement_states[name].dram_energy == {
+            i: pytest.approx((200 + 5 * (begin_time - 4)) / 1000.0) if i % 2 == 0 else None
+            for i in range(0, len(monitor.cpu_indices), 2)
         }
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls(
             [call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]]
@@ -267,6 +287,18 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
                 # The energy counter increments with step size 3.
                 assert measurement.gpu_energy[i] == pytest.approx(
                     elapsed_time * 3 / 1000.0
+                )
+
+        if measurement.cpu_energy is not None:
+            for i in measurement.cpu_energy.keys():
+                assert measurement.cpu_energy[i] == pytest.approx(
+                    elapsed_time * 10 / 1000.0
+                )
+
+        if measurement.dram_energy is not None:
+            for i in measurement.dram_energy.keys():
+                assert measurement.dram_energy[i] == pytest.approx(
+                    elapsed_time * 5 / 1000.0
                 )
 
         if not assert_calls:
