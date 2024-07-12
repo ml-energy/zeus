@@ -163,25 +163,40 @@ class ReplayZeusMonitor(ZeusMonitor):
 
         return measurement
 
-NUM_CPUS=2
+
+NUM_CPUS = 2
+
 
 class MOCKCPU(CPU):
+    """Control a single MOCK CPU for testing."""
+
     def __init__(self, index):
+        """Initialize the MOCKCPU with a specified index for testing."""
         self.index = index
         self.cpu_energy = itertools.count(start=1000, step=10)
-        self.dram_energy = itertools.count(start=200, step=5) if self.index % 2 == 0 else None
+        self.dram_energy = (
+            itertools.count(start=200, step=5) if self.index % 2 == 0 else None
+        )
 
     def getTotalEnergyConsumption(self):
+        """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         return CpuDramMeasurement(
             cpu_mj=float(next(self.cpu_energy)),
-            dram_mj=float(next(self.dram_energy)) if self.dram_energy is not None else None
+            dram_mj=float(next(self.dram_energy))
+            if self.dram_energy is not None
+            else None,
         )
 
     def supportsGetDramEnergyConsumption(self):
+        """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram_energy is not None
 
+
 class MOCKCPUs(CPUs):
+    """MOCK CPU Manager object, containing individual MOCKCPU objects for testing."""
+
     def __init__(self):
+        """Instantiates MOCKCPUs object for testing."""
         self._cpus = [MOCKCPU(i) for i in range(NUM_CPUS)]
 
     @property
