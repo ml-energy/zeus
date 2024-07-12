@@ -63,7 +63,7 @@ def jax_is_available(ensure_available: bool = False):
 
 
 def cuda_sync(
-    device: int | None = None, backend: Literal["torch", "jax"] = "torch"
+    device: int | None = None, sync_cuda_with: Literal["torch", "jax"] = "torch"
 ) -> None:
     """Synchronize CPU with CUDA.
 
@@ -72,15 +72,15 @@ def cuda_sync(
 
     Args:
         device: The device to synchronize.
-        backend: Deep learning framework to use to synchronize GPU computations.
+        sync_cuda_with: Deep learning framework to use to synchronize GPU computations.
             Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
     """
-    if backend == "torch" and torch_is_available(ensure_available=True):
+    if sync_cuda_with == "torch" and torch_is_available(ensure_available=True):
         torch = MODULE_CACHE["torch"]
 
         torch.cuda.synchronize(device)
 
-    elif backend == "jax" and jax_is_available(ensure_available=True):
+    elif sync_cuda_with == "jax" and jax_is_available(ensure_available=True):
         jax = MODULE_CACHE["jax"]
 
         (

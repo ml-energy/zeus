@@ -1,0 +1,2 @@
+zeus-ml
+jax[cuda12]==0.4.30
