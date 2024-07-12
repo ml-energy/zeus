@@ -16,6 +16,7 @@ class ZeusBaseCPUError(ZeusBaseError):
 
     def __init__(self, message: str) -> None:
         """Initialize Base Zeus Exception."""
+        super().__init__(message)
 
 
 class ZeusdError(ZeusBaseGPUError):
