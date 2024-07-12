@@ -23,6 +23,7 @@ from unittest.mock import call
 import pytest
 import pandas as pd
 
+from zeus.device.gpu import get_gpus
 from zeus.optimizer.power_limit import (
     GlobalPowerLimitOptimizer,
     HFGlobalPowerLimitOptimizer,
@@ -156,6 +157,9 @@ def test_power_limit_optimizer(
     ############################
     # Test JIT profiling
     ############################
+
+    # Disable `SYS_ADMIN` capability check.
+    get_gpus()._disable_sys_admin_warning = True
 
     plo = GlobalPowerLimitOptimizer(
         monitor,
