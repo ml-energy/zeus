@@ -94,6 +94,7 @@ pydocstyle.convention = "google"
 "zeus/optimizer/batch_size/common.py" = ["N805"]
 "zeus/device/gpu/*.py" = ["N802", "N803"]
 "zeus/device/cpu/*.py" = ["N802"]
+"zeus/utils/testing.py" = ["N802"]
 
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"
