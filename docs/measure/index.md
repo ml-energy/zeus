@@ -54,6 +54,26 @@ if __name__ == "__main__":
     In general, energy optimizers measure the energy of the GPU through a [`ZeusMonitor`][zeus.monitor.ZeusMonitor] instance that is passed to their constructor.
     Thus, only the GPUs specified by `gpu_indices` will be the target of optimization.
 
+### Synchronizing CPU and GPU computations
+
+Deep learning frameworks typically run actual computation on GPUs in an asynchronous fashion.
+That is, the CPU (Python interpreter) asynchronously dispatches computations to run on the GPU and moves on to dispatch the next computation without waiting for the GPU to finish.
+This helps GPUs achieve higher utilization with less idle time.
+
+Due to this asynchronous nature of Deep Learning frameworks, we need to be careful when we want to take time and energy measurements of GPU execution.
+We want *only and all of* the computations dispatched between `begin_window` and `end_window` to be captured by our time and energy measurement.
+That's what the `sync_execution_with` paramter in [`ZeusMonitor`][zeus.monitor.ZeusMonitor] and `sync_execution` paramter in [`begin_window`][zeus.monitor.ZeusMonitor.begin_window] and [`end_window`][zeus.monitor.ZeusMonitor.end_window] are for.
+Depending on the Deep Learning framework you're using (currently PyTorch and JAX are supported), [`ZeusMonitor`][zeus.monitor.ZeusMonitor] will automatically synchronize CPU and GPU execution to make sure all and only the computations dispatched between the window are captured.
+
+!!! Tip
+    Zeus has one function used globally across the codebase for device synchronization: [`sync_execution`][zeus.utils.framework.sync_execution].
+
+!!! Warning
+    [`ZeusMonitor`][zeus.monitor.ZeusMonitor] covers only the common and simple case of device synchronization, when GPU indices (`gpu_indices`) correspond to one whole physical device.
+    This is usually what you want, except when using more advanced device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX to partition CPUs into more pieces).
+    In such cases, you probably want to opt out from using this function and handle synchronization manually at the appropriate granularity.
+
+
 ## CLI power and energy monitor
 
 The energy monitor measures the total energy consumed by the GPU during the lifetime of the monitor process.

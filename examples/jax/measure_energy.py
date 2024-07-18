@@ -12,7 +12,7 @@ def main():
     # Monitor the GPU with index 0.
     # The monitor will use a JAX-specific method to wait for the GPU
     # to finish computations when `end_window` is called.
-    monitor = ZeusMonitor(gpu_indices=[0], sync_cuda_with="jax")
+    monitor = ZeusMonitor(gpu_indices=[0], sync_execution_with="jax")
 
     # Mark the beginning of a measurement window.
     monitor.begin_window("all_computations")

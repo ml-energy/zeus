@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from zeus.monitor import Measurement, ZeusMonitor
-from zeus.utils.framework import cuda_sync
+from zeus.utils.framework import sync_execution as sync_execution_fn
 from zeus.utils.logging import get_logger
 
 
@@ -47,7 +47,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         gpu_indices: list[int] | None = None,
         approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
-        ignore_sync_cuda: bool = False,
+        ignore_sync_execution: bool = False,
         match_window_name: bool = True,
     ) -> None:
         """Initialize the replay monitor.
@@ -62,7 +62,7 @@ class ReplayZeusMonitor(ZeusMonitor):
                 (Default: `None`)
             approx_instant_energy: Whether to approximate the instant energy consumption. Not used.
             log_file: Path to the log CSV file to replay events from. `None` is not allowed.
-            ignore_sync_cuda: Whether to ignore `sync_cuda` calls. (Default: `False`)
+            ignore_sync_execution: Whether to ignore `sync_execution` calls. (Default: `False`)
             match_window_name: Whether to make sure window names match. (Default: `True`)
         """
         if log_file is None:
@@ -70,7 +70,7 @@ class ReplayZeusMonitor(ZeusMonitor):
 
         self.approx_instant_energy = approx_instant_energy
         self.log_file = open(log_file)
-        self.ignore_sync_cuda = ignore_sync_cuda
+        self.ignore_sync_execution = ignore_sync_execution
         self.match_window_name = match_window_name
 
         # Infer GPU indices from the log file if not provided.
@@ -89,7 +89,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         # Keep track of ongoing measurement windows.
         self.ongoing_windows = []
 
-    def begin_window(self, key: str, sync_cuda: bool = True) -> None:
+    def begin_window(self, key: str, sync_execution: bool = True) -> None:
         """Begin a new window.
 
         This method just pushes the key into a list of ongoing measurement windows,
@@ -97,21 +97,20 @@ class ReplayZeusMonitor(ZeusMonitor):
 
         Args:
             key: Name of the measurement window.
-            sync_cuda: Whether to synchronize CUDA before starting the measurement window.
+            sync_execution: Whether to synchronize CUDA before starting the measurement window.
                 (Default: `True`)
         """
         if key in self.ongoing_windows:
             raise RuntimeError(f"Window {key} is already ongoing.")
         self.ongoing_windows.append(key)
 
-        if not self.ignore_sync_cuda and sync_cuda:
-            for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+        if not self.ignore_sync_execution and sync_execution:
+            sync_execution_fn(self.gpu_indices)
 
         self.logger.info("Measurement window '%s' started.", key)
 
     def end_window(
-        self, key: str, sync_cuda: bool = True, cancel: bool = False
+        self, key: str, sync_execution: bool = True, cancel: bool = False
     ) -> Measurement:
         """End an ongoing window.
 
@@ -122,7 +121,7 @@ class ReplayZeusMonitor(ZeusMonitor):
 
         Args:
             key: Name of the measurement window.
-            sync_cuda: Whether to synchronize CUDA before ending the measurement window.
+            sync_execution: Whether to synchronize CUDA before ending the measurement window.
                 (Default: `True`)
             cancel: Whether to cancel the measurement window. This will not consume a
                 line from the log file. (Default: `False`)
@@ -132,9 +131,8 @@ class ReplayZeusMonitor(ZeusMonitor):
         except ValueError:
             raise RuntimeError(f"Window {key} is not ongoing.") from None
 
-        if not self.ignore_sync_cuda and sync_cuda:
-            for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+        if not self.ignore_sync_execution and sync_execution:
+            sync_execution_fn(self.gpu_indices)
 
         if cancel:
             self.logger.info("Measurement window '%s' cancelled.", key)
