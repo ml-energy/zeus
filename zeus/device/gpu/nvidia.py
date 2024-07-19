@@ -7,6 +7,7 @@ import os
 import contextlib
 from pathlib import Path
 from typing import Sequence
+from functools import lru_cache
 
 import httpx
 import pynvml
@@ -18,6 +19,7 @@ from zeus.utils.logging import get_logger
 logger = get_logger(name=__name__)
 
 
+@lru_cache(maxsize=1)
 def nvml_is_available() -> bool:
     """Check if NVML is available."""
     try:
@@ -43,8 +45,8 @@ def nvml_is_available() -> bool:
         pynvml.nvmlInit()
         logger.info("pynvml is available and initialized.")
         return True
-    except pynvml.NVMLError:
-        logger.info("pynvml is available but could not initialize.")
+    except pynvml.NVMLError as e:
+        logger.info("pynvml is available but could not initialize NVML: %s.", e)
         return False
 
 

@@ -14,10 +14,10 @@
 from __future__ import annotations
 
 import os
-import contextlib
-from typing import Sequence
 import warnings
 from glob import glob
+from typing import Sequence
+from functools import lru_cache
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
@@ -29,6 +29,7 @@ logger = get_logger(name=__name__)
 RAPL_DIR = "/sys/class/powercap/intel-rapl"
 
 
+@lru_cache(maxsize=1)
 def rapl_is_available() -> bool:
     """Check if RAPL is available."""
     if not os.path.exists(RAPL_DIR):
@@ -172,5 +173,4 @@ class RAPLCPUs(cpu_common.CPUs):
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""
-        with contextlib.suppress(Exception):
-            logger.info("Shutting down RAPL CPU monitoring.")
+        pass

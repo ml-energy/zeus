@@ -62,33 +62,50 @@ def jax_is_available(ensure_available: bool = False):
         return False
 
 
-def cuda_sync(
-    device: int | None = None, backend: Literal["torch", "jax"] = "torch"
+def sync_execution(
+    gpu_devices: list[int], sync_with: Literal["torch", "jax"] = "torch"
 ) -> None:
-    """Synchronize CPU with CUDA.
+    """Block until all computations on the specified devices are finished.
 
-    Note: `cupy.cuda.Device.synchronize` may be a good choice to make
-          CUDA device synchronization more general. Haven't tested it yet.
+    PyTorch only runs GPU computations asynchronously, so synchronizing computations
+    for the given GPU devices is done by calling `torch.cuda.synchronize` on each
+    device. On the other hand, JAX runs both CPU and GPU computations asynchronously,
+    but by default it only has a single CPU device (id=0). Therefore for JAX, all GPU
+    devices passed in and the CPU device (id=0) are synchronized.
+
+    !!! Note
+        `jax.device_put` with `block_until_ready` is used to synchronize computations
+        on JAX devices. This is a workaround to the lack of a direct API for
+        synchronizing computations on JAX devices. Tracking issue:
+        https://github.com/google/jax/issues/4335
+
+    !!! Note
+        Across the Zeus library, an integer device index corresponds to a single whole
+        physical device. This is usually what you want, except when using more advanced
+        device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX
+        to partition CPUs into more pieces). In such cases, you probably want to opt out
+        from using this function and handle synchronization manually at the appropriate
+        granularity.
 
     Args:
-        device: The device to synchronize.
-        backend: Deep learning framework to use to synchronize GPU computations.
+        gpu_devices: GPU device indices to synchronize.
+        sync_with: Deep learning framework to use to synchronize computations.
             Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
     """
-    if backend == "torch" and torch_is_available(ensure_available=True):
+    if sync_with == "torch" and torch_is_available(ensure_available=True):
         torch = MODULE_CACHE["torch"]
+        for device in gpu_devices:
+            torch.cuda.synchronize(device)
+        return
 
-        torch.cuda.synchronize(device)
-
-    elif backend == "jax" and jax_is_available(ensure_available=True):
+    if sync_with == "jax" and jax_is_available(ensure_available=True):
         jax = MODULE_CACHE["jax"]
+        futures = [
+            jax.device_put(0.0, device=jax.devices("gpu")[device]) + 0
+            for device in gpu_devices
+        ]
+        futures.append(jax.device_put(0.0, device=jax.devices("cpu")[0]) + 0)
+        jax.block_until_ready(futures)
+        return
 
-        (
-            jax.device_put(
-                0.0, device=None if device is None else jax.devices("gpu")[device]
-            )
-            + 0
-        ).block_until_ready()
-
-    else:
-        raise RuntimeError("No framework is available.")
+    raise RuntimeError("No framework is available.")

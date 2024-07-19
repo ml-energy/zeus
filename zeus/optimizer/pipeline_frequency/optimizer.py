@@ -37,7 +37,7 @@ from zeus.optimizer.pipeline_frequency.common import (
     RankInfo,
     FrequencySchedule,
 )
-from zeus.utils.framework import cuda_sync
+from zeus.utils.framework import sync_execution
 
 
 class PipelineFrequencyOptimizer(Callback):
@@ -205,7 +205,7 @@ class PipelineFrequencyOptimizer(Callback):
         expected instruction matches the name of the instruction, and set the
         frequency accordingly.
         """
-        cuda_sync(self.device_id)
+        sync_execution([self.device_id], sync_with="torch")
 
         # Retrieve the next frequency from the schedule.
         item = next(self.freq_schedule_iter, None)

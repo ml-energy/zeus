@@ -5,6 +5,7 @@ import functools
 import os
 import contextlib
 from typing import Sequence
+from functools import lru_cache
 
 try:
     import amdsmi  # type: ignore
@@ -32,6 +33,7 @@ from zeus.utils.logging import get_logger
 logger = get_logger(name=__name__)
 
 
+@lru_cache(maxsize=1)
 def amdsmi_is_available() -> bool:
     """Check if amdsmi is available."""
     try:
@@ -43,8 +45,8 @@ def amdsmi_is_available() -> bool:
         amdsmi.amdsmi_init()
         logger.info("amdsmi is available and initialized")
         return True
-    except amdsmi.AmdSmiLibraryException:
-        logger.info("amdsmi is available but could not initialize.")
+    except amdsmi.AmdSmiLibraryException as e:
+        logger.info("amdsmi is available but could not initialize: %s", e)
         return False
 
 

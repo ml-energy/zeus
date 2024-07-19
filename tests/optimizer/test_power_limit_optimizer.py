@@ -149,7 +149,7 @@ def test_power_limit_optimizer(
 
     monitor = ReplayZeusMonitor(
         log_file=replay_log.log_file,
-        ignore_sync_cuda=True,
+        ignore_sync_execution=True,
         match_window_name=False,
     )
     assert monitor.gpu_indices == replay_log.gpu_indices
