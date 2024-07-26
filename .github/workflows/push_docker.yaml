@@ -67,6 +67,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=mlenergy/zeus:buildcache
           cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
-          build-args: TARGETARCH=amd64
           platforms: ${{ matrix.platform }}
 
