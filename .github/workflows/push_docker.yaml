@@ -54,7 +54,7 @@ jobs:
             type=ref,event=tag
             type=schedule
             type=sha
-	  - name: Docker Hub login
+      - name: Docker Hub login
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
