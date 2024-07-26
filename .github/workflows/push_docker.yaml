@@ -21,7 +21,6 @@ on:
   pull_request:
     branches:
       - multi-arch-docker-build
-      - master
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
@@ -54,11 +53,6 @@ jobs:
             type=ref,event=tag
             type=schedule
             type=sha
-      - name: Docker Hub login
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Build and push to Docker Hub
@@ -66,7 +60,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=mlenergy/zeus:buildcache
