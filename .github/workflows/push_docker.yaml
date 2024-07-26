@@ -43,11 +43,6 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
       - name: Checkout repository
         uses: actions/checkout@v3
-      - name: Docker Hub login
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: Generate image metadata
         id: meta
         uses: docker/metadata-action@v4
