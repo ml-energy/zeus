@@ -19,10 +19,21 @@ on:
       - 'setup.py'
       - 'pyproject.toml'
 
+   	pull_request:
+      branches:
+        - multi-arch-docker-build
+
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
     runs-on: ubuntu-latest
+	strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+
     steps:
       - name: Remove unnecessary files
         run: |
@@ -61,3 +72,5 @@ jobs:
           cache-from: type=registry,ref=mlenergy/zeus:buildcache
           cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
           build-args: TARGETARCH=amd64
+	  - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
