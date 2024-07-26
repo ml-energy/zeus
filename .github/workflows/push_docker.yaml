@@ -18,16 +18,15 @@ on:
       - 'LICENSE'
       - 'setup.py'
       - 'pyproject.toml'
-
-   	pull_request:
-      branches:
-        - multi-arch-docker-build
+  pull_request:
+    branches:
+      - multi-arch-docker-build
 
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
     runs-on: ubuntu-latest
-	strategy:
+    strategy:
       fail-fast: false
       matrix:
         platform:
@@ -53,7 +52,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-			type=schedule
+            type=schedule
             type=sha
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -62,14 +61,13 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          builder: ${{ steps.buildx.outputs.name }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=mlenergy/zeus:buildcache
           cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
           build-args: TARGETARCH=amd64
-		  platforms: ${{ matrix.platform }}
+          platforms: ${{ matrix.platform }}
 
-	  - name: Set up QEMU
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
