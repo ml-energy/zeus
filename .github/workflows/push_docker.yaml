@@ -21,7 +21,7 @@ on:
   pull_request:
     branches:
       - multi-arch-docker-build
-
+      - master
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
