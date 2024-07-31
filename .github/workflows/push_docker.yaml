@@ -90,8 +90,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build_and_push
     steps:
-	  - name: Create /tmp/digests directory
-        run: mkdir -p /tmp/digests
+      - name: Create directory
+        run: |
+          mkdir -p /tmp/digests
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
