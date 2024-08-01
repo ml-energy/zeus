@@ -128,7 +128,7 @@ jobs:
         working-directory: /tmp/digests
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          digests=$(ls /tmp/digests/*.digest | xargs cat)
+          digests=$(ls /tmp/digests/* | xargs cat)
           cmd="docker buildx imagetools create $tags"
           for digest in $digests; do
             cmd="$cmd $REGISTRY_IMAGE@sha256:$digest"
