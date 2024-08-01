@@ -40,10 +40,6 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-      - name: Prepare
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV  
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Docker Hub login
@@ -65,7 +61,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-      - name: Build and push to Docker Hub
+      - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -86,7 +82,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
-          name: digests-${{ env.PLATFORM_PAIR }}
+          name: digests-${{ matrix.platform }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -123,8 +119,16 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+          set -x
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          #digests=$(ls /tmp/digests/*.digest | xargs cat)
+          cmd="docker buildx imagetools create $tags"
+          for digest_file in /tmp/digests/*.digest; do
+            digest=$(cat "$digest_file")
+            cmd="$cmd ${env.REGISTRY_IMAGE}@sha256:$digest"
+          done
+          #docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+           # $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
       
       - name: Inspect image
         run: |
