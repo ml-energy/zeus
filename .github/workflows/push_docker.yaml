@@ -103,16 +103,8 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v3
         with:
-          name: digests-linux-arm64
           path: /tmp/digests
-          #pattern: digests-*
-          merge-multiple: true
-      - name: Download digests
-        uses: actions/download-artifact@v3
-        with:
-          name: digests-linux-amd64                                                                                                                                                                         
-          path: /tmp/digests
-          #pattern: digests-*
+          pattern: digests-*
           merge-multiple: true
       - name: List files in /tmp/digests
         run: ls -l /tmp/digests
@@ -139,7 +131,7 @@ jobs:
           digests=$(ls /tmp/digests/*.digest | xargs cat)
           cmd="docker buildx imagetools create $tags"
           for digest in $digests; do
-            cmd="$cmd ${env.REGISTRY_IMAGE}@sha256:$digest"
+            cmd="$cmd $REGISTRY_IMAGE@sha256:$digest"
           done
           eval $cmd 
           #docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
