@@ -83,6 +83,7 @@ jobs:
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           echo "$digest" > "/tmp/digests/${digest#sha256:}.digest"
+          ls -la /tmp/digests
           #touch "/tmp/digests/${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
@@ -91,6 +92,8 @@ jobs:
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
+      - name: List files in /tmp/digests
+        run: ls -l /tmp/digests
 
   merge:
     runs-on: ubuntu-latest
@@ -102,8 +105,16 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
+          name: digests-linux-arm64
           path: /tmp/digests
-          pattern: digests-*
+          #pattern: digests-*
+          merge-multiple: true
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-linux-amd64                                                                                                                                                                         
+          path: /tmp/digests
+          #pattern: digests-*
           merge-multiple: true
       - name: List files in /tmp/digests
         run: ls -l /tmp/digests
