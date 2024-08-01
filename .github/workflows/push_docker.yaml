@@ -71,8 +71,6 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          #push: true
-          #tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=mlenergy/zeus:buildcache
           cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
@@ -103,14 +101,14 @@ jobs:
         run: |
           mkdir -p /tmp/digests
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3
         with:
           name: digests-linux-arm64
           path: /tmp/digests
           #pattern: digests-*
           merge-multiple: true
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3
         with:
           name: digests-linux-amd64                                                                                                                                                                         
           path: /tmp/digests
