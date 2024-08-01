@@ -22,6 +22,7 @@ from functools import lru_cache
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
 from zeus.device.exception import ZeusBaseCPUError
+from zeus.monitor.rapl import RaplMonitor
 from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
@@ -86,6 +87,8 @@ class RAPLFile:
                 "Error reading package max energy range"
             ) from err
 
+        self.monitor = RaplMonitor(self.energy_uj_path, self.max_energy_range_uj)
+
     def __str__(self) -> str:
         """Return a string representation of the RAPL file object."""
         return f"Path: {self.path}\nEnergy_uj_path: {self.energy_uj_path}\nName: {self.name}\
@@ -99,11 +102,8 @@ class RAPLFile:
         """
         with open(self.energy_uj_path) as energy_file:
             new_energy_uj = float(energy_file.read().strip())
-        if new_energy_uj < self.last_energy:
-            self.last_energy = new_energy_uj
-            return (new_energy_uj + self.max_energy_range_uj) / 1000.0
-        self.last_energy = new_energy_uj
-        return new_energy_uj / 1000.0
+        num_wraparounds = self.monitor.get_num_wraparounds()
+        return (new_energy_uj + num_wraparounds*self.max_energy_range_uj) / 1000.0
 
 
 class RAPLCPU(cpu_common.CPU):
