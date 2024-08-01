@@ -80,7 +80,7 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          echo "$digest" > "/tmp/digests/${digest#sha256:}.digest"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
