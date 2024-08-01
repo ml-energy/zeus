@@ -47,7 +47,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Docker Hub login
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
@@ -80,9 +80,7 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          echo "$digest" > "/tmp/digests/${digest#sha256:}.digest"
-          ls -la /tmp/digests
-          #touch "/tmp/digests/${digest#sha256:}"
+          touch "/tmp/digests/${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
@@ -138,8 +136,6 @@ jobs:
             cmd="$cmd $REGISTRY_IMAGE@sha256:${digest#sha256:}"
           done
           eval $cmd 
-          #docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-           # $(printf '${{ env.REGISTRY_IMAGE }}@sha256:$digest')
       
       - name: Inspect image
         run: |
