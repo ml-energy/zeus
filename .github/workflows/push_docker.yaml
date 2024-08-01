@@ -82,7 +82,8 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          echo "$digest" > "/tmp/digests/${digest#sha256:}.digest"
+          #touch "/tmp/digests/${digest#sha256:}"
       - name: Upload digest
         uses: actions/upload-artifact@v3
         with:
@@ -95,9 +96,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build_and_push
     steps:
-      #- name: Create directory
-       # run: |
-        #  mkdir -p /tmp/digests
+      - name: Create directory
+        run: |
+          mkdir -p /tmp/digests
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
@@ -123,12 +124,11 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          set -x
+          #set -x
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          #digests=$(ls /tmp/digests/*.digest | xargs cat)
+          digests=$(ls /tmp/digests/*.digest | xargs cat)
           cmd="docker buildx imagetools create $tags"
-          for digest_file in /tmp/digests/*.digest; do
-            digest=$(cat "$digest_file")
+          for digest in $digests; do
             cmd="$cmd ${env.REGISTRY_IMAGE}@sha256:$digest"
           done
           #docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
