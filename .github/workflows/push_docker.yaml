@@ -132,7 +132,6 @@ jobs:
         working-directory: /tmp/digests
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          #digests=$(ls /tmp/digests/* | xargs cat)
           digests=$(find /tmp/digests -type f -name '*.digest' | xargs cat)
           cmd="docker buildx imagetools create $tags"
           for digest in $digests; do
