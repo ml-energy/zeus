@@ -126,8 +126,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
-      - name: Wait for Docker Hub synchronization
-        run: sleep 30
+      - name: Verify pushed digests
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}@sha256:$(cat /tmp/digests/linux-amd64/*.digest)
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}@sha256:$(cat /tmp/digests/linux-arm64/*.digest)
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
