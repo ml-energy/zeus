@@ -126,6 +126,8 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Wait for Docker Hub synchronization
+        run: sleep 30
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
