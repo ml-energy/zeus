@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - multi-arch-docker-build
+	  - multi-arch-docker-build
     tags:
       - zeus-v*
     paths:
@@ -72,8 +72,12 @@ jobs:
           context: .
           file: docker/Dockerfile
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=mlenergy/zeus:buildcache
-          cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
+          cache-from: |
+            type=registry,ref=mlenergy/zeus:buildcache
+            type=registry,ref=${{ env.SECONDARY_REGISTRY_IMAGE }}:buildcache
+          cache-to: |
+            type=registry,ref=mlenergy/zeus:buildcache,mode=max
+            type=registry,ref=${{ env.SECONDARY_REGISTRY_IMAGE }}:buildcache
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
