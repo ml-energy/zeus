@@ -61,7 +61,7 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY_IMAGE }}
-            ${{ env.ADDITIONAL_REGISTRY_IMAGE }}
+            #${{ env.ADDITIONAL_REGISTRY_IMAGE }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -72,12 +72,16 @@ jobs:
           context: .
           file: docker/Dockerfile
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=mlenergy/zeus:buildcache
-          cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
+          cache-from: |
+            type=registry,ref=mlenergy/zeus:buildcache
+            #type=registry,ref=${{ env.ADDITIONAL_REGISTRY_IMAGE }}:buildcache
+          cache-to: |
+            type=registry,ref=mlenergy/zeus:buildcache,mode=max
+            #type=registry,ref=${{ env.ADDITIONAL_REGISTRY_IMAGE }}:buildcache,mode=max
           platforms: ${{ matrix.platform }}
           outputs: |
             type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-            type=image,name=${{ env.ADDITIONAL_REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+            #type=image,name=${{ env.ADDITIONAL_REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
