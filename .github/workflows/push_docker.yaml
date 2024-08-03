@@ -128,7 +128,11 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: Verify pushed digests
         run: |
+          echo "Verifying digest for linux-amd64:"
+          cat /tmp/digests/linux-amd64/*.digest
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}@sha256:$(cat /tmp/digests/linux-amd64/*.digest)
+          echo "Verifying digest for linux-arm64:"
+          cat /tmp/digests/linux-arm64/*.digest
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}@sha256:$(cat /tmp/digests/linux-arm64/*.digest)
       - name: Create manifest list and push
         working-directory: /tmp/digests
