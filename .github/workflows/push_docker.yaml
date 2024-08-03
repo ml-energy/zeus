@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+	  - multi-arch-docker-build
     tags:
       - zeus-v*
     paths:
@@ -21,6 +22,7 @@ on:
 
 env:
   REGISTRY_IMAGE: mlenergy/zeus
+  ADDITIONAL_REGISTRY_IMAGE: symbioticlab/zeus
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
@@ -58,8 +60,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            symbioticlab/zeus
-            mlenergy/zeus
+            ${{ env.REGISTRY_IMAGE }}
+            ${{ env.ADDITIONAL_REGISTRY_IMAGE }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -114,7 +116,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: |
+            ${{ env.REGISTRY_IMAGE }}
+            ${{ env.ADDITIONAL_REGISTRY_IMAGE }}
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -128,6 +132,7 @@ jobs:
           cmd="docker buildx imagetools create $tags"
           for digest in $digests; do
             cmd="$cmd $REGISTRY_IMAGE@sha256:${digest#sha256:}"
+            cmd="$cmd $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
           done
           eval $cmd 
       - name: Inspect image
