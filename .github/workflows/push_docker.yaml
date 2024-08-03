@@ -26,7 +26,6 @@ jobs:
     if: github.repository_owner == 'ml-energy'
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
       matrix:
         platform:
           - linux/amd64
