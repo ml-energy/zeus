@@ -19,10 +19,18 @@ on:
       - 'setup.py'
       - 'pyproject.toml'
 
+env:
+  REGISTRY_IMAGE: mlenergy/zeus
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+
     steps:
       - name: Remove unnecessary files
         run: |
@@ -30,16 +38,24 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Docker Hub login
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       - name: Generate image metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: |
             symbioticlab/zeus
@@ -47,17 +63,73 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Build and push to Docker Hub
-        uses: docker/build-push-action@v3
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/Dockerfile
-          builder: ${{ steps.buildx.outputs.name }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=mlenergy/zeus:buildcache
           cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
-          build-args: TARGETARCH=amd64
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          echo "$digest" > "/tmp/digests/${digest#sha256:}.digest"
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: List files in /tmp/digests
+        run: ls -l /tmp/digests
+
+  merge:
+    runs-on: ubuntu-latest
+    needs: build_and_push
+    steps:
+      - name: Create directory
+        run: |
+          mkdir -p /tmp/digests
+      - name: Download digests for linux/amd64
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-linux-amd64
+          path: /tmp/digests/linux-amd64
+      - name: Download digests for linux/arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-linux-arm64
+          path: /tmp/digests/linux-arm64
+      - name: List files in /tmp/digests
+        run: ls -l /tmp/digests
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          digests=$(find /tmp/digests -type f -name '*.digest' | xargs cat)
+          cmd="docker buildx imagetools create $tags"
+          for digest in $digests; do
+            cmd="$cmd $REGISTRY_IMAGE@sha256:${digest#sha256:}"
+          done
+          eval $cmd 
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
