@@ -131,15 +131,19 @@ jobs:
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           digests=$(find /tmp/digests -type f -name '*.digest' | xargs cat)
-          cmd="docker buildx imagetools create $tags"
+          cmd_primary="docker buildx imagetools create $tags"
           for digest in $digests; do
-            cmd="$cmd $REGISTRY_IMAGE@sha256:${digest#sha256:}"
+            cmd_primary="$cmd_primary $REGISTRY_IMAGE@sha256:${digest#sha256:}"
           done
+          cmd_secondary="docker buildx imagetools create $tags"
           for digest in $digests; do
-            cmd="$cmd $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
+            cmd_secondary="$cmd_secondary $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
           done
-          echo "Running command: $cmd"
-          eval $cmd 
+          echo "Running primary command: $cmd_primary"
+          eval $cmd_primary
+
+          echo "Running secondary command: $cmd_primary"
+          eval $cmd_secondary
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
