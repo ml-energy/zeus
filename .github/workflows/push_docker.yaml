@@ -132,7 +132,7 @@ jobs:
           cmd_primary="docker buildx imagetools create $tags"
           for digest in $digests; do
             cmd_primary="$cmd_primary $REGISTRY_IMAGE@sha256:${digest#sha256:}"
-			cmd_primary="$cmd_primary $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
+            cmd_primary="$cmd_primary $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
           done
           echo "Running primary command: $cmd_primary"
           eval $cmd_primary
