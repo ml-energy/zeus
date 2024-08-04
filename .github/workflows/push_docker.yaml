@@ -126,19 +126,14 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
-      #- name: Wait for Docker Hub synchronization
-       # run: sleep 60
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-         # echo "Tags: $tags"
           digests=$(find /tmp/digests -type f -name '*.digest' | xargs cat)
-          echo "Digests: $digests"
           cmd="docker buildx imagetools create $tags"
           for digest in $digests; do
             cmd="$cmd $REGISTRY_IMAGE@sha256:${digest#sha256:}"
-        #    cmd="$cmd $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
           done
           for digest in $digests; do
             cmd="$cmd $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
