@@ -123,17 +123,13 @@ jobs:
         working-directory: /tmp/digests
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          echo "Tags: $tags"
           digests=$(find /tmp/digests -type f -name '*.digest' | xargs cat)
           cmd_primary="docker buildx imagetools create $tags"
           for digest in $digests; do
             cmd_primary="$cmd_primary $REGISTRY_IMAGE@sha256:${digest#sha256:}"
           done
-          cmd_secondary="docker buildx imagetools create $tags"
-          for digest in $digests; do
-            cmd_secondary="$cmd_secondary $ADDITIONAL_REGISTRY_IMAGE@sha256:${digest#sha256:}"
-          done
           eval $cmd_primary
-          eval $cmd_secondary
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
