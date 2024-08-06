@@ -60,19 +60,15 @@ class RaplWraparoundTracker:
         self,
         rapl_file_path: str,
         max_energy_uj: float,
-        rapl_csv_path: str | None = None,
     ) -> None:
         """Initialize the rapl monitor.
 
         Args:
             rapl_file_path: File path where the RAPL file is located
             max_energy_uj: Max energy range uj value
-            rapl_csv_path: If given, the wrap around polling will write measurements
-                to this path. Otherwise, a temporary file will be used.
         """
         if not os.path.exists(rapl_file_path):
             raise ValueError(f"{rapl_file_path} is not a valid file path")
-        self.rapl_file_path = rapl_file_path
 
         # Set up logging.
         self.logger = get_logger(type(self).__name__)
@@ -80,18 +76,14 @@ class RaplWraparoundTracker:
         self.logger.info("Monitoring wrap around of %s", rapl_file_path)
 
         # Create and open the CSV to record power measurements.
-        if rapl_csv_path is None:
-            rapl_csv_path = tempfile.mkstemp(suffix=".csv", text=True)[1]
-        open(rapl_csv_path, "w").close()
-        self.rapl_f = open(rapl_csv_path)
-        self.rapl_df_columns = ["time", "energy"]
-        self.rapl_df = pd.DataFrame(columns=self.rapl_df_columns)
 
+        context = mp.get_context("spawn")
+        self.wraparound_counter = context.Value('i', 0)
         # Spawn the power polling process.
         atexit.register(self._stop)
-        self.process = mp.get_context("spawn").Process(
+        self.process = context.Process(
             target=_polling_process,
-            args=(rapl_file_path, max_energy_uj, rapl_csv_path),
+            args=(rapl_file_path, max_energy_uj, self.wraparound_counter),
         )
         self.process.start()
 
@@ -103,58 +95,34 @@ class RaplWraparoundTracker:
             self.process.kill()
             self.process = None
 
-    def _update_df(self) -> None:
-        """Add rows to the power dataframe from the CSV file."""
-        try:
-            additional_df = typing.cast(
-                pd.DataFrame,
-                pd.read_csv(self.rapl_f, header=None, names=self.rapl_df_columns),
-            )
-        except pd.errors.EmptyDataError:
-            return
-
-        if additional_df.empty:
-            return
-
-        if self.rapl_df.empty:
-            self.rapl_df = additional_df
-        else:
-            self.rapl_df = pd.concat(
-                [self.rapl_df, additional_df],
-                axis=0,
-                ignore_index=True,
-                copy=False,
-            )
-
     def get_num_wraparounds(self) -> int:
         """Get the number of wraparounds detected by the polling process."""
-        self._update_df()
-        print(self.rapl_df)
-        return len(self.rapl_df)
+        with self.wraparound_counter.get_lock():
+            return self.wraparound_counter.value
 
 
 def _polling_process(
     rapl_file_path: str,
     max_energy_uj: float,
-    rapl_csv_path: str,
+    wraparound_counter: mp.Value,
 ) -> None:
-    """Run the rapl monitor."""
+    """Check for wraparounds in the specified rapl file."""
+    print("In polling", file=stderr)
     try:
         # Use line buffering.
         with open(rapl_file_path, "r") as rapl_file:
             last_energy_uj = float(rapl_file.read().strip())
-        with open(rapl_csv_path, "w", buffering=1) as rapl_f:
-            while True:
-                now = time()
-                sleep_time = 1.0
-                with open(rapl_file_path, "r") as rapl_file:
-                    energy_uj = float(rapl_file.read().strip())
-                    if max_energy_uj - energy_uj < 1000:
-                        sleep_time = 0.1
-                if energy_uj < last_energy_uj:
-                    rapl_f.write(f"{now},{energy_uj}\n")
-                last_energy_uj = energy_uj
-                sleep(sleep_time)
+        while True:
+            sleep_time = 1.0
+            with open(rapl_file_path, "r") as rapl_file:
+                energy_uj = float(rapl_file.read().strip())
+            if max_energy_uj - energy_uj < 1000:
+                sleep_time = 0.1
+            if energy_uj < last_energy_uj:
+                with wraparound_counter.get_lock():
+                    wraparound_counter.value+=1
+            last_energy_uj = energy_uj
+            sleep(sleep_time)
     except KeyboardInterrupt:
         return
 
