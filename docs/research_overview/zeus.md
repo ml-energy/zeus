@@ -1,4 +1,5 @@
 ---
+title: Zeus (NSDI '23)
 description: Understanding and Optimizing GPU Energy Consumption of DNN Training
 ---
 

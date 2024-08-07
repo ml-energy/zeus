@@ -1,4 +1,5 @@
 ---
+title: Perseus (SOSP '24)
 description: Reducing Energy Bloat in Large Model Training
 ---
 
