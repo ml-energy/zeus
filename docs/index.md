@@ -14,7 +14,7 @@ hide:
 ---
 **Project News** ⚡ 
 
-- \[2024/08\] Perseus, our large model training energy optimizer, was accepted to appear at SOSP'24! [Preprint](https://arxiv.org/abs/2312.06902){.external} | [Blog](research_overview/perseus.md) | [Optimizer](optimize/pipeline_frequency_optimizer.md)
+- \[2024/08\] Perseus, our optimizer for large model training, was accepted to SOSP'24! [Preprint](https://arxiv.org/abs/2312.06902){.external} | [Blog](research_overview/perseus.md) | [Optimizer](optimize/pipeline_frequency_optimizer.md)
 - \[2024/07\] Added AMD GPU, CPU, and DRAM energy measurement support, and preliminary JAX support!
 - \[2024/05\] Zeus is now a PyTorch ecosystem project. Read the PyTorch blog post [here](https://pytorch.org/blog/zeus/){.external}!
 - \[2024/02\] Zeus was selected as a [2024 Mozilla Technology Fund awardee](https://foundation.mozilla.org/en/blog/open-source-AI-for-environmental-justice/){.external}!
