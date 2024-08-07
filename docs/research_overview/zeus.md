@@ -1,3 +1,7 @@
+---
+description: Understanding and Optimizing GPU Energy Consumption of DNN Training
+---
+
 <div align="center" markdown>
 <h1>Zeus: Understanding and Optimizing<br>GPU Energy Consumption of DNN Training</h1>
 

@@ -1,3 +1,7 @@
+---
+description: Reducing Energy Bloat in Large Model Training
+---
+
 <div align="center" markdown>
 <h1>Perseus:<br>Reducing Energy Bloat in Large Model Training</h1>
 
