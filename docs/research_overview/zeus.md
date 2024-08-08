@@ -1,5 +1,12 @@
+---
+title: Zeus (NSDI '23)
+description: Understanding and Optimizing GPU Energy Consumption of DNN Training
+---
+
 <div align="center" markdown>
 <h1>Zeus: Understanding and Optimizing<br>GPU Energy Consumption of DNN Training</h1>
+
+NSDI '23
 
 [**Paper**](https://www.usenix.org/conference/nsdi23/presentation/you) | [**Slides**](https://www.usenix.org/system/files/nsdi23_slides_chung.pdf) | [**YouTube**](https://youtu.be/aZoD-jgO3fE)
 </div>
