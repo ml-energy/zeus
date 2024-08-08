@@ -81,7 +81,7 @@ You can also see Perseus's optimizer in action:
 
 As you can see, Perseus controls the GPU frequency of each forward and backward computation in one training pipeline.
 One training pipeline is actually a DAG of computations.
-Assigning the right GPU frequency to each computation while controlling the end-to-end execution time of the DAG and minimizing its total energy consumption happens to be NP-Hard problem, but Perseus introduces a cool graph cut-based algorithm that produces high-quality approximate solutions.
+Assigning the right GPU frequency to each computation while controlling the end-to-end execution time of the DAG and minimizing its total energy consumption happens to be an NP-Hard problem, but Perseus introduces a cool graph cut-based algorithm that produces high-quality approximate solutions.
 Check out the algorithm in our paper!
 
 ## Using Perseus
