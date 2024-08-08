@@ -301,6 +301,12 @@ class AMDGPUs(gpu_common.GPUs):
         if (visible_device := os.environ.get("HIP_VISIBLE_DEVICES")) is not None or (
             visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")
         ) is not None:
+            if not visible_device:
+                raise gpu_common.ZeusGPUInitError(
+                    "HIP_VISIBLE_DEVICES or CUDA_VISIBLE_DEVICES is set but empty. "
+                    "You can use either one for AMD GPUs, but it should either be unset "
+                    "or a comma-separated list of GPU indices."
+                )
             visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
             visible_indices = list(range(len(amdsmi.amdsmi_get_processor_handles())))

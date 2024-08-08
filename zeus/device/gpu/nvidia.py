@@ -368,6 +368,11 @@ class NVIDIAGPUs(gpu_common.GPUs):
     def _init_gpus(self) -> None:
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
+            if not visible_device:
+                raise gpu_common.ZeusGPUInitError(
+                    "CUDA_VISIBLE_DEVICES is set to an empty string. "
+                    "It should either be unset or a comma-separated list of GPU indices."
+                )
             visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
             visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
