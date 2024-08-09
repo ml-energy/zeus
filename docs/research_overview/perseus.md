@@ -38,7 +38,7 @@ Exponentially growing things only do so until they hit a bottleneck, which becom
 Today, energy is one of such bottlenecks for GenAI.
 People need more compute (usually from GPUs) to train and serve large models, but it's very difficult to get access to electricity which ultimately powers those hardware.[^1][^2]
 
-The goal of perseus is to reduce the total energy consumption of large model training without slowing down training by finding and removing energy wastage during training, which we call *energy bloat*.
+The goal of Perseus is to reduce the total energy consumption of large model training without slowing down training by finding and removing energy wastage during training, which we call *energy bloat*.
 This leads to both less total energy consumption and lower average power draw.
 
 ## Energy Bloat
