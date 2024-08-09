@@ -22,7 +22,6 @@ on:
 env:
   REGISTRY_NAME: mlenergy/zeus
   MIRROR_REGISTRY_NAME: symbioticlab/zeus
-  
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
