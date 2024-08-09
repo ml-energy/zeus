@@ -20,7 +20,8 @@ on:
       - 'pyproject.toml'
 
 env:
-  REGISTRY_IMAGE: mlenergy/zeus
+  REGISTRY_NAME: mlenergy/zeus
+  MIRROR_REGISTRY_NAME: symbioticlab/zeus
 jobs:
   build_and_push:
     if: github.repository_owner == 'ml-energy'
@@ -58,8 +59,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            symbioticlab/zeus
-            mlenergy/zeus
+            ${{ env.REGISTRY_NAME }}
+            ${{ env.MIRROR_REGISTRY_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -73,7 +74,7 @@ jobs:
           cache-from: type=registry,ref=mlenergy/zeus:buildcache
           cache-to: type=registry,ref=mlenergy/zeus:buildcache,mode=max
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.REGISTRY_NAME }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
@@ -86,8 +87,6 @@ jobs:
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
-      - name: List files in /tmp/digests
-        run: ls -l /tmp/digests
 
   merge:
     runs-on: ubuntu-latest
@@ -106,15 +105,15 @@ jobs:
         with:
           name: digests-linux-arm64
           path: /tmp/digests/linux-arm64
-      - name: List files in /tmp/digests
-        run: ls -l /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: |
+            ${{ env.REGISTRY_NAME }}
+            ${{ env.MIRROR_REGISTRY_NAME }}
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -127,9 +126,9 @@ jobs:
           digests=$(find /tmp/digests -type f -name '*.digest' | xargs cat)
           cmd="docker buildx imagetools create $tags"
           for digest in $digests; do
-            cmd="$cmd $REGISTRY_IMAGE@sha256:${digest#sha256:}"
+            cmd="$cmd $REGISTRY_NAME@sha256:${digest#sha256:}"
           done
-          eval $cmd 
+          eval $cmd
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY_NAME }}:${{ steps.meta.outputs.version }}
