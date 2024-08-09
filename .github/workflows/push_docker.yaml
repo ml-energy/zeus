@@ -20,7 +20,6 @@ on:
       - 'pyproject.toml'
 
 env:
-
   REGISTRY_NAME: mlenergy/zeus
   MIRROR_REGISTRY_NAME: symbioticlab/zeus
   
