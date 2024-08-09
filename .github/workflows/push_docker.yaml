@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-	  - multi-arch-docker-build
+      - multi-arch-docker-build
     tags:
       - zeus-v*
     paths:
