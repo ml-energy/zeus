@@ -22,7 +22,7 @@ from typing import Sequence
 from functools import lru_cache
 import tempfile
 import multiprocessing as mp
-from time import time, sleep
+import time
 
 import pandas as pd
 
@@ -53,7 +53,7 @@ class RaplWraparoundTracker:
     Attributes:
         rapl_file_path (str): File path of rapl file to track wraparounds for.
         max_energy_uj (float): Max value of rapl counter for `rapl_file_path` file. Used to
-        determine the sleep period between polls
+            determine the sleep period between polls
     """
 
     def __init__(
@@ -74,8 +74,6 @@ class RaplWraparoundTracker:
         self.logger = get_logger(type(self).__name__)
 
         self.logger.info("Monitoring wrap around of %s", rapl_file_path)
-
-        # Create and open the CSV to record power measurements.
 
         context = mp.get_context("spawn")
         self.wraparound_counter = context.Value('i', 0)
@@ -107,7 +105,6 @@ def _polling_process(
     wraparound_counter: mp.Value,
 ) -> None:
     """Check for wraparounds in the specified rapl file."""
-    print("In polling", file=stderr)
     try:
         # Use line buffering.
         with open(rapl_file_path, "r") as rapl_file:
@@ -122,7 +119,7 @@ def _polling_process(
                 with wraparound_counter.get_lock():
                     wraparound_counter.value+=1
             last_energy_uj = energy_uj
-            sleep(sleep_time)
+            time.sleep(sleep_time)
     except KeyboardInterrupt:
         return
 
