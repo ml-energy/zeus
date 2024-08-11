@@ -14,13 +14,14 @@
 from __future__ import annotations
 
 import atexit
-import os
-import warnings
-from glob import glob
-from typing import Sequence
-from functools import lru_cache
 import multiprocessing as mp
+import os
 import time
+import warnings
+from functools import lru_cache
+from glob import glob
+from multiprocessing.sharedctypes import Synchronized
+from typing import Sequence
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
@@ -30,6 +31,10 @@ from zeus.utils.logging import get_logger
 logger = get_logger(name=__name__)
 
 RAPL_DIR = "/sys/class/powercap/intel-rapl"
+
+# Assuming a maximum power draw of 1000 Watts when we are polling every 0.1 seconds, the maximum
+# amount the RAPL counter would increase
+RAPL_COUNTER_MAX_INCREASE = 1000 * 1e6 * 0.1
 
 
 class RaplWraparoundTracker:
@@ -98,18 +103,17 @@ class RaplWraparoundTracker:
 def _polling_process(
     rapl_file_path: str,
     max_energy_uj: float,
-    wraparound_counter,
+    wraparound_counter: Synchronized[int]
 ) -> None:
     """Check for wraparounds in the specified rapl file."""
     try:
-        # Use line buffering.
-        with open(rapl_file_path, "r") as rapl_file:
+        with open(rapl_file_path) as rapl_file:
             last_energy_uj = float(rapl_file.read().strip())
         while True:
             sleep_time = 1.0
             with open(rapl_file_path, "r") as rapl_file:
                 energy_uj = float(rapl_file.read().strip())
-            if max_energy_uj - energy_uj < 1000:
+            if max_energy_uj - energy_uj < RAPL_COUNTER_MAX_INCREASE:
                 sleep_time = 0.1
             if energy_uj < last_energy_uj:
                 with wraparound_counter.get_lock():
@@ -183,8 +187,8 @@ class RAPLFile:
 
     def __str__(self) -> str:
         """Return a string representation of the RAPL file object."""
-        return f"Path: {self.path}\nEnergy_uj_path: {self.energy_uj_path}\nName: {self.name}\
-        \nLast_energy: {self.last_energy}\nMax_energy: {self.max_energy_range_uj}"
+        return f"RAPLFile(Path: {self.path}\nEnergy_uj_path: {self.energy_uj_path}\nName: {self.name}\
+        \nLast_energy: {self.last_energy}\nMax_energy: {self.max_energy_range_uj})"
 
     def read(self) -> float:
         """Read the current energy value from the energy_uj file.
