@@ -1,17 +1,3 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from __future__ import annotations
 
 import builtins
@@ -52,19 +38,11 @@ class MockRaplFile:
     def __init__(self, file_path, values):
         self.file_path = file_path
         self.values = iter(values)
-        self.default_value = "1000"
-        self.current_value = next(self.values, self.default_value)
     
     def read(self, *args, **kwargs):
-        if self.current_value is None:
-            raise MockRaplFileOutOfValues()
-
-        output = self.current_value
-        try:
-            self.current_value = next(self.values)
-        except StopIteration:
-            self.current_value = None
-        return output
+        if (value := next(self.values, None)) is not None:
+            return value
+        raise MockRaplFileOutOfValues()
     
     def __enter__(self):
         return self
