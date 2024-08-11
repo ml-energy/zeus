@@ -17,14 +17,10 @@ import atexit
 import os
 import warnings
 from glob import glob
-import typing
 from typing import Sequence
 from functools import lru_cache
-import tempfile
 import multiprocessing as mp
 import time
-
-import pandas as pd
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
@@ -76,7 +72,7 @@ class RaplWraparoundTracker:
         self.logger.info("Monitoring wrap around of %s", rapl_file_path)
 
         context = mp.get_context("spawn")
-        self.wraparound_counter = context.Value('i', 0)
+        self.wraparound_counter = context.Value("i", 0)
         # Spawn the power polling process.
         atexit.register(self._stop)
         self.process = context.Process(
@@ -102,7 +98,7 @@ class RaplWraparoundTracker:
 def _polling_process(
     rapl_file_path: str,
     max_energy_uj: float,
-    wraparound_counter: mp.Value,
+    wraparound_counter,
 ) -> None:
     """Check for wraparounds in the specified rapl file."""
     try:
@@ -117,7 +113,7 @@ def _polling_process(
                 sleep_time = 0.1
             if energy_uj < last_energy_uj:
                 with wraparound_counter.get_lock():
-                    wraparound_counter.value+=1
+                    wraparound_counter.value += 1
             last_energy_uj = energy_uj
             time.sleep(sleep_time)
     except KeyboardInterrupt:
