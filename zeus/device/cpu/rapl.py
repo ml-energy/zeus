@@ -101,9 +101,7 @@ class RaplWraparoundTracker:
 
 
 def _polling_process(
-    rapl_file_path: str,
-    max_energy_uj: float,
-    wraparound_counter: Synchronized[int]
+    rapl_file_path: str, max_energy_uj: float, wraparound_counter: Synchronized[int]
 ) -> None:
     """Check for wraparounds in the specified rapl file."""
     try:
