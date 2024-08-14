@@ -154,9 +154,7 @@ def mock_gpus(
     return request.param
 
 
-def test_monitor(
-    pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path
-):
+def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     """Test the `ZeusMonitor` class."""
     cuda_visible_devices, gpu_indices, gpu_archs = mock_gpus
     if cuda_visible_devices is None:

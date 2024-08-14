@@ -29,6 +29,7 @@ from zeus.device.cpu.rapl import (
 
 from zeus.device.cpu.common import CpuDramMeasurement
 
+
 class MockRaplFileOutOfValues(Exception):
     """Exception raised when MockRaplFile runs out of values."""
 
@@ -99,6 +100,7 @@ def mock_rapl_values():
     patch_open.stop()
     patch_sleep.stop()
 
+
 @pytest.fixture()
 def mock_rapl_wraparound_tracker():
     patch_tracker = patch("zeus.device.cpu.rapl.RaplWraparoundTracker")
@@ -106,7 +108,7 @@ def mock_rapl_wraparound_tracker():
 
     mock_tracker = MockRaplWraparoundTracker.return_value
     mock_tracker.get_num_wraparounds.side_effect = [0, 5]
-    
+
     yield mock_tracker
 
     patch_tracker.stop()
@@ -118,9 +120,9 @@ def test_rapl_polling_process(mock_rapl_values):
         _polling_process(RAPL_DIR + "/intel-rapl:0/energy_uj", 1000, wraparound_counter)
     assert wraparound_counter.value == 8
 
+
 # RAPLFile tests
 @pytest.fixture
-
 @patch("os.path.exists", return_value=False)
 def test_rapl_available(mock_exists):
     assert rapl_is_available() == False
