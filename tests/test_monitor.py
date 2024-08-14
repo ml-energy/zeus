@@ -154,15 +154,8 @@ def mock_gpus(
     return request.param
 
 
-@pytest.fixture
-def mock_cpus(mocker):
-    """Mock CPU energy consumption with incrementing values."""
-    mock = mocker.patch("zeus.device.cpu.get_cpus", return_value=MOCKCPUs())
-    return mock
-
-
 def test_monitor(
-    pynvml_mock, mock_gpus, mock_cpus, mocker: MockerFixture, tmp_path: Path
+    pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path
 ):
     """Test the `ZeusMonitor` class."""
     cuda_visible_devices, gpu_indices, gpu_archs = mock_gpus
@@ -220,6 +213,7 @@ def test_monitor(
 
     # want to make zeus.device.gpu.nvml_is_available is a function, want it to always return true when testing
     mocker.patch("zeus.device.gpu.nvml_is_available", return_value=True)
+    mocker.patch("zeus.device.cpu._cpus", new=MOCKCPUs())
 
     ########################################
     # Test ZeusMonitor initialization.
@@ -227,8 +221,6 @@ def test_monitor(
     monitor = ZeusMonitor(
         gpu_indices=gpu_indices, cpu_indices=list(range(NUM_CPUS)), log_file=log_file
     )
-    # Mocking didn't work so setting manually
-    monitor.cpus = MOCKCPUs()
 
     # Check GPU index parsing from the log file.
     replay_monitor = ReplayZeusMonitor(gpu_indices=None, log_file=log_file)

@@ -14,26 +14,6 @@ import multiprocessing as mp
 
 if TYPE_CHECKING:
     from pathlib import Path
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-from __future__ import annotations
-
-import os
-import pytest
-import warnings
-from unittest.mock import patch, mock_open, create_autospec, MagicMock
 
 from zeus.device.cpu.rapl import (
     RAPLFile,
@@ -46,8 +26,8 @@ from zeus.device.cpu.rapl import (
     RaplWraparoundTracker,
     _polling_process,
 )
-from zeus.device.cpu.common import CpuDramMeasurement
 
+from zeus.device.cpu.common import CpuDramMeasurement
 
 class MockRaplFileOutOfValues(Exception):
     """Exception raised when MockRaplFile runs out of values."""
@@ -76,24 +56,32 @@ class MockRaplFile:
 @pytest.fixture
 def mock_rapl_values():
     rapl_values = [
-        "1000",
-        "900",
-        "800",
-        "700",
-        "600",
-        "500",
-        "400",
-        "500",
-        "200",
-        "100",
+        "100000",
+        "90000",
+        "80000",
+        "70000",
+        "60000",
+        "50000",
+        "40000",
+        "50000",
+        "20000",
+        "10000",
     ]
     mocked_rapl_file = MockRaplFile(RAPL_DIR + "/intel-rapl:0/energy_uj", rapl_values)
+    mocked_rapl_file_name = mock_open()
+    mocked_rapl_file_name.return_value.read.return_value = "package"
+    mocked_rapl_file_max = mock_open()
+    mocked_rapl_file_max.return_value.read.return_value = "100000"
 
     real_open = builtins.open
 
     def mock_file_open(filepath, *args, **kwargs):
         if filepath == (RAPL_DIR + "/intel-rapl:0/energy_uj"):
             return mocked_rapl_file
+        if filepath == (RAPL_DIR + "/intel-rapl:0/name"):
+            return mocked_rapl_file_name()
+        if filepath == (RAPL_DIR + "/intel-rapl:0/max_energy_range_uj"):
+            return mocked_rapl_file_max()
         else:
             return real_open(filepath, *args, **kwargs)
 
@@ -111,58 +99,46 @@ def mock_rapl_values():
     patch_open.stop()
     patch_sleep.stop()
 
+@pytest.fixture()
+def mock_rapl_wraparound_tracker():
+    patch_tracker = patch("zeus.device.cpu.rapl.RaplWraparoundTracker")
+    MockRaplWraparoundTracker = patch_tracker.start()
+
+    mock_tracker = MockRaplWraparoundTracker.return_value
+    mock_tracker.get_num_wraparounds.side_effect = [0, 5]
+    
+    yield mock_tracker
+
+    patch_tracker.stop()
+
 
 def test_rapl_polling_process(mock_rapl_values):
     wraparound_counter = mp.Value("i", 0)
     with pytest.raises(MockRaplFileOutOfValues) as exception:
         _polling_process(RAPL_DIR + "/intel-rapl:0/energy_uj", 1000, wraparound_counter)
     assert wraparound_counter.value == 8
-    RAPL_DIR
-)
-from zeus.device.cpu.common import CpuDramMeasurement
 
 # RAPLFile tests
 @pytest.fixture
-def mock_os_listdir(mocker):
-    return mocker.patch(
-        "os.listdir", return_value=["energy_uj", "max_energy_range_uj", "name"]
-    )
-
-
-@pytest.fixture
-def mock_builtins_open(mocker):
-    # Set up the mock for open to return specific content for different files
-    m = mock_open()
-    m.side_effect = [
-        mock_open(read_data="package").return_value,  # for name file
-        mock_open(read_data="1000000").return_value,  # for energy_uj file
-        mock_open(read_data="2000000").return_value,  # for max_energy_range_uj file
-    ]
-    return mocker.patch("builtins.open", m)
-
 
 @patch("os.path.exists", return_value=False)
 def test_rapl_available(mock_exists):
     assert rapl_is_available() == False
 
 
-def test_rapl_file_class(mock_os_listdir, mock_builtins_open):
+def test_rapl_file_class(mock_rapl_values, mock_rapl_wraparound_tracker):
     """Test the `RAPLFile` class."""
     # Test initialization
     raplFile = RAPLFile("/sys/class/powercap/intel-rapl/intel-rapl:0")
     assert raplFile.name == "package"
-    assert raplFile.last_energy == 1000000.0
-    assert raplFile.max_energy_range_uj == 2000000.0
+    assert raplFile.last_energy == 100000.0
+    assert raplFile.max_energy_range_uj == 100000.0
 
-    # Test read method
-    mock_builtins_open.side_effect = [mock_open(read_data="1100000").return_value]
-    assert raplFile.read() == 1100.0
+    # Test read method where get_num_wraparounds is 0
+    assert raplFile.read() == 90.0
 
-    # Test wraparound
-    mock_builtins_open.side_effect = [
-        mock_open(read_data="500000").return_value  # for energy_uj file during read
-    ]
-    assert raplFile.read() == 2500.0  # (50000+2000000)/1000
+    # Test read method where get_num_wraparounds is 5
+    assert raplFile.read() == 580.0  # (80000+5*100000)/1000
 
 
 def test_rapl_file_class_exceptions():
