@@ -26,7 +26,6 @@ from zeus.device.cpu.rapl import (
     RaplWraparoundTracker,
     _polling_process,
 )
-
 from zeus.device.cpu.common import CpuDramMeasurement
 
 
