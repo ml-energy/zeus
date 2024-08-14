@@ -4,13 +4,11 @@ import builtins
 import os
 import pytest
 from typing import Generator, TYPE_CHECKING, Sequence
-from time import sleep
 from unittest.mock import patch, mock_open, create_autospec, MagicMock
-import unittest.mock as mock
-from sys import stdout, stderr
 import warnings
 
 import multiprocessing as mp
+
 
 if TYPE_CHECKING:
     from pathlib import Path
