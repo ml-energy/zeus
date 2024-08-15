@@ -58,8 +58,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
                 model,
                 detected_period,
             )
-            if update_period > detected_period:
-                update_period = detected_period
+            update_period = min(update_period, detected_period)
 
     # Target half the update period to ensure that the counter is enough.
     update_period /= 2.0
