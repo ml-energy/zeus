@@ -373,6 +373,13 @@ class NVIDIAGPUs(gpu_common.GPUs):
                     "CUDA_VISIBLE_DEVICES is set to an empty string. "
                     "It should either be unset or a comma-separated list of GPU indices."
                 )
+            if visible_device.startswith("MIG"):
+                raise gpu_common.ZeusGPUInitError(
+                    "CUDA_VISIBLE_DEVICES contains MIG devices. NVML (the library used by Zeus) "
+                    "currently does not support measuring the power or energy consumption of MIG "
+                    "slices. You can still measure the whole GPU by temporarily setting "
+                    "CUDA_VISIBLE_DEVICES to integer GPU indices and restoring it afterwards."
+                )
             visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
             visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
