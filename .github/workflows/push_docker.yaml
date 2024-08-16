@@ -63,7 +63,7 @@ jobs:
             ${{ env.MIRROR_REGISTRY_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=tag
+            type=match,pattern=zeus-(.*),group=1
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v5
