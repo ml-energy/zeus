@@ -7,7 +7,7 @@ name = "zeus-ml"
 description = "A framework for deep learning energy measurement and optimization."
 readme = "README.md"
 authors = [
-    {name = "Jae-Won Chung", email = "jwnchung@umich.edu"},
+    {name = "Zeus Team"},
 ]
 license = {text = "Apache 2.0"}
 classifiers = [
@@ -16,8 +16,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
-keywords = ["deep-learning", "power", "energy", "sustainability", "mlsys"]
+keywords = ["deep-learning", "power", "energy", "carbon", "sustainability", "mlsys"]
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
