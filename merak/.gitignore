@@ -1,0 +1,52 @@
+## General
+# git patch
+*.patch
+# filesystem
+.idea
+.DS_Store
+.apex
+.envrc
+
+# compiled python files 
+*.pyc
+
+# compiled python folders
+**/__pycache__
+**/output
+**/imagenet_outputs
+**/tmp_trainer
+*.egg-info/
+**/*_cache/
+*.so
+**/build
+
+# vscode configurations
+**/.vscode
+
+# model files
+#*.json
+events.out.tfevents*
+model.ckpt*
+*.pbtxt
+*.pt
+checkpoint
+eval
+weight-decay
+events.out.*
+tensorboard
+
+# .tar packages
+*.tar
+
+# log or output files
+*.log
+*.out
+*.txt
+*.eps
+*.json
+*.csv
+*.onnx
+
+# shell script
+*.sh
+

@@ -1,0 +1,1 @@
+{"scheduler": "ZeusLocalPowerState", "scheduler_args": {}, "log_level": "DEBUG", "mode": "power limit", "dump_data": true, "dump_dir": "dump"}

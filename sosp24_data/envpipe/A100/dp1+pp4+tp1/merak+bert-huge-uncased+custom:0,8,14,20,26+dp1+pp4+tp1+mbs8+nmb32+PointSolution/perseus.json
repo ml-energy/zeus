@@ -1,0 +1,1 @@
+{"scheduler": "PointSolution", "scheduler_args": {"solution_path": "envpipe_bert.py"}, "log_level": "DEBUG", "mode": "frequency", "dump_data": true, "dump_dir": "dump"}

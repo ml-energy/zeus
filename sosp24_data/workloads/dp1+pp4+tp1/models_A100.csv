@@ -1,0 +1,6 @@
+model,partition_method,dp,tp,pp,microbatch_size,num_microbatches
+gpt3-xl,"custom:0,8,14,21,27",1,1,4,8,128
+bert-huge-uncased,"custom:0,8,14,20,26",1,1,4,8,32
+t5-3b,"custom:0,16,33,53,74",1,1,4,4,32
+wide-resnet101_8,"custom:0,7,16,25,34",1,1,4,64,24
+bloom-3b,"custom:0,10,18,26,32",1,1,4,4,128

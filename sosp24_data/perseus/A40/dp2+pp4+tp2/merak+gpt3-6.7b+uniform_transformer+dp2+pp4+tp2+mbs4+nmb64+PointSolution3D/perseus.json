@@ -1,0 +1,1 @@
+{"scheduler": "PointSolution3D", "scheduler_args": {"solution_path": "sampled/merak+gpt3-6.7b+uniform_transformer+dp2+pp4+tp2+mbs4+nmb64+3d", "warmup_iters": 0, "reverse": true}, "log_level": "DEBUG", "mode": "frequency", "dump_data": true, "dump_dir": "dump"}

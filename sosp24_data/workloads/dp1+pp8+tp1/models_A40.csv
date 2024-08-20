@@ -1,0 +1,6 @@
+model,partition_method,dp,tp,pp,microbatch_size,num_microbatches
+gpt3-2.7b,uniform_transformer,1,1,8,4,256
+bert-huge-uncased,uniform_transformer,1,1,8,8,32
+t5-3b,"custom:0,9,16,24,33,43,53,63,74",1,1,8,4,32
+bloom-3b,"custom:0,6,10,14,18,22,26,30,32",1,1,8,4,128
+wide-resnet101_8,"custom:0,4,9,13,17,21,25,30,34",1,1,8,32,48

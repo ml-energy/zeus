@@ -1,0 +1,3 @@
+DATA:
+  DATA_PATH: /data/imagenet/
+SAVE_FREQ: 100

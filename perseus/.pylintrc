@@ -1,0 +1,29 @@
+[MAIN]
+jobs=0
+
+[MESSAGES CONTROL]
+disable=too-many-arguments,
+        no-self-argument,
+        global-statement,
+        fixme,
+        too-few-public-methods,
+        too-many-instance-attributes,
+        too-many-locals,
+        too-many-statements,
+        too-many-branches,
+        too-many-nested-blocks,
+
+[FORMAT]
+max-line-length = 120
+
+[BASIC]
+good-names=i,
+           j,
+           k,
+           _,
+           f,
+           df,
+           pl,
+
+[MASTER]
+extension-pkg-allow-list=pydantic

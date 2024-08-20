@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "perseus"
+version = "0.0.1"
+description = "An energy optimizer for large model training."
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { file = "LICENSE" }
+authors = [
+    { name = "Jae-Won Chung", email = "jwnchung@umich.edu" }
+]
+keywords = ["deep-learning", "power", "energy", "mlsys"]
+classifiers = [
+    "Environment :: GPU :: NVIDIA CUDA",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "pandas",
+    "torch",
+    "pynvml",
+    "fastapi[all] == 0.87.0",
+    "httpx == 0.23.1",
+    "aiofiles == 22.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ml-energy/zeus"
+Documentation = "https://ml.energy/zeus"
+
+[project.optional-dependencies]
+dev = ["ruff", "black == 22.10.0", "mypy == 0.991", "types-aiofiles", "pyright"]
+
+[tool.setuptools.packages.find]
+exclude = ["dump"]

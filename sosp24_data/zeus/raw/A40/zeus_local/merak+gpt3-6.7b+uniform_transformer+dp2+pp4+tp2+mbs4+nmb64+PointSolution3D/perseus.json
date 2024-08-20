@@ -1,0 +1,1 @@
+{"scheduler": "ZeusLocalPowerState3D", "scheduler_args": {"warmup_iters": 0}, "log_level": "DEBUG", "mode": "power limit", "dump_data": true, "dump_dir": "dump"}

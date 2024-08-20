@@ -1,0 +1,2 @@
+model,partition_method,dp,tp,pp,microbatch_size,num_microbatches
+gpt3-6.7b,uniform_transformer,2,2,4,4,64

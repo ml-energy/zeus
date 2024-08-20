@@ -1,0 +1,1 @@
+{"scheduler": "PointSolution", "scheduler_args": {"solution_path": "sampled/a40+decoupled+bert-huge-uncased+ut/"}, "log_level": "DEBUG", "mode": "frequency", "dump_data": true, "dump_dir": "dump"}
