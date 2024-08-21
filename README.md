@@ -11,8 +11,7 @@ Reading this README and the paper before the screencast would be helpful in unde
 
 ## Artifact organization
 
-The code artifact three pieces: Perseus (control plane), Merak (training system integrated with Perseus), and Lowtime (GPU frequency planner).
-Perseus and Lowtime are part of the research paper. Merak is an external dependency.
+The code artifact has three pieces: Perseus (control plane), Merak (training system integrated with Perseus), and Lowtime (GPU frequency planner).
 
 ```
  ./
@@ -22,14 +21,19 @@ Perseus and Lowtime are part of the research paper. Merak is an external depende
 ├──  Dockerfile             # Unified Dockerfile for all three components above
 │
 ├──  sosp24_data/           # Experiment data for paper reproduction
-├──  evaluation.ipynb       # Jupyter notebook to reproduce all results
+├──  evaluation.ipynb       # Jupyter notebook to reproduce evaluation figures and tables
 ├──  plot.py                # Plotting utility used by the notebook
 └──  requirements.txt       # Python dependencies for the notebook
 ```
 
+> [!IMPORTANT]
+> Perseus and Lowtime are our creation and are part of the paper. Merak is *not* our creation.
+>
+> As such, when evaluating the quality of code, only `perseus/` and `lowtime/` should be considered.
+
 ## Reproducing evaluation figures and tables
 
-All the experiment data necessary to reproduce the figures and tables in the paper's evaluation section is included in `sosp24_data`.
+All the experiment data necessary to reproduce the figures and tables in the paper's evaluation section (Section 6) is included in `sosp24_data`.
 Results were generated in three different kinds of environments:
 
 1. **A40 nodes**: 1x AMD EPYC 7513 CPU, 512 GB DRAM, 4x NVIDIA A40-48G GPUs, RHEL 8.7
@@ -37,6 +41,9 @@ Results were generated in three different kinds of environments:
 1. **A100 SXM nodes**: 2x AMD EPYC 7763 CPUs, 512 GB DRAM, 4x NVIDIA A100-80G SXM GPUs, Ubuntu 22.04
 
 A100 SXM nodes were only used for the *Emulation* part of our evaluation. In *Experiment* evaluations, all results are explicitly marked as A40 or A100.
+
+> [!NOTE]
+> While the artifact was primarily tested on the three environments above, we expect it to run well on other Linux-based platforms with datacenter NVIDIA GPUs.
 
 ```sh
 # Clone the repository (Assuming you have set up SSH auth)
@@ -55,7 +62,7 @@ pip install -r requirements.txt
 jupyter lab
 ```
 
-After this, you can step through `evaluation.ipynb`, which will reproduce the paper's evaluation figures and tables.
+After this, you can step through `evaluation.ipynb`, which will reproduce the paper's evaluation (Section 6) figures and tables.
 Especially, our *Emulation* evaluations are all done in this notebook.
 
 ## Running Perseus
