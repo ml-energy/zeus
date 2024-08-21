@@ -1,7 +1,13 @@
 Artifact release for the paper "Perseus: Reducing Energy Bloat in Large Model Training."
 
-I created an [introduction video](https://www.youtube.com/watch?v=mIoBT9Bg08w).
+## Videos
+
+I created an [introduction video](https://youtu.be/mIoBT9Bg08w).
 It covers the paper, system components, and miscellaneous details regarding evaluation, at a high-level.
+
+I also created a [screencast](https://umich.zoom.us/rec/share/PjgAepU0oAHymX7UrlKA7rQNMDOSkfx8DD8E8uioSWRPHhIyR8wuQrJNjFFBVVE-.YyJcX9VtaOM9Q5gB) of me performing all the steps in this document myself: On a node with four A40 GPUs, I go from scratch to getting energy savings numbers for GPT-3 Large.
+The Zoom recording link above has synchronized transcripts which would help you easily skip over long experiment runs during which I don't say anything, but if it somehow doesn't work, please try [this YouTube link](https://youtu.be/dVc1TdryPwA).
+Reading this README and the paper before the screencast would be helpful in understanding what's happening, although I still explain as I run things.
 
 ## Artifact organization
 
