@@ -52,6 +52,8 @@ class Args:
     plot_interval: int = 100
     # The unit of reduction for each iteration, in seconds
     unit_time: float = 0.001
+    # Noise factor for soft Pareto frontier filtering
+    noise_factor: float = 0.95
 
 
 def main(args: Args) -> None:
@@ -102,9 +104,13 @@ def main(args: Args) -> None:
 
             # Get the Preto frontier, quantize time, and deduplicate time.
             cand_options = CandidateExecutionOptions[int](options=options)
+            if len(cand_options.options) <= 3:
+                cand_options = CandidateExecutionOptions[int](
+                    options=options, noise_factor=args.noise_factor
+                )
 
             # Fit the cost model.
-            model = ExponentialModel(cand_options)
+            model = ExponentialModel(cand_options, search_strategy="best")
 
             # Draw the cost model.
             fig, ax = plt.subplots(figsize=(8, 8), tight_layout=True)
