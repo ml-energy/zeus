@@ -176,7 +176,7 @@ class RAPLFile:
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError("Error reading package energy") from err
         except PermissionError as err:
-            raise ZeusRAPLPermissionError(
+            raise cpu_common.ZeusCPUNoPermissionError(
                 "Can't read file due to permission error"
             ) from err
         try:

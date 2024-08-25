@@ -10,13 +10,12 @@ from pathlib import Path
 from dataclasses import dataclass
 from functools import cached_property
 
-from zeus.device.cpu.rapl import ZeusRAPLPermissionError
 from zeus.monitor.power import PowerMonitor
 from zeus.utils.logging import get_logger
 from zeus.utils.framework import sync_execution as sync_execution_fn
 from zeus.device import get_gpus, get_cpus
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
-from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
+from zeus.device.cpu.common import ZeusCPUInitError, ZeusCPUNoPermissionError, EmptyCPUs
 
 logger = get_logger(__name__)
 
@@ -187,10 +186,10 @@ class ZeusMonitor:
             self.cpus = get_cpus()
         except ZeusCPUInitError:
             self.cpus = EmptyCPUs()
-        except ZeusRAPLPermissionError as err:
+        except ZeusCPUNoPermissionError as err:
             if cpu_indices:
                 raise RuntimeError(
-                    "SYS_ADMIN capability is required to read RAPL files. See "
+                    "root capability is required to read RAPL files. See "
                     "https://ml.energy/zeus/getting_started/#system-privileges "
                     "for more information or disable CPU measurement by passing cpu_indices=[] to "
                     "ZeusMonitor"
