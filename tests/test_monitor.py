@@ -43,9 +43,9 @@ class MockCPU(CPU):
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         return CpuDramMeasurement(
             cpu_mj=float(next(self.cpu_energy)),
-            dram_mj=float(next(self.dram_energy))
-            if self.dram_energy is not None
-            else None,
+            dram_mj=(
+                float(next(self.dram_energy)) if self.dram_energy is not None else None
+            ),
         )
 
     def supportsGetDramEnergyConsumption(self):
@@ -281,9 +281,11 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
             for i in range(len(monitor.cpu_indices))
         }
         assert monitor.measurement_states[name].dram_energy == {
-            i: pytest.approx((200 + 5 * (begin_time - 4)) / 1000.0)
-            if i % 2 == 0
-            else None
+            i: (
+                pytest.approx((200 + 5 * (begin_time - 4)) / 1000.0)
+                if i % 2 == 0
+                else None
+            )
             for i in range(0, len(monitor.cpu_indices), 2)
         }
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls(
