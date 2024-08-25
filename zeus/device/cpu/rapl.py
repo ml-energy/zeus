@@ -147,6 +147,12 @@ class ZeusRAPLFileInitError(ZeusBaseCPUError):
         """Initialize Zeus Exception."""
         super().__init__(message)
 
+class ZeusRAPLPermissionError(ZeusBaseCPUError):
+    """Zeus GPU exception that wraps No Permission to perform GPU operation."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
+        super().__init__(message)
 
 class RAPLFile:
     """RAPL File class for each RAPL file.
@@ -169,6 +175,10 @@ class RAPLFile:
                 self.last_energy = float(energy_file.read().strip())
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError("Error reading package energy") from err
+        except PermissionError as err:
+            raise ZeusRAPLPermissionError(
+                "Can't read file due to permission error"
+            ) from err
         try:
             with open(
                 os.path.join(path, "max_energy_range_uj"), "r"

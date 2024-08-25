@@ -10,6 +10,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from functools import cached_property
 
+from zeus.device.cpu.rapl import ZeusRAPLPermissionError
 from zeus.monitor.power import PowerMonitor
 from zeus.utils.logging import get_logger
 from zeus.utils.framework import sync_execution as sync_execution_fn
@@ -186,6 +187,13 @@ class ZeusMonitor:
             self.cpus = get_cpus()
         except ZeusCPUInitError:
             self.cpus = EmptyCPUs()
+        except ZeusRAPLPermissionError as err:
+            raise RuntimeError(
+                "SYS_ADMIN capability is required to modify GPU power limits. See "
+                "https://ml.energy/zeus/getting_started/#system-privileges "
+                "for more information or disable CPU measurement by passing cpu_indices=None to "
+                "ZeusMonitor"
+            ) from err
 
         # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
         self.gpu_indices = (
