@@ -1,5 +1,8 @@
 # Measuring Energy
 
+!!! Important
+    This page assumes that your environment is already set up. Please refer to the [Getting Started](../getting_started/index.md) guide if not.
+
 Zeus makes it very easy to measure time, power, and energy both programmatically in Python and also on the command line.
 Measuring power and energy is also very low overhead, typically taking less than 10 ms for each call.
 
