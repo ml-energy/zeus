@@ -188,12 +188,13 @@ class ZeusMonitor:
         except ZeusCPUInitError:
             self.cpus = EmptyCPUs()
         except ZeusRAPLPermissionError as err:
-            raise RuntimeError(
-                "SYS_ADMIN capability is required to modify GPU power limits. See "
-                "https://ml.energy/zeus/getting_started/#system-privileges "
-                "for more information or disable CPU measurement by passing cpu_indices=None to "
-                "ZeusMonitor"
-            ) from err
+            if cpu_indices:
+                raise RuntimeError(
+                    "SYS_ADMIN capability is required to read RAPL files. See "
+                    "https://ml.energy/zeus/getting_started/#system-privileges "
+                    "for more information or disable CPU measurement by passing cpu_indices=[] to "
+                    "ZeusMonitor"
+                ) from err
 
         # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
         self.gpu_indices = (
