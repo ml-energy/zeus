@@ -15,7 +15,7 @@ from zeus.utils.logging import get_logger
 from zeus.utils.framework import sync_execution as sync_execution_fn
 from zeus.device import get_gpus, get_cpus
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
-from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
+from zeus.device.cpu.common import ZeusCPUInitError, ZeusCPUNoPermissionError, EmptyCPUs
 
 logger = get_logger(__name__)
 
@@ -186,6 +186,14 @@ class ZeusMonitor:
             self.cpus = get_cpus()
         except ZeusCPUInitError:
             self.cpus = EmptyCPUs()
+        except ZeusCPUNoPermissionError as err:
+            if cpu_indices:
+                raise RuntimeError(
+                    "Root privilege is required to read RAPL metrics. See "
+                    "https://ml.energy/zeus/getting_started/#system-privileges "
+                    "for more information or disable CPU measurement by passing cpu_indices=[] to "
+                    "ZeusMonitor"
+                ) from err
 
         # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
         self.gpu_indices = (

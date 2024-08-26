@@ -9,7 +9,6 @@ Usage:
     python capriccio/generate.py /path/to/sentiment140.json
 """
 
-
 import argparse
 import os
 import warnings
