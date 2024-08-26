@@ -189,7 +189,7 @@ class ZeusMonitor:
         except ZeusCPUNoPermissionError as err:
             if cpu_indices:
                 raise RuntimeError(
-                    "root capability is required to read RAPL files. See "
+                    "Root privilege is required to read RAPL metrics. See "
                     "https://ml.energy/zeus/getting_started/#system-privileges "
                     "for more information or disable CPU measurement by passing cpu_indices=[] to "
                     "ZeusMonitor"
