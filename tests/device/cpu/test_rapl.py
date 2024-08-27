@@ -191,7 +191,7 @@ def test_rapl_cpu_class(mocker, mock_os_listdir_cpu):
         return mock_rapl_file_package
 
     mocker.patch("zeus.device.cpu.rapl.RAPLFile", side_effect=rapl_file_side_effect)
-    cpu = RAPLCPU(cpu_index=0)
+    cpu = RAPLCPU(cpu_index=0, rapl_dir=RAPL_DIR)
     measurement = cpu.getTotalEnergyConsumption()
 
     assert cpu.path == os.path.join(RAPL_DIR, "intel-rapl:0")
@@ -213,7 +213,7 @@ def test_rapl_cpu_class_exceptions(mocker, mock_os_listdir_cpu):
 
     mocker.patch("zeus.device.cpu.rapl.RAPLFile", side_effect=rapl_file_side_effect)
     with warnings.catch_warnings(record=True) as w:
-        cpu = RAPLCPU(cpu_index=0)
+        cpu = RAPLCPU(cpu_index=0, rapl_dir=RAPL_DIR)
         assert "Failed to initialize subpackage" in str(w[-1].message)
 
     assert cpu.path == os.path.join(RAPL_DIR, "intel-rapl:0")
