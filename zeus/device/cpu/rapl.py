@@ -32,6 +32,11 @@ logger = get_logger(name=__name__)
 
 RAPL_DIR = "/sys/class/powercap/intel-rapl"
 
+# Location of RAPL files when in a docker container. See
+# https://ml.energy/zeus/getting_started/#system-privileges for more details
+CONTAINER_RAPL_DIR = "/zeus_sys/class/powercap/intel-rapl"
+
+
 # Assuming a maximum power draw of 1000 Watts when we are polling every 0.1 seconds, the maximum
 # amount the RAPL counter would increase
 RAPL_COUNTER_MAX_INCREASE = 1000 * 1e6 * 0.1
@@ -125,7 +130,7 @@ def _polling_process(
 @lru_cache(maxsize=1)
 def rapl_is_available() -> bool:
     """Check if RAPL is available."""
-    if not os.path.exists(RAPL_DIR):
+    if not os.path.exists(RAPL_DIR) and not os.path.exists(CONTAINER_RAPL_DIR):
         logger.info("RAPL is not supported on this CPU.")
         return False
     logger.info("RAPL is available.")
@@ -215,9 +220,10 @@ class RAPLFile:
 class RAPLCPU(cpu_common.CPU):
     """Control a single CPU that supports RAPL."""
 
-    def __init__(self, cpu_index: int) -> None:
+    def __init__(self, cpu_index: int, rapl_dir: str) -> None:
         """Initialize the Intel CPU with a specified index."""
         super().__init__(cpu_index)
+        self.rapl_dir = rapl_dir
         self._get_powerzone()
 
     _exception_map = {
@@ -227,7 +233,7 @@ class RAPLCPU(cpu_common.CPU):
     }
 
     def _get_powerzone(self) -> None:
-        self.path = os.path.join(RAPL_DIR, f"intel-rapl:{self.cpu_index}")
+        self.path = os.path.join(self.rapl_dir, f"intel-rapl:{self.cpu_index}")
         self.rapl_file: RAPLFile = RAPLFile(self.path)
         self.dram: RAPLFile | None = None
         for dir in os.listdir(self.path):
@@ -262,6 +268,8 @@ class RAPLCPUs(cpu_common.CPUs):
         """Instantiates IntelCPUs object, setting up tracking for specified Intel CPUs."""
         if not rapl_is_available():
             raise ZeusRAPLNotSupportedError("RAPL is not supported on this CPU.")
+
+        self.rapl_dir = RAPL_DIR if os.path.exists(RAPL_DIR) else CONTAINER_RAPL_DIR
         self._init_cpus()
 
     @property
@@ -272,10 +280,14 @@ class RAPLCPUs(cpu_common.CPUs):
     def _init_cpus(self) -> None:
         """Initialize all Intel CPUs."""
         self._cpus = []
-        for dir in sorted(glob(f"{RAPL_DIR}/intel-rapl:*")):
+
+        def sort_key(dir):
+            return int(dir.split(":")[1])
+
+        for dir in sorted(glob(f"{self.rapl_dir}/intel-rapl:*"), key=sort_key):
             parts = dir.split(":")
             if len(parts) > 1 and parts[1].isdigit():
-                self._cpus.append(RAPLCPU(int(parts[1])))
+                self._cpus.append(RAPLCPU(int(parts[1]), self.rapl_dir))
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""
