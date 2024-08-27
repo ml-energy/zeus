@@ -280,7 +280,9 @@ class RAPLCPUs(cpu_common.CPUs):
     def _init_cpus(self) -> None:
         """Initialize all Intel CPUs."""
         self._cpus = []
-        for dir in sorted(glob(f"{self.rapl_dir}/intel-rapl:*")):
+        def sort_key(dir):
+            return int(dir.split(':')[1])
+        for dir in sorted(glob(f"{self.rapl_dir}/intel-rapl:*"), key=sort_key):
             parts = dir.split(":")
             if len(parts) > 1 and parts[1].isdigit():
                 self._cpus.append(RAPLCPU(int(parts[1]), self.rapl_dir))
