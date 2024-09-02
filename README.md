@@ -121,6 +121,7 @@ docker run -dit \
 ```
 
 > [!NOTE]
+> 1. You will want to mount the exact number of GPUs you will use. Below our examples are for 4 GPUs, so if your node has more than 4 GPUs, pass in `--gpus '"device=0,1,2,3"'` instead of `--gpus all`.
 > 1. `-v /dev/infiniband:/dev/infiniband` was added in order to utilize Infiniband for internode communication. You may not have this depending on your environment.
 > 1. `-v $(pwd):/workspace` assumes you are running the command in the root of the repository. It mounts the entire repository into the container and will make it easier when you need to run the Jupyter notebook outside the container with data that was produced inside the container.
 
