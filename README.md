@@ -29,24 +29,24 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 ## Repository Organization
 
 ```
- zeus/
-├──  zeus/             # ⚡ Zeus Python package
-│  ├──  monitor/       #    - Energy and power measurement (programmatic & CLI)
-│  ├──  optimizer/     #    - Collection of time and energy optimizers
-│  ├──  device/        #    - Abstraction layer over CPU and GPU devices
-│  ├──  utils/         #    - Utility functions and classes
-│  ├──  _legacy/       #    - Legacy code to keep our research papers reproducible
-│  └──  callback.py    #    - Base class for callbacks during training
+zeus/
+├── zeus/             # ⚡ Zeus Python package
+│  ├── monitor/       #    - Energy and power measurement (programmatic & CLI)
+│  ├── optimizer/     #    - Collection of time and energy optimizers
+│  ├── device/        #    - Abstraction layer over CPU and GPU devices
+│  ├── utils/         #    - Utility functions and classes
+│  ├── _legacy/       #    - Legacy code to keep our research papers reproducible
+│  └── callback.py    #    - Base class for callbacks during training
 │
-├──  zeusd             # 🌩️ Zeus daemon
+├── zeusd             # 🌩️ Zeus daemon
 │
-├──  docker/           # 🐳 Dockerfiles and Docker Compose files
+├── docker/           # 🐳 Dockerfiles and Docker Compose files
 │
-├──  examples/         # 🛠️ Zeus usage examples
+├── examples/         # 🛠️ Zeus usage examples
 │
-├──  capriccio/        # 🌊 A drifting sentiment analysis dataset
+├── capriccio/        # 🌊 A drifting sentiment analysis dataset
 │
-└──  trace/            # 🗃️ Training and energy traces for various GPUs and DNNs
+└── trace/            # 🗃️ Training and energy traces for various GPUs and DNNs
 ```
 
 ## Getting Started
