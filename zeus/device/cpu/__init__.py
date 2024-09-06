@@ -27,7 +27,6 @@ def get_current_cpu_index(pid: int | Literal["current"] = "current") -> int:
     if pid == "current":
         pid = os.getpid()
 
-    cpu_core = None
     with open(f"/proc/{pid}/stat") as stat_file:
         cpu_core = int(stat_file.read().split()[38])
 
