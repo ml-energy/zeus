@@ -34,11 +34,12 @@ Zeus is guided by the **Benevolent Dictator For Life (BDFL)** model, where the p
 ## Process
 
 1. **Fork & Clone**: Fork the repository and clone it to your local machine.
-2. **Create an Issue**: Discuss your proposed changes via a new GitHub Issue.
-3. **Branch**: Create a new branch for your feature or fix.
-4. **Code and Test**: Write code and make sure to add tests. `pytest` should successfully terminate including the new tests you wrote.
-5. **Format and Lint**: Run `bash scripts/lint.sh` and make sure it runs without complaining.
-6. **Pull Request**: Open a PR to the main repository. Ensure all CI checks pass before requesting a review.
+1. **Create an Issue**: Discuss your proposed changes via a new GitHub Issue.
+1. **Branch**: Create a new branch for your feature or fix.
+1. **Dev dependencies**: `pip install -e '.[dev]'` will be helpful.
+1. **Code and Test**: Write code and make sure to add tests. `pytest` should successfully terminate including the new tests you wrote.
+1. **Format and Lint**: Run `bash scripts/lint.sh` and make sure it runs without complaining.
+1. **Pull Request**: Open a PR to the main repository. Ensure all CI checks pass before requesting a review.
 
 ## Coding Standards
 
