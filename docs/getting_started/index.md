@@ -47,9 +47,10 @@ The default command would be:
 
 ``` { .sh .annotate }
 docker run -it \
-    --gpus all \                 # (1)!
-    --cap-add SYS_ADMIN \       # (2)!
-    --ipc host \               # (3)!
+    --gpus all \                                                            # (1)!
+    --cap-add SYS_ADMIN \                                                   # (2)!
+    --ipc host \                                                            # (3)!
+    -v /sys/class/powercap/intel-rapl:/zeus_sys/class/powercap/intel-rapl \ # (4)!
     mlenergy/zeus:latest \
     bash
 ```
@@ -57,6 +58,7 @@ docker run -it \
 1. Mounts all GPUs into the Docker container.
 2. `SYS_ADMIN` capability is needed to change the GPU's power limit or frequency. See [here](#system-privileges).
 3. PyTorch DataLoader workers need enough shared memory for IPC. Without this, they may run out of shared memory and die.
+4. Mounts the `intel-rapl` directory so that it can be read inside a docker container. Can be removed if CPU is not being monitored.
 
 !!! Tip "Overriding Zeus installation"
     Inside the container, `zeus`'s installation is editable (`pip install -e`).

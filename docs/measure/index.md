@@ -76,6 +76,40 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
     This is usually what you want, except when using more advanced device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX to partition CPUs into more pieces).
     In such cases, you probably want to opt out from using this function and handle synchronization manually at the appropriate granularity.
 
+## Further on CPU measurements using Intel RAPL
+
+The RAPL interface is available for Intel and AMD CPUs. However, DRAM measurements are not guaranteed to be available. The available measurements are device-specific so to view the supported measurements, it is recommended to initialize [`ZeusMonitor`][zeus.monitor.ZeusMonitor] with `cpu_indices=None`
+
+To measure CPU metrics for a specific CPU index, you can use the ['get_current_cpu_index'][zeus.device.cpu.get_current_cpu_index]function, which retrieves the CPU index where the specified process ID is running. If no PID is provided, or if `pid="current"`, the function returns the CPU index of the current process.
+
+To disable CPU or GPU measurements, you can pass in `cpu_indices=[]` or `gpu_indices=[]` to [`ZeusMonitor`][zeus.monitor.ZeusMonitor].
+
+```python hl_lines="5 12-14"
+from zeus.monitor import ZeusMonitor
+from zues.device.cpu import get_current_cpu_index
+
+if __name__ == "__main__":
+    # Get the CPU index of the current process
+    current_cpu_index = get_current_cpu_index()
+    monitor = ZeusMonitor(cpu_indices=[current_cpu_socket], gpu_indices=[])
+
+    for epoch in range(100):
+        monitor.begin_window("epoch")
+
+        steps = []
+        for x, y in train_loader:
+            monitor.begin_window("step")
+            train_one_step(x, y)
+            result = monitor.end_window("step")
+            steps.append(result)
+
+        mes = monitor.end_window("epoch")
+        print(f"Epoch {epoch} consumed {mes.time} s and {mes.total_energy} J.")
+
+        avg_time = sum(map(lambda m: m.time, steps)) / len(steps)
+        avg_energy = sum(map(lambda m: m.total_energy, steps)) / len(steps)
+        print(f"One step took {avg_time} s and {avg_energy} J on average.")
+```
 
 ## CLI power and energy monitor
 
