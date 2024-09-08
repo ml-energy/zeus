@@ -271,7 +271,7 @@ class ZeusMonitor:
             raise ValueError(f"Measurement window '{key}' already exists")
 
         # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
-        if sync_execution:
+        if sync_execution and self.gpu_indices:
             sync_execution_fn(self.gpu_indices, sync_with=self.sync_with)
 
         # Freeze the start time of the profiling window.
@@ -337,7 +337,7 @@ class ZeusMonitor:
         )
 
         # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
-        if sync_execution:
+        if sync_execution and self.gpu_indices:
             sync_execution_fn(self.gpu_indices, sync_with=self.sync_with)
 
         # If the measurement window is cancelled, return an empty Measurement object.
