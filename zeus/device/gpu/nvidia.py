@@ -361,7 +361,7 @@ class NVIDIAGPUs(gpu_common.GPUs):
             ) from e
 
     @property
-    def gpus(self) -> Sequence[gpu_common.GPU]:
+    def gpus(self) -> Sequence[NVIDIAGPU]:
         """Return a list of NVIDIAGPU objects being tracked."""
         return self._gpus
 

@@ -273,7 +273,7 @@ class RAPLCPUs(cpu_common.CPUs):
         self._init_cpus()
 
     @property
-    def cpus(self) -> Sequence[cpu_common.CPU]:
+    def cpus(self) -> Sequence[RAPLCPU]:
         """Returns a list of CPU objects being tracked."""
         return self._cpus
 
