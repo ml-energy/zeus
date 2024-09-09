@@ -13,14 +13,13 @@ MODULE_CACHE: dict[str, types.ModuleType] = {}
 
 
 @lru_cache(maxsize=1)
-def torch_is_available(ensure_available: bool = False):
+def torch_is_available(ensure_available: bool = False, ensure_cuda: bool = True):
     """Check if PyTorch is available."""
     try:
         import torch
 
-        assert (
-            torch.cuda.is_available()
-        ), "PyTorch is available but does not have CUDA support."
+        if ensure_cuda and not torch.cuda.is_available():
+            raise RuntimeError("PyTorch is available but does not have CUDA support.")
         MODULE_CACHE["torch"] = torch
         logger.info("PyTorch with CUDA support is available.")
         return True
@@ -32,12 +31,13 @@ def torch_is_available(ensure_available: bool = False):
 
 
 @lru_cache(maxsize=1)
-def jax_is_available(ensure_available: bool = False):
+def jax_is_available(ensure_available: bool = False, ensure_cuda: bool = True):
     """Check if JAX is available."""
     try:
         import jax  # type: ignore
 
-        assert jax.devices("gpu"), "JAX is available but does not have CUDA support."
+        if ensure_cuda and not jax.devices("gpu"):
+            raise RuntimeError("JAX is available but does not have CUDA support.")
         MODULE_CACHE["jax"] = jax
         logger.info("JAX with CUDA support is available.")
         return True

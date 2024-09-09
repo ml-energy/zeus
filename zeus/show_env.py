@@ -15,6 +15,8 @@ import zeus
 from zeus.utils import framework
 from zeus.device import get_gpus, get_cpus
 from zeus.device.cpu import RAPLCPUs
+from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
+from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
 
 
 SECTION_SEPARATOR = "=" * 80 + "\n"
@@ -29,15 +31,37 @@ def show_env():
     package_availability = "\nPackage availability and versions:\n"
     package_availability += f"  Zeus: {zeus.__version__}\n"
 
-    if framework.torch_is_available():
+    try:
+        torch_available = framework.torch_is_available()
+        torch_cuda_available = True
+    except RuntimeError:
+        torch_available = framework.torch_is_available(ensure_cuda=False)
+        torch_cuda_available = False
+
+    if torch_available and torch_cuda_available:
         torch = framework.MODULE_CACHE["torch"]
-        package_availability += f"  PyTorch: {torch.__version__}\n"
+        package_availability += f"  PyTorch: {torch.__version__} (with CUDA support)\n"
+    elif torch_available and not torch_cuda_available:
+        torch = framework.MODULE_CACHE["torch"]
+        package_availability += (
+            f"  PyTorch: {torch.__version__} (without CUDA support)\n"
+        )
     else:
         package_availability += "  PyTorch: not available\n"
 
-    if framework.jax_is_available():
+    try:
+        jax_available = framework.jax_is_available()
+        jax_cuda_available = True
+    except RuntimeError:
+        jax_available = framework.jax_is_available(ensure_cuda=False)
+        jax_cuda_available = False
+
+    if jax_available and jax_cuda_available:
         jax = framework.MODULE_CACHE["jax"]
-        package_availability += f"  JAX: {jax.__version__}\n"
+        package_availability += f"  JAX: {jax.__version__} (with CUDA support)\n"
+    elif jax_available and not jax_cuda_available:
+        jax = framework.MODULE_CACHE["jax"]
+        package_availability += f"  JAX: {jax.__version__} (without CUDA support)\n"
     else:
         package_availability += "  JAX: not available\n"
 
@@ -45,7 +69,10 @@ def show_env():
 
     print(SECTION_SEPARATOR)
     gpu_availability = "\nGPU availability:\n"
-    gpus = get_gpus()
+    try:
+        gpus = get_gpus()
+    except ZeusGPUInitError:
+        gpus = EmptyGPUs()
     if len(gpus) > 0:
         for i in range(len(gpus)):
             gpu_availability += f"  GPU {i}: {gpus.getName(i)}\n"
@@ -55,9 +82,12 @@ def show_env():
 
     print(SECTION_SEPARATOR)
     cpu_availability = "\nCPU availability:\n"
-    cpus = get_cpus()
-    assert isinstance(cpus, RAPLCPUs)
+    try:
+        cpus = get_cpus()
+    except ZeusCPUInitError:
+        cpus = EmptyCPUs()
     if len(cpus) > 0:
+        assert isinstance(cpus, RAPLCPUs)
         for i in range(len(cpus)):
             cpu_availability += f"  CPU {i}:\n    CPU measurements available ({cpus.cpus[i].rapl_file.path})\n"
             if cpus.supportsGetDramEnergyConsumption(i):
