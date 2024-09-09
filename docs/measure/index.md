@@ -90,7 +90,7 @@ You can pass in `cpu_indices=[]` or `gpu_indices=[]` to [`ZeusMonitor`][zeus.mon
 
 ```python hl_lines="2 5-7"
 from zeus.monitor import ZeusMonitor
-from zues.device.cpu import get_current_cpu_index
+from zeus.device.cpu import get_current_cpu_index
 
 if __name__ == "__main__":
     # Get the CPU index of the current process
