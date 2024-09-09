@@ -292,7 +292,7 @@ class AMDGPUs(gpu_common.GPUs):
             raise exception_class(e.msg) from e
 
     @property
-    def gpus(self) -> Sequence[gpu_common.GPU]:
+    def gpus(self) -> Sequence[AMDGPU]:
         """Return a list of AMDGPU objects being tracked."""
         return self._gpus
 
