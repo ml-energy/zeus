@@ -18,10 +18,14 @@ def torch_is_available(ensure_available: bool = False, ensure_cuda: bool = True)
     try:
         import torch
 
-        if ensure_cuda and not torch.cuda.is_available():
+        cuda_available = torch.cuda.is_available()
+        if ensure_cuda and not cuda_available:
             raise RuntimeError("PyTorch is available but does not have CUDA support.")
         MODULE_CACHE["torch"] = torch
-        logger.info("PyTorch with CUDA support is available.")
+        logger.info(
+            "PyTorch %s CUDA support is available.",
+            "with" if cuda_available else "without",
+        )
         return True
     except ImportError as e:
         logger.info("PyTorch is not available.")
@@ -36,10 +40,13 @@ def jax_is_available(ensure_available: bool = False, ensure_cuda: bool = True):
     try:
         import jax  # type: ignore
 
-        if ensure_cuda and not jax.devices("gpu"):
+        cuda_available = jax.devices("gpu")
+        if ensure_cuda and not cuda_available:
             raise RuntimeError("JAX is available but does not have CUDA support.")
         MODULE_CACHE["jax"] = jax
-        logger.info("JAX with CUDA support is available.")
+        logger.info(
+            "JAX %s CUDA support is available.", "with" if cuda_available else "without"
+        )
         return True
     except ImportError as e:
         logger.info("JAX is not available")
