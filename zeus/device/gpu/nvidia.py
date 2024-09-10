@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import functools
 import os
+import warnings
+import functools
 import contextlib
 from pathlib import Path
 from typing import Sequence
@@ -214,7 +215,13 @@ class NVIDIAGPU(gpu_common.GPU):
         )[0]
         if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
             raise pynvml.NVMLError(ret)
-        return metric.value.uiVal
+        power = metric.value.uiVal
+        if power == 0:
+            warnings.warn(
+                "Average memory power returned 0. The current GPU may not be supported.",
+                stacklevel=1,
+            )
+        return power
 
     @_handle_nvml_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
