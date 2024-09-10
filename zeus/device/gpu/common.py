@@ -253,6 +253,10 @@ class GPUs(abc.ABC):
         """Return the current power draw of the GPU. Units: mW."""
         return self.gpus[gpu_index].getInstantPowerUsage()
 
+    def getAverageMemoryPowerUsage(self, gpu_index: int) -> int:
+        """Return the average power usage of the GPU's memory. Units: mW."""
+        return self.gpus[gpu_index].getAverageMemoryPowerUsage()
+
     def supportsGetTotalEnergyConsumption(self, gpu_index: int) -> bool:
         """Check if the GPU supports retrieving total energy consumption."""
         return self.gpus[gpu_index].supportsGetTotalEnergyConsumption()
