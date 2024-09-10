@@ -9,4 +9,4 @@
 - [`_legacy`][zeus._legacy.policy]: Legacy code mostly to keep our papers reproducible
 """
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
