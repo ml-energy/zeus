@@ -196,7 +196,25 @@ class NVIDIAGPU(gpu_common.GPU):
         )[0]
         if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
             raise pynvml.NVMLError(ret)
-        return metric.value.siVal
+        return metric.value.uiVal
+
+    @_handle_nvml_errors
+    def getAverageMemoryPowerUsage(self) -> int:
+        """Return the average power draw of the GPU's memory. Units: mW.
+
+        !!! Warning
+            This isn't exactly documented in NVML at the time of writing, but `nvidia-smi`
+            makes use of this API.
+
+            Confirmed working on H100 80GB HBM3. Confirmed not working on A40.
+        """
+        metric = pynvml.nvmlDeviceGetFieldValues(
+            self.handle,
+            [(pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_MEMORY)],
+        )[0]
+        if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
+            raise pynvml.NVMLError(ret)
+        return metric.value.uiVal
 
     @_handle_nvml_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:

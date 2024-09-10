@@ -102,6 +102,11 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def getAverageMemoryPowerUsage(self) -> int:
+        """Return the average power usage of the GPU's memory. Units: mW."""
+        pass
+
+    @abc.abstractmethod
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption."""
         pass

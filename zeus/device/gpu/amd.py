@@ -234,6 +234,13 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
+    def getAverageMemoryPowerUsage(self) -> int:
+        """Return the average power usage of the GPU's memory. Units: mW."""
+        raise gpu_common.ZeusGPUNotSupportedError(
+            "Average memory power usage is not supported on AMD GPUs."
+        )
+
+    @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption."""
         if self._supportsGetTotalEnergyConsumption is None:
