@@ -6,7 +6,7 @@ tweets for training (%d_train.json) and 75000 tweets for eval
 (%d_val.json).
 
 Usage:
-    python capriccio/generate.py /path/to/sentiment140.json
+    python generate.py /path/to/sentiment140.json
 """
 
 import argparse

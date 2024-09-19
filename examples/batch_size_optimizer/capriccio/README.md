@@ -1,11 +1,11 @@
 # Capriccio + BSO
 
-This example will demonstrate how to integrate Zeus with [Capriccio](../../../capriccio), a drifting sentiment analysis dataset.
+This example will demonstrate how to integrate Zeus with [Capriccio](../../research_reproducibility/zeus_nsdi23/capriccio), a drifting sentiment analysis dataset.
 
 ## Dependencies
 
-1. Generate Capriccio, following the instructions in [Capriccio's README.md](../../../capriccio/).
-1. If you're not using our [Docker image](https://ml.energy/zeus/getting_started/environment/), install `zeus` following our [Getting Started](https://ml.energy/zeus/getting_started/) guide.
+1. Generate Capriccio, following the instructions in [Capriccio's README](../../research_reproducibility/zeus_nsdi23/capriccio).
+1. Either use our Docker images or install `zeus` following our [documentation](https://ml.energy/zeus/getting_started/).
 1. Install python dependencies for this example:
     ```sh
     pip install -r requirements.txt

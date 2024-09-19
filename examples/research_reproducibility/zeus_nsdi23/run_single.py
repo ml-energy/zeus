@@ -46,8 +46,8 @@ def read_trace(
     gpu: Literal["a40", "v100", "p100", "rtx6000"]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read the train and power trace files as Pandas DataFrames."""
-    train_df = pd.DataFrame(pd.read_csv("../../trace/summary_train.csv"))
-    power_df = pd.DataFrame(pd.read_csv(f"../../trace/summary_power_{gpu}.csv"))
+    train_df = pd.DataFrame(pd.read_csv("trace/summary_train.csv"))
+    power_df = pd.DataFrame(pd.read_csv(f"trace/summary_power_{gpu}.csv"))
     return train_df, power_df
 
 

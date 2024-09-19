@@ -36,17 +36,14 @@ zeus/
 │  ├── device/        #    - Abstraction layer over CPU and GPU devices
 │  ├── utils/         #    - Utility functions and classes
 │  ├── _legacy/       #    - Legacy code to keep our research papers reproducible
+│  ├── show_env.py    #    - Installation & device detection verification script
 │  └── callback.py    #    - Base class for callbacks during training
 │
 ├── zeusd             # 🌩️ Zeus daemon
 │
 ├── docker/           # 🐳 Dockerfiles and Docker Compose files
 │
-├── examples/         # 🛠️ Zeus usage examples
-│
-├── capriccio/        # 🌊 A drifting sentiment analysis dataset
-│
-└── trace/            # 🗃️ Training and energy traces for various GPUs and DNNs
+└── examples/         # 🛠️ Zeus usage examples
 ```
 
 ## Getting Started
