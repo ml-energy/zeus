@@ -39,6 +39,7 @@ Zeus is guided by the **Benevolent Dictator For Life (BDFL)** model, where the p
 1. **Dev dependencies**: `pip install -e '.[dev]'` will be helpful.
 1. **Code and Test**: Write code and make sure to add tests. `pytest` should successfully terminate including the new tests you wrote.
 1. **Format and Lint**: Run `bash scripts/lint.sh` and make sure it runs without complaining.
+1. **Check documentation**: Run `bash scripts/preview_docs.sh` to build and spin up a local instance of the documentation. In particular, check whether your docstrings are correctly rendered in the Source Code Reference section.
 1. **Pull Request**: Open a PR to the main repository. Ensure all CI checks pass before requesting a review.
 
 ## Coding Standards
