@@ -19,7 +19,7 @@ With [`run_single.py`](run_single.py), you can simulate the optimization traject
 
 ### Dependencies
 
-Install `zeus` following [Installing and Building](https://ml.energy/zeus/getting_started). The power monitor is not needed.
+Install `zeus` following [our Getting Started guide](https://ml.energy/zeus/getting_started).
 
 All dependencies are already installed you're using our Docker image (`mlenergy/zeus:latest`).
 
