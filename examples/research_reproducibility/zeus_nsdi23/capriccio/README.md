@@ -30,4 +30,4 @@ data_path = dict(train="9_train.json", validation="9_val.json")
 raw_datasets = datasets.load_dataset("json", data_files=data_path)
 ```
 
-For a full example, please refer to [`examples/batch_size_optimizer/capriccio/train.py`](/examples/batch_size_optimizer/capriccio/train.py).
+For a full example, please refer to [`examples/batch_size_optimizer/capriccio`](/examples/batch_size_optimizer/capriccio).
