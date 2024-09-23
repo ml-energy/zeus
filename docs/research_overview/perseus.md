@@ -6,9 +6,9 @@ description: Reducing Energy Bloat in Large Model Training
 <div align="center" markdown>
 <h1>Perseus:<br>Reducing Energy Bloat in Large Model Training</h1>
 
-SOSP '24 (To appear)
+SOSP '24
 
-[**Preprint**](https://arxiv.org/abs/2312.06902)
+[**Paper**](https://arxiv.org/abs/2312.06902)
 </div>
 
 <div class="critic-dark" markdown>
