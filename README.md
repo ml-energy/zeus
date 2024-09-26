@@ -1,29 +1,20 @@
 Artifact release for the paper "Perseus: Reducing Energy Bloat in Large Model Training."
 
-## Videos
-
-I created an [introduction video](https://youtu.be/mIoBT9Bg08w).
-It covers the paper, system components, and miscellaneous details regarding evaluation, at a high-level.
-
-I also created a [screencast](https://umich.zoom.us/rec/share/PjgAepU0oAHymX7UrlKA7rQNMDOSkfx8DD8E8uioSWRPHhIyR8wuQrJNjFFBVVE-.YyJcX9VtaOM9Q5gB) of me performing all the steps in this document myself: On a node with four A40 GPUs, I go from scratch to getting energy savings numbers for GPT-3 Large.
-The Zoom recording link above has synchronized transcripts which would help you easily skip over long experiment runs during which I don't say anything, but if it somehow doesn't work, please try [this YouTube link](https://youtu.be/dVc1TdryPwA).
-Reading this README and the paper before the screencast would be helpful in understanding what's happening, although I still explain as I run things.
-
 ## Artifact organization
 
 The code artifact has three pieces: Perseus (control plane), Merak (training system integrated with Perseus), and Lowtime (GPU frequency planner).
 
 ```
- ./
-├──  perseus/               # Perseus server and client
-├──  merak/                 # Training framework integrated with Perseus
-├──  lowtime/               # Optimizer that produces GPU frequency plans
-├──  Dockerfile             # Unified Dockerfile for all three components above
+.
+├── perseus/               # Perseus server and client
+├── merak/                 # Training framework integrated with Perseus
+├── lowtime/               # Optimizer that produces GPU frequency plans
+├── Dockerfile             # Unified Dockerfile for all three components above
 │
-├──  sosp24_data/           # Experiment data for paper reproduction
-├──  evaluation.ipynb       # Jupyter notebook to reproduce evaluation figures and tables
-├──  plot.py                # Plotting utility used by the notebook
-└──  requirements.txt       # Python dependencies for the notebook
+├── sosp24_data/           # Experiment data for paper reproduction
+├── evaluation.ipynb       # Jupyter notebook to reproduce evaluation figures and tables
+├── plot.py                # Plotting utility used by the notebook
+└── requirements.txt       # Python dependencies for the notebook
 ```
 
 > [!IMPORTANT]
