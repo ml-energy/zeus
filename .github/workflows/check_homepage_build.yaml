@@ -38,3 +38,5 @@ jobs:
         run: pip install '.[docs]'
       - name: Build homepage
         run: mkdocs build --verbose --strict
+        env:
+          BUILD_SOCIAL_CARD: true
