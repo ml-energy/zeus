@@ -139,6 +139,10 @@ class ZeusMonitor:
     Attributes:
         gpu_indices (`list[int]`): Indices of all the CUDA devices to monitor, from the
             DL framework's perspective after applying `CUDA_VISIBLE_DEVICES`.
+        cpu_indices (`list[int]`): Indices of all the CPU packages to monitor.
+            If not provided, all CPU packages available on the machine will be monitored. 
+            CPU power consumption is tracked using the RAPL (Running Average Power Limit) counters, 
+            which provide energy data for the CPU cores and, if available, DRAM.
     """
 
     def __init__(
