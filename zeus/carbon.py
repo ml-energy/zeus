@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import abc
-import json
-import logging
 import requests
+from typing import Literal
 
-logger = logging.getLogger(__name__)
+from zeus.exception import ZeusBaseError
+from zeus.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_ip_lat_long() -> tuple[float, float]:
@@ -26,7 +28,7 @@ def get_ip_lat_long() -> tuple[float, float]:
         raise
 
 
-class CarbonIntensityNotFoundError(Exception):
+class CarbonIntensityNotFoundError(ZeusBaseError):
     """Exception when carbon intensity measurement could not be retrieved."""
 
     def __init__(self, message: str) -> None:
@@ -36,23 +38,6 @@ class CarbonIntensityNotFoundError(Exception):
 
 class CarbonIntensityProvider(abc.ABC):
     """Abstract class for implementing ways to fetch carbon intensity."""
-
-    def __init__(
-        self,
-        location: tuple[float, float],
-        estimate: bool = False,
-        emission_factor_type: str = "direct",
-    ) -> None:
-        """Initializes carbon intensity provider location to the latitude and longitude of the input `location`.
-
-        Args:
-            location: tuple of latitude and longitude (latitude, longitude)
-            estimate: bool to toggle whether carbon intensity is estimated or not
-            emission_factor_type: emission factor to be measured (`direct` or `lifestyle`)
-        """
-        self.lat, self.long = location
-        self.estimate = estimate
-        self.emission_factor_type = emission_factor_type
 
     @abc.abstractmethod
     def get_current_carbon_intensity(self) -> float:
@@ -68,6 +53,23 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
     ElectricityMaps GitHub: https://github.com/electricitymaps/electricitymaps-contrib
     """
 
+    def __init__(
+        self,
+        location: tuple[float, float],
+        estimate: bool = False,
+        emission_factor_type: Literal["direct", "lifecycle"] = "direct",
+    ) -> None:
+        """Iniitializes ElectricityMaps Carbon Provider.
+
+        Args:
+            location: tuple of latitude and longitude (latitude, longitude)
+            estimate: bool to toggle whether carbon intensity is estimated or not
+            emission_factor_type: emission factor to be measured (`direct` or `lifestyle`)
+        """
+        self.lat, self.long = location
+        self.estimate = estimate
+        self.emission_factor_type = emission_factor_type
+
     def get_current_carbon_intensity(self) -> float:
         """Fetches current carbon intensity of the location of the class.
 
@@ -82,11 +84,11 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
             resp = requests.get(url)
 
             return resp.json()["carbonIntensity"]
-        except json.decoder.JSONDecodeError as e:
-            # ElectricityMaps returns an invalid JSON response that cannot be decoded when no carbon intensity measurement found
+        except KeyError as e:
+            # Raise exception when carbonIntensity does not exist in response
             raise CarbonIntensityNotFoundError(
-                f"Recent carbon intensity measurement not found at ({self.lat}, {self.long}) "
-                f"with estimate set to {self.estimate} and emission_factor_type set to {self.emission_factor_type}"
+                f"Recent carbon intensity measurement not found at `({self.lat}, {self.long})` "
+                f"with estimate set to `{self.estimate}` and emission_factor_type set to `{self.emission_factor_type}`"
             ) from e
         except requests.exceptions.RequestException as e:
             logger.exception(

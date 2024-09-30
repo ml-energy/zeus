@@ -6,7 +6,7 @@ import requests
 
 from unittest.mock import patch
 
-from zeus.carbon.carbon import (
+from zeus.carbon import (
     ElectrictyMapsClient,
     get_ip_lat_long,
     CarbonIntensityNotFoundError,
@@ -37,7 +37,7 @@ def mock_requests():
 		"readme": "https://ipinfo.io/missingauth"
 	}"""
 
-    NO_MEASUREMENT_RESPONSE = '{"error":"No recent data for zone "US-MIDW-MISO""}'
+    NO_MEASUREMENT_RESPONSE = r'{"error":"No recent data for zone \"US-MIDW-MISO\""}'
 
     ELECTRICITY_MAPS_RESPONSE_LIFECYCLE = (
         '{"zone":"US-MIDW-MISO","carbonIntensity":466,"datetime":"2024-09-24T03:00:00.000Z",'
