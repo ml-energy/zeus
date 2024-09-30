@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import requests
-import logging
 import abc
 import json
+import logging
+import requests
 
 logger = logging.getLogger(__name__)
 

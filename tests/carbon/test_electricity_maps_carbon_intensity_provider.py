@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import requests
-import pytest
 import json
+import pytest
+import requests
 
 from unittest.mock import patch
 
 from zeus.carbon.carbon import (
     ElectrictyMapsClient,
     get_ip_lat_long,
-    CarbonIntensityNotFoundException,
+    CarbonIntensityNotFoundError,
 )
 
 
@@ -100,5 +100,5 @@ def test_get_current_carbon_intensity_no_response(mock_requests):
     assert latlong == (pytest.approx(42.2776), pytest.approx(-83.7409))
     provider = ElectrictyMapsClient(latlong)
 
-    with pytest.raises(CarbonIntensityNotFoundException):
+    with pytest.raises(CarbonIntensityNotFoundError):
         provider.get_current_carbon_intensity()
