@@ -48,9 +48,13 @@ class CarbonIntensityProvider(abc.ABC):
 class ElectrictyMapsClient(CarbonIntensityProvider):
     """Carbon Intensity Provider with ElectricityMaps API.
 
-    ElectricityMaps: https://www.electricitymaps.com/
-    ElectricityMaps API: https://static.electricitymaps.com/api/docs/index.html
-    ElectricityMaps GitHub: https://github.com/electricitymaps/electricitymaps-contrib
+    Reference:
+
+    1. [ElectricityMaps](https://www.electricitymaps.com/)
+
+    2. [ElectricityMaps API](https://static.electricitymaps.com/api/docs/index.html)
+
+    3. [ElectricityMaps GitHub](https://github.com/electricitymaps/electricitymaps-contrib)
     """
 
     def __init__(
