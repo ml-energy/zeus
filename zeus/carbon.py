@@ -28,7 +28,7 @@ def get_ip_lat_long() -> tuple[float, float]:
         raise
 
 
-class CarbonIntensityNotFoundError(ZeusBaseError):
+class ZeusCarbonIntensityNotFoundError(ZeusBaseError):
     """Exception when carbon intensity measurement could not be retrieved."""
 
     def __init__(self, message: str) -> None:
@@ -51,9 +51,7 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
     Reference:
 
     1. [ElectricityMaps](https://www.electricitymaps.com/)
-
     2. [ElectricityMaps API](https://static.electricitymaps.com/api/docs/index.html)
-
     3. [ElectricityMaps GitHub](https://github.com/electricitymaps/electricitymaps-contrib)
     """
 
@@ -80,6 +78,7 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
         !!! Note
             In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
         """
+        resp = None
         try:
             url = (
                 f"https://api.electricitymap.org/v3/carbon-intensity/latest?lat={self.lat}&lon={self.long}"
@@ -90,9 +89,10 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
             return resp.json()["carbonIntensity"]
         except KeyError as e:
             # Raise exception when carbonIntensity does not exist in response
-            raise CarbonIntensityNotFoundError(
+            raise ZeusCarbonIntensityNotFoundError(
                 f"Recent carbon intensity measurement not found at `({self.lat}, {self.long})` "
-                f"with estimate set to `{self.estimate}` and emission_factor_type set to `{self.emission_factor_type}`"
+                f"with estimate set to `{self.estimate}` and emission_factor_type set to `{self.emission_factor_type}`\n"
+                f"JSON Response: {resp.text}"
             ) from e
         except requests.exceptions.RequestException as e:
             logger.exception(
