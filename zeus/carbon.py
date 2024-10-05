@@ -78,25 +78,24 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
         !!! Note
             In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
         """
-        resp_str = None
         try:
             url = (
                 f"https://api.electricitymap.org/v3/carbon-intensity/latest?lat={self.lat}&lon={self.long}"
                 + f"&disableEstimations={not self.estimate}&emissionFactorType={self.emission_factor_type}"
             )
             resp = requests.get(url)
-            resp_str = resp.text
+        except requests.exceptions.RequestException as e:
+            logger.exception(
+                "Failed to retrieve recent carbon intensnity measurement: %s", e
+            )
+            raise
 
+        try:
             return resp.json()["carbonIntensity"]
         except KeyError as e:
             # Raise exception when carbonIntensity does not exist in response
             raise ZeusCarbonIntensityNotFoundError(
                 f"Recent carbon intensity measurement not found at `({self.lat}, {self.long})` "
                 f"with estimate set to `{self.estimate}` and emission_factor_type set to `{self.emission_factor_type}`\n"
-                f"JSON Response: {resp_str}"
+                f"JSON Response: {resp.text}"
             ) from e
-        except requests.exceptions.RequestException as e:
-            logger.exception(
-                "Failed to retrieve recent carbon intensnity measurement: %s", e
-            )
-            raise
