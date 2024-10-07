@@ -12,6 +12,7 @@ import pynvml  # necessary for testing to mock!
 try:
     import amdsmi  # This is necessary so that AMDGPU can see the library. Import and initialization is retested in `amdsmi_is_available`.
 except ImportError:
+
     amdsmi = None
 
 from zeus.device.exception import ZeusBaseGPUError
@@ -512,7 +513,7 @@ class AMDGPU(GPU):
         """Resets the power management limit for the specified GPU to the default value."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
         amdsmi.amdsmi_set_power_cap(
-            self.handle, 0, cap=int(info["default_power_cap"] * 1e6)
+            self.handle, 0, cap=int(info["defaulhandt_power_cap"] * 1e6)
         )  # expects value in microwatts
 
     @_handle_amdsmi_errors
@@ -900,6 +901,18 @@ def amdsmi_is_available() -> bool:
     except ImportError:
         logger.info("amdsmi is not available.")
         return False
+
+    # usually thrown if amdsmi can't find libamd_smi.so
+    except OSError:
+        if os.getenv("ROCM_PATH") is None:
+            logger.warning("`ROCM_PATH` is not set. Do you have ROCm installed?")
+        return False
+
+    # usually thrown if versions of amdsmi and ROCm are incompatible.
+    except AttributeError:
+        logger.warning("Do you have the correct version of ROCm and amdsmi installed?")
+        return False
+
     try:
         amdsmi.amdsmi_init()
         logger.info("amdsmi is available and initialized")
