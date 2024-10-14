@@ -230,7 +230,6 @@ class GPUs(abc.ABC):
             memory_clock_mhz: Memory clock frequency to use. Some GPUs have
                 different supported graphics clocks depending on the memory clock.
         """
-        pass
         return self.gpus[gpu_index].getSupportedGraphicsClocks(memory_clock_mhz)
 
     def setGpuLockedClocks(
