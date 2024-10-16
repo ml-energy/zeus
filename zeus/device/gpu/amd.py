@@ -1,6 +1,6 @@
 """AMD GPUs."""
 
-from __future__ import annotations
+from __future__ import annotations 
 import functools
 import os
 import contextlib
@@ -86,7 +86,8 @@ class AMDGPU(gpu_common.GPU):
         # XXX(Jae-Won): Right now, the energy API's unit is broken (either the
         # `power` field or the `counter_resolution` field). Before that, we're
         # disabling the energy API.
-        self._supportsGetTotalEnergyConsumption = False
+        self.supportsGetTotalEnergyConsumption() # test and set _supportsGetTotalEnergyConsumption
+        # self._supportsGetTotalEnergyConsumption = False
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -255,39 +256,36 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption."""
-        if self._supportsGetTotalEnergyConsumption is None:
-            try:
-                wait_time = 0.5 # seconds
-                threshold = 0.1 # mW
+        try:
+            wait_time = 0.5 # seconds
+            threshold = 0.01 # 1% threshold
 
-                power = self.getInstantPowerUsage()
-                initial_energy = self.getTotalEnergyConsumption()
-                time.sleep(wait_time)
-                final_energy = self.getTotalEnergyConsumption()
+            power = self.getInstantPowerUsage()
+            initial_energy = self.getTotalEnergyConsumption()
+            time.sleep(wait_time)
+            final_energy = self.getTotalEnergyConsumption()
 
-                measured_energy = final_energy - initial_energy
-                expected_energy = power * wait_time
+            measured_energy = final_energy - initial_energy
+            expected_energy = power * wait_time
 
-                # if the difference between measured and expected energy is less than 1% of the expected energy, then the API is supported
-                if abs(measured_energy - expected_energy) < threshold * expected_energy:
-                    self._supportsGetTotalEnergyConsumption = True
-                else:
-                    self._supportsGetTotalEnergyConsumption = False
-                    logger.warning(
-                        "Energy consumption API is not supported for device %d. Expected energy: %d mJ, Measured energy: %d mJ",
-                        self.gpu_index,
-                        expected_energy,
-                        measured_energy,
-                    )
-            except amdsmi.AmdSmiLibraryException as e:
-                if (
-                    e.get_error_code() == 2
-                ):  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
-                    self._supportsGetTotalEnergyConsumption = False
-                else:
-                    raise e
-
-        return self._supportsGetTotalEnergyConsumption
+            # if the difference between measured and expected energy is less than 1% of the expected energy, then the API is supported
+            if abs(measured_energy - expected_energy) < threshold * expected_energy:
+                self._supportsGetTotalEnergyConsumption = True
+            else:
+                self._supportsGetTotalEnergyConsumption = False
+                logger.warning(
+                    "`getTotalEnergyConsumption` is not supported for device %d. Expected energy: %d mJ, Measured energy: %d mJ",
+                    self.gpu_index,
+                    expected_energy,
+                    measured_energy,
+                )
+        except amdsmi.AmdSmiLibraryException as e:
+            if (
+                e.get_error_code() == 2
+            ):  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
+                self._supportsGetTotalEnergyConsumption = False
+            else:
+                raise e
 
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
