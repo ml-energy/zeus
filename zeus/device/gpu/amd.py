@@ -4,6 +4,7 @@ from __future__ import annotations
 import functools
 import os
 import contextlib
+import time
 from typing import Sequence
 from functools import lru_cache
 
@@ -42,6 +43,15 @@ def amdsmi_is_available() -> bool:
         import amdsmi  # type: ignore
     except ImportError:
         logger.info("amdsmi is not available.")
+        return False
+    # usually thrown if amdsmi can't find libamd_smi.so
+    except OSError:
+        if os.getenv("ROCM_PATH") is None:
+            logger.warning("`ROCM_PATH` is not set. Do you have ROCm installed?")
+        return False
+    # usually thrown if versions of amdsmi and ROCm are incompatible.
+    except AttributeError:
+        logger.warning("Do you have the correct version of ROCm and amdsmi installed?")
         return False
     try:
         amdsmi.amdsmi_init()
@@ -247,8 +257,28 @@ class AMDGPU(gpu_common.GPU):
         """Check if the GPU supports retrieving total energy consumption."""
         if self._supportsGetTotalEnergyConsumption is None:
             try:
-                _ = amdsmi.amdsmi_get_energy_count(self.handle)
-                self._supportsGetTotalEnergyConsumption = True
+                wait_time = 0.5 # seconds
+                threshold = 0.1 # mW
+
+                power = self.getInstantPowerUsage()
+                initial_energy = self.getTotalEnergyConsumption()
+                time.sleep(wait_time)
+                final_energy = self.getTotalEnergyConsumption()
+
+                measured_energy = final_energy - initial_energy
+                expected_energy = power * wait_time
+
+                # if the difference between measured and expected energy is less than 1% of the expected energy, then the API is supported
+                if abs(measured_energy - expected_energy) < threshold * expected_energy:
+                    self._supportsGetTotalEnergyConsumption = True
+                else:
+                    self._supportsGetTotalEnergyConsumption = False
+                    logger.warning(
+                        "Energy consumption API is not supported for device %d. Expected energy: %d mJ, Measured energy: %d mJ",
+                        self.gpu_index,
+                        expected_energy,
+                        measured_energy,
+                    )
             except amdsmi.AmdSmiLibraryException as e:
                 if (
                     e.get_error_code() == 2
