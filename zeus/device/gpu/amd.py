@@ -9,7 +9,9 @@ from functools import lru_cache
 
 try:
     import amdsmi  # type: ignore
-except ImportError:
+# must catch all exceptions, since ImportError is not the only exception that can be raised (ex. OSError on version mismatch).
+# Specific exceptions are handled when import and initialization are retested in `amdsmi_is_available`
+except Exception: 
 
     class MockAMDSMI:
         """Mock class for AMD SMI library."""
@@ -260,9 +262,16 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
         """Return the total energy consumption of the GPU since driver load. Units: mJ."""
-        info = amdsmi.amdsmi_get_energy_count(self.handle)
+        energy_dict = amdsmi.amdsmi_get_energy_count(self.handle)
+        if "energy_accumulator" in energy_dict:  # New API
+            energy = energy_dict["energy_accumulator"] * energy_dict["counter_resolution"]
+        elif "power" in energy_dict and "counter_resolution" in energy_dict:  # Old API
+            energy = energy_dict["power"] * energy_dict["counter_resolution"]
+        else:
+            raise ValueError("Unexpected energy dictionary format")
+
         return int(
-            info["power"] / 1e3
+            energy / 1e3
         )  # returns in micro Joules, convert to mili Joules
 
 
