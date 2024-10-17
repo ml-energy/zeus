@@ -29,7 +29,8 @@ dependencies = [
     "pydantic",  # The `zeus.utils.pydantic_v1` compatibility layer allows us to unpin Pydantic in most cases.
     "rich",
     "tyro",
-    "httpx"
+    "httpx",
+    "amdsmi"
 ]
 dynamic = ["version"]
 
