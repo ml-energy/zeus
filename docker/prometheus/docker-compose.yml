@@ -3,7 +3,7 @@ services:
   prometheus:
     image: prom/prometheus
     volumes:
-      - "./prometheus.yml:/etc/prometheus/prometheus.yml"
+      - "./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml"
     networks:
       - localprom
     ports:
@@ -23,3 +23,4 @@ services:
 networks:
   localprom:
     driver: bridge
+    
