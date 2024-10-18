@@ -1,7 +1,6 @@
 from __future__ import annotations
 import abc
 import time
-import random
 import warnings
 import multiprocessing as mp
 from zeus.monitor.power import PowerMonitor
