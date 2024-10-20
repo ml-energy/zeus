@@ -7,7 +7,7 @@ The former script is for simple single GPU training, whereas the latter is for d
 
 ## Dependencies
 
-All packages (including torchvision) are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/environment/).
+All packages (including torchvision) are pre-installed if you're using our [Docker image](https://ml.energy/zeus/getting_started/#using-docker).
 You just need to download and extract the ImageNet data and mount it to the Docker container with the `-v` option (first step below).
 
 1. Download the ILSVRC2012 dataset from [the ImageNet homepage](http://www.image-net.org/).
