@@ -85,9 +85,8 @@ class AMDGPU(gpu_common.GPU):
         super().__init__(gpu_index)
         self._get_handle()
 
-        self._supportsGetTotalEnergyConsumption = (
-            None  # Must be set by `supportsGetTotalEnergyConsumption`
-        )
+        # Must be set by `supportsGetTotalEnergyConsumption`
+        self._supportsGetTotalEnergyConsumption = None
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -273,7 +272,7 @@ class AMDGPU(gpu_common.GPU):
         expected_energy = power * wait_time  # power is in mW, wait_time is in seconds
 
         # if the difference between measured and expected energy is less than 1% of the expected energy, then the API is supported
-        if abs(measured_energy - expected_energy) < threshold * expected_energy:
+        if 0.1 < measured_energy / expected_energy < 10:
             self._supportsGetTotalEnergyConsumption = True
         else:
             self._supportsGetTotalEnergyConsumption = False
