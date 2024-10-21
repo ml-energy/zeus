@@ -80,15 +80,10 @@ def _handle_amdsmi_errors(func):
 class AMDGPU(gpu_common.GPU):
     """Implementation of `GPU` for AMD GPUs."""
 
-    def __init__(
-        self, gpu_index: int, executor: concurrent.futures.ThreadPoolExecutor
-    ) -> None:
+    def __init__(self, gpu_index: int) -> None:
         """Initialize the GPU object."""
         super().__init__(gpu_index)
         self._get_handle()
-
-        # test if _supportsGetTotalEnergyConsumption is true or false, returns a future object so constructor is non-blocking
-        self.supports_energy_future = self.supportsGetTotalEnergyConsumption(executor)
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -244,7 +239,8 @@ class AMDGPU(gpu_common.GPU):
         """Return the current power draw of the GPU. Units: mW."""
         # returns in W, convert to mW
         return int(
-            amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000
+            int(amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"])
+            * 1000
         )
 
     @_handle_amdsmi_errors
@@ -256,46 +252,34 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(
-        self, executor: concurrent.futures.ThreadPoolExecutor
-    ) -> concurrent.futures.Future:
+        self,
+    ) -> bool:
         """Check if the GPU supports retrieving total energy consumption. Returns a future object of the result."""
+        wait_time = 0.5  # seconds
+        threshold = 0.01  # 1% threshold
 
-        def check_energy_consumption():
-            try:
-                wait_time = 0.5  # seconds
-                threshold = 0.01  # 1% threshold
+        power = self.getInstantPowerUsage()
+        initial_energy = self.getTotalEnergyConsumption()
+        time.sleep(wait_time)
+        final_energy = self.getTotalEnergyConsumption()
 
-                power = self.getInstantPowerUsage()
-                initial_energy = self.getTotalEnergyConsumption()
-                time.sleep(wait_time)
-                final_energy = self.getTotalEnergyConsumption()
+        measured_energy = final_energy - initial_energy
+        expected_energy = power * wait_time  # power is in mW, wait_time is in seconds
 
-                measured_energy = final_energy - initial_energy
-                expected_energy = (
-                    power * wait_time
-                )  # power is in mW, wait_time is in seconds
-
-                # if the difference between measured and expected energy is less than 1% of the expected energy, then the API is supported
-                if abs(measured_energy - expected_energy) < threshold * expected_energy:
-                    self._supportsGetTotalEnergyConsumption = True
-                else:
-                    self._supportsGetTotalEnergyConsumption = False
-                    logger.warning(
-                        "`getTotalEnergyConsumption` is not supported for device %d. Expected energy: %d mJ, Measured energy: %d mJ",
-                        self.gpu_index,
-                        expected_energy,
-                        measured_energy,
-                    )
-            except amdsmi.AmdSmiLibraryException as e:
-                if (
-                    e.get_error_code() == 2
-                ):  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
-                    self._supportsGetTotalEnergyConsumption = False
-                else:
-                    raise e
-
-        future = executor.submit(check_energy_consumption)
-        return future
+        # if the difference between measured and expected energy is less than 1% of the expected energy, then the API is supported
+        if abs(measured_energy - expected_energy) < threshold * expected_energy:
+            self._supportsGetTotalEnergyConsumption = True
+        else:
+            self._supportsGetTotalEnergyConsumption = False
+            logger.info(
+                "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ"
+                "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information."
+                "Energy metrics will still be available and measured through polling of `getInstantPowerUsage` method.",
+                self.gpu_index,
+                expected_energy,
+                measured_energy,
+            )
+        return self._supportsGetTotalEnergyConsumption
 
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
@@ -305,10 +289,9 @@ class AMDGPU(gpu_common.GPU):
             energy = (
                 energy_dict["energy_accumulator"] * energy_dict["counter_resolution"]
             )
-        elif "power" in energy_dict and "counter_resolution" in energy_dict:  # Old API
-            energy = energy_dict["power"] * energy_dict["counter_resolution"]
         else:
-            raise ValueError("Unexpected energy dictionary format")
+            # Old API: assume has key "power". If not, exception will be handled by _handle_amdsmi_errors.
+            energy = energy_dict["power"] * energy_dict["counter_resolution"]
 
         return int(energy / 1e3)  # returns in micro Joules, convert to mili Joules
 
@@ -339,11 +322,11 @@ class AMDGPUs(gpu_common.GPUs):
             self._init_gpus()
             if ensure_homogeneous:
                 self._ensure_homogeneous()
-        except amdsmi.AmdSmiException as e:
+        except amdsmi.AmdSmiLibraryException as e:
             exception_class = AMDGPU._exception_map.get(
-                e.value, gpu_common.ZeusBaseGPUError
+                e.get_error_code(), gpu_common.ZeusBaseGPUError
             )
-            raise exception_class(e.msg) from e
+            raise exception_class(e.get_error_info()) from e
 
     @property
     def gpus(self) -> Sequence[AMDGPU]:
@@ -369,11 +352,16 @@ class AMDGPUs(gpu_common.GPUs):
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=len(visible_indices)
         ) as executor:
-            self._gpus = [AMDGPU(gpu_num, executor) for gpu_num in visible_indices]
+            self._gpus = [AMDGPU(gpu_num) for gpu_num in visible_indices]
 
-            for gpu in self._gpus:
-                # block until supportsGetTotalEnergyConsumption is finished
-                gpu.supports_energy_future.result()
+            # check if GPUs support getTotalEnergyConsumption. Returns a future object of the result.
+            futures = [
+                executor.submit(gpu.supportsGetTotalEnergyConsumption)
+                for gpu in self._gpus
+            ]
+
+            # wait for all futures to complete
+            concurrent.futures.wait(futures)
 
     def __del__(self) -> None:
         """Shut down AMDSMI."""
