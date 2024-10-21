@@ -251,9 +251,7 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
-    def supportsGetTotalEnergyConsumption(
-        self,
-    ) -> bool:
+    def supportsGetTotalEnergyConsumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption. Returns a future object of the result."""
         wait_time = 0.5  # seconds
         threshold = 0.8  # 80% threshold
@@ -285,7 +283,7 @@ class AMDGPU(gpu_common.GPU):
     def getTotalEnergyConsumption(self) -> int:
         """Return the total energy consumption of the GPU since driver load. Units: mJ."""
         energy_dict = amdsmi.amdsmi_get_energy_count(self.handle)
-        if "energy_accumulator" in energy_dict:  # New API
+        if "energy_accumulator" in energy_dict:  # Changed since amdsmi 6.2.1
             energy = (
                 energy_dict["energy_accumulator"] * energy_dict["counter_resolution"]
             )
