@@ -261,7 +261,7 @@ class AMDGPU(gpu_common.GPU):
             return self._supportsGetTotalEnergyConsumption
 
         wait_time = 0.5  # seconds
-        threshold = 0.8  # 80% threshold
+        threshold = 0.1  # 10% threshold
 
         power = self.getInstantPowerUsage()
         initial_energy = self.getTotalEnergyConsumption()
