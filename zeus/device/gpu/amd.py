@@ -278,8 +278,8 @@ class AMDGPU(gpu_common.GPU):
         else:
             self._supportsGetTotalEnergyConsumption = False
             logger.info(
-                "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ"
-                "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information."
+                "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
+                "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information. "
                 "Energy metrics will still be available and measured through polling of `getInstantPowerUsage` method.",
                 self.gpu_index,
                 expected_energy,
