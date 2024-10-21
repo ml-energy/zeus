@@ -85,7 +85,9 @@ class AMDGPU(gpu_common.GPU):
         super().__init__(gpu_index)
         self._get_handle()
 
-        self._supportsGetTotalEnergyConsumption = None # Must be set by `supportsGetTotalEnergyConsumption`
+        self._supportsGetTotalEnergyConsumption = (
+            None  # Must be set by `supportsGetTotalEnergyConsumption`
+        )
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -255,7 +257,6 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption. Returns a future object of the result."""
-
         # Return cached value if available
         if self._supportsGetTotalEnergyConsumption is not None:
             return self._supportsGetTotalEnergyConsumption
