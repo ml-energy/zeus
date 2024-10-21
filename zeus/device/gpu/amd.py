@@ -256,7 +256,7 @@ class AMDGPU(gpu_common.GPU):
     ) -> bool:
         """Check if the GPU supports retrieving total energy consumption. Returns a future object of the result."""
         wait_time = 0.5  # seconds
-        threshold = 0.01  # 1% threshold
+        threshold = 0.8  # 80% threshold
 
         power = self.getInstantPowerUsage()
         initial_energy = self.getTotalEnergyConsumption()
