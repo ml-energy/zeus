@@ -4,12 +4,15 @@ from __future__ import annotations
 import functools
 import os
 import contextlib
+import time
 from typing import Sequence
 from functools import lru_cache
 
 try:
     import amdsmi  # type: ignore
-except ImportError:
+# must catch all exceptions, since ImportError is not the only exception that can be raised (ex. OSError on version mismatch).
+# Specific exceptions are handled when import and initialization are retested in `amdsmi_is_available`
+except Exception:
 
     class MockAMDSMI:
         """Mock class for AMD SMI library."""
@@ -41,6 +44,15 @@ def amdsmi_is_available() -> bool:
     except ImportError:
         logger.info("amdsmi is not available.")
         return False
+    # usually thrown if amdsmi can't find libamd_smi.so
+    except OSError:
+        if os.getenv("ROCM_PATH") is None:
+            logger.warning("`ROCM_PATH` is not set. Do you have ROCm installed?")
+        return False
+    # usually thrown if versions of amdsmi and ROCm are incompatible.
+    except AttributeError:
+        logger.warning("Do you have the correct version of ROCm and amdsmi installed?")
+        return False
     try:
         amdsmi.amdsmi_init()
         logger.info("amdsmi is available and initialized")
@@ -71,9 +83,8 @@ class AMDGPU(gpu_common.GPU):
         """Initialize the GPU object."""
         super().__init__(gpu_index)
         self._get_handle()
-        # XXX(Jae-Won): Right now, the energy API's unit is broken (either the
-        # `power` field or the `counter_resolution` field). Before that, we're
-        # disabling the energy API.
+
+        # This value is updated in AMDGPUs constructor
         self._supportsGetTotalEnergyConsumption = False
 
     _exception_map = {
@@ -230,7 +241,8 @@ class AMDGPU(gpu_common.GPU):
         """Return the current power draw of the GPU. Units: mW."""
         # returns in W, convert to mW
         return int(
-            amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"] * 1000
+            int(amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"])
+            * 1000
         )
 
     @_handle_amdsmi_errors
@@ -242,28 +254,22 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
-        """Check if the GPU supports retrieving total energy consumption."""
-        if self._supportsGetTotalEnergyConsumption is None:
-            try:
-                _ = amdsmi.amdsmi_get_energy_count(self.handle)
-                self._supportsGetTotalEnergyConsumption = True
-            except amdsmi.AmdSmiLibraryException as e:
-                if (
-                    e.get_error_code() == 2
-                ):  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_NOT_SUPPORTED
-                    self._supportsGetTotalEnergyConsumption = False
-                else:
-                    raise e
-
+        """Check if the GPU supports retrieving total energy consumption. Returns a future object of the result."""
         return self._supportsGetTotalEnergyConsumption
 
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
         """Return the total energy consumption of the GPU since driver load. Units: mJ."""
-        info = amdsmi.amdsmi_get_energy_count(self.handle)
-        return int(
-            info["power"] / 1e3
-        )  # returns in micro Joules, convert to mili Joules
+        energy_dict = amdsmi.amdsmi_get_energy_count(self.handle)
+        if "energy_accumulator" in energy_dict:  # Changed since amdsmi 6.2.1
+            energy = (
+                energy_dict["energy_accumulator"] * energy_dict["counter_resolution"]
+            )
+        else:
+            # Old API: assume has key "power". If not, exception will be handled by _handle_amdsmi_errors.
+            energy = energy_dict["power"] * energy_dict["counter_resolution"]
+
+        return int(energy / 1e3)  # returns in micro Joules, convert to mili Joules
 
 
 class AMDGPUs(gpu_common.GPUs):
@@ -292,11 +298,11 @@ class AMDGPUs(gpu_common.GPUs):
             self._init_gpus()
             if ensure_homogeneous:
                 self._ensure_homogeneous()
-        except amdsmi.AmdSmiException as e:
+        except amdsmi.AmdSmiLibraryException as e:
             exception_class = AMDGPU._exception_map.get(
-                e.value, gpu_common.ZeusBaseGPUError
+                e.get_error_code(), gpu_common.ZeusBaseGPUError
             )
-            raise exception_class(e.msg) from e
+            raise exception_class(e.get_error_info()) from e
 
     @property
     def gpus(self) -> Sequence[AMDGPU]:
@@ -318,7 +324,38 @@ class AMDGPUs(gpu_common.GPUs):
         else:
             visible_indices = list(range(len(amdsmi.amdsmi_get_processor_handles())))
 
+        # create a threadpool with the number of visible GPUs
         self._gpus = [AMDGPU(gpu_num) for gpu_num in visible_indices]
+
+        # set _supportsGetTotalEnergyConsumption for all GPUs
+        wait_time = 0.5  # seconds
+
+        powers = [gpu.getInstantPowerUsage() for gpu in self._gpus]
+        initial_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
+        time.sleep(wait_time)
+        final_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
+        measured_energies = [
+            final - initial for final, initial in zip(final_energies, initial_energies)
+        ]
+        expected_energies = [
+            power * wait_time for power in powers
+        ]  # energy = power * time
+
+        for gpu, measured_energy, expected_energy in zip(
+            self._gpus, measured_energies, expected_energies
+        ):
+            if 0.1 < measured_energy / expected_energy < 10:
+                gpu._supportsGetTotalEnergyConsumption = True
+            else:
+                gpu._supportsGetTotalEnergyConsumption = False
+                logger.info(
+                    "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
+                    "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information. "
+                    "Energy metrics will still be available and measured through polling of `getInstantPowerUsage` method.",
+                    gpu.gpu_index,
+                    expected_energy,
+                    measured_energy,
+                )
 
     def __del__(self) -> None:
         """Shut down AMDSMI."""
