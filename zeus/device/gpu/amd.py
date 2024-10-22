@@ -3,7 +3,6 @@
 from __future__ import annotations
 import functools
 import os
-import concurrent.futures
 import contextlib
 import time
 from typing import Sequence
@@ -85,8 +84,8 @@ class AMDGPU(gpu_common.GPU):
         super().__init__(gpu_index)
         self._get_handle()
 
-        # Must be set by `supportsGetTotalEnergyConsumption`
-        self._supportsGetTotalEnergyConsumption = None
+        # This value is updated in AMDGPUs constructor
+        self._supportsGetTotalEnergyConsumption = False
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -256,34 +255,6 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption. Returns a future object of the result."""
-        # Return cached value if available
-        if self._supportsGetTotalEnergyConsumption is not None:
-            return self._supportsGetTotalEnergyConsumption
-
-        wait_time = 0.5  # seconds
-        threshold = 0.1  # 10% threshold
-
-        power = self.getInstantPowerUsage()
-        initial_energy = self.getTotalEnergyConsumption()
-        time.sleep(wait_time)
-        final_energy = self.getTotalEnergyConsumption()
-
-        measured_energy = final_energy - initial_energy
-        expected_energy = power * wait_time  # power is in mW, wait_time is in seconds
-
-        # if the difference between measured and expected energy is less than 1% of the expected energy, then the API is supported
-        if 0.1 < measured_energy / expected_energy < 10:
-            self._supportsGetTotalEnergyConsumption = True
-        else:
-            self._supportsGetTotalEnergyConsumption = False
-            logger.info(
-                "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
-                "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information. "
-                "Energy metrics will still be available and measured through polling of `getInstantPowerUsage` method.",
-                self.gpu_index,
-                expected_energy,
-                measured_energy,
-            )
         return self._supportsGetTotalEnergyConsumption
 
     @_handle_amdsmi_errors
@@ -354,19 +325,37 @@ class AMDGPUs(gpu_common.GPUs):
             visible_indices = list(range(len(amdsmi.amdsmi_get_processor_handles())))
 
         # create a threadpool with the number of visible GPUs
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=len(visible_indices)
-        ) as executor:
-            self._gpus = [AMDGPU(gpu_num) for gpu_num in visible_indices]
+        self._gpus = [AMDGPU(gpu_num) for gpu_num in visible_indices]
 
-            # check if GPUs support getTotalEnergyConsumption. Returns a future object of the result.
-            futures = [
-                executor.submit(gpu.supportsGetTotalEnergyConsumption)
-                for gpu in self._gpus
-            ]
+        # set _supportsGetTotalEnergyConsumption for all GPUs
+        wait_time = 0.5  # seconds
 
-            # wait for all futures to complete
-            concurrent.futures.wait(futures)
+        powers = [gpu.getInstantPowerUsage() for gpu in self._gpus]
+        initial_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
+        time.sleep(wait_time)
+        final_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
+        measured_energies = [
+            final - initial for final, initial in zip(final_energies, initial_energies)
+        ]
+        expected_energies = [
+            power * wait_time for power in powers
+        ]  # energy = power * time
+
+        for gpu, measured_energy, expected_energy in zip(
+            self._gpus, measured_energies, expected_energies
+        ):
+            if 0.1 < measured_energy / expected_energy < 10:
+                gpu._supportsGetTotalEnergyConsumption = True
+            else:
+                gpu._supportsGetTotalEnergyConsumption = False
+                logger.info(
+                    "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
+                    "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information. "
+                    "Energy metrics will still be available and measured through polling of `getInstantPowerUsage` method.",
+                    gpu.gpu_index,
+                    expected_energy,
+                    measured_energy,
+                )
 
     def __del__(self) -> None:
         """Shut down AMDSMI."""
