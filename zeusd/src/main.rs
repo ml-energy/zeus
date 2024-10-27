@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
             let listener = TcpListener::bind(&config.tcp_bind_address)?;
             tracing::info!("Listening on {}", &listener.local_addr()?);
 
-            start_server_tcp(listener, device_tasks, num_workers)?.await?;
+            start_server_tcp(listener, device_tasks, cpu_device_tasks.clone(), num_workers)?.await?;
         }
     }
 

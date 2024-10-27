@@ -116,6 +116,7 @@ pub fn start_server_uds(
 pub fn start_server_tcp(
     listener: TcpListener,
     device_tasks: GpuManagementTasks,
+    cpu_device_tasks: CpuManagementTasks,
     num_workers: usize,
 ) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
@@ -124,6 +125,7 @@ pub fn start_server_tcp(
             .service(web::scope("/gpu").configure(gpu_routes))
             .service(web::scope("/cpu").configure(cpu_routes))
             .app_data(web::Data::new(device_tasks.clone()))
+            .app_data(web::Data::new(cpu_device_tasks.clone()))
     })
     .workers(num_workers)
     .listen(listener)?
