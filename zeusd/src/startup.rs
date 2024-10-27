@@ -12,8 +12,11 @@ use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
+use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::gpu_routes;
+
+use crate::routes::cpu_routes;
 
 /// Initialize tracing with the given where to write logs to.
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
@@ -63,6 +66,18 @@ pub fn start_device_tasks() -> anyhow::Result<GpuManagementTasks> {
     GpuManagementTasks::start(gpus)
 }
 
+pub fn start_cpu_device_tasks() -> anyhow::Result<CpuManagementTasks> {
+    tracing::info!("Starting Rapl and CPU management tasks.");
+    let num_cpus = RaplCpu::device_count()?;
+    let mut cpus = Vec::with_capacity(num_cpus as usize);
+    for cpu_id in 0..num_cpus {
+        let cpu = RaplCpu::init(cpu_id)?;
+        tracing::info!("Initialized RAPL for CPU {}", cpu_id);
+        cpus.push(cpu);
+    }
+    CpuManagementTasks::start(cpus)
+}
+
 /// Ensure the daemon is running as root.
 pub fn ensure_root() -> anyhow::Result<()> {
     if !nix::unistd::geteuid().is_root() {
@@ -79,13 +94,16 @@ pub fn ensure_root() -> anyhow::Result<()> {
 pub fn start_server_uds(
     listener: UnixListener,
     device_tasks: GpuManagementTasks,
+    cpu_device_tasks: CpuManagementTasks,
     num_workers: usize,
 ) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
             .wrap(tracing_actix_web::TracingLogger::default())
             .service(web::scope("/gpu").configure(gpu_routes))
+            .service(web::scope("/cpu").configure(cpu_routes))
             .app_data(web::Data::new(device_tasks.clone()))
+            .app_data(web::Data::new(cpu_device_tasks.clone()))
     })
     .workers(num_workers)
     .listen_uds(listener)?
@@ -104,6 +122,7 @@ pub fn start_server_tcp(
         App::new()
             .wrap(tracing_actix_web::TracingLogger::default())
             .service(web::scope("/gpu").configure(gpu_routes))
+            .service(web::scope("/cpu").configure(cpu_routes))
             .app_data(web::Data::new(device_tasks.clone()))
     })
     .workers(num_workers)

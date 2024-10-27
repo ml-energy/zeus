@@ -17,12 +17,20 @@ use crate::devices::gpu::GpuCommandRequest;
 pub enum ZeusdError {
     #[error("GPU index {0} does not exist.")]
     GpuNotFoundError(usize),
+    #[error("CPU index {0} does not exist.")]
+    CpuNotFoundError(usize),
     #[error("NVML error: {0}")]
     NvmlError(#[from] NvmlError),
     #[error("GPU command send error: {0}")]
     GpuCommandSendError(#[from] SendError<GpuCommandRequest>),
     #[error("Management task for GPU {0} unexpectedly terminated while handling the request.")]
     GpuManagementTaskTerminatedError(usize),
+    #[error("Management task for CPU {0} unexpectedly terminated while handling the request.")]
+    CpuManagementTaskTerminatedError(usize),
+    #[error("CPU Initialization for CPU {0} unexpectedly errored")]
+    CpuInitializationError(usize),
+    #[error("IOError: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
 /// This allows us to return a custom HTTP status code for each error variant.
@@ -30,6 +38,7 @@ impl ResponseError for ZeusdError {
     fn status_code(&self) -> StatusCode {
         match self {
             ZeusdError::GpuNotFoundError(_) => StatusCode::BAD_REQUEST,
+            ZeusdError::CpuNotFoundError(_) => StatusCode::BAD_REQUEST,
             ZeusdError::NvmlError(e) => match e {
                 NvmlError::NoPermission => StatusCode::FORBIDDEN,
                 NvmlError::InvalidArg => StatusCode::BAD_REQUEST,
@@ -37,6 +46,9 @@ impl ResponseError for ZeusdError {
             },
             ZeusdError::GpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::GpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuInitializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::IOError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

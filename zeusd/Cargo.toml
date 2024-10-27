@@ -31,6 +31,7 @@ tracing-log = "0.2.0"
 tracing-actix-web = "0.7.10"
 nix = { version = "0.29", default-features = false, features = ["user"] }
 paste = "1"
+once_cell = "1.7.2"
 
 [dev-dependencies]
 once_cell = "1.7.2"

@@ -25,9 +25,21 @@ impl NvmlGpu<'static> {
 }
 
 impl GpuManager for NvmlGpu<'static> {
+    // TODO: Implementation wil squash NVML errors that users have to be aware of.
     fn device_count() -> Result<u32, ZeusdError> {
-        let nvml = Nvml::init()?;
-        Ok(nvml.device_count()?)
+        match Nvml::init() {
+            Ok(nvml) => match nvml.device_count() {
+                Ok(count) => Ok(count),
+                Err(e) => {
+                    tracing::error!("Error getting device count: {:?}", e);
+                    Ok(0)
+                }
+            },
+            Err(e) => {
+                tracing::error!("Error initializing NVML: {:?}", e);
+                Ok(0)
+            }
+        }
     }
 
     #[inline]
