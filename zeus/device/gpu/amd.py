@@ -51,7 +51,10 @@ def amdsmi_is_available() -> bool:
         return False
     # usually thrown if versions of amdsmi and ROCm are incompatible.
     except AttributeError:
-        logger.warning("Do you have the correct version of ROCm and amdsmi installed?")
+        logger.warning(
+            "Failed to import amdsmi. "
+            "Ensure amdsmi's version is at least as high as the current ROCm version."
+        )
         return False
     try:
         amdsmi.amdsmi_init()
