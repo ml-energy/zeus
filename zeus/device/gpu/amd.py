@@ -87,8 +87,9 @@ class AMDGPU(gpu_common.GPU):
         super().__init__(gpu_index)
         self._get_handle()
 
-        # This value is updated in AMDGPUs constructor
-        self._supportsGetTotalEnergyConsumption = False
+        # These values are updated in AMDGPUs constructor
+        self._supportsGetTotalEnergyConsumption = True
+        self._supportsInstantPowerUsage = True
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -240,11 +241,24 @@ class AMDGPU(gpu_common.GPU):
         )  # expects MHz
 
     @_handle_amdsmi_errors
-    def getInstantPowerUsage(self) -> int:
-        """Return the current power draw of the GPU. Units: mW."""
+    def getAveragePowerUsage(self) -> int:
+        """Return the average power draw of the GPU. Units: mW."""
         # returns in W, convert to mW
         return int(
             int(amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"])
+            * 1000
+        )
+
+    @_handle_amdsmi_errors
+    def getInstantPowerUsage(self) -> int:
+        """Return the current power draw of the GPU. Units: mW."""
+        if self._supportsInstantPowerUsage is False:
+            raise gpu_common.ZeusGPUNotSupportedError(
+                "Instant power usage is not supported on this AMD GPU."
+            )
+        # returns in W, convert to mW
+        return int(
+            int(amdsmi.amdsmi_get_power_info(self.handle)["current_socket_power"])
             * 1000
         )
 
@@ -327,13 +341,22 @@ class AMDGPUs(gpu_common.GPUs):
         else:
             visible_indices = list(range(len(amdsmi.amdsmi_get_processor_handles())))
 
-        # create a threadpool with the number of visible GPUs
+        # create the number of visible GPUs
         self._gpus = [AMDGPU(gpu_num) for gpu_num in visible_indices]
+
+        # set _supportsInstantPowerUsage for all GPUs
+        for gpu in self._gpus:
+            if gpu.getInstantPowerUsage() == "N/A":
+                gpu._supportsInstantPowerUsage = False
 
         # set _supportsGetTotalEnergyConsumption for all GPUs
         wait_time = 0.5  # seconds
-
-        powers = [gpu.getInstantPowerUsage() for gpu in self._gpus]
+        powers = [
+            gpu.getInstantPowerUsage()
+            if gpu._supportsInstantPowerUsage
+            else gpu.getAveragePowerUsage()
+            for gpu in self._gpus
+        ]
         initial_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
         time.sleep(wait_time)
         final_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]

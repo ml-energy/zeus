@@ -97,6 +97,11 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def getAveragePowerUsage(self) -> int:
+        """Return the average power usage of the GPU. Units: mW."""
+        pass
+
+    @abc.abstractmethod
     def getInstantPowerUsage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         pass
