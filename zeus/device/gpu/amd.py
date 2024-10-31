@@ -254,7 +254,9 @@ class AMDGPU(gpu_common.GPU):
         """Return the current power draw of the GPU. Units: mW."""
         if self._supportsInstantPowerUsage is False:
             raise gpu_common.ZeusGPUNotSupportedError(
-                "Instant power usage is not supported on this AMD GPU."
+                "Instant power usage is not supported on this AMD GPU. "
+                "This is because amdsmi.amdsmi_get_power_info does not return a valid 'current_socket_power'. "
+                "Please use `getAveragePowerUsage` instead."
             )
         # returns in W, convert to mW
         return int(
@@ -377,7 +379,7 @@ class AMDGPUs(gpu_common.GPUs):
                 logger.info(
                     "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
                     "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information. "
-                    "Energy metrics will still be available and measured through polling of `getInstantPowerUsage` method.",
+                    "Energy metrics will still be available and measured through polling of either `getInstantPowerUsage` or `getAveragePowerUsage` method.",
                     gpu.gpu_index,
                     expected_energy,
                     measured_energy,
