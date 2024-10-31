@@ -151,17 +151,21 @@ Total energy (J):
 ```
 
 ## Hardware Support
-We currently support both NVIDIA (via nvml) and AMD gpus (via amdsmi >= 6.1).
+We currently support both NVIDIA (via NVML) and AMD GPUs (via AMD SMI, version 6.1 or later).
 
-### get_gpus
-[`get_gpus`][zeus.device.get_gpus] returns a [`GPUs`][zeus.device.gpu.GPUs] object, which is either an [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object depending on if `nvml` or `amdsmi` is available. Each [`GPUs`][zeus.device.gpu.GPUs] object contains one or more [`GPU`][zeus.device.gpu.GPU] objects, which are either [`NVIDIAGPU`][zeus.device.gpu.NVIDIAGPU] or [`AMDGPU`][zeus.device.gpu.AMDGPU] objects. These [`GPU`][zeus.device.gpu.GPU] objects directly call `nvml`/`amdsmi` methods, and have a one-to-one correspondence between methods of the [`GPU`][zeus.device.gpu.GPU] objects and their respective `nvml`/`amdsmi` methods. For example, [`NVIDIAGPU.getName`][zeus.device.gpu.nvidia.NVIDIAGPU.getName] calls `pynvml.nvmlDeviceGetName`, while [`AMDGPU.getName`][zeus.device.gpu.amd.AMDGPU.getName] calls `amdsmi.amdsmi_get_gpu_asic_info`. This effectively allows the GPU to be abstracted away, and for multiple different kinds of GPUs to be supported.
+### `get_gpus`
+The [`get_gpus`][zeus.device.get_gpus] function returns a [`GPUs`][zeus.device.gpu.GPUs] object, which can be either an [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object depending on the availability of `nvml` or `amdsmi`. Each [`GPUs`][zeus.device.gpu.GPUs] object contains one or more [`GPU`][zeus.device.gpu.common.GPU] instances, which are specifically [`NVIDIAGPU`][zeus.device.gpu.nvidia.NVIDIAGPU] or [`AMDGPU`][zeus.device.gpu.amd.AMDGPU] objects.
 
-### Quirks of AMD
+These [`GPU`][zeus.device.gpu.common.GPU] objects directly call respective `nvml` or `amdsmi` methods, providing a one-to-one mapping of methods for seamless GPU abstraction and support for multiple GPU types. For example:
+- [`NVIDIAGPU.getName`][zeus.device.gpu.nvidia.NVIDIAGPU.getName] calls `pynvml.nvmlDeviceGetName`.
+- [`AMDGPU.getName`][zeus.device.gpu.amd.AMDGPU.getName] calls `amdsmi.amdsmi_get_gpu_asic_info`.
+
+### AMD GPU Quirks
 
 #### AMD GPUs Initialization
-`amdsmi.amdsmi_get_energy_count` sometimes returns nonsensical values (see https://github.com/ROCm/amdsmi/issues/38 for more information). In the constructor for [`AMDGPUs`][zeus.device.gpu.AMDGPUs], for each GPU `amdsmi.amdsmi_get_energy_count` is polled, then waits 0.5 seconds, and is then polled again. This difference is compared to the power measurement to determine if `amdsmi.amdsmi_get_energy_count` is stable and can be used. This initialization takes 0.5 seconds for any number of AMD GPUs.
+`amdsmi.amdsmi_get_energy_count` can sometimes return invalid values. See [ROCm issue #38](https://github.com/ROCm/amdsmi/issues/38) for more details. During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, `amdsmi.amdsmi_get_energy_count` is polled twice for each GPU, with a 0.5-second delay between polls. This difference is compared to power measurements to determine if `amdsmi.amdsmi_get_energy_count` is stable and reliable. Initialization takes 0.5 seconds regardless of the number of AMD GPUs.
 
-`amdsmi.amdsmi_get_power_info` returns both "average_socket_power" and "current_socket_power" fields, but the current_socket_power field often returns "N/A". In the constructor for [`AMDGPUs`][zeus.device.gpu.AMDGPUs], this method is tested for each GPU, and if "N/A" is returned, then [`AMDGPU.getInstantPowerUsage`][zeus.device.gpu.amd.AMDGPU.getInstantPowerUsage] is disabled, as [`AMDGPU.getAveragePowerUsage`][zeus.device.gpu.amd.AMDGPU.getAveragePowerUsage] should be used instead.
+`amdsmi.amdsmi_get_power_info` provides "average_socket_power" and "current_socket_power" fields, but the "current_socket_power" field frequently returns "N/A." During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, this method is checked, and if "N/A" is returned, the [`AMDGPU.getInstantPowerUsage`][zeus.device.gpu.amd.AMDGPU.getInstantPowerUsage] method is disabled. Instead, [`AMDGPU.getAveragePowerUsage`][zeus.device.gpu.amd.AMDGPU.getAveragePowerUsage] needs to be used.
 
-#### amdsmi versions
-Only `ROCm` >= 6.1 is supported, due to `amdsmi.amdsmi_get_energy_count` not returning updated values in earlier versions (see https://github.com/ROCm/amdsmi/issues/22 for more information). Please ensure your `amdsmi` and associated `ROCm` versions are up to date.
+#### Supported AMD SMI Versions
+Only ROCm >= 6.1 is supported, as earlier versions of `amdsmi.amdsmi_get_energy_count` do not return updated values. For more information, see [ROCm issue #22](https://github.com/ROCm/amdsmi/issues/22). Ensure your `amdsmi` and ROCm versions are up to date.
