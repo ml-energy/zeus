@@ -14,9 +14,8 @@ use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
-use crate::routes::gpu_routes;
-
 use crate::routes::cpu_routes;
+use crate::routes::gpu_routes;
 
 /// Initialize tracing with the given where to write logs to.
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
