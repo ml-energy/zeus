@@ -1,15 +1,15 @@
 // RAPL CPU
 // Real RAPL interface.
 // #[cfg(target_os = "linux")]
-// mod linux;
+mod linux;
 // #[cfg(target_os = "linux")]
-// pub use linux::RaplCpu;
+pub use linux::RaplCpu;
 
 // Fake Rapl interface for dev and testing on macOS.
 // #[cfg(target_os = "macos")]
-mod macos;
+// mod macos;
 // #[cfg(target_os = "macos")]
-pub use macos::RaplCpu;
+// pub use macos::RaplCpu;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -36,10 +36,16 @@ pub struct RaplResponse {
 }
 
 pub trait CpuManager {
+    /// Get the number of CPUs available.
     fn device_count() -> Result<usize, ZeusdError>;
+    /// Get the CPU PackageInfo and the DRAM PackageInfo it is available.
     fn get_available_fields(index: usize) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError>;
+    // Get the cumulative Rapl count value of the CPU after compensating for wraparounds.
     fn get_cpu_energy(&self) -> Result<u64, ZeusdError>;
+    // Get the cumulative Rapl count value of the DRAM after compensating for wraparounds if it is
+    // available.
     fn get_dram_energy(&self) -> Result<Option<u64>, ZeusdError>;
+    // Abort the monitoring tasks for CPU and DRAM if the tasks have been started.
     fn stop_monitoring(&mut self);
 }
 
@@ -93,18 +99,23 @@ impl CpuManagementTasks {
         }
     }
 
-    pub async fn stop_monitoring(&self) {
-        for sender in self.senders.clone() {
-            let (tx, _) = tokio::sync::mpsc::channel(1);
+    pub async fn stop_monitoring(&self) -> Result<(), ZeusdError> {
+        for (index, sender) in self.senders.iter().enumerate() {
+            let (tx, mut rx) = tokio::sync::mpsc::channel(1);
             sender
                 .send((
-                    CpuCommand::StopMonitoring {},
+                    CpuCommand::StopMonitoring,
                     Some(tx),
                     Instant::now(),
                     Span::current(),
                 ))
                 .unwrap();
-        }
+            match rx.recv().await {
+                Some(_) => {},
+                None => return Err(ZeusdError::CpuManagementTaskTerminatedError(index)),
+            }
+        };
+        Ok(())
     }
 }
 
@@ -116,7 +127,8 @@ pub enum CpuCommand {
         cpu: bool,
         dram: bool,
     },
-    StopMonitoring {},
+    /// Stop the monitoring task for CPU and DRAM if they have been started.
+    StopMonitoring,
 }
 
 async fn cpu_management_task<T: CpuManager>(

@@ -121,9 +121,7 @@ impl CpuManager for RaplCpu {
                 }
             }
             Err(_) => {
-                return Err(ZeusdError::CpuInitializationError(
-                    index.try_into().unwrap(),
-                ))
+                return Err(ZeusdError::CpuInitializationError(index));
             }
         };
 

@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    cpu_device_tasks.stop_monitoring().await;
+    let _ = cpu_device_tasks.stop_monitoring().await;
     Ok(())
 }
 
