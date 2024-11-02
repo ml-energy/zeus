@@ -259,7 +259,7 @@ class AMDGPU(gpu_common.GPU):
                 "Please use `getAveragePowerUsage` instead."
             )
         # returns in W, convert to mW
-        return int(
+        return (
             int(amdsmi.amdsmi_get_power_info(self.handle)["current_socket_power"])
             * 1000
         )
@@ -279,6 +279,12 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def getTotalEnergyConsumption(self) -> int:
         """Return the total energy consumption of the GPU since driver load. Units: mJ."""
+        if not self._supportsGetTotalEnergyConsumption:
+            raise gpu_common.ZeusGPUNotSupportedError(
+                "Total energy consumption is not supported on this AMD GPU. "
+                "This is because the result of `amdsmi.amdsmi_get_energy_count` is not accurate. "
+                "Please use `getAveragePowerUsage` or `getInstantPowerUsage` to calculate energy usage."
+            )
         energy_dict = amdsmi.amdsmi_get_energy_count(self.handle)
         if "energy_accumulator" in energy_dict:  # Changed since amdsmi 6.2.1
             energy = (
@@ -351,7 +357,7 @@ class AMDGPUs(gpu_common.GPUs):
             gpu._supportsInstantPowerUsage = isinstance(
                 amdsmi.amdsmi_get_power_info(gpu.handle)["current_socket_power"],
                 int,
-            )
+            )  # amdsmi.amdsmi_get_power_info["current_socket_power"] returns "N/A" if not supported
 
         # set _supportsGetTotalEnergyConsumption for all GPUs
         wait_time = 0.5  # seconds
