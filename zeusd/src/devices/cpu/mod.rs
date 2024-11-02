@@ -119,6 +119,10 @@ pub enum CpuCommand {
     StopMonitoring {},
 }
 
+/// Tokio background task that handles requests to each CPU.
+/// NOTE: Currently, this serializes the handling of request to a single CPU, which is
+///       largely unnecessary as the requests are simply reading energy counters.
+///       This is subject to refactoring if it is to become a bottleneck.
 async fn cpu_management_task<T: CpuManager>(
     mut cpu: T,
     mut rx: UnboundedReceiver<CpuCommandRequest>,
