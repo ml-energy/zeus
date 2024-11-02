@@ -14,6 +14,8 @@ use tokio::time::{sleep, Duration};
 use crate::devices::cpu::{CpuManager, PackageInfo};
 use crate::error::ZeusdError;
 
+// NOTE: To support Zeusd deployment in a docker container, this should support
+//       sysfs mounts under places like `/zeus_sys`.
 static RAPL_DIR: &'static str = "/sys/class/powercap/intel-rapl";
 
 pub struct RaplCpu {
