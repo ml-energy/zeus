@@ -348,8 +348,10 @@ class AMDGPUs(gpu_common.GPUs):
 
         # set _supportsInstantPowerUsage for all GPUs
         for gpu in self._gpus:
-            if gpu.getInstantPowerUsage() == "N/A":
-                gpu._supportsInstantPowerUsage = False
+            gpu._supportsInstantPowerUsage = isinstance(
+                amdsmi.amdsmi_get_power_info(gpu.handle)["current_socket_power"],
+                int,
+            )
 
         # set _supportsGetTotalEnergyConsumption for all GPUs
         wait_time = 0.5  # seconds
