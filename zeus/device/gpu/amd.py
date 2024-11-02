@@ -244,7 +244,7 @@ class AMDGPU(gpu_common.GPU):
     def getAveragePowerUsage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
         # returns in W, convert to mW
-        return int(
+        return (
             int(amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"])
             * 1000
         )
