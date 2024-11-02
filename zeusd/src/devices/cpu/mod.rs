@@ -1,14 +1,14 @@
 // RAPL CPU
 // Real RAPL interface.
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-pub use linux::RaplCpu;
+// #[cfg(target_os = "linux")]
+// mod linux;
+// #[cfg(target_os = "linux")]
+// pub use linux::RaplCpu;
 
 // Fake Rapl interface for dev and testing on macOS.
-#[cfg(target_os = "macos")]
+// #[cfg(target_os = "macos")]
 mod macos;
-#[cfg(target_os = "macos")]
+// #[cfg(target_os = "macos")]
 pub use macos::RaplCpu;
 
 use serde::Serialize;
@@ -21,7 +21,7 @@ use tracing::Span;
 use crate::error::ZeusdError;
 
 pub struct PackageInfo {
-    pub index: u32,
+    pub index: usize,
     pub name: String,
     pub energy_uj_path: PathBuf,
     pub max_energy_uj: u64,
@@ -36,8 +36,8 @@ pub struct RaplResponse {
 }
 
 pub trait CpuManager {
-    fn device_count() -> Result<u32, ZeusdError>;
-    fn get_available_fields(index: u32) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError>;
+    fn device_count() -> Result<usize, ZeusdError>;
+    fn get_available_fields(index: usize) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError>;
     fn get_cpu_energy(&self) -> Result<u64, ZeusdError>;
     fn get_dram_energy(&self) -> Result<Option<u64>, ZeusdError>;
     fn stop_monitoring(&mut self);

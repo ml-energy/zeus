@@ -11,7 +11,7 @@ pub struct RaplCpu {
 }
 
 impl RaplCpu {
-    pub fn init(_index: u32) -> Result<Self, ZeusdError> {
+    pub fn init(_index: usize) -> Result<Self, ZeusdError> {
         let fields = RaplCpu::get_available_fields(_index)?;
         Ok(Self {
             cpu: fields.0,
@@ -21,11 +21,11 @@ impl RaplCpu {
 }
 
 impl CpuManager for RaplCpu {
-    fn device_count() -> Result<u32, ZeusdError> {
+    fn device_count() -> Result<usize, ZeusdError> {
         Ok(1)
     }
 
-    fn get_available_fields(_index: u32) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError> {
+    fn get_available_fields(_index: usize) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError> {
         Ok(
             (
                 PackageInfo{

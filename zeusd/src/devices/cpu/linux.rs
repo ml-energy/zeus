@@ -16,7 +16,8 @@ use crate::error::ZeusdError;
 
 // NOTE: To support Zeusd deployment in a docker container, this should support
 //       sysfs mounts under places like `/zeus_sys`.
-static RAPL_DIR: &'static str = "/sys/class/powercap/intel-rapl";
+// static RAPL_DIR: &'static str = "/sys/class/powercap/intel-rapl";
+static RAPL_DIR: &'static str = "./dummy-rapl";
 
 pub struct RaplCpu {
     cpu: Arc<PackageInfo>,
@@ -26,7 +27,7 @@ pub struct RaplCpu {
 }
 
 impl RaplCpu {
-    pub fn init(_index: u32) -> Result<Self, ZeusdError> {
+    pub fn init(_index: usize) -> Result<Self, ZeusdError> {
         let fields = RaplCpu::get_available_fields(_index)?;
         let cpu = Arc::new(fields.0);
         let dram = Arc::new(fields.1);
@@ -40,15 +41,13 @@ impl RaplCpu {
 }
 
 impl PackageInfo {
-    pub fn new(base_path: &PathBuf, index: u32) -> anyhow::Result<Self, ZeusdError> {
+    pub fn new(base_path: &PathBuf, index: usize) -> anyhow::Result<Self, ZeusdError> {
         let cpu_name_path = base_path.join("name");
         let cpu_energy_path = base_path.join("energy_uj");
         let cpu_max_energy_path = base_path.join("max_energy_range_uj");
 
         if !cpu_name_path.exists() || !cpu_max_energy_path.exists() || !cpu_energy_path.exists() {
-            return Err(ZeusdError::CpuInitializationError(
-                index.try_into().unwrap(),
-            ));
+            return Err(ZeusdError::CpuInitializationError(index));
         }
 
         let cpu_name = fs::read_to_string(&cpu_name_path)?;
@@ -67,7 +66,7 @@ impl PackageInfo {
 }
 
 impl CpuManager for RaplCpu {
-    fn device_count() -> Result<u32, ZeusdError> {
+    fn device_count() -> Result<usize, ZeusdError> {
         let mut index_count = 0;
         let base_path = PathBuf::from(RAPL_DIR);
 
@@ -94,7 +93,7 @@ impl CpuManager for RaplCpu {
         Ok(index_count)
     }
 
-    fn get_available_fields(index: u32) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError> {
+    fn get_available_fields(index: usize) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError> {
         let base_path = PathBuf::from(format!("{}/intel-rapl:{}", RAPL_DIR, index));
         let cpu_info = PackageInfo::new(&base_path, index)?;
 
