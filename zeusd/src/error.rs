@@ -27,7 +27,7 @@ pub enum ZeusdError {
     GpuManagementTaskTerminatedError(usize),
     #[error("Management task for CPU {0} unexpectedly terminated while handling the request.")]
     CpuManagementTaskTerminatedError(usize),
-    #[error("CPU Initialization for CPU {0} unexpectedly errored")]
+    #[error("Initialization for CPU {0} unexpectedly errored.")]
     CpuInitializationError(usize),
     #[error("IOError: {0}")]
     IOError(#[from] std::io::Error),
