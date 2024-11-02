@@ -252,7 +252,7 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def getInstantPowerUsage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
-        if self._supportsInstantPowerUsage is False:
+        if not self._supportsInstantPowerUsage:
             raise gpu_common.ZeusGPUNotSupportedError(
                 "Instant power usage is not supported on this AMD GPU. "
                 "This is because amdsmi.amdsmi_get_power_info does not return a valid 'current_socket_power'. "
@@ -353,12 +353,7 @@ class AMDGPUs(gpu_common.GPUs):
 
         # set _supportsGetTotalEnergyConsumption for all GPUs
         wait_time = 0.5  # seconds
-        powers = [
-            gpu.getInstantPowerUsage()
-            if gpu._supportsInstantPowerUsage
-            else gpu.getAveragePowerUsage()
-            for gpu in self._gpus
-        ]
+        powers = [gpu.getAveragePowerUsage() for gpu in self._gpus]
         initial_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
         time.sleep(wait_time)
         final_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
@@ -372,6 +367,7 @@ class AMDGPUs(gpu_common.GPUs):
         for gpu, measured_energy, expected_energy in zip(
             self._gpus, measured_energies, expected_energies
         ):
+            # Loose bound to rule out very obvious counter problems
             if 0.1 < measured_energy / expected_energy < 10:
                 gpu._supportsGetTotalEnergyConsumption = True
             else:
@@ -379,7 +375,7 @@ class AMDGPUs(gpu_common.GPUs):
                 logger.info(
                     "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
                     "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information. "
-                    "Energy metrics will still be available and measured through polling of either `getInstantPowerUsage` or `getAveragePowerUsage` method.",
+                    "You can still measure energy by polling either `getInstantPowerUsage` or `getAveragePowerUsage` and integrating over time.",
                     gpu.gpu_index,
                     expected_energy,
                     measured_energy,

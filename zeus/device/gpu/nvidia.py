@@ -191,7 +191,7 @@ class NVIDIAGPU(gpu_common.GPU):
 
     @_handle_nvml_errors
     def getAveragePowerUsage(self) -> int:
-        """Return the current power draw of the GPU. Units: mW."""
+        """Return the average power draw of the GPU. Units: mW."""
         metric = pynvml.nvmlDeviceGetFieldValues(
             self.handle, [pynvml.NVML_FI_DEV_POWER_AVERAGE]
         )[0]
