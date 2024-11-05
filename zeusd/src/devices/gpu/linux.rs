@@ -3,7 +3,7 @@
 //! Note that NVML is only available on Linux.
 
 use nvml_wrapper::enums::device::GpuLockedClocksSetting;
-use nvml_wrapper::{Device, Nvml};
+use nvml_wrapper::{error::NvmlError, Device, Nvml};
 
 use crate::devices::gpu::GpuManager;
 use crate::error::ZeusdError;
@@ -30,15 +30,13 @@ impl GpuManager for NvmlGpu<'static> {
         match Nvml::init() {
             Ok(nvml) => match nvml.device_count() {
                 Ok(count) => Ok(count),
-                Err(e) => {
-                    tracing::error!("Error getting device count: {:?}", e);
-                    Ok(0)
-                }
+                Err(e) => Err(ZeusdError::NvmlError(e)),
             },
-            Err(e) => {
-                tracing::error!("Error initializing NVML: {:?}", e);
+            Err(NvmlError::LibloadingError(e)) => {
+                tracing::error!("Error initializing NVML, {}", e);
                 Ok(0)
             }
+            Err(e) => Err(ZeusdError::NvmlError(e)),
         }
     }
 

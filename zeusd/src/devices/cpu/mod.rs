@@ -1,18 +1,19 @@
 // RAPL CPU
 // Real RAPL interface.
-// #[cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
 mod linux;
-// #[cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
 pub use linux::RaplCpu;
 
 // Fake Rapl interface for dev and testing on macOS.
-// #[cfg(target_os = "macos")]
-// mod macos;
-// #[cfg(target_os = "macos")]
-// pub use macos::RaplCpu;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::RaplCpu;
 
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Instant;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
@@ -39,14 +40,18 @@ pub trait CpuManager {
     /// Get the number of CPUs available.
     fn device_count() -> Result<usize, ZeusdError>;
     /// Get the CPU PackageInfo and the DRAM PackageInfo it is available.
-    fn get_available_fields(index: usize) -> Result<(PackageInfo, Option<PackageInfo>), ZeusdError>;
+    fn get_available_fields(
+        index: usize,
+    ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError>;
     // Get the cumulative Rapl count value of the CPU after compensating for wraparounds.
     fn get_cpu_energy(&self) -> Result<u64, ZeusdError>;
     // Get the cumulative Rapl count value of the DRAM after compensating for wraparounds if it is
     // available.
-    fn get_dram_energy(&self) -> Result<Option<u64>, ZeusdError>;
+    fn get_dram_energy(&self) -> Result<u64, ZeusdError>;
     // Abort the monitoring tasks for CPU and DRAM if the tasks have been started.
     fn stop_monitoring(&mut self);
+    // Check if DRAM is available.
+    fn is_dram_available(&self) -> bool;
 }
 
 pub type CpuCommandRequest = (
@@ -63,7 +68,7 @@ pub struct CpuManagementTasks {
 }
 
 impl CpuManagementTasks {
-    pub fn start<T>(cpus: Vec<T>) -> anyhow::Result<Self>
+    pub fn start<T>(cpus: Vec<T>) -> Result<Self, ZeusdError>
     where
         T: CpuManager + Send + 'static,
     {
@@ -111,10 +116,10 @@ impl CpuManagementTasks {
                 ))
                 .unwrap();
             match rx.recv().await {
-                Some(_) => {},
+                Some(_) => {}
                 None => return Err(ZeusdError::CpuManagementTaskTerminatedError(index)),
             }
-        };
+        }
         Ok(())
     }
 }
@@ -123,10 +128,7 @@ impl CpuManagementTasks {
 #[derive(Debug)]
 pub enum CpuCommand {
     /// Get the CPU and DRAM energy measurement for the CPU index
-    GetIndexEnergy {
-        cpu: bool,
-        dram: bool,
-    },
+    GetIndexEnergy { cpu: bool, dram: bool },
     /// Stop the monitoring task for CPU and DRAM if they have been started.
     StopMonitoring,
 }
@@ -161,14 +163,16 @@ impl CpuCommand {
     {
         match *self {
             Self::GetIndexEnergy { cpu, dram } => {
-                let mut cpu_energy_uj = None;
-                let mut dram_energy_uj = None;
-                if cpu {
-                    cpu_energy_uj = Some(device.get_cpu_energy()?);
-                }
-                if dram {
-                    dram_energy_uj = device.get_dram_energy()?;
-                }
+                let cpu_energy_uj = if cpu {
+                    Some(device.get_cpu_energy()?)
+                } else {
+                    None
+                };
+                let dram_energy_uj = if dram && device.is_dram_available() {
+                    Some(device.get_dram_energy()?)
+                } else {
+                    None
+                };
                 Ok(RaplResponse {
                     cpu_energy_uj,
                     dram_energy_uj,

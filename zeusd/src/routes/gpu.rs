@@ -17,14 +17,14 @@ use crate::error::ZeusdError;
 ///
 /// Gien this, the macro generates
 /// - a request payload struct named API name (e.g., SetPowerLimit) and all the
-///  fields specified plus `block: bool` to indicate whether the request should block,
+///     fields specified plus `block: bool` to indicate whether the request should block,
 /// - an implementation of `From` for the payload struct to convert it to the
 /// - a handler function that takes the request payload, converts it to a `GpuCommand` variant,
-///  and sends it to the `GpuManagementTasks` actor.
+///     and sends it to the `GpuManagementTasks` actor.
 ///
 ///  Assumptions:
 ///  - The `GpuCommand` variant name is the same as the API name, but the former is camel case
-///  and the latter is snake case (e.g., SetPowerLimit vs. set_power_limit).
+///     and the latter is snake case (e.g., SetPowerLimit vs. set_power_limit).
 macro_rules! impl_handler_for_gpu_command {
     ($api:ident, $path:expr, $($field:ident: $ftype:ty,)*) => {
         paste! {

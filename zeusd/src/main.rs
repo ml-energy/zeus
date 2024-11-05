@@ -4,7 +4,7 @@ use std::net::TcpListener;
 
 use zeusd::config::{get_config, ConnectionMode};
 use zeusd::startup::{
-    ensure_root, get_unix_listener, init_tracing, start_cpu_device_tasks, start_device_tasks,
+    ensure_root, get_unix_listener, init_tracing, start_cpu_device_tasks, start_gpu_device_tasks,
     start_server_tcp, start_server_uds,
 };
 
@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
         ensure_root()?;
     }
 
-    let device_tasks = start_device_tasks()?;
+    let gpu_device_tasks = start_gpu_device_tasks()?;
     let cpu_device_tasks = start_cpu_device_tasks()?;
     tracing::info!("Started all device tasks");
 
@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
 
             start_server_uds(
                 listener,
-                device_tasks,
+                gpu_device_tasks,
                 cpu_device_tasks.clone(),
                 num_workers,
             )?
@@ -50,7 +50,13 @@ async fn main() -> anyhow::Result<()> {
             let listener = TcpListener::bind(&config.tcp_bind_address)?;
             tracing::info!("Listening on {}", &listener.local_addr()?);
 
-            start_server_tcp(listener, device_tasks, cpu_device_tasks.clone(), num_workers)?.await?;
+            start_server_tcp(
+                listener,
+                gpu_device_tasks,
+                cpu_device_tasks.clone(),
+                num_workers,
+            )?
+            .await?;
         }
     }
 

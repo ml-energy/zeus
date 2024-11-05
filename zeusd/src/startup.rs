@@ -53,7 +53,7 @@ pub fn get_unix_listener(
 }
 
 /// Initialize NVML and start GPU management tasks.
-pub fn start_device_tasks() -> anyhow::Result<GpuManagementTasks> {
+pub fn start_gpu_device_tasks() -> anyhow::Result<GpuManagementTasks> {
     tracing::info!("Starting NVML and GPU management tasks.");
     let num_gpus = NvmlGpu::device_count()?;
     let mut gpus = Vec::with_capacity(num_gpus as usize);
@@ -62,19 +62,19 @@ pub fn start_device_tasks() -> anyhow::Result<GpuManagementTasks> {
         tracing::info!("Initialized NVML for GPU {}", gpu_id);
         gpus.push(gpu);
     }
-    GpuManagementTasks::start(gpus)
+    Ok(GpuManagementTasks::start(gpus)?)
 }
 
 pub fn start_cpu_device_tasks() -> anyhow::Result<CpuManagementTasks> {
     tracing::info!("Starting Rapl and CPU management tasks.");
     let num_cpus = RaplCpu::device_count()?;
-    let mut cpus = Vec::with_capacity(num_cpus as usize);
+    let mut cpus = Vec::with_capacity(num_cpus);
     for cpu_id in 0..num_cpus {
         let cpu = RaplCpu::init(cpu_id)?;
         tracing::info!("Initialized RAPL for CPU {}", cpu_id);
         cpus.push(cpu);
     }
-    CpuManagementTasks::start(cpus)
+    Ok(CpuManagementTasks::start(cpus)?)
 }
 
 /// Ensure the daemon is running as root.
@@ -92,7 +92,7 @@ pub fn ensure_root() -> anyhow::Result<()> {
 /// Set up routing and start the server on a unix domain socket.
 pub fn start_server_uds(
     listener: UnixListener,
-    device_tasks: GpuManagementTasks,
+    gpu_device_tasks: GpuManagementTasks,
     cpu_device_tasks: CpuManagementTasks,
     num_workers: usize,
 ) -> std::io::Result<Server> {
@@ -101,7 +101,7 @@ pub fn start_server_uds(
             .wrap(tracing_actix_web::TracingLogger::default())
             .service(web::scope("/gpu").configure(gpu_routes))
             .service(web::scope("/cpu").configure(cpu_routes))
-            .app_data(web::Data::new(device_tasks.clone()))
+            .app_data(web::Data::new(gpu_device_tasks.clone()))
             .app_data(web::Data::new(cpu_device_tasks.clone()))
     })
     .workers(num_workers)
@@ -114,7 +114,7 @@ pub fn start_server_uds(
 /// Set up routing and start the server over TCP.
 pub fn start_server_tcp(
     listener: TcpListener,
-    device_tasks: GpuManagementTasks,
+    gpu_device_tasks: GpuManagementTasks,
     cpu_device_tasks: CpuManagementTasks,
     num_workers: usize,
 ) -> std::io::Result<Server> {
@@ -123,7 +123,7 @@ pub fn start_server_tcp(
             .wrap(tracing_actix_web::TracingLogger::default())
             .service(web::scope("/gpu").configure(gpu_routes))
             .service(web::scope("/cpu").configure(cpu_routes))
-            .app_data(web::Data::new(device_tasks.clone()))
+            .app_data(web::Data::new(gpu_device_tasks.clone()))
             .app_data(web::Data::new(cpu_device_tasks.clone()))
     })
     .workers(num_workers)
