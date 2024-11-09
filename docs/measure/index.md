@@ -114,6 +114,88 @@ if __name__ == "__main__":
         avg_energy = sum(map(lambda m: m.total_energy, steps)) / len(steps)
         print(f"One step takes {avg_time} s and {avg_energy} J for the CPU.")
 ```
+## Metric Monitoring
+
+Zeus allows you to monitor energy and power consumption through different metrics, such as Histograms, Counters, and Gauges, which can be pushed to a Prometheus Push Gateway for further analysis. 
+
+[`EnergyHistogram`][zeus.metric.EnergyHistogram] records energy consumption data for GPUs, CPUs, and DRAM in Prometheus Histograms. This is useful for observing how frequently energy usage reaches certain levels.
+
+You can customize the bucket ranges for each component (GPU, CPU, and DRAM), or let Zeus use default ranges.
+
+```python hl_lines="2 5-7"
+from zeus.monitor import ZeusMonitor
+from zeus.metric import EnergyHistogram
+
+if __name__ == "__main__":
+    # Initialize EnergyHistogram with custom bucket ranges
+    histogram_metric = EnergyHistogram(
+        energy_monitor=ZeusMonitor,
+        prometheus_url='http://localhost:9091',
+        job='energy_histogram_job',
+        bucket_ranges={
+            "gpu": [10.0, 25.0, 50.0, 100.0],
+            "cpu": [5.0, 10.0, 25.0, 50.0],
+            "dram": [1.0, 2.5, 5.0, 10.0]
+        }
+    )
+
+    histogram_metric.begin_window("histogram_test")
+    # Perform tasks
+    histogram_metric.end_window("histogram_test")
+```
+You can use the `begin_window` and `end_window` methods to define a measurement window, similar to other ZeusMonitor operations. Energy consumption data will be recorded for the entire duration of the window.
+
+!!! Tip 
+    If no custom `bucket ranges` are provided, Zeus uses default ranges for GPU, CPU, and DRAM.
+
+    If you later decide to specify custom bucket ranges only for the GPU while leaving CPU and DRAM to use defaults, you could write:
+    bucket_ranges={
+        "gpu": [10.0, 25.0, 50.0, 100.0]
+    }
+ 
+[`EnergyCumulativeCounter`][zeus.metric.EnergyCumulativeCounter] monitors cumulative energy consumption. It tracks energy usage over time, without resetting the values, and is updated periodically.
+
+```python hl_lines="2 5-7"
+from zeus.monitor import ZeusMonitor
+from zeus.metric import EnergyCumulativeCounter
+
+if __name__ == "__main__":
+
+    cumulative_counter_metric = EnergyCumulativeCounter(
+        energy_monitor=ZeusMonitor,
+        update_period=2,  # Updates energy data every 2 seconds
+        prometheus_url='http://localhost:9091',
+        job='energy_counter_job'
+    )
+
+    cumulative_counter_metric.begin_window("counter_test_window")
+    # Let the counter run
+    time.sleep(10)  # Keep measuring for 10 seconds
+    cumulative_counter_metric.end_window("counter_test_window")
+```
+The `update_period` parameter defines how often the energy measurements are updated and pushed to Prometheus.
+
+[`PowerGauge`][zeus.metric.PowerGauge] tracks real-time power consumption using Prometheus Gauges which monitors fluctuating values such as power usage.
+
+```python hl_lines="2 5-7"
+from zeus.monitor.power import PowerMonitor
+from zeus.metric import PowerGauge
+
+if __name__ == "__main__":
+
+    power_gauge_metric = PowerGauge(
+        power_monitor=PowerMonitor,
+        update_period=2,  # Updates power consumption every 2 seconds
+        prometheus_url='http://localhost:9091',
+        job='power_gauge_job'
+    )
+
+    power_gauge_metric.begin_window("gauge_test_window")
+    # Monitor power consumption for 10 seconds
+    time.sleep(10)
+    power_gauge_metric.end_window("gauge_test_window")
+```
+The `update_period` parameter defines how often the power datas are updated and pushed to Prometheus.
 
 ## CLI power and energy monitor
 
