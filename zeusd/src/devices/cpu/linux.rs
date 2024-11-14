@@ -17,6 +17,10 @@ use crate::error::ZeusdError;
 //       sysfs mounts under places like `/zeus_sys`.
 static RAPL_DIR: &str = "/sys/class/powercap/intel-rapl";
 
+// Assuming a maximum power draw of 1000 Watts when we are polling every 0.1 seconds, the maximum
+// amount the RAPL counter would increase
+static RAPL_COUNTER_MAX_INCREASE: u64 = 1000 * 1e6 * 0.1;
+
 pub struct RaplCpu {
     cpu: Arc<PackageInfo>,
     dram: Option<Arc<PackageInfo>>,
@@ -122,7 +126,12 @@ impl CpuManager for RaplCpu {
         Ok((Arc::new(cpu_info), None))
     }
 
-    fn get_cpu_energy(&self) -> Result<u64, ZeusdError> {
+    fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
+        // Assume that RAPL counter will not wrap around twice during a request to poll energy. The
+        // number of wrap arounds is polled twice to handle the case where the counter wraps around
+        // a request. If this happens, `measurement` has to be updated as to not return an
+        // unexpectedly large energy value.
+
         let handle = self
             .cpu_monitoring_task
             .get_or_init(|| tokio::spawn(monitor_rapl(Arc::clone(&self.cpu))));
@@ -149,7 +158,7 @@ impl CpuManager for RaplCpu {
         Ok(measurement + num_wraparounds * self.cpu.max_energy_uj)
     }
 
-    fn get_dram_energy(&self) -> Result<u64, ZeusdError> {
+    fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
         match &self.dram {
             None => Err(ZeusdError::CpuManagementTaskTerminatedError(self.cpu.index)),
             Some(dram) => {
@@ -211,24 +220,30 @@ async fn read_u64_async(path: &PathBuf) -> Result<u64, std::io::Error> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
-async fn monitor_rapl(rapl_file: Arc<PackageInfo>) -> anyhow::Result<(), ZeusdError> {
-    let mut last_energy_uj = read_u64_async(&rapl_file.energy_uj_path)
-        .await
-        .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(rapl_file.index))?;
+async fn monitor_rapl(rapl_file: Arc<PackageInfo>) -> Result<(), ZeusdError> {
+    let mut last_energy_uj = read_u64_async(&rapl_file.energy_uj_path).await?;
     tracing::info!(
         "Monitoring started for {}",
         rapl_file.energy_uj_path.display()
     );
     loop {
-        let current_energy_uj = read_u64_async(&rapl_file.energy_uj_path)
-            .await
-            .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(rapl_file.index))?;
+        let current_energy_uj = read_u64_async(&rapl_file.energy_uj_path).await?;
 
         if current_energy_uj < last_energy_uj {
-            let mut wraparound_guard = rapl_file.num_wraparounds.write().unwrap();
+            let mut wraparound_guard = rapl_file
+                .num_wraparounds
+                .write()
+                .unwrap()
+                .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(rapl_file.index))?;
             *wraparound_guard += 1;
         }
         last_energy_uj = current_energy_uj;
-        sleep(Duration::from_secs(1)).await;
+        let mut sleep_time =
+            if rapl_file.max_energy_uj - current_energy_uj < RAPL_COUNTER_MAX_INCREASE {
+                0.1
+            } else {
+                1
+            };
+        sleep(Duration::from_secs(sleep_time)).await;
     }
 }
