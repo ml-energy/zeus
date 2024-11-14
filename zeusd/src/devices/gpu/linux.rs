@@ -25,13 +25,13 @@ impl NvmlGpu<'static> {
 }
 
 impl GpuManager for NvmlGpu<'static> {
-    // TODO: Implementation wil squash NVML errors that users have to be aware of.
     fn device_count() -> Result<u32, ZeusdError> {
         match Nvml::init() {
             Ok(nvml) => match nvml.device_count() {
                 Ok(count) => Ok(count),
                 Err(e) => Err(ZeusdError::NvmlError(e)),
             },
+            // Specifically catch this error that is thrown when GPU is not available
             Err(NvmlError::LibloadingError(e)) => {
                 tracing::error!("Error initializing NVML, {}", e);
                 Ok(0)

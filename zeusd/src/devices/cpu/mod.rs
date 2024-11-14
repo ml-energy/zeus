@@ -11,7 +11,7 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::RaplCpu;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -26,14 +26,13 @@ pub struct PackageInfo {
     pub name: String,
     pub energy_uj_path: PathBuf,
     pub max_energy_uj: u64,
-
-    num_wraparounds: RwLock<u64>,
+    pub num_wraparounds: RwLock<u64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RaplResponse {
-    cpu_energy_uj: Option<u64>,
-    dram_energy_uj: Option<u64>,
+    pub cpu_energy_uj: Option<u64>,
+    pub dram_energy_uj: Option<u64>,
 }
 
 pub trait CpuManager {
@@ -44,10 +43,10 @@ pub trait CpuManager {
         index: usize,
     ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError>;
     // Get the cumulative Rapl count value of the CPU after compensating for wraparounds.
-    fn get_cpu_energy(&self) -> Result<u64, ZeusdError>;
+    fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError>;
     // Get the cumulative Rapl count value of the DRAM after compensating for wraparounds if it is
     // available.
-    fn get_dram_energy(&self) -> Result<u64, ZeusdError>;
+    fn get_dram_energy(&mut self) -> Result<u64, ZeusdError>;
     // Abort the monitoring tasks for CPU and DRAM if the tasks have been started.
     fn stop_monitoring(&mut self);
     // Check if DRAM is available.

@@ -9,8 +9,8 @@ use crate::error::ZeusdError;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetIndexEnergy {
-    cpu: bool,
-    dram: bool,
+    pub cpu: bool,
+    pub dram: bool,
 }
 
 impl From<GetIndexEnergy> for CpuCommand {
