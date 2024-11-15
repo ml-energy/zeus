@@ -190,6 +190,16 @@ class NVIDIAGPU(gpu_common.GPU):
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
 
     @_handle_nvml_errors
+    def getAveragePowerUsage(self) -> int:
+        """Return the average power draw of the GPU. Units: mW."""
+        metric = pynvml.nvmlDeviceGetFieldValues(
+            self.handle, [pynvml.NVML_FI_DEV_POWER_AVERAGE]
+        )[0]
+        if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
+            raise pynvml.NVMLError(ret)
+        return metric.value.uiVal
+
+    @_handle_nvml_errors
     def getInstantPowerUsage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         metric = pynvml.nvmlDeviceGetFieldValues(
