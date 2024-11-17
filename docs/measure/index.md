@@ -122,7 +122,7 @@ Zeus allows you to monitor energy and power consumption through different metric
 
 You can customize the bucket ranges for each component (GPU, CPU, and DRAM), or let Zeus use default ranges.
 
-```python hl_lines="2 5-7"
+```python hl_lines="2 5-15"
 from zeus.monitor import ZeusMonitor
 from zeus.metric import EnergyHistogram
 
