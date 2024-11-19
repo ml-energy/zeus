@@ -18,8 +18,8 @@ use crate::error::ZeusdError;
 static RAPL_DIR: &str = "/sys/class/powercap/intel-rapl";
 
 // Assuming a maximum power draw of 1000 Watts when we are polling every 0.1 seconds, the maximum
-// amount the RAPL counter would increase
-static RAPL_COUNTER_MAX_INCREASE: u64 = 1000 * 1e6 * 0.1;
+// amount the RAPL counter would increase (1000 * 1e6 * 0.1)
+static RAPL_COUNTER_MAX_INCREASE: u64 = 1000 * 100000;
 
 pub struct RaplCpu {
     cpu: Arc<PackageInfo>,
@@ -233,17 +233,16 @@ async fn monitor_rapl(rapl_file: Arc<PackageInfo>) -> Result<(), ZeusdError> {
             let mut wraparound_guard = rapl_file
                 .num_wraparounds
                 .write()
-                .unwrap()
                 .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(rapl_file.index))?;
             *wraparound_guard += 1;
         }
         last_energy_uj = current_energy_uj;
-        let mut sleep_time =
+        let sleep_time =
             if rapl_file.max_energy_uj - current_energy_uj < RAPL_COUNTER_MAX_INCREASE {
-                0.1
+                100
             } else {
-                1
+                1000
             };
-        sleep(Duration::from_secs(sleep_time)).await;
+        sleep(Duration::from_millis(sleep_time)).await;
     }
 }
