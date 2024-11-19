@@ -287,7 +287,7 @@ impl TestApp {
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
-        let server = start_server_tcp(listener, gpu_test_tasks, cpu_test_tasks, 8)
+        let server = start_server_tcp(listener, gpu_test_tasks, cpu_test_tasks, 2)
             .expect("Failed to start server");
         let _ = tokio::spawn(async move { server.await });
 
