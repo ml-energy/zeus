@@ -237,12 +237,12 @@ async fn monitor_rapl(rapl_file: Arc<PackageInfo>) -> Result<(), ZeusdError> {
             *wraparound_guard += 1;
         }
         last_energy_uj = current_energy_uj;
-        let sleep_time =
-            if rapl_file.max_energy_uj - current_energy_uj < RAPL_COUNTER_MAX_INCREASE {
-                100
-            } else {
-                1000
-            };
+        let sleep_time = if rapl_file.max_energy_uj - current_energy_uj < RAPL_COUNTER_MAX_INCREASE
+        {
+            100
+        } else {
+            1000
+        };
         sleep(Duration::from_millis(sleep_time)).await;
     }
 }
