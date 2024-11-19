@@ -154,5 +154,3 @@ async fn test_invalid_requests() {
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
 }
-
-
