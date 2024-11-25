@@ -28,7 +28,7 @@ from abc import ABC, abstractmethod
 
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
-from zeus.utils.framework import all_reduce_sum, all_reduce_max
+from zeus.utils.framework import all_reduce
 from zeus.utils.logging import get_logger
 from zeus.utils.metric import zeus_cost
 from zeus.utils.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
@@ -394,8 +394,8 @@ class GlobalPowerLimitOptimizer(Callback):
                 self.measurements.append(
                     PowerLimitMeasurement(
                         power_limit=self.state.current_power_limit // 1000,
-                        energy=all_reduce_sum(measurement.gpu_energy.values()),
-                        time=all_reduce_max(measurement.time),
+                        energy=all_reduce(measurement.gpu_energy.values(), operation="sum"),
+                        time=all_reduce(measurement.time, operation="max"),
                     )
                 )
                 # If we're done profiling all power limits, compute the optimal
