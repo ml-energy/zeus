@@ -129,33 +129,72 @@ def all_gather(object: Any) -> List[Any]:
     raise RuntimeError("No framework is available.")
 
 # TODO: fix type hints
-def all_reduce_sum(object: List[int] | List[float] | int | float) -> int | float:
-    """Reduce objects from all replicas by summing them."""
-    if torch_is_available():
-        torch = MODULE_CACHE["torch"]
-        # wrap object in a tensor if it is not already
-        if not isinstance(object, torch.Tensor):
-            object = torch.Tensor(object)
-        # compute local sum
-        sum = torch.sum(object)
+# def all_reduce_sum(object: List[int] | List[float] | int | float) -> int | float:
+#     """Reduce objects from all replicas by summing them."""
+#     if torch_is_available():
+#         torch = MODULE_CACHE["torch"]
+#         # wrap object in a tensor if it is not already
+#         if not isinstance(object, torch.Tensor):
+#             object = torch.Tensor(object)
+#         # compute local sum
+#         sum = torch.sum(object)
 
-        # all-reduce only if torch.distributed is available and initialized
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(sum, op=torch.distributed.ReduceOp.SUM)
-        return sum.item()
+#         # all-reduce only if torch.distributed is available and initialized
+#         if torch.distributed.is_available() and torch.distributed.is_initialized():
+#             torch.distributed.all_reduce(sum, op=torch.distributed.ReduceOp.SUM)
+#         return sum.item()
+#     if jax_is_available():
+#         raise NotImplementedError("JAX is not supported yet.")
 
-# TODO: fix type hints
-def all_reduce_max(object: List[int] | List[float] | int | float) -> int | float:
-    """Reduce objects from all replicas by taking the maximum."""
-    if torch_is_available():
-        torch = MODULE_CACHE["torch"]
-        # wrap object in a tensor if it is not already
-        if not isinstance(object, torch.Tensor):
-            object = torch.Tensor(object)
-        # compute local max
-        max = torch.max(object)
+# # TODO: fix type hints
+# def all_reduce_max(object: List[int] | List[float] | int | float) -> int | float:
+#     """Reduce objects from all replicas by taking the maximum."""
+#     if torch_is_available():
+#         torch = MODULE_CACHE["torch"]
+#         # wrap object in a tensor if it is not already
+#         if not isinstance(object, torch.Tensor):
+#             object = torch.Tensor(object)
+#         # compute local max
+#         max = torch.max(object)
         
+#         # all-reduce only if torch.distributed is available and initialized
+#         if torch.distributed.is_available() and torch.distributed.is_initialized():
+#             torch.distributed.all_reduce(max, op=torch.distributed.ReduceOp.MAX)
+#         return max.item()
+#     if jax_is_available():
+#         raise NotImplementedError("JAX is not supported yet.")
+    
+def all_reduce(object: List[int] | List[float], operation: Literal["sum", "max"]) -> int | float:
+    """Reduce objects from all replicas through the specified operation.
+    
+    If running in a distributed setting, the objects are reduced across all replicas. 
+    If running in a non-distributed setting, the operation is just done on the single object."""
+    
+    if torch_is_available():
+        torch = MODULE_CACHE["torch"]
+
+        # wrap object in a tensor if it is not already
+        if not isinstance(object, torch.Tensor):
+            object = torch.Tensor(object)
+
+        # determine operation
+        if operation == "sum":
+            torch_func = torch.sum
+            torch_op = torch.distributed.ReduceOp.SUM
+        elif operation == "max":
+            torch_func = torch.max
+            torch_op = torch.distributed.ReduceOp.MAX
+        else:
+            raise ValueError(f"all_reduce unsupported operation: {operation}")        
+        # compute local operation
+        result = torch_func(object)
+
         # all-reduce only if torch.distributed is available and initialized
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(max, op=torch.distributed.ReduceOp.MAX)
-        return max.item()
+            torch.distributed.all_reduce(result, op=torch_op)
+        return result.item()
+
+    if jax_is_available():
+        raise NotImplementedError("JAX is not supported yet.")
+    
+    raise RuntimeError("No framework is available.")
