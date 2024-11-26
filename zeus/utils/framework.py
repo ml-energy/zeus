@@ -185,13 +185,14 @@ def all_reduce(object: List[int] | List[float], operation: Literal["sum", "max"]
             torch_func = torch.max
             torch_op = torch.distributed.ReduceOp.MAX
         else:
-            raise ValueError(f"all_reduce unsupported operation: {operation}")        
+            raise ValueError(f"all_reduce unsupported operation: {operation}")
+
         # compute local operation
         result = torch_func(object)
 
         # all-reduce only if torch.distributed is available and initialized
         if torch.distributed.is_available() and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(result, op=torch_op)
+            torch.distributed.all_reduce(result.cuda(), op=torch_op)
         return result.item()
 
     if jax_is_available():

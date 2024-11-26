@@ -187,6 +187,7 @@ class ZeusMonitor:
         except ZeusCPUInitError:
             self.cpus = EmptyCPUs()
         except ZeusCPUNoPermissionError as err:
+            self.cpus = EmptyCPUs()
             if cpu_indices:
                 raise RuntimeError(
                     "Root privilege is required to read RAPL metrics. See "
