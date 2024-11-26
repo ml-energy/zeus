@@ -24,7 +24,7 @@ async fn test_only_cpu_measuremnt() {
             .expect("Failed to send request");
         assert_eq!(resp.status(), 200);
         let rapl_response: RaplResponse = serde_json::from_str(&resp.text().await.unwrap())
-            .expect("Failed to deserialiez response body");
+            .expect("Failed to deserialize response body");
         assert_eq!(rapl_response.cpu_energy_uj.unwrap(), expected);
         assert_eq!(rapl_response.dram_energy_uj, None);
     }
