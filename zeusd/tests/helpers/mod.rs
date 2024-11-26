@@ -180,15 +180,11 @@ impl CpuManager for TestCpu {
     }
 
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
-        Ok(std::iter::from_fn(|| self.cpu.try_recv().ok())
-            .next()
-            .unwrap())
+        Ok(self.cpu.try_recv().ok().unwrap())
     }
 
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
-        Ok(std::iter::from_fn(|| self.dram.try_recv().ok())
-            .next()
-            .unwrap())
+        Ok(self.dram.try_recv().ok().unwrap())
     }
 
     fn stop_monitoring(&mut self) {}
