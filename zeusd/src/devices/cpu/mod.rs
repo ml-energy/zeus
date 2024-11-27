@@ -29,8 +29,7 @@ pub struct PackageInfo {
     pub num_wraparounds: RwLock<u64>,
 }
 
-#[derive(Serialize, Debug)]
-#[cfg_attr(test, derive(Deserialize))]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RaplResponse {
     pub cpu_energy_uj: Option<u64>,
     pub dram_energy_uj: Option<u64>,
