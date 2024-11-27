@@ -194,6 +194,7 @@ class ZeusMonitor:
                     "for more information or disable CPU measurement by passing cpu_indices=[] to "
                     "ZeusMonitor"
                 ) from err
+            self.cpus = EmptyCPUs()
 
         # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
         self.gpu_indices = (
