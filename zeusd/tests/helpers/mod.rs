@@ -8,12 +8,17 @@ use once_cell::sync::Lazy;
 use paste::paste;
 use std::future::Future;
 use std::net::TcpListener;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
 use zeusd::startup::{init_tracing, start_server_tcp};
 
 static NUM_GPUS: u32 = 4;
+
+static NUM_CPUS: usize = 1;
 
 static TRACING: Lazy<()> = Lazy::new(|| {
     if std::env::var("TEST_LOG").is_ok() {
@@ -117,7 +122,79 @@ impl GpuManager for TestGpu {
     }
 }
 
-pub fn start_test_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<TestGpuObserver>)> {
+pub struct TestCpu {
+    pub cpu: UnboundedReceiver<u64>,
+    pub dram: UnboundedReceiver<u64>,
+}
+
+pub struct TestCpuInjector {
+    pub cpu: UnboundedSender<u64>,
+    pub dram: UnboundedSender<u64>,
+}
+
+impl TestCpu {
+    fn init(_index: usize) -> Result<(Self, TestCpuInjector), ZeusdError> {
+        let (cpu_sender, cpu_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (dram_sender, dram_receiver) = tokio::sync::mpsc::unbounded_channel();
+        Ok((
+            TestCpu {
+                cpu: cpu_receiver,
+                dram: dram_receiver,
+            },
+            TestCpuInjector {
+                cpu: cpu_sender,
+                dram: dram_sender,
+            },
+        ))
+    }
+}
+
+impl CpuManager for TestCpu {
+    fn device_count() -> Result<usize, ZeusdError> {
+        Ok(1)
+    }
+
+    fn get_available_fields(
+        _index: usize,
+    ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError> {
+        Ok((
+            Arc::new(PackageInfo {
+                index: _index,
+                name: "package-0".to_string(),
+                energy_uj_path: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
+                ),
+                max_energy_uj: 1000000,
+                num_wraparounds: RwLock::new(0),
+            }),
+            Some(Arc::new(PackageInfo {
+                index: _index,
+                name: "dram".to_string(),
+                energy_uj_path: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
+                ),
+                max_energy_uj: 1000000,
+                num_wraparounds: RwLock::new(0),
+            })),
+        ))
+    }
+
+    fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
+        Ok(self.cpu.try_recv().ok().unwrap())
+    }
+
+    fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
+        Ok(self.dram.try_recv().ok().unwrap())
+    }
+
+    fn stop_monitoring(&mut self) {}
+
+    fn is_dram_available(&self) -> bool {
+        true
+    }
+}
+
+pub fn start_gpu_test_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<TestGpuObserver>)> {
     let mut gpus = Vec::with_capacity(4);
     let mut observers = Vec::with_capacity(4);
     for _ in 0..4 {
@@ -131,12 +208,24 @@ pub fn start_test_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<TestGpuObse
     Ok((tasks, observers))
 }
 
+pub fn start_cpu_test_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<TestCpuInjector>)> {
+    let mut cpus = Vec::with_capacity(NUM_CPUS);
+    let mut injectors = Vec::with_capacity(NUM_CPUS);
+    for i in 0..NUM_CPUS {
+        let (cpu, cpu_injector) = TestCpu::init(i)?;
+        cpus.push(cpu);
+        injectors.push(cpu_injector)
+    }
+    let tasks = CpuManagementTasks::start(cpus)?;
+    Ok((tasks, injectors))
+}
+
 /// A helper trait for building URLs to send requests to.
 pub trait ZeusdRequest: serde::Serialize {
     fn build_url(app: &TestApp, gpu_id: u32) -> String;
 }
 
-macro_rules! impl_zeusd_request {
+macro_rules! impl_zeusd_request_gpu {
     ($api:ident) => {
         paste! {
             impl ZeusdRequest for zeusd::routes::gpu::[<$api:camel>] {
@@ -151,35 +240,57 @@ macro_rules! impl_zeusd_request {
     };
 }
 
-impl_zeusd_request!(SetPersistenceMode);
-impl_zeusd_request!(SetPowerLimit);
-impl_zeusd_request!(SetGpuLockedClocks);
-impl_zeusd_request!(ResetGpuLockedClocks);
-impl_zeusd_request!(SetMemLockedClocks);
-impl_zeusd_request!(ResetMemLockedClocks);
+macro_rules! impl_zeusd_request_cpu {
+    ($api:ident) => {
+        paste! {
+            impl ZeusdRequest for zeusd::routes::cpu::[<$api:camel>] {
+                fn build_url(app: &TestApp, cpu_id: u32) -> String {
+                    format!(
+                        "http://127.0.0.1:{}/cpu/{}/{}",
+                        app.port, cpu_id, stringify!([<$api:snake>]),
+                    )
+                }
+            }
+        }
+    };
+}
+impl_zeusd_request_gpu!(SetPersistenceMode);
+impl_zeusd_request_gpu!(SetPowerLimit);
+impl_zeusd_request_gpu!(SetGpuLockedClocks);
+impl_zeusd_request_gpu!(ResetGpuLockedClocks);
+impl_zeusd_request_gpu!(SetMemLockedClocks);
+impl_zeusd_request_gpu!(ResetMemLockedClocks);
+
+impl_zeusd_request_cpu!(GetIndexEnergy);
 
 /// A test application that starts a server over TCP and provides helper methods
 /// for sending requests and fetching what happened to the fake GPUs.
 pub struct TestApp {
     port: u16,
     observers: Vec<TestGpuObserver>,
+    cpu_injectors: Vec<TestCpuInjector>,
 }
 
 impl TestApp {
     pub async fn start() -> Self {
         Lazy::force(&TRACING);
 
-        let (test_tasks, test_gpu_observers) =
-            start_test_tasks().expect("Failed to start test tasks");
+        let (gpu_test_tasks, test_gpu_observers) =
+            start_gpu_test_tasks().expect("Failed to start gpu test tasks");
+
+        let (cpu_test_tasks, cpu_test_injectors) =
+            start_cpu_test_tasks().expect("Failed to start cpu test tasks");
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
-        let server = start_server_tcp(listener, test_tasks, 8).expect("Failed to start server");
+        let server = start_server_tcp(listener, gpu_test_tasks, cpu_test_tasks, 2)
+            .expect("Failed to start server");
         let _ = tokio::spawn(async move { server.await });
 
         TestApp {
             port,
             observers: test_gpu_observers,
+            cpu_injectors: cpu_test_injectors,
         }
     }
 
@@ -212,5 +323,17 @@ impl TestApp {
     pub fn mem_locked_clocks_history_for_gpu(&mut self, gpu_id: usize) -> Vec<(u32, u32)> {
         let rx = &mut self.observers[gpu_id].mem_locked_clocks_rx;
         std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    pub fn set_cpu_energy_measurements(&mut self, cpu_id: usize, measurements: &Vec<u64>) {
+        for measurement in measurements {
+            self.cpu_injectors[cpu_id].cpu.send(*measurement).unwrap();
+        }
+    }
+
+    pub fn set_dram_energy_measurements(&mut self, cpu_id: usize, measurements: &Vec<u64>) {
+        for measurement in measurements {
+            self.cpu_injectors[cpu_id].dram.send(*measurement).unwrap();
+        }
     }
 }

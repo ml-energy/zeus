@@ -81,7 +81,7 @@ pub struct GpuManagementTasks {
 impl GpuManagementTasks {
     /// Start GPU management tasks for the given GPUs.
     /// It's generic over the type of GPU manager to allow for testing.
-    pub fn start<T>(gpus: Vec<T>) -> anyhow::Result<Self>
+    pub fn start<T>(gpus: Vec<T>) -> Result<Self, ZeusdError>
     where
         T: GpuManager + Send + 'static,
     {

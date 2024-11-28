@@ -4,8 +4,8 @@ use std::net::TcpListener;
 
 use zeusd::config::{get_config, ConnectionMode};
 use zeusd::startup::{
-    ensure_root, get_unix_listener, init_tracing, start_device_tasks, start_server_tcp,
-    start_server_uds,
+    ensure_root, get_unix_listener, init_tracing, start_cpu_device_tasks, start_gpu_device_tasks,
+    start_server_tcp, start_server_uds,
 };
 
 #[tokio::main]
@@ -19,7 +19,8 @@ async fn main() -> anyhow::Result<()> {
         ensure_root()?;
     }
 
-    let device_tasks = start_device_tasks()?;
+    let gpu_device_tasks = start_gpu_device_tasks()?;
+    let cpu_device_tasks = start_cpu_device_tasks()?;
     tracing::info!("Started all device tasks");
 
     let num_workers = config.num_workers.unwrap_or_else(|| {
@@ -37,16 +38,29 @@ async fn main() -> anyhow::Result<()> {
             )?;
             tracing::info!("Listening on {}", &config.socket_path);
 
-            start_server_uds(listener, device_tasks, num_workers)?.await?;
+            start_server_uds(
+                listener,
+                gpu_device_tasks,
+                cpu_device_tasks.clone(),
+                num_workers,
+            )?
+            .await?;
         }
         ConnectionMode::TCP => {
             let listener = TcpListener::bind(&config.tcp_bind_address)?;
             tracing::info!("Listening on {}", &listener.local_addr()?);
 
-            start_server_tcp(listener, device_tasks, num_workers)?.await?;
+            start_server_tcp(
+                listener,
+                gpu_device_tasks,
+                cpu_device_tasks.clone(),
+                num_workers,
+            )?
+            .await?;
         }
     }
 
+    let _ = cpu_device_tasks.stop_monitoring().await;
     Ok(())
 }
 
