@@ -44,7 +44,7 @@ class LoggingRoute(APIRoute):
                 request.method,
                 request.url,
                 await request.json() if await request.body() else "None",
-                response.body.decode(response.charset),
+                bytes(response.body).decode(response.charset),
             )
             return response
 
