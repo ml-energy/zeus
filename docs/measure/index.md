@@ -1,5 +1,8 @@
 # Measuring Energy
 
+!!! Important
+    This page assumes that your environment is already set up. Please refer to the [Getting Started](../getting_started/index.md) guide if not.
+
 Zeus makes it very easy to measure time, power, and energy both programmatically in Python and also on the command line.
 Measuring power and energy is also very low overhead, typically taking less than 10 ms for each call.
 
@@ -54,6 +57,64 @@ if __name__ == "__main__":
     In general, energy optimizers measure the energy of the GPU through a [`ZeusMonitor`][zeus.monitor.ZeusMonitor] instance that is passed to their constructor.
     Thus, only the GPUs specified by `gpu_indices` will be the target of optimization.
 
+### Synchronizing CPU and GPU computations
+
+Deep learning frameworks typically run actual computation on GPUs in an asynchronous fashion.
+That is, the CPU (Python interpreter) asynchronously dispatches computations to run on the GPU and moves on to dispatch the next computation without waiting for the GPU to finish.
+This helps GPUs achieve higher utilization with less idle time.
+
+Due to this asynchronous nature of Deep Learning frameworks, we need to be careful when we want to take time and energy measurements of GPU execution.
+We want *only and all of* the computations dispatched between `begin_window` and `end_window` to be captured by our time and energy measurement.
+That's what the `sync_execution_with` paramter in [`ZeusMonitor`][zeus.monitor.ZeusMonitor] and `sync_execution` paramter in [`begin_window`][zeus.monitor.ZeusMonitor.begin_window] and [`end_window`][zeus.monitor.ZeusMonitor.end_window] are for.
+Depending on the Deep Learning framework you're using (currently PyTorch and JAX are supported), [`ZeusMonitor`][zeus.monitor.ZeusMonitor] will automatically synchronize CPU and GPU execution to make sure all and only the computations dispatched between the window are captured.
+
+!!! Tip
+    Zeus has one function used globally across the codebase for device synchronization: [`sync_execution`][zeus.utils.framework.sync_execution].
+
+!!! Warning
+    [`ZeusMonitor`][zeus.monitor.ZeusMonitor] covers only the common and simple case of device synchronization, when GPU indices (`gpu_indices`) correspond to one whole physical device.
+    This is usually what you want, except when using more advanced device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX to partition CPUs into more pieces).
+    In such cases, you probably want to opt out from using this function and handle synchronization manually at the appropriate granularity.
+
+## CPU measurements using Intel RAPL
+
+[`ZeusMonitor`][zeus.monitor.ZeusMonitor] supports CPU/DRAM energy measurement as well!
+
+The RAPL interface for CPU energy measurement is available for the majority of Intel and AMD CPUs.
+DRAM energy measurement are available on some CPUs as well.
+To check support, refer to [Verifying installation](../getting_started/index.md#verifying-installation).
+
+To only measure the energy consumption of the CPU used by the current Python process, you can use the [`get_current_cpu_index`][zeus.device.cpu.get_current_cpu_index] function, which retrieves the CPU index where the specified process ID is running.
+
+You can pass in `cpu_indices=[]` or `gpu_indices=[]` to [`ZeusMonitor`][zeus.monitor.ZeusMonitor] to disable either CPU or GPU measurements.
+
+```python hl_lines="2 5-7"
+from zeus.monitor import ZeusMonitor
+from zeus.device.cpu import get_current_cpu_index
+
+if __name__ == "__main__":
+    # Get the CPU index of the current process
+    current_cpu_index = get_current_cpu_index()
+    monitor = ZeusMonitor(cpu_indices=[current_cpu_index], gpu_indices=[])
+
+    for epoch in range(100):
+        monitor.begin_window("epoch")
+
+        steps = []
+        for x, y in train_loader:
+            monitor.begin_window("step")
+            train_one_step(x, y)
+            result = monitor.end_window("step")
+            steps.append(result)
+
+        mes = monitor.end_window("epoch")
+        print(f"Epoch {epoch} consumed {mes.time} s and {mes.total_energy} J.")
+
+        avg_time = sum(map(lambda m: m.time, steps)) / len(steps)
+        avg_energy = sum(map(lambda m: m.total_energy, steps)) / len(steps)
+        print(f"One step takes {avg_time} s and {avg_energy} J for the CPU.")
+```
+
 ## CLI power and energy monitor
 
 The energy monitor measures the total energy consumed by the GPU during the lifetime of the monitor process.
@@ -88,3 +149,23 @@ Total time (s): 4.421529293060303
 Total energy (J):
 {'GPU0': 198.52566362297537, 'GPU1': 206.22215216255188, 'GPU2': 201.08565518283845, 'GPU3': 201.79834523367884}
 ```
+
+## Hardware Support
+We currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.1 or later).
+
+### `get_gpus`
+The [`get_gpus`][zeus.device.get_gpus] function returns a [`GPUs`][zeus.device.gpu.GPUs] object, which can be either an [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object depending on the availability of `nvml` or `amdsmi`. Each [`GPUs`][zeus.device.gpu.GPUs] object contains one or more [`GPU`][zeus.device.gpu.common.GPU] instances, which are specifically [`NVIDIAGPU`][zeus.device.gpu.nvidia.NVIDIAGPU] or [`AMDGPU`][zeus.device.gpu.amd.AMDGPU] objects.
+
+These [`GPU`][zeus.device.gpu.common.GPU] objects directly call respective `nvml` or `amdsmi` methods, providing a one-to-one mapping of methods for seamless GPU abstraction and support for multiple GPU types. For example:
+- [`NVIDIAGPU.getName`][zeus.device.gpu.nvidia.NVIDIAGPU.getName] calls `pynvml.nvmlDeviceGetName`.
+- [`AMDGPU.getName`][zeus.device.gpu.amd.AMDGPU.getName] calls `amdsmi.amdsmi_get_gpu_asic_info`.
+
+### Notes on AMD GPUs
+
+#### AMD GPUs Initialization
+`amdsmi.amdsmi_get_energy_count` sometimes returns invalid values on certain GPUs or ROCm versions (e.g., MI100 on ROCm 6.2). See [ROCm issue #38](https://github.com/ROCm/amdsmi/issues/38) for more details. During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, we call `amdsmi.amdsmi_get_energy_count` twice for each GPU, with a 0.5-second delay between calls. This difference is compared to power measurements to determine if `amdsmi.amdsmi_get_energy_count` is stable and reliable. Initialization takes 0.5 seconds regardless of the number of AMD GPUs.
+
+`amdsmi.amdsmi_get_power_info` provides "average_socket_power" and "current_socket_power" fields, but the "current_socket_power" field is sometimes not supported and returns "N/A." During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, this method is checked, and if "N/A" is returned, the [`AMDGPU.getInstantPowerUsage`][zeus.device.gpu.amd.AMDGPU.getInstantPowerUsage] method is disabled. Instead, [`AMDGPU.getAveragePowerUsage`][zeus.device.gpu.amd.AMDGPU.getAveragePowerUsage] needs to be used.
+
+#### Supported AMD SMI Versions
+Only ROCm >= 6.1 is supported, as the AMDSMI APIs for power and energy return wrong values. For more information, see [ROCm issue #22](https://github.com/ROCm/amdsmi/issues/22). Ensure your `amdsmi` and ROCm versions are up to date.

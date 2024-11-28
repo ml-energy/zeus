@@ -97,8 +97,18 @@ class GPU(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def getAveragePowerUsage(self) -> int:
+        """Return the average power usage of the GPU. Units: mW."""
+        pass
+
+    @abc.abstractmethod
     def getInstantPowerUsage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
+        pass
+
+    @abc.abstractmethod
+    def getAverageMemoryPowerUsage(self) -> int:
+        """Return the average power usage of the GPU's memory. Units: mW."""
         pass
 
     @abc.abstractmethod
@@ -225,7 +235,6 @@ class GPUs(abc.ABC):
             memory_clock_mhz: Memory clock frequency to use. Some GPUs have
                 different supported graphics clocks depending on the memory clock.
         """
-        pass
         return self.gpus[gpu_index].getSupportedGraphicsClocks(memory_clock_mhz)
 
     def setGpuLockedClocks(
@@ -247,6 +256,10 @@ class GPUs(abc.ABC):
     def getInstantPowerUsage(self, gpu_index: int) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         return self.gpus[gpu_index].getInstantPowerUsage()
+
+    def getAverageMemoryPowerUsage(self, gpu_index: int) -> int:
+        """Return the average power usage of the GPU's memory. Units: mW."""
+        return self.gpus[gpu_index].getAverageMemoryPowerUsage()
 
     def supportsGetTotalEnergyConsumption(self, gpu_index: int) -> bool:
         """Check if the GPU supports retrieving total energy consumption."""

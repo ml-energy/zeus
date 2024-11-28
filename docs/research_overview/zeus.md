@@ -1,5 +1,12 @@
+---
+title: Zeus (NSDI '23)
+description: Understanding and Optimizing GPU Energy Consumption of DNN Training
+---
+
 <div align="center" markdown>
 <h1>Zeus: Understanding and Optimizing<br>GPU Energy Consumption of DNN Training</h1>
+
+NSDI '23
 
 [**Paper**](https://www.usenix.org/conference/nsdi23/presentation/you) | [**Slides**](https://www.usenix.org/system/files/nsdi23_slides_chung.pdf) | [**YouTube**](https://youtu.be/aZoD-jgO3fE)
 </div>
@@ -123,7 +130,7 @@ We have our trace-driven simulator open-sourced [here](https://github.com/ml-ene
 ### Extending the Zeus simulator
 
 Users can implement custom policies that optimize batch size and power limit, and plug it into the Zeus simulator.
-We have training and energy traces for 6 different DNNs and 4 different NVIDIA GPU microarchitectures [here](https://github.com/ml-energy/zeus/tree/master/trace){.external}, which the simulator runs with.
+We have training and energy traces for 6 different DNNs and 4 different NVIDIA GPU microarchitectures [here](https://github.com/ml-energy/zeus/tree/master/examples/research_reproducibility/zeus_nsdi23/trace){.external}, which the simulator runs with.
 
 Zeus defines two abstract classes [`BatchSizeOptimizer`][zeus._legacy.policy.BatchSizeOptimizer] and [`PowerLimitOptimizer`][zeus._legacy.policy.PowerLimitOptimizer] in [`zeus._legacy.policy.interface`][zeus._legacy.policy.interface].
 Each class optimizes the batch size and power limit of a recurring training job respectively.

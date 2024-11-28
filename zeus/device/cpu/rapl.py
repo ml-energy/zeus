@@ -13,11 +13,15 @@
 
 from __future__ import annotations
 
+import atexit
+import multiprocessing as mp
 import os
-import contextlib
-from typing import Sequence
+import time
 import warnings
+from functools import lru_cache
 from glob import glob
+from multiprocessing.sharedctypes import Synchronized
+from typing import Sequence
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
@@ -28,10 +32,105 @@ logger = get_logger(name=__name__)
 
 RAPL_DIR = "/sys/class/powercap/intel-rapl"
 
+# Location of RAPL files when in a docker container. See
+# https://ml.energy/zeus/getting_started/#system-privileges for more details
+CONTAINER_RAPL_DIR = "/zeus_sys/class/powercap/intel-rapl"
 
+
+# Assuming a maximum power draw of 1000 Watts when we are polling every 0.1 seconds, the maximum
+# amount the RAPL counter would increase
+RAPL_COUNTER_MAX_INCREASE = 1000 * 1e6 * 0.1
+
+
+class RaplWraparoundTracker:
+    """Monitor the wrapping around of RAPL counters.
+
+    This class acts as a lower level wrapper around a Python process that polls
+    the wrapping of RAPL counters. This is primarily used by
+    [`RAPLCPUs`][zeus.device.cpu.rapl.RAPLCPUs].
+
+    !!! Warning
+        Since the monitor spawns a child process, **it should not be instantiated as a global variable**.
+        Python puts a protection to prevent creating a process in global scope.
+        Refer to the "Safe importing of main module" section in the
+        [Python documentation](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods)
+        for more details.
+
+    Attributes:
+        rapl_file_path (str): File path of rapl file to track wraparounds for.
+        max_energy_uj (float): Max value of rapl counter for `rapl_file_path` file. Used to
+            determine the sleep period between polls
+    """
+
+    def __init__(
+        self,
+        rapl_file_path: str,
+        max_energy_uj: float,
+    ) -> None:
+        """Initialize the rapl monitor.
+
+        Args:
+            rapl_file_path: File path where the RAPL file is located
+            max_energy_uj: Max energy range uj value
+        """
+        if not os.path.exists(rapl_file_path):
+            raise ValueError(f"{rapl_file_path} is not a valid file path")
+
+        # Set up logging.
+        self.logger = get_logger(type(self).__name__)
+
+        self.logger.info("Monitoring wrap around of %s", rapl_file_path)
+
+        context = mp.get_context("spawn")
+        self.wraparound_counter = context.Value("i", 0)
+        # Spawn the power polling process.
+        atexit.register(self._stop)
+        self.process = context.Process(
+            target=_polling_process,
+            args=(rapl_file_path, max_energy_uj, self.wraparound_counter),
+        )
+        self.process.start()
+
+    def _stop(self) -> None:
+        """Stop monitoring power usage."""
+        if self.process is not None:
+            self.process.terminate()
+            self.process.join(timeout=1.0)
+            self.process.kill()
+            self.process = None
+
+    def get_num_wraparounds(self) -> int:
+        """Get the number of wraparounds detected by the polling process."""
+        with self.wraparound_counter.get_lock():
+            return self.wraparound_counter.value
+
+
+def _polling_process(
+    rapl_file_path: str, max_energy_uj: float, wraparound_counter: Synchronized[int]
+) -> None:
+    """Check for wraparounds in the specified rapl file."""
+    try:
+        with open(rapl_file_path) as rapl_file:
+            last_energy_uj = float(rapl_file.read().strip())
+        while True:
+            sleep_time = 1.0
+            with open(rapl_file_path, "r") as rapl_file:
+                energy_uj = float(rapl_file.read().strip())
+            if max_energy_uj - energy_uj < RAPL_COUNTER_MAX_INCREASE:
+                sleep_time = 0.1
+            if energy_uj < last_energy_uj:
+                with wraparound_counter.get_lock():
+                    wraparound_counter.value += 1
+            last_energy_uj = energy_uj
+            time.sleep(sleep_time)
+    except KeyboardInterrupt:
+        return
+
+
+@lru_cache(maxsize=1)
 def rapl_is_available() -> bool:
     """Check if RAPL is available."""
-    if not os.path.exists(RAPL_DIR):
+    if not os.path.exists(RAPL_DIR) and not os.path.exists(CONTAINER_RAPL_DIR):
         logger.info("RAPL is not supported on this CPU.")
         return False
     logger.info("RAPL is available.")
@@ -51,6 +150,14 @@ class ZeusRAPLFileInitError(ZeusBaseCPUError):
 
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
+        super().__init__(message)
+
+
+class ZeusRAPLPermissionError(ZeusBaseCPUError):
+    """Zeus GPU exception that wraps No Permission to perform GPU operation."""
+
+    def __init__(self, message: str) -> None:
+        """Intialize the exception object."""
         super().__init__(message)
 
 
@@ -75,6 +182,10 @@ class RAPLFile:
                 self.last_energy = float(energy_file.read().strip())
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError("Error reading package energy") from err
+        except PermissionError as err:
+            raise cpu_common.ZeusCPUNoPermissionError(
+                "Can't read file due to permission error"
+            ) from err
         try:
             with open(
                 os.path.join(path, "max_energy_range_uj"), "r"
@@ -85,10 +196,14 @@ class RAPLFile:
                 "Error reading package max energy range"
             ) from err
 
+        self.wraparound_tracker = RaplWraparoundTracker(
+            self.energy_uj_path, self.max_energy_range_uj
+        )
+
     def __str__(self) -> str:
         """Return a string representation of the RAPL file object."""
-        return f"Path: {self.path}\nEnergy_uj_path: {self.energy_uj_path}\nName: {self.name}\
-        \nLast_energy: {self.last_energy}\nMax_energy: {self.max_energy_range_uj}"
+        return f"RAPLFile(Path: {self.path}\nEnergy_uj_path: {self.energy_uj_path}\nName: {self.name}\
+        \nLast_energy: {self.last_energy}\nMax_energy: {self.max_energy_range_uj})"
 
     def read(self) -> float:
         """Read the current energy value from the energy_uj file.
@@ -98,19 +213,17 @@ class RAPLFile:
         """
         with open(self.energy_uj_path) as energy_file:
             new_energy_uj = float(energy_file.read().strip())
-        if new_energy_uj < self.last_energy:
-            self.last_energy = new_energy_uj
-            return (new_energy_uj + self.max_energy_range_uj) / 1000.0
-        self.last_energy = new_energy_uj
-        return new_energy_uj / 1000.0
+        num_wraparounds = self.wraparound_tracker.get_num_wraparounds()
+        return (new_energy_uj + num_wraparounds * self.max_energy_range_uj) / 1000.0
 
 
 class RAPLCPU(cpu_common.CPU):
     """Control a single CPU that supports RAPL."""
 
-    def __init__(self, cpu_index: int) -> None:
+    def __init__(self, cpu_index: int, rapl_dir: str) -> None:
         """Initialize the Intel CPU with a specified index."""
         super().__init__(cpu_index)
+        self.rapl_dir = rapl_dir
         self._get_powerzone()
 
     _exception_map = {
@@ -120,7 +233,7 @@ class RAPLCPU(cpu_common.CPU):
     }
 
     def _get_powerzone(self) -> None:
-        self.path = os.path.join(RAPL_DIR, f"intel-rapl:{self.cpu_index}")
+        self.path = os.path.join(self.rapl_dir, f"intel-rapl:{self.cpu_index}")
         self.rapl_file: RAPLFile = RAPLFile(self.path)
         self.dram: RAPLFile | None = None
         for dir in os.listdir(self.path):
@@ -155,22 +268,27 @@ class RAPLCPUs(cpu_common.CPUs):
         """Instantiates IntelCPUs object, setting up tracking for specified Intel CPUs."""
         if not rapl_is_available():
             raise ZeusRAPLNotSupportedError("RAPL is not supported on this CPU.")
+
+        self.rapl_dir = RAPL_DIR if os.path.exists(RAPL_DIR) else CONTAINER_RAPL_DIR
         self._init_cpus()
 
     @property
-    def cpus(self) -> Sequence[cpu_common.CPU]:
+    def cpus(self) -> Sequence[RAPLCPU]:
         """Returns a list of CPU objects being tracked."""
         return self._cpus
 
     def _init_cpus(self) -> None:
         """Initialize all Intel CPUs."""
         self._cpus = []
-        for dir in sorted(glob(f"{RAPL_DIR}/intel-rapl:*")):
+
+        def sort_key(dir):
+            return int(dir.split(":")[1])
+
+        for dir in sorted(glob(f"{self.rapl_dir}/intel-rapl:*"), key=sort_key):
             parts = dir.split(":")
             if len(parts) > 1 and parts[1].isdigit():
-                self._cpus.append(RAPLCPU(int(parts[1])))
+                self._cpus.append(RAPLCPU(int(parts[1]), self.rapl_dir))
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""
-        with contextlib.suppress(Exception):
-            logger.info("Shutting down RAPL CPU monitoring.")
+        pass

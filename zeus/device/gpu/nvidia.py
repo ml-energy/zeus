@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import functools
 import os
+import warnings
+import functools
 import contextlib
 from pathlib import Path
 from typing import Sequence
+from functools import lru_cache
 
 import httpx
 import pynvml
@@ -18,6 +20,7 @@ from zeus.utils.logging import get_logger
 logger = get_logger(name=__name__)
 
 
+@lru_cache(maxsize=1)
 def nvml_is_available() -> bool:
     """Check if NVML is available."""
     try:
@@ -43,8 +46,8 @@ def nvml_is_available() -> bool:
         pynvml.nvmlInit()
         logger.info("pynvml is available and initialized.")
         return True
-    except pynvml.NVMLError:
-        logger.info("pynvml is available but could not initialize.")
+    except pynvml.NVMLError as e:
+        logger.info("pynvml is available but could not initialize NVML: %s.", e)
         return False
 
 
@@ -187,6 +190,16 @@ class NVIDIAGPU(gpu_common.GPU):
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
 
     @_handle_nvml_errors
+    def getAveragePowerUsage(self) -> int:
+        """Return the average power draw of the GPU. Units: mW."""
+        metric = pynvml.nvmlDeviceGetFieldValues(
+            self.handle, [pynvml.NVML_FI_DEV_POWER_AVERAGE]
+        )[0]
+        if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
+            raise pynvml.NVMLError(ret)
+        return metric.value.uiVal
+
+    @_handle_nvml_errors
     def getInstantPowerUsage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         metric = pynvml.nvmlDeviceGetFieldValues(
@@ -194,7 +207,31 @@ class NVIDIAGPU(gpu_common.GPU):
         )[0]
         if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
             raise pynvml.NVMLError(ret)
-        return metric.value.siVal
+        return metric.value.uiVal
+
+    @_handle_nvml_errors
+    def getAverageMemoryPowerUsage(self) -> int:
+        """Return the average power draw of the GPU's memory. Units: mW.
+
+        !!! Warning
+            This isn't exactly documented in NVML at the time of writing, but `nvidia-smi`
+            makes use of this API.
+
+            Confirmed working on H100 80GB HBM3. Confirmed not working on A40.
+        """
+        metric = pynvml.nvmlDeviceGetFieldValues(
+            self.handle,
+            [(pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_MEMORY)],
+        )[0]
+        if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
+            raise pynvml.NVMLError(ret)
+        power = metric.value.uiVal
+        if power == 0:
+            warnings.warn(
+                "Average memory power returned 0. The current GPU may not be supported.",
+                stacklevel=1,
+            )
+        return power
 
     @_handle_nvml_errors
     def supportsGetTotalEnergyConsumption(self) -> bool:
@@ -359,13 +396,25 @@ class NVIDIAGPUs(gpu_common.GPUs):
             ) from e
 
     @property
-    def gpus(self) -> Sequence[gpu_common.GPU]:
+    def gpus(self) -> Sequence[NVIDIAGPU]:
         """Return a list of NVIDIAGPU objects being tracked."""
         return self._gpus
 
     def _init_gpus(self) -> None:
         # Must respect `CUDA_VISIBLE_DEVICES` if set
         if (visible_device := os.environ.get("CUDA_VISIBLE_DEVICES")) is not None:
+            if not visible_device:
+                raise gpu_common.ZeusGPUInitError(
+                    "CUDA_VISIBLE_DEVICES is set to an empty string. "
+                    "It should either be unset or a comma-separated list of GPU indices."
+                )
+            if visible_device.startswith("MIG"):
+                raise gpu_common.ZeusGPUInitError(
+                    "CUDA_VISIBLE_DEVICES contains MIG devices. NVML (the library used by Zeus) "
+                    "currently does not support measuring the power or energy consumption of MIG "
+                    "slices. You can still measure the whole GPU by temporarily setting "
+                    "CUDA_VISIBLE_DEVICES to integer GPU indices and restoring it afterwards."
+                )
             visible_indices = [int(idx) for idx in visible_device.split(",")]
         else:
             visible_indices = list(range(pynvml.nvmlDeviceGetCount()))

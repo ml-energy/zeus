@@ -1,17 +1,3 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Example script for running the Zeus trace-driven simulator."""
 
 from __future__ import annotations
@@ -48,7 +34,7 @@ def run_simulator(
 ) -> list[tuple[str, list[HistoryEntry]]]:
     """Run the simulator on the given job."""
     # Read in the Alibaba trace
-    alibaba_df = pd.DataFrame(pd.read_csv("../../../trace/alibaba_groups.csv.xz"))
+    alibaba_df = pd.DataFrame(pd.read_csv("trace/alibaba_groups.csv.xz"))
     print("Read in the Alibaba trace.")
     print(f"Number of groups: {alibaba_df.group.nunique()}")
 
@@ -97,13 +83,13 @@ def simulate_group(
 @lru_cache(maxsize=1)
 def read_train_trace() -> pd.DataFrame:
     """Read the train trace file as a Pandas DataFrame."""
-    return pd.DataFrame(pd.read_csv("../../../trace/summary_train.csv"))
+    return pd.DataFrame(pd.read_csv("trace/summary_train.csv"))
 
 
 @lru_cache(maxsize=1)
 def read_power_trace(gpu: Literal["a40", "v100", "p100", "rtx6000"]) -> pd.DataFrame:
     """Read the power trace of the given GPU as a Pandas DataFrame."""
-    return pd.DataFrame(pd.read_csv(f"../../../trace/summary_power_{gpu}.csv"))
+    return pd.DataFrame(pd.read_csv(f"trace/summary_power_{gpu}.csv"))
 
 
 def get_job_with_defaults(

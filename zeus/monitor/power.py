@@ -1,17 +1,3 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Monitor the power usage of GPUs."""
 
 from __future__ import annotations
@@ -58,8 +44,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
                 model,
                 detected_period,
             )
-            if update_period > detected_period:
-                update_period = detected_period
+            update_period = min(update_period, detected_period)
 
     # Target half the update period to ensure that the counter is enough.
     update_period /= 2.0

@@ -1,17 +1,3 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from __future__ import annotations
 
 import itertools
@@ -25,6 +11,8 @@ import pytest
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.utils.testing import ReplayZeusMonitor
 import zeus.device.gpu
+import zeus.device.cpu
+from zeus.device.cpu.common import CpuDramMeasurement, CPUs, CPU
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,12 +25,56 @@ ARCHS = [
     pynvml.NVML_DEVICE_ARCH_VOLTA,
     pynvml.NVML_DEVICE_ARCH_AMPERE,
 ]
+NUM_CPUS = 2
+
+
+class MockCPU(CPU):
+    """Control a single MOCK CPU for testing."""
+
+    def __init__(self, index):
+        """Initialize the MOCKCPU with a specified index for testing."""
+        self.index = index
+        self.cpu_energy = itertools.count(start=1000, step=10)
+        self.dram_energy = (
+            itertools.count(start=200, step=5) if self.index % 2 == 0 else None
+        )
+
+    def getTotalEnergyConsumption(self):
+        """Returns the total energy consumption of the specified powerzone. Units: mJ."""
+        return CpuDramMeasurement(
+            cpu_mj=float(next(self.cpu_energy)),
+            dram_mj=(
+                float(next(self.dram_energy)) if self.dram_energy is not None else None
+            ),
+        )
+
+    def supportsGetDramEnergyConsumption(self):
+        """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
+        return self.dram_energy is not None
+
+
+class MockCPUs(CPUs):
+    """MOCK CPU Manager object, containing individual MOCKCPU objects for testing."""
+
+    def __init__(self):
+        """Instantiates MOCKCPUs object for testing."""
+        self._cpus = [MockCPU(i) for i in range(NUM_CPUS)]
+
+    @property
+    def cpus(self) -> Sequence[CPU]:
+        """Returns a list of CPU objects being tracked."""
+        return self._cpus
+
+    def __del__(self) -> None:
+        """Shuts down the Mock CPU monitoring."""
+        return
 
 
 @pytest.fixture(autouse=True, scope="function")
-def reset_gpus() -> None:
-    """Reset the global variable `_gpus` to None on every test."""
+def reset_gpus_and_cpus() -> None:
+    """Reset the global variable `_gpus` and `_cpus` to None on every test."""
     zeus.device.gpu._gpus = None
+    zeus.device.cpu._cpus = None
 
 
 @pytest.fixture
@@ -209,11 +241,14 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     # want to make zeus.device.gpu.nvml_is_available is a function, want it to always return true when testing
     mocker.patch("zeus.device.gpu.nvml_is_available", return_value=True)
+    mocker.patch("zeus.device.cpu._cpus", new=MockCPUs())
 
     ########################################
     # Test ZeusMonitor initialization.
     ########################################
-    monitor = ZeusMonitor(gpu_indices=gpu_indices, log_file=log_file)
+    monitor = ZeusMonitor(
+        gpu_indices=gpu_indices, cpu_indices=list(range(NUM_CPUS)), log_file=log_file
+    )
 
     # Check GPU index parsing from the log file.
     replay_monitor = ReplayZeusMonitor(gpu_indices=None, log_file=log_file)
@@ -227,6 +262,10 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         next(time_counter)
         for counter in energy_counters.values():
             next(counter)
+        for i in range(len(monitor.cpu_indices)):
+            next(monitor.cpus._cpus[i].cpu_energy)
+            if i % 2 == 0:
+                next(monitor.cpus._cpus[i].dram_energy)
 
     def assert_window_begin(name: str, begin_time: int):
         """Assert monitor measurement states right after a window begins."""
@@ -236,6 +275,18 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
             i: pytest.approx((1000 + 3 * (begin_time - 4)) / 1000.0)
             for i in torch_gpu_indices
             if not is_old_torch[i]
+        }
+        assert monitor.measurement_states[name].cpu_energy == {
+            i: pytest.approx((1000 + 10 * (begin_time - 4)) / 1000.0)
+            for i in range(len(monitor.cpu_indices))
+        }
+        assert monitor.measurement_states[name].dram_energy == {
+            i: (
+                pytest.approx((200 + 5 * (begin_time - 4)) / 1000.0)
+                if i % 2 == 0
+                else None
+            )
+            for i in range(0, len(monitor.cpu_indices), 2)
         }
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls(
             [call(f"handle{i}") for i in nvml_gpu_indices if not is_old_nvml[i]]
@@ -269,6 +320,18 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
                     elapsed_time * 3 / 1000.0
                 )
 
+        if measurement.cpu_energy is not None:
+            for i in measurement.cpu_energy.keys():
+                assert measurement.cpu_energy[i] == pytest.approx(
+                    elapsed_time * 10 / 1000.0
+                )
+
+        if measurement.dram_energy is not None:
+            for i in measurement.dram_energy.keys():
+                assert measurement.dram_energy[i] == pytest.approx(
+                    elapsed_time * 5 / 1000.0
+                )
+
         if not assert_calls:
             return
 
@@ -278,79 +341,79 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.reset_mock()
 
     # Serial non-overlapping windows.
-    monitor.begin_window("window1", sync_cuda=False)
+    monitor.begin_window("window1", sync_execution=False)
     assert_window_begin("window1", 4)
 
     tick()
 
     # Calling `begin_window` again with the same name should raise an error.
     with pytest.raises(ValueError, match="already exists"):
-        monitor.begin_window("window1", sync_cuda=False)
+        monitor.begin_window("window1", sync_execution=False)
 
-    measurement = monitor.end_window("window1", sync_cuda=False)
+    measurement = monitor.end_window("window1", sync_execution=False)
     assert_measurement("window1", measurement, begin_time=4, elapsed_time=2)
 
     tick()
     tick()
 
-    monitor.begin_window("window2", sync_cuda=False)
+    monitor.begin_window("window2", sync_execution=False)
     assert_window_begin("window2", 9)
 
     tick()
     tick()
     tick()
 
-    measurement = monitor.end_window("window2", sync_cuda=False)
+    measurement = monitor.end_window("window2", sync_execution=False)
     assert_measurement("window2", measurement, begin_time=9, elapsed_time=4)
 
     # Calling `end_window` again with the same name should raise an error.
     with pytest.raises(ValueError, match="does not exist"):
-        monitor.end_window("window2", sync_cuda=False)
+        monitor.end_window("window2", sync_execution=False)
 
     # Calling `end_window` with a name that doesn't exist should raise an error.
     with pytest.raises(ValueError, match="does not exist"):
-        monitor.end_window("window3", sync_cuda=False)
+        monitor.end_window("window3", sync_execution=False)
 
     # Overlapping windows.
-    monitor.begin_window("window3", sync_cuda=False)
+    monitor.begin_window("window3", sync_execution=False)
     assert_window_begin("window3", 14)
 
     tick()
 
-    monitor.begin_window("window4", sync_cuda=False)
+    monitor.begin_window("window4", sync_execution=False)
     assert_window_begin("window4", 16)
 
     tick()
     tick()
 
-    measurement = monitor.end_window("window3", sync_cuda=False)
+    measurement = monitor.end_window("window3", sync_execution=False)
     assert_measurement("window3", measurement, begin_time=14, elapsed_time=5)
 
     tick()
     tick()
     tick()
 
-    measurement = monitor.end_window("window4", sync_cuda=False)
+    measurement = monitor.end_window("window4", sync_execution=False)
     assert_measurement("window4", measurement, begin_time=16, elapsed_time=7)
 
     # Nested windows.
-    monitor.begin_window("window5", sync_cuda=False)
+    monitor.begin_window("window5", sync_execution=False)
     assert_window_begin("window5", 24)
 
-    monitor.begin_window("window6", sync_cuda=False)
+    monitor.begin_window("window6", sync_execution=False)
     assert_window_begin("window6", 25)
 
     tick()
     tick()
 
-    measurement = monitor.end_window("window6", sync_cuda=False)
+    measurement = monitor.end_window("window6", sync_execution=False)
     assert_measurement("window6", measurement, begin_time=25, elapsed_time=3)
 
     tick()
     tick()
     tick()
 
-    measurement = monitor.end_window("window5", sync_cuda=False)
+    measurement = monitor.end_window("window5", sync_execution=False)
     assert_measurement("window5", measurement, begin_time=24, elapsed_time=8)
 
     ########################################
@@ -397,46 +460,58 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     if any(is_old_nvml.values()):
         return
 
-    replay_monitor.begin_window("window1", sync_cuda=False)
+    replay_monitor.begin_window("window1", sync_execution=False)
 
     # Calling `begin_window` again with the same name should raise an error.
     with pytest.raises(RuntimeError, match="is already ongoing"):
-        replay_monitor.begin_window("window1", sync_cuda=False)
+        replay_monitor.begin_window("window1", sync_execution=False)
 
-    measurement = replay_monitor.end_window("window1", sync_cuda=False)
+    measurement = replay_monitor.end_window("window1", sync_execution=False)
     assert_measurement(
         "window1", measurement, begin_time=5, elapsed_time=2, assert_calls=False
     )
 
     # Calling `end_window` with a non-existant window name should raise an error.
     with pytest.raises(RuntimeError, match="is not ongoing"):
-        replay_monitor.end_window("window2", sync_cuda=False)
+        replay_monitor.end_window("window2", sync_execution=False)
 
-    replay_monitor.begin_window("window2", sync_cuda=False)
-    measurement = replay_monitor.end_window("window2", sync_cuda=False)
+    replay_monitor.begin_window("window2", sync_execution=False)
+    measurement = replay_monitor.end_window("window2", sync_execution=False)
     assert_measurement(
         "window2", measurement, begin_time=10, elapsed_time=4, assert_calls=False
     )
 
-    replay_monitor.begin_window("window3", sync_cuda=False)
-    replay_monitor.begin_window("window4", sync_cuda=False)
+    replay_monitor.begin_window("window3", sync_execution=False)
+    replay_monitor.begin_window("window4", sync_execution=False)
 
-    measurement = replay_monitor.end_window("window3", sync_cuda=False)
+    measurement = replay_monitor.end_window("window3", sync_execution=False)
     assert_measurement(
         "window3", measurement, begin_time=15, elapsed_time=5, assert_calls=False
     )
-    measurement = replay_monitor.end_window("window4", sync_cuda=False)
+    measurement = replay_monitor.end_window("window4", sync_execution=False)
     assert_measurement(
         "window4", measurement, begin_time=17, elapsed_time=7, assert_calls=False
     )
 
-    replay_monitor.begin_window("window5", sync_cuda=False)
-    replay_monitor.begin_window("window6", sync_cuda=False)
-    measurement = replay_monitor.end_window("window6", sync_cuda=False)
+    replay_monitor.begin_window("window5", sync_execution=False)
+    replay_monitor.begin_window("window6", sync_execution=False)
+    measurement = replay_monitor.end_window("window6", sync_execution=False)
     assert_measurement(
         "window6", measurement, begin_time=26, elapsed_time=3, assert_calls=False
     )
-    measurement = replay_monitor.end_window("window5", sync_cuda=False)
+    measurement = replay_monitor.end_window("window5", sync_execution=False)
     assert_measurement(
         "window5", measurement, begin_time=25, elapsed_time=8, assert_calls=False
     )
+
+    # Calling `end_window` when the energy consumption of one or more GPUs was measured as zero should raise a warning.
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: 0.0
+
+    monitor.begin_window("window0", sync_execution=False)
+
+    with pytest.warns(
+        match="The energy consumption of one or more GPUs was measured as zero. This means that the time duration of the measurement window was shorter than the GPU's energy counter update period. Consider turning on the `approx_instant_energy` option in `ZeusMonitor`, which approximates the energy consumption of a short time window as instant power draw x window duration.",
+    ):
+        test_measurement = monitor.end_window("window0", sync_execution=False)
+
+    assert all(value == 0.0 for value in test_measurement.gpu_energy.values())

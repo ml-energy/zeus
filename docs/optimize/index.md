@@ -1,5 +1,8 @@
 # Optimizing Energy
 
+!!! Important
+    You will need to set up your environment to make energy measurement and optimization work. Please refer to the [Getting Started](../getting_started/index.md) guide.
+
 Zeus provides multiple optimizers that tune different knobs either in the Deep Learning workload-side or the GPU-side.
 
 ## [Power limit optimizer](power_limit_optimizer.md)

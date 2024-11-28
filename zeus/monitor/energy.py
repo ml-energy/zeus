@@ -1,22 +1,10 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Measure the GPU time and energy consumption of a block of code."""
 
 from __future__ import annotations
 
 import os
+import warnings
+from typing import Literal
 from time import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -24,10 +12,10 @@ from functools import cached_property
 
 from zeus.monitor.power import PowerMonitor
 from zeus.utils.logging import get_logger
-from zeus.utils.framework import cuda_sync
+from zeus.utils.framework import sync_execution as sync_execution_fn
 from zeus.device import get_gpus, get_cpus
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
-from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
+from zeus.device.cpu.common import ZeusCPUInitError, ZeusCPUNoPermissionError, EmptyCPUs
 
 logger = get_logger(__name__)
 
@@ -143,9 +131,8 @@ class ZeusMonitor:
         result = monitor.end_window("entire_training")
 
         # Print the measurement result.
-        print(f"Training took {result.time} seconds.")
         print(f"Training consumed {result.total_energy} Joules.")
-        for gpu_idx, gpu_energy in result.energy.items():
+        for gpu_idx, gpu_energy in result.gpu_energy.items():
             print(f"GPU {gpu_idx} consumed {gpu_energy} Joules.")
     ```
 
@@ -160,6 +147,7 @@ class ZeusMonitor:
         cpu_indices: list[int] | None = None,
         approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
+        sync_execution_with: Literal["torch", "jax"] = "torch",
     ) -> None:
         """Instantiate the monitor.
 
@@ -179,35 +167,47 @@ class ZeusMonitor:
                 instantaneous power consumption with the window's execution time. This should
                 be a better estimate than zero, but it's still an approximation.
             log_file: Path to the log CSV file. If `None`, logging will be disabled.
+            sync_execution_with: Deep learning framework to use to synchronize CPU/GPU computations.
+                Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
+                See [`sync_execution`][zeus.utils.framework.sync_execution] for more details.
         """
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy
+        self.sync_with: Literal["torch", "jax"] = sync_execution_with
 
-        # Get gpus
+        # Get GPU instances.
         try:
             self.gpus = get_gpus()
         except ZeusGPUInitError:
             self.gpus = EmptyGPUs()
 
-        # Get cpus
+        # Get CPU instance.
         try:
             self.cpus = get_cpus()
         except ZeusCPUInitError:
             self.cpus = EmptyCPUs()
+        except ZeusCPUNoPermissionError as err:
+            if cpu_indices:
+                raise RuntimeError(
+                    "Root privilege is required to read RAPL metrics. See "
+                    "https://ml.energy/zeus/getting_started/#system-privileges "
+                    "for more information or disable CPU measurement by passing cpu_indices=[] to "
+                    "ZeusMonitor"
+                ) from err
+            self.cpus = EmptyCPUs()
 
-        # Get GPU indices:
+        # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
         self.gpu_indices = (
-            gpu_indices
-            if gpu_indices is not None
-            else list(range(len(self.gpus)))
-            if self.gpus is not None
-            else []
+            gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
         )
 
-        # Get CPU indices:
+        # Resolve CPU indices. If the user did not specify `cpu_indices`, use all available CPUs.
         self.cpu_indices = (
             cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
         )
+
+        logger.info("Monitoring GPU indices %s.", self.gpu_indices)
+        logger.info("Monitoring CPU indices %s", self.cpu_indices)
 
         # Initialize loggers.
         if log_file is None:
@@ -221,9 +221,6 @@ class ZeusMonitor:
                 f"start_time,window_name,elapsed_time,{','.join(map(lambda i: f'gpu{i}_energy', self.gpu_indices))}\n",
             )
             self.log_file.flush()
-
-        logger.info("Monitoring GPU indices %s.", self.gpu_indices)
-        logger.info("Monitoring CPU indices %s", self.cpu_indices)
 
         # A dictionary that maps the string keys of active measurement windows to
         # the state of the measurement window. Each element in the dictionary is a Measurement State
@@ -259,22 +256,24 @@ class ZeusMonitor:
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
-    def begin_window(self, key: str, sync_cuda: bool = True) -> None:
+    def begin_window(self, key: str, sync_execution: bool = True) -> None:
         """Begin a new measurement window.
 
         Args:
             key: Unique name of the measurement window.
-            sync_cuda: Whether to synchronize CUDA before starting the measurement window.
-                (Default: `True`)
+            sync_execution: Whether to wait for asynchronously dispatched computations
+                to finish before starting the measurement window. For instance, PyTorch
+                and JAX will run GPU computations asynchronously, and waiting them to
+                finish is necessary to ensure that the measurement window captures all
+                and only the computations dispatched within the window.
         """
         # Make sure the key is unique.
         if key in self.measurement_states:
             raise ValueError(f"Measurement window '{key}' already exists")
 
-        # Call cudaSynchronize to make sure we freeze at the right time.
-        if sync_cuda:
-            for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+        # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
+        if sync_execution and self.gpu_indices:
+            sync_execution_fn(self.gpu_indices, sync_with=self.sync_with)
 
         # Freeze the start time of the profiling window.
         timestamp: float = time()
@@ -306,18 +305,21 @@ class ZeusMonitor:
         logger.debug("Measurement window '%s' started.", key)
 
     def end_window(
-        self, key: str, sync_cuda: bool = True, cancel: bool = False
+        self, key: str, sync_execution: bool = True, cancel: bool = False
     ) -> Measurement:
         """End a measurement window and return the time and energy consumption.
 
         Args:
             key: Name of an active measurement window.
-            sync_cuda: Whether to synchronize CUDA before ending the measurement window.
-                (default: `True`)
+            sync_execution: Whether to wait for asynchronously dispatched computations
+                to finish before starting the measurement window. For instance, PyTorch
+                and JAX will run GPU computations asynchronously, and waiting them to
+                finish is necessary to ensure that the measurement window captures all
+                and only the computations dispatched within the window.
             cancel: Whether to cancel the measurement window. If `True`, the measurement
                 window is assumed to be cancelled and discarded. Thus, an empty Measurement
                 object will be returned and the measurement window will not be recorded in
-                the log file either. `sync_cuda` is still respected.
+                the log file either. `sync_execution` is still respected.
         """
         # Retrieve the start time and energy consumption of this window.
         try:
@@ -335,10 +337,9 @@ class ZeusMonitor:
             self._get_instant_power() if self.approx_instant_energy else ({}, 0.0)
         )
 
-        # Call cudaSynchronize to make sure we freeze at the right time.
-        if sync_cuda:
-            for gpu_index in self.gpu_indices:
-                cuda_sync(gpu_index)
+        # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
+        if sync_execution and self.gpu_indices:
+            sync_execution_fn(self.gpu_indices, sync_with=self.sync_with)
 
         # If the measurement window is cancelled, return an empty Measurement object.
         if cancel:
@@ -394,6 +395,15 @@ class ZeusMonitor:
                     gpu_energy_consumption[gpu_index] = power[gpu_index] * (
                         time_consumption - power_measurement_time
                     )
+
+        # Trigger a warning if energy consumption is zero and approx_instant_energy is not enabled.
+        if not self.approx_instant_energy and any(
+            energy == 0.0 for energy in gpu_energy_consumption.values()
+        ):
+            warnings.warn(
+                "The energy consumption of one or more GPUs was measured as zero. This means that the time duration of the measurement window was shorter than the GPU's energy counter update period. Consider turning on the `approx_instant_energy` option in `ZeusMonitor`, which approximates the energy consumption of a short time window as instant power draw x window duration.",
+                stacklevel=1,
+            )
 
         logger.debug("Measurement window '%s' ended.", key)
 

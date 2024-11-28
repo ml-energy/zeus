@@ -55,8 +55,18 @@ def read_trace(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read the train and power trace files as Pandas DataFrames."""
     trace_dir = Path(__file__).resolve(strict=True).parents[3]
-    train_df = pd.DataFrame(pd.read_csv(trace_dir / "trace/summary_train.csv"))
-    power_df = pd.DataFrame(pd.read_csv(trace_dir / f"trace/summary_power_{gpu}.csv"))
+    train_df = pd.DataFrame(
+        pd.read_csv(
+            trace_dir
+            / "examples/research_reproducibility/zeus_nsdi23/trace/summary_train.csv"
+        )
+    )
+    power_df = pd.DataFrame(
+        pd.read_csv(
+            trace_dir
+            / f"examples/research_reproducibility/zeus_nsdi23/trace/summary_power_{gpu}.csv"
+        )
+    )
     return train_df, power_df
 
 

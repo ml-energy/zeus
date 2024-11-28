@@ -24,7 +24,7 @@ use crate::error::ZeusdError;
 ///
 ///  Assumptions:
 ///  - The `GpuCommand` variant name is the same as the API name, but the former is camel case
-///     and the latter is snake case (e.g., SetPowerLimit vs. set_power_limit).
+///      and the latter is snake case (e.g., SetPowerLimit vs. set_power_limit).
 macro_rules! impl_handler_for_gpu_command {
     ($api:ident, $path:expr, $($field:ident: $ftype:ty,)*) => {
         paste! {

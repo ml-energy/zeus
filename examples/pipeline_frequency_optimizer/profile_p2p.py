@@ -1,4 +1,4 @@
-"""Profile the power cosumtion of the GPU while waiting on P2P communication."""
+"""Profile the power consumption of the GPU while waiting on P2P communication."""
 
 import os
 import time

@@ -37,3 +37,5 @@ jobs:
         run: pip install '.[docs]'
       - name: Build homepage
         run: mkdocs gh-deploy --force
+        env:
+          BUILD_SOCIAL_CARD: true

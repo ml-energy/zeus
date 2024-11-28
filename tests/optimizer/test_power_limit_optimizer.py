@@ -1,17 +1,3 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from __future__ import annotations
 
 import inspect
@@ -23,6 +9,7 @@ from unittest.mock import call
 import pytest
 import pandas as pd
 
+from zeus.device.gpu import get_gpus
 from zeus.optimizer.power_limit import (
     GlobalPowerLimitOptimizer,
     HFGlobalPowerLimitOptimizer,
@@ -148,7 +135,7 @@ def test_power_limit_optimizer(
 
     monitor = ReplayZeusMonitor(
         log_file=replay_log.log_file,
-        ignore_sync_cuda=True,
+        ignore_sync_execution=True,
         match_window_name=False,
     )
     assert monitor.gpu_indices == replay_log.gpu_indices
@@ -156,6 +143,9 @@ def test_power_limit_optimizer(
     ############################
     # Test JIT profiling
     ############################
+
+    # Disable `SYS_ADMIN` capability check.
+    get_gpus()._disable_sys_admin_warning = True
 
     plo = GlobalPowerLimitOptimizer(
         monitor,

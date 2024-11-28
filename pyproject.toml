@@ -7,7 +7,7 @@ name = "zeus-ml"
 description = "A framework for deep learning energy measurement and optimization."
 readme = "README.md"
 authors = [
-    {name = "Jae-Won Chung", email = "jwnchung@umich.edu"},
+    {name = "Zeus Team"},
 ]
 license = {text = "Apache 2.0"}
 classifiers = [
@@ -16,8 +16,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
-keywords = ["deep-learning", "power", "energy", "sustainability", "mlsys"]
+keywords = ["deep-learning", "power", "energy", "carbon", "sustainability", "mlsys"]
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
@@ -27,7 +29,8 @@ dependencies = [
     "pydantic",  # The `zeus.utils.pydantic_v1` compatibility layer allows us to unpin Pydantic in most cases.
     "rich",
     "tyro",
-    "httpx"
+    "httpx",
+    "amdsmi"
 ]
 dynamic = ["version"]
 
@@ -44,7 +47,7 @@ bso = ["pydantic<2"]
 bso-server = ["fastapi[all]", "sqlalchemy", "pydantic<2", "python-dotenv"]
 migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv"]
 lint = ["ruff", "black==22.6.0", "pyright", "pandas-stubs", "transformers"]
-test = ["fastapi[all]", "sqlalchemy", "pydantic<2", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0"]
+test = ["fastapi[all]", "sqlalchemy", "pydantic<2", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0", "numpy<2"]
 docs = ["mkdocs-material[imaging]==9.5.19", "mkdocstrings[python]==0.25.0", "mkdocs-gen-files==0.5.0", "mkdocs-literate-nav==0.6.1", "mkdocs-section-index==0.3.9", "mkdocs-redirects==1.2.1", "urllib3<2", "black"]
 # greenlet is for supporting apple mac silicon for sqlalchemy(https://docs.sqlalchemy.org/en/20/faq/installation.html)
 dev = ["zeus-ml[pfo-server,bso,bso-server,migration,lint,test]", "greenlet"]
@@ -94,6 +97,7 @@ pydocstyle.convention = "google"
 "zeus/optimizer/batch_size/common.py" = ["N805"]
 "zeus/device/gpu/*.py" = ["N802", "N803"]
 "zeus/device/cpu/*.py" = ["N802"]
+"zeus/utils/testing.py" = ["N802"]
 
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"

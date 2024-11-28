@@ -1,6 +1,16 @@
 name: (Zeus) Check format, lint, and test
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/zeus_fmt_lint_test.yaml'
+      - 'zeus/**'
+      - 'tests/**'
+      - 'capriccio/*.py'
+      - 'examples/**'
+      - 'setup.py'
+      - 'scripts/lint.sh'
+      - 'pyproject.toml'
   push:
     paths:
       - '.github/workflows/zeus_fmt_lint_test.yaml'
@@ -19,6 +29,7 @@ concurrency:
 
 jobs:
   format_lint_test:
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

@@ -1,17 +1,3 @@
-# Copyright (C) 2023 Jae-Won Chung <jwnchung@umich.edu>
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Example script for running the Zeus trace-driven simulator."""
 
 from __future__ import annotations
@@ -60,8 +46,8 @@ def read_trace(
     gpu: Literal["a40", "v100", "p100", "rtx6000"]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read the train and power trace files as Pandas DataFrames."""
-    train_df = pd.DataFrame(pd.read_csv("../../trace/summary_train.csv"))
-    power_df = pd.DataFrame(pd.read_csv(f"../../trace/summary_power_{gpu}.csv"))
+    train_df = pd.DataFrame(pd.read_csv("trace/summary_train.csv"))
+    power_df = pd.DataFrame(pd.read_csv(f"trace/summary_power_{gpu}.csv"))
     return train_df, power_df
 
 

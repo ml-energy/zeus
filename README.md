@@ -15,9 +15,10 @@
 ---
 **Project News** ⚡ 
 
+- \[2024/08\] Perseus, an optimizer for large model training, was accepted to SOSP'24! [Preprint](https://arxiv.org/abs/2312.06902) | [Blog](https://ml.energy/zeus/research_overview/perseus) | [Optimizer](https://ml.energy/zeus/optimize/pipeline_frequency_optimizer)
+- \[2024/07\] Added AMD GPU, CPU, and DRAM energy measurement support, and preliminary JAX support!
 - \[2024/05\] Zeus is now a PyTorch ecosystem project. Read the PyTorch blog post [here](https://pytorch.org/blog/zeus/)!
 - \[2024/02\] Zeus was selected as a [2024 Mozilla Technology Fund awardee](https://foundation.mozilla.org/en/blog/open-source-AI-for-environmental-justice/)!
-- \[2023/12\] We released Perseus, an energy optimizer for large model training: [Preprint](https://arxiv.org/abs/2312.06902) | [Blog](https://ml.energy/zeus/research_overview/perseus) | [Optimizer](https://ml.energy/zeus/optimize/pipeline_frequency_optimizer)
 - \[2023/07\] We used the [`ZeusMonitor`](https://ml.energy/zeus/reference/monitor/energy/#zeus.monitor.energy.ZeusMonitor) to profile GPU time and energy consumption for the [ML.ENERGY leaderboard & Colosseum](https://ml.energy/leaderboard).
 ---
 
@@ -28,24 +29,21 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 ## Repository Organization
 
 ```
- zeus/
-├──  zeus/             # ⚡ Zeus Python package
-│  ├──  monitor/       #    - Energy and power measurement (programmatic & CLI)
-│  ├──  optimizer/     #    - Collection of time and energy optimizers
-│  ├──  device/        #    - Abstraction layer over CPU and GPU devices
-│  ├──  utils/         #    - Utility functions and classes
-│  ├──  _legacy/       #    - Legacy code to keep our research papers reproducible
-│  └──  callback.py    #    - Base class for callbacks during training
+zeus/
+├── zeus/             # ⚡ Zeus Python package
+│  ├── monitor/       #    - Energy and power measurement (programmatic & CLI)
+│  ├── optimizer/     #    - Collection of time and energy optimizers
+│  ├── device/        #    - Abstraction layer over CPU and GPU devices
+│  ├── utils/         #    - Utility functions and classes
+│  ├── _legacy/       #    - Legacy code to keep our research papers reproducible
+│  ├── show_env.py    #    - Installation & device detection verification script
+│  └── callback.py    #    - Base class for callbacks during training
 │
-├──  zeusd             # 🌩️ Zeus daemon
+├── zeusd             # 🌩️ Zeus daemon
 │
-├──  docker/           # 🐳 Dockerfiles and Docker Compose files
+├── docker/           # 🐳 Dockerfiles and Docker Compose files
 │
-├──  examples/         # 🛠️ Zeus usage examples
-│
-├──  capriccio/        # 🌊 A drifting sentiment analysis dataset
-│
-└──  trace/            # 🗃️ Training and energy traces for various GPUs and DNNs
+└── examples/         # 🛠️ Zeus usage examples
 ```
 
 ## Getting Started
