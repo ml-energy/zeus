@@ -14,18 +14,18 @@ from torch.optim.lr_scheduler import StepLR
 import torch.utils.data
 from torch.utils.data import DataLoader
 import torch.utils.data.distributed
+from torch.utils.data import Subset
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from zeus.metric import EnergyHistogram
-from zeus.metric import EnergyCumulativeCounter
-from zeus.metric import PowerGauge
+from multiprocessing import set_start_method
 
 # ZEUS
 from zeus.monitor import ZeusMonitor
 from zeus.monitor import PowerMonitor
 from zeus.optimizer.power_limit import MaxSlowdownConstraint, GlobalPowerLimitOptimizer
 from zeus.utils.env import get_env
+from zeus.metric import EnergyHistogram, EnergyCumulativeCounter, PowerGauge
 
 
 def parse_args() -> argparse.Namespace:
@@ -144,8 +144,7 @@ def main():
         traindir,
         transforms.Compose(
             [
-                transforms.RandomResizedCrop(224),
-                transforms.RandomHorizontalFlip(),
+                transforms.Resize((224, 224)),
                 transforms.ToTensor(),
                 normalize,
             ]
@@ -155,8 +154,7 @@ def main():
         valdir,
         transforms.Compose(
             [
-                transforms.Resize(256),
-                transforms.CenterCrop(224),
+                transforms.Resize((224, 224)),
                 transforms.ToTensor(),
                 normalize,
             ]
@@ -178,38 +176,63 @@ def main():
         pin_memory=True,
     )
 
+    train_dataset = Subset(train_dataset, range(5))
+    val_dataset = Subset(val_dataset, range(2))
+
     ################################## The important part #####################################
     # ZeusMonitor is used to profile the time and energy consumption of the GPU.
-    energy_monitor = ZeusMonitor(gpu_indices=[args.gpu])
-    power_monitor = PowerMonitor(gpu_indices=[args.gpu])
-    energy_histogram = EnergyHistogram(energy_monitor=energy_monitor, prometheus_url='http://localhost:9091', job='training_energy_histogram')
-    power_gauge = PowerGauge(power_monitor=power_monitor, update_period=2, prometheus_url='http://localhost:9091', job='training_power_gauge')
-    energy_counter = EnergyCumulativeCounter(energy_monitor=energy_monitor, update_period=2, prometheus_url='http://localhost:9091', job='training_energy_counter')
 
+    # EnergyHistogram: Records the energy consumption during specific phases of the program execution
+    # and pushes it to the Prometheus Push Gateway as histogram metrics.
+    energy_histogram = EnergyHistogram(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        prometheus_url='http://localhost:9091', 
+        job='training_energy_histogram'
+    )
+
+    # PowerGauge: Monitors real-time power usage of the GPUs and pushes the data to the Prometheus 
+    # Push Gateway as gauge metrics, updated at regular intervals.
+    power_gauge = PowerGauge(
+        gpu_indices=[0], 
+        update_period=2, 
+        prometheus_url='http://localhost:9091', 
+        job='training_power_gauge'
+    )
+
+    # EnergyCumulativeCounter: Tracks cumulative energy consumption over time for CPUs and GPUs
+    # and pushes the results to the Prometheus Push Gateway as counter metrics.
+    energy_counter = EnergyCumulativeCounter(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        update_period=2, 
+        prometheus_url='http://localhost:9091', 
+        job='training_energy_counter'
+    )
+
+    # Start monitoring real-time power usage.
+    power_gauge.begin_window("epoch_power")
+
+    # Start tracking cumulative energy consumption.
+    energy_counter.begin_window("epoch_energy")
+
+    # Loop through training epochs while measuring energy and power metrics.
     for epoch in range(args.epochs):
-        # plo.on_epoch_begin()
-
-        energy_histogram.begin_window(f"epoch_{epoch}")
-        # energy_counter.begin_window(f"epoch_{epoch}")
-        # power_gauge.begin_window(f"epoch_{epoch}")
-
-        # train(train_loader, model, criterion, optimizer, epoch, args, plo)
-        energy_histogram.end_window(f"epoch_{epoch}")
-        # energy_counter.end_window(f"epoch_{epoch}")
-        # power_gauge.end_window(f"epoch_{epoch}")
-
-        # plo.on_epoch_end()
-
+        # Validate the model and compute accuracy.
         acc1 = validate(val_loader, model, criterion, args)
+
+        # Begin and end energy monitoring for the current epoch.
+        energy_histogram.begin_window(f"epoch_{epoch}_energy")
+        energy_histogram.end_window(f"epoch_{epoch}_energy")
+        
         print(f"Top-1 accuracy: {acc1}")
 
-        scheduler.step()
-    
-    energy_counter.begin_window("Counter_window")
-    power_gauge.begin_window("Gauge Window")
+    # Allow metrics to capture remaining data before shutting down monitoring.
+    time.sleep(10)
 
-    energy_counter.end_window("Counter_window")
-    power_gauge.end_window("Gauge Window")
+    # End the cumulative energy and power monitoring windows.
+    energy_counter.end_window("epoch_energy")
+    power_gauge.end_window("epoch_power")
     ################################## The important part #####################################
 
 
