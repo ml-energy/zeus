@@ -193,6 +193,7 @@ scrape_configs:
 
 Zeus allows you to monitor energy and power consumption through different metrics, such as Histograms, Counters, and Gauges, which can be pushed to a Prometheus Push Gateway for further analysis. 
 
+## Monitoring with Histogram, Counter, Gauge Metric
 [`EnergyHistogram`][zeus.metric.EnergyHistogram] records energy consumption data for GPUs, CPUs, and DRAM in Prometheus Histograms. This is ideal for observing how often energy usage falls within specific ranges.
 
 You can customize the bucket ranges for each component (GPU, CPU, and DRAM), or let Zeus use default ranges.
