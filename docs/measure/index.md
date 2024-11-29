@@ -119,7 +119,7 @@ if __name__ == "__main__":
 To monitor energy and power consumption effectively using Zeus, Prometheus and the Prometheus Push Gateway must be properly set up. This section outlines the assumptions and provides a guide to configure Prometheus and the Push Gateway. 
 
 ### **Metric Name Construction**
-Zeus organizes metrics using **static metric names** and **dynamic labels** to ensure flexibility and ease of querying in Prometheus. Below, we document how metric names are constructed, how the `job` and `window` parameters affect the metrics, and how users can query them effectively.
+Zeus organizes metrics using **static metric names** and **dynamic labels** to ensure flexibility and ease of querying in Prometheus. Below, we document how metric names are constructed and how users can query them effectively.
 
 Currently, metric names (e.g., `energy_monitor_gpu_{gpu_index}_energy_joules`) are static and cannot be overridden. However, users can customize the name of the window to define the context of the metrics.
 
