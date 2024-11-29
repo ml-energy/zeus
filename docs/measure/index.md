@@ -114,7 +114,7 @@ if __name__ == "__main__":
         avg_energy = sum(map(lambda m: m.total_energy, steps)) / len(steps)
         print(f"One step takes {avg_time} s and {avg_energy} J for the CPU.")
 ```
-# Prometheus Assumptions
+## Metric Monitoring
 
 To monitor energy and power consumption effectively using Zeus, Prometheus and the Prometheus Push Gateway must be properly set up. This section outlines the assumptions and provides a guide to configure Prometheus and the Push Gateway.
 
@@ -169,7 +169,6 @@ docker run -d -p 9091:9091 prom/pushgateway
 3. Verify it is running by visiting http://localhost:9091 in your browser.
 
 ### Step 2: Install and Configure Prometheus
-
 1. Visit the Prometheus [Prometheus Download Page](https://prometheus.io/download/#prometheus).
 2. Download the appropriate binary for your operating system.
 3. Extract the binary:
@@ -191,8 +190,6 @@ scrape_configs:
 ```
 6. Visit http://localhost:9090 in your browser, or use curl http://localhost:9090/api/v1/targets
 7. Verify Prometheus is running by visiting http://localhost:9090 in your browser.
-
-## Metric Monitoring
 
 Zeus allows you to monitor energy and power consumption through different metrics, such as Histograms, Counters, and Gauges, which can be pushed to a Prometheus Push Gateway for further analysis. 
 
