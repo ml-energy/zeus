@@ -116,8 +116,29 @@ if __name__ == "__main__":
 ```
 ## Metric Monitoring
 
-To monitor energy and power consumption effectively using Zeus, Prometheus and the Prometheus Push Gateway must be properly set up. This section outlines the assumptions and provides a guide to configure Prometheus and the Push Gateway.
+To monitor energy and power consumption effectively using Zeus, Prometheus and the Prometheus Push Gateway must be properly set up. This section outlines the assumptions and provides a guide to configure Prometheus and the Push Gateway. 
 
+### **Metric Name Construction**
+Zeus organizes metrics using **static metric names** and **dynamic labels** to ensure flexibility and ease of querying in Prometheus. Below, we document how metric names are constructed, how the `job` and `window` parameters affect the metrics, and how users can query them effectively.
+
+Currently, metric names (e.g., `energy_monitor_gpu_{gpu_index}_energy_joules`) are static and cannot be overridden. However, users can customize the name of the window to define the context of the metrics.
+
+- **Metric Name**: `energy_monitor_gpu_{gpu_index}_energy_joules`
+- **Labels**:
+  - `window`: The user-defined window name provided during `begin_window()` and `end_window()` (e.g. energy_histogram.begin_window(f"epoch_{epoch}_energy")).
+  - `index`: The GPU index (e.g., `0` for GPU 0).
+
+
+## How to Query Metrics in Prometheus
+
+### 1. Query Metrics for a Specific Window
+Retrieve energy metrics for a GPU during a specific window:
+```promql
+energy_monitor_gpu_0_energy_joules{window="epoch_1_step_0"}
+```
+```promql
+sum(energy_monitor_gpu_0_energy_joules) by (window)
+```
 ---
 
 ## Assumptions
@@ -193,7 +214,8 @@ scrape_configs:
 
 Zeus allows you to monitor energy and power consumption through different metrics, such as Histograms, Counters, and Gauges, which can be pushed to a Prometheus Push Gateway for further analysis. 
 
-## Monitoring with Histogram, Counter, Gauge Metric
+---
+
 [`EnergyHistogram`][zeus.metric.EnergyHistogram] records energy consumption data for GPUs, CPUs, and DRAM in Prometheus Histograms. This is ideal for observing how often energy usage falls within specific ranges.
 
 You can customize the bucket ranges for each component (GPU, CPU, and DRAM), or let Zeus use default ranges.
