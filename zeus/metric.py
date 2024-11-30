@@ -60,9 +60,9 @@ class EnergyHistogram(Metric):
         gpu_indices: list,
         prometheus_url: str,
         job: str,
-        gpu_bucket_range: list[float] = None,
-        cpu_bucket_range: list[float] = None,
-        dram_bucket_range: list[float] = None,
+        gpu_bucket_range: list[float] | None,
+        cpu_bucket_range: list[float] | None,
+        dram_bucket_range: list[float] | None,
     ) -> None:
         """Initialize the EnergyHistogram class.
 
@@ -305,9 +305,10 @@ class EnergyCumulativeCounter(Metric):
                 "Make sure 'begin_window' is called before 'end_window'."
             )
         self.queue.put("stop")
-        self.proc.join(timeout=20)
-        if self.proc.is_alive():
-            self.proc.terminate()
+        if self.proc is not None:
+            self.proc.join(timeout=20)
+            if self.proc.is_alive():
+                self.proc.terminate()
 
 
 def energy_monitoring_loop(
@@ -470,9 +471,11 @@ class PowerGauge(Metric):
             name (str): The unique name of the measurement window. Must match between calls to 'begin_window' and 'end_window'.
         """
         self.queue.put("stop")
-        self.proc.join(timeout=20)
-        if self.proc.is_alive():
-            self.proc.terminate()
+        if self.proc is not None:
+            self.proc.join(timeout=20)
+            if self.proc.is_alive():
+                warnings.warn(f"Forcefully terminating monitoring process for {name}.", stacklevel=2)
+                self.proc.terminate()
 
 
 def power_monitoring_loop(
@@ -512,10 +515,11 @@ def power_monitoring_loop(
         power_measurement = power_monitor.get_power()
 
         try:
-            for gpu_index, power_value in power_measurement.items():
-                gpu_gauges[gpu_index].labels(gpu_index=f"{name}_gpu{gpu_index}").set(
-                    power_value
-                )
+            if power_measurement:
+                for gpu_index, power_value in power_measurement.items():
+                    gpu_gauges[gpu_index].labels(gpu_index=f"{name}_gpu{gpu_index}").set(
+                        power_value
+                    )
         except Exception as e:
             print(f"Error during processing power measurement: {e}")
 

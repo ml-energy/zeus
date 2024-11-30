@@ -87,63 +87,65 @@ def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
         prometheus_url=prometheus_url,
         job="test_energy_histogram",
     )
+    if histogram_metric.gpu_histograms:
+        for _gpu_index, gpu_histogram in histogram_metric.gpu_histograms.items():
+            gpu_histogram.labels = MagicMock(return_value=gpu_histogram)
+            gpu_histogram.observe = MagicMock()
 
-    for _gpu_index, gpu_histogram in histogram_metric.gpu_histograms.items():
-        gpu_histogram.labels = MagicMock(return_value=gpu_histogram)
-        gpu_histogram.observe = MagicMock()
+    if histogram_metric.cpu_histograms:
+        for _cpu_index, cpu_histogram in histogram_metric.cpu_histograms.items():
+            cpu_histogram.labels = MagicMock(return_value=cpu_histogram)
+            cpu_histogram.observe = MagicMock()
 
-    for _cpu_index, cpu_histogram in histogram_metric.cpu_histograms.items():
-        cpu_histogram.labels = MagicMock(return_value=cpu_histogram)
-        cpu_histogram.observe = MagicMock()
-
-    for _dram_index, dram_histogram in histogram_metric.dram_histograms.items():
-        dram_histogram.labels = MagicMock(return_value=dram_histogram)
-        dram_histogram.observe = MagicMock()
+    if histogram_metric.dram_histogram:
+        for _dram_index, dram_histogram in histogram_metric.dram_histograms.items():
+            dram_histogram.labels = MagicMock(return_value=dram_histogram)
+            dram_histogram.observe = MagicMock()
 
     histogram_metric.begin_window("test_window")
     histogram_metric.end_window("test_window")
 
     # Assert GPU histograms were observed
-    for (
-        gpu_index,
-        energy,
-    ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
-        calls = [
-            call[0][0]
-            for call in histogram_metric.gpu_histograms[
-                gpu_index
-            ].observe.call_args_list
-        ]
-        print(f"Observed calls for GPU {gpu_index}: {calls}")
-        assert energy in calls, f"Expected {energy} in {calls}"
+    if mock_zeus_monitor.return_value.end_window.return_value.gpu_energy:
+        for (
+            gpu_index,
+            energy,
+        ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
+            calls = [
+                call[0][0]
+                for call in histogram_metric.gpu_histograms[
+                    gpu_index
+                ].observe.call_args_list
+            ]
+            assert energy in calls, f"Expected {energy} in {calls}"
 
     # Assert CPU histograms were observed
-    for (
-        cpu_index,
-        energy,
-    ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
-        calls = [
-            call[0][0]
-            for call in histogram_metric.cpu_histograms[
-                cpu_index
-            ].observe.call_args_list
-        ]
-        print(f"Observed CPU calls for CPU {cpu_index}: {calls}")
-        assert energy in calls, f"Expected CPU energy {energy} in {calls}"
+    if mock_zeus_monitor.return_value.end_window.return_value.cpu_energy:
+        for (
+            cpu_index,
+            energy,
+        ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
+            calls = [
+                call[0][0]
+                for call in histogram_metric.cpu_histograms[
+                    cpu_index
+                ].observe.call_args_list
+            ]
+            assert energy in calls, f"Expected CPU energy {energy} in {calls}"
 
     # Assert DRAM histograms were observed
-    for (
-        dram_index,
-        energy,
-    ) in mock_zeus_monitor.return_value.end_window.return_value.dram_energy.items():
-        calls = [
-            call[0][0]
-            for call in histogram_metric.dram_histograms[
-                dram_index
-            ].observe.call_args_list
-        ]
-        print(f"Observed DRAM calls for CPU {dram_index}: {calls}")
-        assert energy in calls, f"Expected DRAM energy {energy} in {calls}"
+    if mock_zeus_monitor.return_value.end_window.return_value.dram_energy:
+        for (
+            dram_index,
+            energy,
+        ) in mock_zeus_monitor.return_value.end_window.return_value.dram_energy.items():
+            calls = [
+                call[0][0]
+                for call in histogram_metric.dram_histograms[
+                    dram_index
+                ].observe.call_args_list
+            ]
+            assert energy in calls, f"Expected DRAM energy {energy} in {calls}"
 
 
 def test_energy_cumulative_counter(mock_get_cpus, mock_zeus_monitor):
@@ -177,24 +179,26 @@ def test_energy_cumulative_counter(mock_get_cpus, mock_zeus_monitor):
     cumulative_counter.end_window("test_counter")
 
     # Assert GPU counters
-    for (
-        gpu_index,
-        energy,
-    ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
-        assert (
-            gpu_index in cumulative_counter.gpu_counters
-        ), f"GPU counter for index {gpu_index} not initialized"
-        cumulative_counter.gpu_counters[gpu_index].inc.assert_called_with(energy)
+    if mock_zeus_monitor.return_value.end_window.return_value.gpu_energy:
+        for (
+            gpu_index,
+            energy,
+        ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
+            assert (
+                gpu_index in cumulative_counter.gpu_counters
+            ), f"GPU counter for index {gpu_index} not initialized"
+            cumulative_counter.gpu_counters[gpu_index].inc.assert_called_with(energy)
 
     # Assert CPU counters
-    for (
-        cpu_index,
-        energy,
-    ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
-        assert (
-            cpu_index in cumulative_counter.cpu_counters
-        ), f"CPU counter for index {cpu_index} not initialized"
-        cumulative_counter.cpu_counters[cpu_index].inc.assert_called_with(energy)
+    if mock_zeus_monitor.return_value.end_window.return_value.cpu_energy:
+        for (
+            cpu_index,
+            energy,
+        ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
+            assert (
+                cpu_index in cumulative_counter.cpu_counters
+            ), f"CPU counter for index {cpu_index} not initialized"
+            cumulative_counter.cpu_counters[cpu_index].inc.assert_called_with(energy)
 
 
 @patch("zeus.device.gpu.get_gpus")
@@ -225,24 +229,26 @@ def test_power_gauge(
         prometheus_url=prometheus_url,
         job="test_power_gauge",
     )
-    for _gpu_index, gauge in power_gauge.gpu_gauges.items():
-        gauge.labels = MagicMock(return_value=gauge)
-        gauge.set = MagicMock()
+    if power_gauge.gpu_gauges:
+        for _gpu_index, gauge in power_gauge.gpu_gauges.items():
+            gauge.labels = MagicMock(return_value=gauge)
+            gauge.set = MagicMock()
 
     power_gauge.begin_window("test_power_window")
     power_gauge.end_window("test_power_window")
 
     # Assert that the gauges were set with the correct power values
-    for (
-        gpu_index,
-        power_value,
-    ) in mock_power_monitor.return_value.get_power.return_value.items():
-        try:
-            # Check if `labels` was called with the correct arguments
-            power_gauge.gpu_gauges[gpu_index].labels.assert_called_once_with(
-                gpu_index=gpu_index, window="test_power_window"
-            )
-            power_gauge.gpu_gauges[gpu_index].set.assert_called_once_with(power_value)
-        except AssertionError as e:
-            print(f"AssertionError for GPU {gpu_index}:")
-            raise e
+    if mock_power_monitor.return_value.get_power.return_value:
+        for (
+            gpu_index,
+            power_value,
+        ) in mock_power_monitor.return_value.get_power.return_value.items():
+            try:
+                # Check if `labels` was called with the correct arguments
+                power_gauge.gpu_gauges[gpu_index].labels.assert_called_once_with(
+                    gpu_index=gpu_index, window="test_power_window"
+                )
+                power_gauge.gpu_gauges[gpu_index].set.assert_called_once_with(power_value)
+            except AssertionError as e:
+                print(f"AssertionError for GPU {gpu_index}:")
+                raise e
