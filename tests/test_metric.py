@@ -67,9 +67,7 @@ def mock_gauge():
 
 
 def test_energy_histogram(
-    mock_get_cpus: MagicMock, 
-    mock_zeus_monitor: MagicMock, 
-     mock_histogram: MagicMock
+    mock_get_cpus: MagicMock, mock_zeus_monitor: MagicMock, mock_histogram: MagicMock
 ) -> None:
     """Test EnergyHistogram class.
 
@@ -153,8 +151,7 @@ def test_energy_histogram(
 
 
 def test_energy_cumulative_counter(
-    mock_get_cpus: MagicMock, 
-    mock_zeus_monitor: MagicMock
+    mock_get_cpus: MagicMock, mock_zeus_monitor: MagicMock
 ) -> None:
     """Test EnergyCumulativeCounter with mocked ZeusMonitor.
 
