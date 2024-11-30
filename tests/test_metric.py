@@ -66,7 +66,11 @@ def mock_gauge():
         yield gauge
 
 
-def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
+def test_energy_histogram(
+    mock_get_cpus: MagicMock, 
+    mock_zeus_monitor: MagicMock, 
+     mock_histogram: MagicMock
+) -> None:
     """Test EnergyHistogram class.
 
     Validates that GPU, CPU, and DRAM histograms are properly initialized,
@@ -148,7 +152,10 @@ def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
             assert energy in calls, f"Expected DRAM energy {energy} in {calls}"
 
 
-def test_energy_cumulative_counter(mock_get_cpus, mock_zeus_monitor):
+def test_energy_cumulative_counter(
+    mock_get_cpus: MagicMock, 
+    mock_zeus_monitor: MagicMock
+) -> None:
     """Test EnergyCumulativeCounter with mocked ZeusMonitor.
 
     Args:
