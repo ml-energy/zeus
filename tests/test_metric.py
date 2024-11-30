@@ -6,13 +6,14 @@ import pytest
 
 from zeus.metric import EnergyHistogram, EnergyCumulativeCounter, PowerGauge
 
+
 @pytest.fixture
 def mock_get_cpus():
     """Fixture to mock `get_cpus()` to avoid RAPL-related errors."""
 
     with patch("zeus.metric.get_cpus", autospec=True) as mock_get_cpus:
         mock_cpu = MagicMock()
-        mock_cpu.cpus = []  
+        mock_cpu.cpus = []
         mock_get_cpus.return_value = mock_cpu
         yield mock_get_cpus
 
@@ -24,13 +25,14 @@ def mock_zeus_monitor():
     with patch("zeus.metric.ZeusMonitor", autospec=True) as MockZeusMonitor:
         mock_instance = MockZeusMonitor.return_value
         mock_instance.end_window.return_value = MagicMock(
-            gpu_energy={0: 30.0, 1: 35.0, 2: 40.0}, 
-            cpu_energy={0: 20.0, 1: 25.0},  
-            dram_energy={},  
+            gpu_energy={0: 30.0, 1: 35.0, 2: 40.0},
+            cpu_energy={0: 20.0, 1: 25.0},
+            dram_energy={},
         )
-        mock_instance.gpu_indices = [0, 1, 2]  
-        mock_instance.cpu_indices = [0, 1]  
+        mock_instance.gpu_indices = [0, 1, 2]
+        mock_instance.cpu_indices = [0, 1]
         yield mock_instance
+
 
 @pytest.fixture
 def mock_histogram():
@@ -42,7 +44,8 @@ def mock_histogram():
 
     with patch("zeus.metric.Histogram", autospec=True) as MockHistogram:
         yield MockHistogram
-        
+
+
 def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
     """Test EnergyHistogram class.
 
@@ -54,9 +57,9 @@ def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
         mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.
         mock_histogram (MagicMock): Mocked Prometheus Histogram fixture.
     """
-    
-    cpu_indices = [0, 1]   
-    gpu_indices = [0, 1, 2]  
+
+    cpu_indices = [0, 1]
+    gpu_indices = [0, 1, 2]
     prometheus_url = "http://localhost:9091"
 
     histogram_metric = EnergyHistogram(
@@ -69,7 +72,7 @@ def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
     for gpu_index, gpu_histogram in histogram_metric.gpu_histograms.items():
         gpu_histogram.labels = MagicMock(return_value=gpu_histogram)
         gpu_histogram.observe = MagicMock()
-    
+
     for cpu_index, cpu_histogram in histogram_metric.cpu_histograms.items():
         cpu_histogram.labels = MagicMock(return_value=cpu_histogram)
         cpu_histogram.observe = MagicMock()
@@ -82,29 +85,54 @@ def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
     histogram_metric.end_window("test_window")
 
     # Assert GPU histograms were observed
-    for gpu_index, energy in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
-        calls = [call[0][0] for call in histogram_metric.gpu_histograms[gpu_index].observe.call_args_list]
+    for (
+        gpu_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
+        calls = [
+            call[0][0]
+            for call in histogram_metric.gpu_histograms[
+                gpu_index
+            ].observe.call_args_list
+        ]
         print(f"Observed calls for GPU {gpu_index}: {calls}")
         assert energy in calls, f"Expected {energy} in {calls}"
-    
+
     # Assert CPU histograms were observed
-    for cpu_index, energy in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
-        calls = [call[0][0] for call in histogram_metric.cpu_histograms[cpu_index].observe.call_args_list]
+    for (
+        cpu_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
+        calls = [
+            call[0][0]
+            for call in histogram_metric.cpu_histograms[
+                cpu_index
+            ].observe.call_args_list
+        ]
         print(f"Observed CPU calls for CPU {cpu_index}: {calls}")
         assert energy in calls, f"Expected CPU energy {energy} in {calls}"
-  
+
     # Assert DRAM histograms were observed
-    for dram_index, energy in mock_zeus_monitor.return_value.end_window.return_value.dram_energy.items():
-        calls = [call[0][0] for call in histogram_metric.dram_histograms[dram_index].observe.call_args_list]
+    for (
+        dram_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.dram_energy.items():
+        calls = [
+            call[0][0]
+            for call in histogram_metric.dram_histograms[
+                dram_index
+            ].observe.call_args_list
+        ]
         print(f"Observed DRAM calls for CPU {dram_index}: {calls}")
         assert energy in calls, f"Expected DRAM energy {energy} in {calls}"
+
 
 def test_energy_cumulative_counter(mock_get_cpus, mock_zeus_monitor):
     """Test EnergyCumulativeCounter with mocked ZeusMonitor.
 
     Args:
         mock_get_cpus (MagicMock): Mocked `get_cpus` fixture.
-        mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.    
+        mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.
     """
 
     cpu_indices = [0, 1]
@@ -131,14 +159,25 @@ def test_energy_cumulative_counter(mock_get_cpus, mock_zeus_monitor):
     cumulative_counter.end_window("test_counter")
 
     # Assert GPU counters
-    for gpu_index, energy in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
-        assert gpu_index in cumulative_counter.gpu_counters, f"GPU counter for index {gpu_index} not initialized"
+    for (
+        gpu_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
+        assert (
+            gpu_index in cumulative_counter.gpu_counters
+        ), f"GPU counter for index {gpu_index} not initialized"
         cumulative_counter.gpu_counters[gpu_index].inc.assert_called_with(energy)
 
     # Assert CPU counters
-    for cpu_index, energy in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
-        assert cpu_index in cumulative_counter.cpu_counters, f"CPU counter for index {cpu_index} not initialized"
+    for (
+        cpu_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
+        assert (
+            cpu_index in cumulative_counter.cpu_counters
+        ), f"CPU counter for index {cpu_index} not initialized"
         cumulative_counter.cpu_counters[cpu_index].inc.assert_called_with(energy)
+
 
 @pytest.fixture
 def mock_power_monitor():
@@ -153,21 +192,23 @@ def mock_power_monitor():
         }
         yield mock_instance
 
+
 @pytest.fixture
 def mock_gauge():
     """Fixture to mock Prometheus Gauge creation."""
-    
+
     with patch("zeus.metric.Gauge", autospec=True) as MockGauge:
         MockGauge.side_effect = lambda *args, **kwargs: MagicMock()
         yield MockGauge
 
+
 @patch("prometheus_client.push_to_gateway")
 @patch("zeus.device.gpu.get_gpus")
 def test_power_gauge(
-    mock_get_gpus: MagicMock, 
-    mock_power_monitor: MagicMock, 
+    mock_get_gpus: MagicMock,
+    mock_power_monitor: MagicMock,
     mock_gauge: MagicMock,
-    mock_push_to_gateway
+    mock_push_to_gateway,
 ) -> None:
     """Test PowerGauge with mocked PowerMonitor and Prometheus Gauges.
 
@@ -201,7 +242,10 @@ def test_power_gauge(
     power_gauge.end_window("test_power_window")
 
     # Assert that the gauges were set with the correct power values
-    for gpu_index, power_value in mock_power_monitor.return_value.get_power.return_value.items():
+    for (
+        gpu_index,
+        power_value,
+    ) in mock_power_monitor.return_value.get_power.return_value.items():
         try:
             # Check if `labels` was called with the correct arguments
             power_gauge.gpu_gauges[gpu_index].labels.assert_called_once_with(
@@ -211,4 +255,3 @@ def test_power_gauge(
         except AssertionError as e:
             print(f"AssertionError for GPU {gpu_index}:")
             raise e
-        

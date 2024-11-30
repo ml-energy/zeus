@@ -5,12 +5,19 @@ import time
 import warnings
 import multiprocessing as mp
 
-from prometheus_client import CollectorRegistry, Histogram, Counter, Gauge, push_to_gateway
+from prometheus_client import (
+    CollectorRegistry,
+    Histogram,
+    Counter,
+    Gauge,
+    push_to_gateway,
+)
 
 from zeus.monitor.power import PowerMonitor
 from zeus.monitor.energy import ZeusMonitor
 
 from zeus.device.cpu import get_cpus
+
 
 class Metric(abc.ABC):
     """
@@ -19,6 +26,7 @@ class Metric(abc.ABC):
     Defines a common interface for metrics, ensuring consistent behavior
     for `begin_window` and `end_window` operations.
     """
+
     @abc.abstractmethod
     def begin_window(self, name: str):
         """Start a new measurement window."""
@@ -66,22 +74,28 @@ class EnergyHistogram(Metric):
             gpu_indices (list): List of GPU indices to monitor.
             prometheus_url (str): URL of the Prometheus Push Gateway where metrics will be pushed.
             job (str): Name of the Prometheus job to associate with the energy metrics.
-            gpu_bucket_range (list[float], optional): Bucket ranges for GPU energy histograms. 
+            gpu_bucket_range (list[float], optional): Bucket ranges for GPU energy histograms.
                 Defaults to [50.0, 100.0, 200.0, 500.0, 1000.0].
-            cpu_bucket_range (list[float], optional): Bucket ranges for CPU energy histograms. 
+            cpu_bucket_range (list[float], optional): Bucket ranges for CPU energy histograms.
                 Defaults to [10.0, 20.0, 50.0, 100.0, 200.0].
-            dram_bucket_range (list[float], optional): Bucket ranges for DRAM energy histograms. 
+            dram_bucket_range (list[float], optional): Bucket ranges for DRAM energy histograms.
                 Defaults to [5.0, 10.0, 20.0, 50.0, 150.0].
         Raises:
             ValueError: If any of the bucket ranges (GPU, CPU, DRAM) is an empty list.
         """
         if not gpu_bucket_range:
-            raise ValueError("GPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults.")
+            raise ValueError(
+                "GPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
+            )
         if not cpu_bucket_range:
-            raise ValueError("CPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults.")
+            raise ValueError(
+                "CPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
+            )
         if not dram_bucket_range:
-            raise ValueError("DRAM bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults.")
-        
+            raise ValueError(
+                "DRAM bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
+            )
+
         self.gpu_bucket_range = gpu_bucket_range
         self.cpu_bucket_range = cpu_bucket_range
         self.dram_bucket_range = dram_bucket_range
@@ -131,16 +145,20 @@ class EnergyHistogram(Metric):
         self.max_cpu_bucket = max(self.cpu_bucket_range)
         self.max_dram_bucket = max(self.dram_bucket_range)
 
-        self.energy_monitor = ZeusMonitor(cpu_indices=cpu_indices, gpu_indices=gpu_indices)
+        self.energy_monitor = ZeusMonitor(
+            cpu_indices=cpu_indices, gpu_indices=gpu_indices
+        )
 
     def begin_window(self, name: str) -> None:
         """
         Begin the energy monitoring window.
-        
+
         Args:
             name (str): The unique name of the measurement window. Must match between calls to 'begin_window' and 'end_window'.
         """
-        self.energy_monitor.begin_window(f"__EnergyHistogram_{name}", sync_execution = True)
+        self.energy_monitor.begin_window(
+            f"__EnergyHistogram_{name}", sync_execution=True
+        )
 
     def end_window(self, name: str) -> None:
         """
@@ -157,14 +175,15 @@ class EnergyHistogram(Metric):
             - CPU energy data to the Prometheus Push Gateway via the associated Histogram metric.
             - DRAM energy data to the Prometheus Push Gateway via the associated Histogram metric.
         """
-        measurement = self.energy_monitor.end_window(f"__EnergyHistogram_{name}", sync_execution = True)
+        measurement = self.energy_monitor.end_window(
+            f"__EnergyHistogram_{name}", sync_execution=True
+        )
 
         if measurement.gpu_energy:
             for gpu_index, gpu_energy in measurement.gpu_energy.items():
                 if gpu_index in self.gpu_histograms:
                     self.gpu_histograms[gpu_index].labels(
-                        window=name, 
-                        index=gpu_index
+                        window=name, index=gpu_index
                     ).observe(gpu_energy)
                 if gpu_energy > self.max_gpu_bucket:
                     warnings.warn(
@@ -175,8 +194,7 @@ class EnergyHistogram(Metric):
             for cpu_index, cpu_energy in measurement.cpu_energy.items():
                 if cpu_index in self.cpu_histograms:
                     self.cpu_histograms[cpu_index].labels(
-                        window=name, 
-                        index=cpu_index
+                        window=name, index=cpu_index
                     ).observe(cpu_energy)
                 if cpu_energy > self.max_cpu_bucket:
                     warnings.warn(
@@ -187,8 +205,7 @@ class EnergyHistogram(Metric):
             for dram_index, dram_energy in measurement.dram_energy.items():
                 if dram_index in self.dram_histograms:
                     self.dram_histograms[dram_index].labels(
-                        window=name, 
-                        index=dram_index
+                        window=name, index=dram_index
                     ).observe(dram_energy)
                 if dram_energy > self.max_dram_bucket:
                     warnings.warn(
@@ -196,6 +213,7 @@ class EnergyHistogram(Metric):
                     )
 
         push_to_gateway(self.prometheus_url, job=self.job, registry=self.registry)
+
 
 class EnergyCumulativeCounter(Metric):
     """
@@ -279,12 +297,12 @@ class EnergyCumulativeCounter(Metric):
     def end_window(self, name: str) -> None:
         """
         End the energy monitoring window.
-        
+
         Args:
             name (str): The unique name of the measurement window. Must match between calls to 'begin_window' and 'end_window'.
         """
 
-        if not hasattr(self, 'queue') or self.queue is None:
+        if not hasattr(self, "queue") or self.queue is None:
             raise RuntimeError(
                 "EnergyCumulativeCounter's 'queue' is not initialized. "
                 "Make sure 'begin_window' is called before 'end_window'."
@@ -295,11 +313,12 @@ class EnergyCumulativeCounter(Metric):
             warnings.warn(f"Forcefully terminating monitoring process for {name}.")
             self.proc.terminate()
 
+
 def energy_monitoring_loop(
     name: str,
     pipe: mp.Queue,
-    cpu_indices : list,
-    gpu_indices : list,
+    cpu_indices: list,
+    gpu_indices: list,
     update_period: int,
     prometheus_url: str,
     job: str,
@@ -342,8 +361,8 @@ def energy_monitoring_loop(
             )
         dram_counters = {}
         for i, cpu in enumerate(get_cpus().cpus):
-                if cpu.supportsGetDramEnergyConsumption():
-                    dram_counters[i] = Counter(
+            if cpu.supportsGetDramEnergyConsumption():
+                dram_counters[i] = Counter(
                     f"energy_monitor_dram_{i}_energy_joules",
                     f"DRAM {i} energy consumption",
                     ["window", "index"],
@@ -354,33 +373,34 @@ def energy_monitoring_loop(
         if not pipe.empty():
             break
 
-        energy_monitor.begin_window(f"__EnergyCumulativeCounter_{name}", sync_execution = False)
+        energy_monitor.begin_window(
+            f"__EnergyCumulativeCounter_{name}", sync_execution=False
+        )
         time.sleep(update_period)
-        measurement = energy_monitor.end_window(f"__EnergyCumulativeCounter_{name}", sync_execution = False)
+        measurement = energy_monitor.end_window(
+            f"__EnergyCumulativeCounter_{name}", sync_execution=False
+        )
 
         if measurement.gpu_energy:
             for gpu_index, energy in measurement.gpu_energy.items():
                 if gpu_index in gpu_counters:
-                    gpu_counters[gpu_index].labels(
-                        window=name,
-                        index=gpu_index
-                    ).inc(energy)
+                    gpu_counters[gpu_index].labels(window=name, index=gpu_index).inc(
+                        energy
+                    )
 
         if measurement.cpu_energy:
             for cpu_index, energy in measurement.cpu_energy.items():
                 if cpu_index in cpu_counters:
-                    cpu_counters[cpu_index].labels(
-                        window=name,
-                        index=cpu_index
-                    ).inc(energy)
+                    cpu_counters[cpu_index].labels(window=name, index=cpu_index).inc(
+                        energy
+                    )
 
         if measurement.dram_energy:
             for dram_index, energy in measurement.dram_energy.items():
                 if dram_index in dram_counters:
-                    dram_counters[dram_index].labels(
-                        window=name,
-                        index=dram_index
-                    ).inc(energy)
+                    dram_counters[dram_index].labels(window=name, index=dram_index).inc(
+                        energy
+                    )
 
         push_to_gateway(prometheus_url, job=job, registry=registry)
 
@@ -467,6 +487,7 @@ class PowerGauge(Metric):
             warnings.warn(f"Forcefully terminating monitoring process for {name}.")
             self.proc.terminate()
 
+
 def power_monitoring_loop(
     name: str,
     pipe: mp.Queue,
@@ -497,7 +518,7 @@ def power_monitoring_loop(
         gpu_gauges[gpu_index] = Gauge(
             f"power_monitor_gpu_{gpu_index}_power_watts",
             f"Records power consumption for GPU {gpu_index} over time",
-            ["gpu_index"],  
+            ["gpu_index"],
             registry=registry,
         )
 
@@ -509,7 +530,9 @@ def power_monitoring_loop(
 
         try:
             for gpu_index, power_value in power_measurement.items():
-                gpu_gauges[gpu_index].labels(gpu_index=f"{name}_gpu{gpu_index}").set(power_value)
+                gpu_gauges[gpu_index].labels(gpu_index=f"{name}_gpu{gpu_index}").set(
+                    power_value
+                )
         except Exception as e:
             print(f"Error during processing power measurement: {e}")
 
@@ -519,4 +542,3 @@ def power_monitoring_loop(
             print(f"Error pushing metrics: {e}")
 
         time.sleep(update_period)
- 
