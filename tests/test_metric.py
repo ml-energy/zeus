@@ -248,7 +248,9 @@ def test_power_gauge(
                 power_gauge.gpu_gauges[gpu_index].labels.assert_called_once_with(
                     gpu_index=gpu_index, window="test_power_window"
                 )
-                power_gauge.gpu_gauges[gpu_index].set.assert_called_once_with(power_value)
+                power_gauge.gpu_gauges[gpu_index].set.assert_called_once_with(
+                    power_value
+                )
             except AssertionError as e:
                 print(f"AssertionError for GPU {gpu_index}:")
                 raise e

@@ -474,7 +474,10 @@ class PowerGauge(Metric):
         if self.proc is not None:
             self.proc.join(timeout=20)
             if self.proc.is_alive():
-                warnings.warn(f"Forcefully terminating monitoring process for {name}.", stacklevel=2)
+                warnings.warn(
+                    f"Forcefully terminating monitoring process for {name}.",
+                    stacklevel=2,
+                )
                 self.proc.terminate()
 
 
@@ -517,9 +520,9 @@ def power_monitoring_loop(
         try:
             if power_measurement:
                 for gpu_index, power_value in power_measurement.items():
-                    gpu_gauges[gpu_index].labels(gpu_index=f"{name}_gpu{gpu_index}").set(
-                        power_value
-                    )
+                    gpu_gauges[gpu_index].labels(
+                        gpu_index=f"{name}_gpu{gpu_index}"
+                    ).set(power_value)
         except Exception as e:
             print(f"Error during processing power measurement: {e}")
 
