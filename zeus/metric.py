@@ -333,9 +333,12 @@ def energy_monitoring_loop(
     """
     registry = CollectorRegistry()
     energy_monitor = ZeusMonitor(cpu_indices=cpu_indices, gpu_indices=gpu_indices)
+    
+    gpu_counters = {}
+    cpu_counters = {}
+    dram_counters = {}
 
     if energy_monitor.gpu_indices:
-        gpu_counters = {}
         for gpu_index in energy_monitor.gpu_indices:
             gpu_counters[gpu_index] = Counter(
                 f"energy_monitor_gpu_{gpu_index}_energy_joules",
@@ -345,7 +348,6 @@ def energy_monitoring_loop(
             )
 
     if energy_monitor.cpu_indices:
-        cpu_counters = {}
         for cpu_index in energy_monitor.cpu_indices:
             cpu_counters[cpu_index] = Counter(
                 f"energy_monitor_cpu_{cpu_index}_energy_joules",
@@ -353,7 +355,6 @@ def energy_monitoring_loop(
                 ["window", "index"],
                 registry=registry,
             )
-        dram_counters = {}
         for i, cpu in enumerate(get_cpus().cpus):
             if cpu.supportsGetDramEnergyConsumption():
                 dram_counters[i] = Counter(
@@ -377,21 +378,21 @@ def energy_monitoring_loop(
 
         if measurement.gpu_energy:
             for gpu_index, energy in measurement.gpu_energy.items():
-                if gpu_index in gpu_counters:
+                if gpu_counters and gpu_index in gpu_counters:
                     gpu_counters[gpu_index].labels(window=name, index=gpu_index).inc(
                         energy
                     )
 
         if measurement.cpu_energy:
             for cpu_index, energy in measurement.cpu_energy.items():
-                if cpu_index in cpu_counters:
+                if cpu_counters and cpu_index in cpu_counters:
                     cpu_counters[cpu_index].labels(window=name, index=cpu_index).inc(
                         energy
                     )
 
         if measurement.dram_energy:
             for dram_index, energy in measurement.dram_energy.items():
-                if dram_index in dram_counters:
+                if dram_counters and dram_index in dram_counters:
                     dram_counters[dram_index].labels(window=name, index=dram_index).inc(
                         energy
                     )
@@ -474,10 +475,6 @@ class PowerGauge(Metric):
         if self.proc is not None:
             self.proc.join(timeout=20)
             if self.proc.is_alive():
-                warnings.warn(
-                    f"Forcefully terminating monitoring process for {name}.",
-                    stacklevel=2,
-                )
                 self.proc.terminate()
 
 
