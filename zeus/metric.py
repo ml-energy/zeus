@@ -1,3 +1,5 @@
+"""Track and export energy and power metrics via Prometheus."""
+
 from __future__ import annotations
 
 import abc
@@ -20,8 +22,7 @@ from zeus.device.cpu import get_cpus
 
 
 class Metric(abc.ABC):
-    """
-    Abstract base class for all metric types in Zeus.
+    """Abstract base class for all metric types in Zeus.
 
     Defines a common interface for metrics, ensuring consistent behavior
     for `begin_window` and `end_window` operations.
@@ -59,12 +60,11 @@ class EnergyHistogram(Metric):
         gpu_indices: list,
         prometheus_url: str,
         job: str,
-        gpu_bucket_range: list[float] = [50.0, 100.0, 200.0, 500.0, 1000.0],
-        cpu_bucket_range: list[float] = [10.0, 20.0, 50.0, 100.0, 200.0],
-        dram_bucket_range: list[float] = [5.0, 10.0, 20.0, 50.0, 150.0],
+        gpu_bucket_range: list[float] = None,
+        cpu_bucket_range: list[float] = None,
+        dram_bucket_range: list[float] = None,
     ) -> None:
-        """
-        Initialize the EnergyHistogram class.
+        """Initialize the EnergyHistogram class.
 
         Sets up the Prometheus Histogram metrics to track energy consumption for GPUs, CPUs, and DRAMs.
         The data will be collected and pushed to the Prometheus Push Gateway at regular intervals.
@@ -80,6 +80,7 @@ class EnergyHistogram(Metric):
                 Defaults to [10.0, 20.0, 50.0, 100.0, 200.0].
             dram_bucket_range (list[float], optional): Bucket ranges for DRAM energy histograms.
                 Defaults to [5.0, 10.0, 20.0, 50.0, 150.0].
+
         Raises:
             ValueError: If any of the bucket ranges (GPU, CPU, DRAM) is an empty list.
         """
@@ -96,9 +97,9 @@ class EnergyHistogram(Metric):
                 "DRAM bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
             )
 
-        self.gpu_bucket_range = gpu_bucket_range
-        self.cpu_bucket_range = cpu_bucket_range
-        self.dram_bucket_range = dram_bucket_range
+        self.gpu_bucket_range = gpu_bucket_range or [50.0, 100.0, 200.0, 500.0, 1000.0]
+        self.cpu_bucket_range = cpu_bucket_range or [10.0, 20.0, 50.0, 100.0, 200.0]
+        self.dram_bucket_range = dram_bucket_range or [5.0, 10.0, 20.0, 50.0, 150.0]
         self.cpu_indices = cpu_indices
         self.gpu_indices = gpu_indices
         self.prometheus_url = prometheus_url
@@ -150,8 +151,7 @@ class EnergyHistogram(Metric):
         )
 
     def begin_window(self, name: str) -> None:
-        """
-        Begin the energy monitoring window.
+        """Begin the energy monitoring window.
 
         Args:
             name (str): The unique name of the measurement window. Must match between calls to 'begin_window' and 'end_window'.
@@ -161,8 +161,7 @@ class EnergyHistogram(Metric):
         )
 
     def end_window(self, name: str) -> None:
-        """
-        End the current energy monitoring window and record the energy data.
+        """End the current energy monitoring window and record the energy data.
 
         Retrieves the energy consumption data (for GPUs, CPUs, and DRAMs) for the monitoring window
         and updates the corresponding Histogram metrics. The data is then pushed to the Prometheus Push Gateway.
@@ -187,7 +186,8 @@ class EnergyHistogram(Metric):
                     ).observe(gpu_energy)
                 if gpu_energy > self.max_gpu_bucket:
                     warnings.warn(
-                        f"GPU {gpu_index} energy {gpu_energy} exceeds the maximum bucket value of {self.max_gpu_bucket}"
+                        f"GPU {gpu_index} energy {gpu_energy} exceeds the maximum bucket value of {self.max_gpu_bucket}",
+                        stacklevel=1,
                     )
 
         if measurement.cpu_energy:
@@ -198,7 +198,8 @@ class EnergyHistogram(Metric):
                     ).observe(cpu_energy)
                 if cpu_energy > self.max_cpu_bucket:
                     warnings.warn(
-                        f"CPU {cpu_index} energy {cpu_energy} exceeds the maximum bucket value of {self.max_cpu_bucket}"
+                        f"CPU {cpu_index} energy {cpu_energy} exceeds the maximum bucket value of {self.max_cpu_bucket}",
+                        stacklevel=1,
                     )
 
         if measurement.dram_energy:
@@ -209,15 +210,15 @@ class EnergyHistogram(Metric):
                     ).observe(dram_energy)
                 if dram_energy > self.max_dram_bucket:
                     warnings.warn(
-                        f"DRAM {dram_index} energy {dram_energy} exceeds the maximum bucket value of {self.max_dram_bucket}"
+                        f"DRAM {dram_index} energy {dram_energy} exceeds the maximum bucket value of {self.max_dram_bucket}",
+                        stacklevel=1,
                     )
 
         push_to_gateway(self.prometheus_url, job=self.job, registry=self.registry)
 
 
 class EnergyCumulativeCounter(Metric):
-    """
-    EnergyCumulativeCounter class to monitor and record cumulative energy consumption.
+    """EnergyCumulativeCounter class to monitor and record cumulative energy consumption.
 
     This class tracks GPU, CPU, and DRAM energy usage over time, and records the data as Prometheus Counter metrics.
     The energy consumption metrics are periodically updated and pushed to a Prometheus Push Gateway for monitoring and analysis.
@@ -245,8 +246,7 @@ class EnergyCumulativeCounter(Metric):
         prometheus_url: str,
         job: str,
     ) -> None:
-        """
-        Initialize the EnergyCumulativeCounter.
+        """Initialize the EnergyCumulativeCounter.
 
         Args:
             cpu_indices (list): List of CPU indices to monitor.
@@ -267,8 +267,7 @@ class EnergyCumulativeCounter(Metric):
         self.proc = None
 
     def begin_window(self, name: str) -> None:
-        """
-        Begin the energy monitoring window.
+        """Begin the energy monitoring window.
 
         Starts a new multiprocessing process that monitors energy usage periodically
         and pushes the results to the Prometheus Push Gateway.
@@ -295,13 +294,11 @@ class EnergyCumulativeCounter(Metric):
             raise RuntimeError(f"Failed to start monitoring process for {name}.")
 
     def end_window(self, name: str) -> None:
-        """
-        End the energy monitoring window.
+        """End the energy monitoring window.
 
         Args:
             name (str): The unique name of the measurement window. Must match between calls to 'begin_window' and 'end_window'.
         """
-
         if not hasattr(self, "queue") or self.queue is None:
             raise RuntimeError(
                 "EnergyCumulativeCounter's 'queue' is not initialized. "
@@ -310,7 +307,6 @@ class EnergyCumulativeCounter(Metric):
         self.queue.put("stop")
         self.proc.join(timeout=20)
         if self.proc.is_alive():
-            warnings.warn(f"Forcefully terminating monitoring process for {name}.")
             self.proc.terminate()
 
 
@@ -323,10 +319,7 @@ def energy_monitoring_loop(
     prometheus_url: str,
     job: str,
 ) -> None:
-    """
-    This function runs in a separate process to collect and update energy consumption metrics
-    (for GPUs, CPUs, and DRAM) at regular intervals. It utilizes the Zeus energy monitoring
-    framework and pushes the collected data to the Prometheus Push Gateway for real-time tracking.
+    """Runs in a separate process to collect and update energy consumption metrics (for GPUs, CPUs, and DRAM).
 
     Args:
         name (str): The user-defined name of the monitoring window (used as a label for Prometheus metrics).
@@ -406,8 +399,7 @@ def energy_monitoring_loop(
 
 
 class PowerGauge(Metric):
-    """
-    PowerGauge class to monitor and record power consumption.
+    """PowerGauge class to monitor and record power consumption.
 
     This class tracks GPU power usage in real time and records it as **Prometheus Gauge** metrics.
     The Gauge metric type is suitable for tracking values that can go up and down over time, like power consumption.
@@ -431,8 +423,7 @@ class PowerGauge(Metric):
         prometheus_url: str,
         job: str,
     ) -> None:
-        """
-        Initialize the PowerGauge metric.
+        """Initialize the PowerGauge metric.
 
         Args:
             gpu_indices (list[int]): List of GPU indices to monitor for power consumption.
@@ -447,8 +438,7 @@ class PowerGauge(Metric):
         self.gpu_gauges = {}
 
     def begin_window(self, name: str) -> None:
-        """
-        Begin the power monitoring window.
+        """Begin the power monitoring window.
 
         Starts a new multiprocessing process that runs the power monitoring loop.
         The process collects real-time power consumption data and updates the corresponding
@@ -474,17 +464,14 @@ class PowerGauge(Metric):
         time.sleep(5)
 
     def end_window(self, name: str) -> None:
-        """
-        End the power monitoring window.
+        """End the power monitoring window.
 
         Args:
             name (str): The unique name of the measurement window. Must match between calls to 'begin_window' and 'end_window'.
         """
-
         self.queue.put("stop")
         self.proc.join(timeout=20)
         if self.proc.is_alive():
-            warnings.warn(f"Forcefully terminating monitoring process for {name}.")
             self.proc.terminate()
 
 
@@ -496,11 +483,7 @@ def power_monitoring_loop(
     prometheus_url: str,
     job: str,
 ) -> None:
-    """
-    The polling function for power monitoring that runs in a separate process.
-
-    It periodically collects power consumption data for each GPU and pushes the results
-    to the Prometheus Push Gateway.
+    """Runs in a separate process and periodically collects power consumption data for each GPU and pushes the results to the Prometheus Push Gateway.
 
     Args:
         name (str): Unique name for the monitoring window (used as a label in Prometheus metrics).

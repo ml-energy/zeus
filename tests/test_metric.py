@@ -1,3 +1,5 @@
+"""Test metric.py."""
+
 from __future__ import annotations
 
 from unittest.mock import patch, MagicMock
@@ -10,7 +12,6 @@ from zeus.metric import EnergyHistogram, EnergyCumulativeCounter, PowerGauge
 @pytest.fixture
 def mock_get_cpus():
     """Fixture to mock `get_cpus()` to avoid RAPL-related errors."""
-
     with patch("zeus.metric.get_cpus", autospec=True) as mock_get_cpus:
         mock_cpu = MagicMock()
         mock_cpu.cpus = []
@@ -21,9 +22,8 @@ def mock_get_cpus():
 @pytest.fixture
 def mock_zeus_monitor():
     """Fixture to mock ZeusMonitor behavior."""
-
-    with patch("zeus.metric.ZeusMonitor", autospec=True) as MockZeusMonitor:
-        mock_instance = MockZeusMonitor.return_value
+    with patch("zeus.metric.ZeusMonitor", autospec=True) as zeus_monitor:
+        mock_instance = zeus_monitor.return_value
         mock_instance.end_window.return_value = MagicMock(
             gpu_energy={0: 30.0, 1: 35.0, 2: 40.0},
             cpu_energy={0: 20.0, 1: 25.0},
@@ -35,15 +35,35 @@ def mock_zeus_monitor():
 
 
 @pytest.fixture
+def mock_power_monitor():
+    """Fixture to mock PowerMonitor."""
+    with patch("zeus.metric.PowerMonitor", autospec=True) as power_monitor:
+        mock_instance = power_monitor.return_value
+        mock_instance.get_power.return_value = {
+            0: 300.0,
+            1: 310.0,
+            2: 320.0,
+        }
+        yield mock_instance
+
+
+@pytest.fixture
 def mock_histogram():
     """Fixture to mock Prometheus Histogram creation.
 
     Mocks the Histogram functionality to avoid real Prometheus interactions
     and to validate histogram-related method calls.
     """
+    with patch("zeus.metric.Histogram", autospec=True) as histogram:
+        yield histogram
 
-    with patch("zeus.metric.Histogram", autospec=True) as MockHistogram:
-        yield MockHistogram
+
+@pytest.fixture
+def mock_gauge():
+    """Fixture to mock Prometheus Gauge creation."""
+    with patch("zeus.metric.Gauge", autospec=True) as gauge:
+        gauge.side_effect = lambda *args, **kwargs: MagicMock()
+        yield gauge
 
 
 def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
@@ -57,7 +77,6 @@ def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
         mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.
         mock_histogram (MagicMock): Mocked Prometheus Histogram fixture.
     """
-
     cpu_indices = [0, 1]
     gpu_indices = [0, 1, 2]
     prometheus_url = "http://localhost:9091"
@@ -69,15 +88,15 @@ def test_energy_histogram(mock_get_cpus, mock_zeus_monitor, mock_histogram):
         job="test_energy_histogram",
     )
 
-    for gpu_index, gpu_histogram in histogram_metric.gpu_histograms.items():
+    for _gpu_index, gpu_histogram in histogram_metric.gpu_histograms.items():
         gpu_histogram.labels = MagicMock(return_value=gpu_histogram)
         gpu_histogram.observe = MagicMock()
 
-    for cpu_index, cpu_histogram in histogram_metric.cpu_histograms.items():
+    for _cpu_index, cpu_histogram in histogram_metric.cpu_histograms.items():
         cpu_histogram.labels = MagicMock(return_value=cpu_histogram)
         cpu_histogram.observe = MagicMock()
 
-    for dram_index, dram_histogram in histogram_metric.dram_histograms.items():
+    for _dram_index, dram_histogram in histogram_metric.dram_histograms.items():
         dram_histogram.labels = MagicMock(return_value=dram_histogram)
         dram_histogram.observe = MagicMock()
 
@@ -134,7 +153,6 @@ def test_energy_cumulative_counter(mock_get_cpus, mock_zeus_monitor):
         mock_get_cpus (MagicMock): Mocked `get_cpus` fixture.
         mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.
     """
-
     cpu_indices = [0, 1]
     gpu_indices = [0, 1, 2]
     prometheus_url = "http://localhost:9091"
@@ -179,36 +197,11 @@ def test_energy_cumulative_counter(mock_get_cpus, mock_zeus_monitor):
         cumulative_counter.cpu_counters[cpu_index].inc.assert_called_with(energy)
 
 
-@pytest.fixture
-def mock_power_monitor():
-    """Fixture to mock PowerMonitor."""
-
-    with patch("zeus.metric.PowerMonitor", autospec=True) as MockPowerMonitor:
-        mock_instance = MockPowerMonitor.return_value
-        mock_instance.get_power.return_value = {
-            0: 300.0,
-            1: 310.0,
-            2: 320.0,
-        }
-        yield mock_instance
-
-
-@pytest.fixture
-def mock_gauge():
-    """Fixture to mock Prometheus Gauge creation."""
-
-    with patch("zeus.metric.Gauge", autospec=True) as MockGauge:
-        MockGauge.side_effect = lambda *args, **kwargs: MagicMock()
-        yield MockGauge
-
-
-@patch("prometheus_client.push_to_gateway")
 @patch("zeus.device.gpu.get_gpus")
 def test_power_gauge(
     mock_get_gpus: MagicMock,
     mock_power_monitor: MagicMock,
     mock_gauge: MagicMock,
-    mock_push_to_gateway,
 ) -> None:
     """Test PowerGauge with mocked PowerMonitor and Prometheus Gauges.
 
@@ -217,10 +210,8 @@ def test_power_gauge(
         mock_power_monitor (MagicMock): Mocked PowerMonitor to simulate GPU power data.
         mock_gauge (MagicMock): Mocked Prometheus Gauge creation.
     """
-
     gpu_indices = [0, 1, 2]
     prometheus_url = "http://localhost:9091"
-    mock_push_to_gateway.return_value = None
 
     # Mock `get_gpus` to simulate available GPUs
     mock_get_gpus.return_value = MagicMock()
@@ -234,7 +225,7 @@ def test_power_gauge(
         prometheus_url=prometheus_url,
         job="test_power_gauge",
     )
-    for gpu_index, gauge in power_gauge.gpu_gauges.items():
+    for _gpu_index, gauge in power_gauge.gpu_gauges.items():
         gauge.labels = MagicMock(return_value=gauge)
         gauge.set = MagicMock()
 
