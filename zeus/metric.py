@@ -7,6 +7,8 @@ import time
 import warnings
 import multiprocessing as mp
 
+from typing import Sequence
+
 from prometheus_client import (
     CollectorRegistry,
     Histogram,
@@ -60,9 +62,9 @@ class EnergyHistogram(Metric):
         gpu_indices: list,
         prometheus_url: str,
         job: str,
-        gpu_bucket_range: list[float] | None = None,
-        cpu_bucket_range: list[float] | None = None,
-        dram_bucket_range: list[float] | None = None,
+        gpu_bucket_range: Sequence[float] = [50.0, 100.0, 200.0, 500.0, 1000.0],
+        cpu_bucket_range: Sequence[float] = [10.0, 20.0, 50.0, 100.0, 200.0],
+        dram_bucket_range: Sequence[float] = [5.0, 10.0, 20.0, 50.0, 150.0],
     ) -> None:
         """Initialize the EnergyHistogram class.
 
@@ -84,37 +86,24 @@ class EnergyHistogram(Metric):
         Raises:
             ValueError: If any of the bucket ranges (GPU, CPU, DRAM) is an empty list.
         """
-        self.gpu_bucket_range = (
-            [50.0, 100.0, 200.0, 500.0, 1000.0]
-            if gpu_bucket_range is None
-            else gpu_bucket_range
-        )
-        self.cpu_bucket_range = (
-            [10.0, 20.0, 50.0, 100.0, 200.0]
-            if cpu_bucket_range is None
-            else cpu_bucket_range
-        )
-        self.dram_bucket_range = (
-            [5.0, 10.0, 20.0, 50.0, 150.0]
-            if dram_bucket_range is None
-            else dram_bucket_range
-        )
+        self.gpu_bucket_range = gpu_bucket_range
+        self.cpu_bucket_range = cpu_bucket_range
+        self.dram_bucket_range = dram_bucket_range
         self.cpu_indices = cpu_indices
         self.gpu_indices = gpu_indices
         self.prometheus_url = prometheus_url
         self.job = job
-
         self.registry = CollectorRegistry()
 
-        if gpu_bucket_range == []:
+        if not gpu_bucket_range:
             raise ValueError(
                 "GPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
             )
-        if cpu_bucket_range == []:
+        if not cpu_bucket_range:
             raise ValueError(
                 "CPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
             )
-        if dram_bucket_range == []:
+        if not dram_bucket_range:
             raise ValueError(
                 "DRAM bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
             )
