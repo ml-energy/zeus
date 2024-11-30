@@ -99,7 +99,7 @@ def test_energy_histogram(
             cpu_histogram.labels = MagicMock(return_value=cpu_histogram)
             cpu_histogram.observe = MagicMock()
 
-    if histogram_metric.dram_histogram:
+    if histogram_metric.dram_histograms:
         for _dram_index, dram_histogram in histogram_metric.dram_histograms.items():
             dram_histogram.labels = MagicMock(return_value=dram_histogram)
             dram_histogram.observe = MagicMock()

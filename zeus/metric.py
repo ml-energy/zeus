@@ -60,9 +60,9 @@ class EnergyHistogram(Metric):
         gpu_indices: list,
         prometheus_url: str,
         job: str,
-        gpu_bucket_range: list[float] | None,
-        cpu_bucket_range: list[float] | None,
-        dram_bucket_range: list[float] | None,
+        gpu_bucket_range: list[float] | None = None,
+        cpu_bucket_range: list[float] | None = None,
+        dram_bucket_range: list[float] | None = None,
     ) -> None:
         """Initialize the EnergyHistogram class.
 
@@ -84,28 +84,40 @@ class EnergyHistogram(Metric):
         Raises:
             ValueError: If any of the bucket ranges (GPU, CPU, DRAM) is an empty list.
         """
-        if not gpu_bucket_range:
-            raise ValueError(
-                "GPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
-            )
-        if not cpu_bucket_range:
-            raise ValueError(
-                "CPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
-            )
-        if not dram_bucket_range:
-            raise ValueError(
-                "DRAM bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
-            )
-
-        self.gpu_bucket_range = gpu_bucket_range or [50.0, 100.0, 200.0, 500.0, 1000.0]
-        self.cpu_bucket_range = cpu_bucket_range or [10.0, 20.0, 50.0, 100.0, 200.0]
-        self.dram_bucket_range = dram_bucket_range or [5.0, 10.0, 20.0, 50.0, 150.0]
+        self.gpu_bucket_range = (
+            [50.0, 100.0, 200.0, 500.0, 1000.0]
+            if gpu_bucket_range is None
+            else gpu_bucket_range
+        )
+        self.cpu_bucket_range = (
+            [10.0, 20.0, 50.0, 100.0, 200.0]
+            if cpu_bucket_range is None
+            else cpu_bucket_range
+        )
+        self.dram_bucket_range = (
+            [5.0, 10.0, 20.0, 50.0, 150.0]
+            if dram_bucket_range is None
+            else dram_bucket_range
+        )
         self.cpu_indices = cpu_indices
         self.gpu_indices = gpu_indices
         self.prometheus_url = prometheus_url
         self.job = job
 
         self.registry = CollectorRegistry()
+
+        if gpu_bucket_range == []:
+            raise ValueError(
+                "GPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
+            )
+        if cpu_bucket_range == []:
+            raise ValueError(
+                "CPU bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
+            )
+        if dram_bucket_range == []:
+            raise ValueError(
+                "DRAM bucket range cannot be empty. Please provide a valid range or omit the argument to use defaults."
+            )
 
         # Initialize GPU histograms
         self.gpu_histograms = {}
