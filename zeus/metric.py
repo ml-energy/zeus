@@ -333,7 +333,7 @@ def energy_monitoring_loop(
     """
     registry = CollectorRegistry()
     energy_monitor = ZeusMonitor(cpu_indices=cpu_indices, gpu_indices=gpu_indices)
-    
+
     gpu_counters = {}
     cpu_counters = {}
     dram_counters = {}
