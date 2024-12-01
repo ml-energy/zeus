@@ -112,7 +112,7 @@ def test_energy_histogram(
 
     histogram_metric.begin_window("test_window")
 
-    with patch("urllib.request.urlopen", autospec=True) as mock_urlopen:
+    with patch("prometheus_client.exposition.urlopen", autospec=True) as mock_urlopen:
         mock_urlopen.side_effect = RuntimeError("No external calls allowed")
         histogram_metric.end_window("test_window")
 
@@ -193,7 +193,7 @@ def test_energy_cumulative_counter(
             counter.labels = MagicMock(return_value=counter)
             counter.inc = MagicMock()
 
-    with patch("urllib.request.urlopen", autospec=True) as mock_urlopen:
+    with patch("prometheus_client.exposition.urlopen", autospec=True) as mock_urlopen:
         mock_urlopen.side_effect = RuntimeError("No external calls allowed")
         cumulative_counter.begin_window("test_counter")
         cumulative_counter.end_window("test_counter")
@@ -258,7 +258,7 @@ def test_power_gauge(
             gauge.labels = MagicMock(return_value=gauge)
             gauge.set = MagicMock()
 
-    with patch("urllib.request.urlopen", autospec=True) as mock_urlopen:
+    with patch("prometheus_client.exposition.urlopen", autospec=True) as mock_urlopen:
         mock_urlopen.side_effect = RuntimeError("No external calls allowed")
         power_gauge.begin_window("test_power_window")
         power_gauge.end_window("test_power_window")
