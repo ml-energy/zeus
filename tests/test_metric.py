@@ -66,7 +66,7 @@ def mock_gauge():
         yield gauge
 
 
-@patch("prometheus_client.exposition.push_to_gateway")
+@patch("prometheus_client.exposition.push_to_gateway", autospec=True)
 def test_energy_histogram(
     mock_push_to_gateway: MagicMock,
     mock_get_cpus: MagicMock,
@@ -79,7 +79,7 @@ def test_energy_histogram(
     and that the correct energy values are recorded.
 
     Args:
-        mock_push_to_gateway (MagicMock): Mocked `push_to_gateway` function for Prometheus.
+        mock_push_to_gateway (MagicMock): Mocked `push_to_gateway`
         mock_get_cpus (MagicMock): Mocked `get_cpus` fixture.
         mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.
         mock_histogram (MagicMock): Mocked Prometheus Histogram fixture.
@@ -111,11 +111,13 @@ def test_energy_histogram(
             dram_histogram.observe = MagicMock()
 
     histogram_metric.begin_window("test_window")
-
-    with patch("prometheus_client.exposition.push_to_gateway") as mock_push:
-        mock_push.return_value = None
+    with patch("http.client.HTTPConnection", autospec=True) as mock_http:
+        mock_http_instance = mock_http.return_value
+        mock_http_instance.getresponse.return_value.code = 200
+        mock_http_instance.getresponse.return_value.msg = "OK"
+        mock_http_instance.getresponse.return_value.info = lambda: {}
+        mock_http_instance.sock = MagicMock()
         histogram_metric.end_window("test_window")
-
     # Assert GPU histograms were observed
     if mock_zeus_monitor.return_value.end_window.return_value.gpu_energy:
         for (
