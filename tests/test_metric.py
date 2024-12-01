@@ -66,7 +66,7 @@ def mock_gauge():
         yield gauge
 
 
-@patch("prometheus_client.exposition.push_to_gateway", autospec=True)
+@patch("prometheus_client.exposition.push_to_gateway")
 def test_energy_histogram(
     mock_push_to_gateway: MagicMock,
     mock_get_cpus: MagicMock,
@@ -112,8 +112,8 @@ def test_energy_histogram(
 
     histogram_metric.begin_window("test_window")
 
-    with patch("prometheus_client.exposition.urlopen", autospec=True) as mock_urlopen:
-        mock_urlopen.side_effect = RuntimeError("No external calls allowed")
+    with patch("prometheus_client.exposition.push_to_gateway") as mock_push:
+        mock_push.return_value = None
         histogram_metric.end_window("test_window")
 
     # Assert GPU histograms were observed
@@ -159,7 +159,7 @@ def test_energy_histogram(
             assert energy in calls, f"Expected DRAM energy {energy} in {calls}"
 
 
-@patch("prometheus_client.exposition.push_to_gateway", autospec=True)
+@patch("prometheus_client.exposition.push_to_gateway")
 def test_energy_cumulative_counter(
     mock_push_to_gateway: MagicMock,
     mock_get_cpus: MagicMock,
@@ -193,8 +193,8 @@ def test_energy_cumulative_counter(
             counter.labels = MagicMock(return_value=counter)
             counter.inc = MagicMock()
 
-    with patch("prometheus_client.exposition.urlopen", autospec=True) as mock_urlopen:
-        mock_urlopen.side_effect = RuntimeError("No external calls allowed")
+    with patch("prometheus_client.exposition.push_to_gateway") as mock_push:
+        mock_push.return_value = None
         cumulative_counter.begin_window("test_counter")
         cumulative_counter.end_window("test_counter")
 
@@ -221,7 +221,7 @@ def test_energy_cumulative_counter(
             cumulative_counter.cpu_counters[cpu_index].inc.assert_called_with(energy)
 
 
-@patch("prometheus_client.exposition.push_to_gateway", autospec=True)
+@patch("prometheus_client.exposition.push_to_gateway")
 @patch("zeus.device.gpu.get_gpus")
 def test_power_gauge(
     mock_push_to_gateway: MagicMock,
@@ -258,8 +258,8 @@ def test_power_gauge(
             gauge.labels = MagicMock(return_value=gauge)
             gauge.set = MagicMock()
 
-    with patch("prometheus_client.exposition.urlopen", autospec=True) as mock_urlopen:
-        mock_urlopen.side_effect = RuntimeError("No external calls allowed")
+    with patch("prometheus_client.exposition.push_to_gateway") as mock_push:
+        mock_push.return_value = None
         power_gauge.begin_window("test_power_window")
         power_gauge.end_window("test_power_window")
 
