@@ -8,6 +8,7 @@ import warnings
 from typing import Sequence
 import multiprocessing as mp
 from dataclasses import dataclass
+from multiprocessing.context import SpawnProcess
 
 from prometheus_client import (
     CollectorRegistry,
@@ -28,7 +29,7 @@ class MonitoringProcessState:
     """Represents the state of a monitoring window."""
 
     queue: mp.Queue
-    proc: mp.Process
+    proc: SpawnProcess
 
 
 class Metric(abc.ABC):
@@ -39,7 +40,7 @@ class Metric(abc.ABC):
     """
 
     @abc.abstractmethod
-    def begin_window(self, name: str, sync_execution: bool = None) -> None:
+    def begin_window(self, name: str, sync_execution: bool = False) -> None:
         """Start a new measurement window.
 
         Args:
@@ -49,7 +50,7 @@ class Metric(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def end_window(self, name: str, sync_execution: bool = None) -> None:
+    def end_window(self, name: str, sync_execution: bool = False) -> None:
         """End the current measurement window and report metrics.
 
         Args:
@@ -292,9 +293,9 @@ class EnergyCumulativeCounter(Metric):
         self.update_period = update_period
         self.prometheus_url = prometheus_url
         self.job = job
-        self.gpu_counters = {}
-        self.cpu_counters = {}
-        self.dram_counters = {}
+        self.gpu_counters: dict[int, Counter] = {}
+        self.cpu_counters: dict[int, Counter] = {}
+        self.dram_counters: dict[int, Counter] = {}
         self.queue = None
         self.proc = None
         self.window_state: dict[str, MonitoringProcessState] = {}
@@ -343,7 +344,11 @@ class EnergyCumulativeCounter(Metric):
             raise ValueError(f"No active monitoring process found for '{name}'.")
 
         state = self.window_state.pop(name)
+
+        if self.queue is None:
+            raise RuntimeError("Queue is not initialized.")
         self.queue.put("stop")
+
         state.proc.join(timeout=20)
 
         if state.proc.is_alive():
@@ -516,8 +521,13 @@ class PowerGauge(Metric):
             sync_execution (bool, optional): Whether to execute monitoring synchronously. Defaults to False.
         """
         state = self.window_state.pop(name)
+
+        if self.queue is None:
+            raise RuntimeError("Queue is not initialized.")
         state.queue.put("stop")
+
         state.proc.join(timeout=20)
+
         if state.proc.is_alive():
             state.proc.terminate()
 
