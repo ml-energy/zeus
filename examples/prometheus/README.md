@@ -19,13 +19,13 @@ You just need to download and extract the ImageNet data and mount it to the Dock
     ```
 1. Install `prometheus_client`:
     ```sh
-    pip install prometheus-client
+    pip install zeus-ml[prometheus]
     ```
 
 ## EnergyHistogram, PowerGauge, and EnergyCumulativeCounter
-- [`EnergyHistogram`][zeus.metric.EnergyHistogram]: Records energy consumption data for GPUs, CPUs, and DRAM and pushes the data to Prometheus as histogram metrics. This is useful for tracking energy usage distribution over time.
-- [`PowerGauge`][zeus.metric.PowerGauge]: Monitors real-time GPU power usage and pushes the data to Prometheus as gauge metrics, which are updated at regular intervals.
-- [`EnergyCumulativeCounter`][zeus.metric.EnergyCumulativeCounter]: Tracks cumulative energy consumption over time for CPUs and GPUs and pushes the results to Prometheus as counter metrics.
+- [`EnergyHistogram`](https://ml.energy/zeus/reference/metric/#zeus.metric.EnergyHistogram): Records energy consumption data for GPUs, CPUs, and DRAM and pushes the data to Prometheus as histogram metrics. This is useful for tracking energy usage distribution over time.
+- [`PowerGauge`](https://ml.energy/zeus/reference/metric/#zeus.metric.PowerGauge): Monitors real-time GPU power usage and pushes the data to Prometheus as gauge metrics, which are updated at regular intervals.
+- [`EnergyCumulativeCounter`](https://ml.energy/zeus/reference/metric/#zeus.metric.EnergyCumulativeCounter): Tracks cumulative energy consumption over time for CPUs and GPUs and pushes the results to Prometheus as counter metrics.
 
 ## `ZeusMonitor` and `GlobalPowerLimitOptimizer`
 
