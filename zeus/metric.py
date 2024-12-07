@@ -8,7 +8,6 @@ import warnings
 from typing import Sequence
 import multiprocessing as mp
 from dataclasses import dataclass
-from multiprocessing.context import SpawnProcess
 
 from prometheus_client import (
     CollectorRegistry,
@@ -29,7 +28,7 @@ class MonitoringProcessState:
     """Represents the state of a monitoring window."""
 
     queue: mp.Queue
-    proc: SpawnProcess
+    proc: mp.Process
 
 
 class Metric(abc.ABC):
@@ -40,7 +39,7 @@ class Metric(abc.ABC):
     """
 
     @abc.abstractmethod
-    def begin_window(self, name: str, sync_execution: bool = False) -> None:
+    def begin_window(self, name: str, sync_execution: bool = None) -> None:
         """Start a new measurement window.
 
         Args:
@@ -50,7 +49,7 @@ class Metric(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def end_window(self, name: str, sync_execution: bool = False) -> None:
+    def end_window(self, name: str, sync_execution: bool = None) -> None:
         """End the current measurement window and report metrics.
 
         Args:
@@ -73,6 +72,9 @@ class EnergyHistogram(Metric):
         gpu_bucket_range: Histogram buckets for GPU energy.
         cpu_bucket_range: Histogram buckets for CPU energy.
         dram_bucket_range: Histogram buckets for DRAM energy.
+        gpu_histograms: A single Prometheus Histogram metric for all GPU energy consumption, indexed by window and GPU index.
+        cpu_histograms: A single Prometheus Histogram metric for all CPU energy consumption, indexed by window and CPU index.
+        dram_histograms: A single Prometheus Histogram metric for all DRAM energy consumption, indexed by window and DRAM index.
     """
 
     def __init__(
@@ -82,7 +84,7 @@ class EnergyHistogram(Metric):
         prometheus_url: str,
         job: str,
         gpu_bucket_range: Sequence[float] = [50.0, 100.0, 200.0, 500.0, 1000.0],
-        cpu_bucket_range: Sequence[float] = [10.0, 20.0, 50.0, 100.0, 200.0],
+        cpu_bucket_range: Sequence[float] = [50.0, 100.0, 200.0, 500.0, 1000.0],
         dram_bucket_range: Sequence[float] = [5.0, 10.0, 20.0, 50.0, 150.0],
     ) -> None:
         """Initialize the EnergyHistogram class.
@@ -128,7 +130,6 @@ class EnergyHistogram(Metric):
             )
 
         # Initialize GPU histograms
-        self.gpu_histograms = {}
         if self.gpu_indices:
             self.gpu_histograms = Histogram(
                 "energy_monitor_gpu_energy_joules",
@@ -138,8 +139,6 @@ class EnergyHistogram(Metric):
                 registry=self.registry,
             )
         # Initialize CPU histograms
-        self.cpu_histograms = {}
-        self.dram_histograms = {}
         if self.cpu_indices:
             self.cpu_histograms = Histogram(
                 "energy_monitor_cpu_energy_joules",
@@ -263,9 +262,9 @@ class EnergyCumulativeCounter(Metric):
         update_period: The interval (in seconds) between consecutive energy data updates.
         prometheus_url: The URL of the Prometheus Push Gateway where the Counter metrics will be pushed.
         job: The name of the job associated with the energy monitoring in Prometheus.
-        gpu_counters: A dictionary storing the Prometheus Counter metrics for each GPU.
-        cpu_counters: A dictionary storing the Prometheus Counter metrics for each CPU.
-        dram_counters: A dictionary storing the Prometheus Counter metrics for DRAM.
+        gpu_counters: A single Prometheus Counter metric for all GPU energy consumption, indexed by window and GPU index.
+        cpu_counters: A single Prometheus Counter metric for all CPU energy consumption, indexed by window and CPU index.
+        dram_counters: A single Prometheus Counter metric for all DRAM energy consumption, indexed by window and DRAM index.
         queue: A multiprocessing queue used to send signals to start/stop energy monitoring.
         proc: A multiprocessing process that runs the energy monitoring loop.
         window_state: A dictionary that maps the monitoring window names to their corresponding process state.
@@ -293,9 +292,6 @@ class EnergyCumulativeCounter(Metric):
         self.update_period = update_period
         self.prometheus_url = prometheus_url
         self.job = job
-        self.gpu_counters: dict[int, Counter] = {}
-        self.cpu_counters: dict[int, Counter] = {}
-        self.dram_counters: dict[int, Counter] = {}
         self.queue = None
         self.proc = None
         self.window_state: dict[str, MonitoringProcessState] = {}
@@ -344,11 +340,7 @@ class EnergyCumulativeCounter(Metric):
             raise ValueError(f"No active monitoring process found for '{name}'.")
 
         state = self.window_state.pop(name)
-
-        if self.queue is None:
-            raise RuntimeError("Queue is not initialized.")
         self.queue.put("stop")
-
         state.proc.join(timeout=20)
 
         if state.proc.is_alive():
@@ -379,10 +371,6 @@ def energy_monitoring_loop(
     """
     registry = CollectorRegistry()
     energy_monitor = ZeusMonitor(cpu_indices=cpu_indices, gpu_indices=gpu_indices)
-
-    gpu_counters = {}
-    cpu_counters = {}
-    dram_counters = {}
 
     if energy_monitor.gpu_indices:
         gpu_counters = Counter(
@@ -448,7 +436,7 @@ class PowerGauge(Metric):
         update_period: Time interval (in seconds) between consecutive power measurements.
         prometheus_url: URL of the Prometheus Push Gateway where Gauge metrics are pushed.
         job: Name of the Prometheus job associated with the power metrics.
-        gpu_gauges (dict[int, Gauge]): Dictionary mapping GPU indices to Prometheus Gauge metrics for real-time power consumption tracking.
+        gpu_gauges: A single Prometheus Gauge metrics for real-time power consumption tracking.
         queue: Queue for controlling the monitoring process.
         proc: Process running the power monitoring loop.
         window_state: A dictionary mapping monitoring window names to their process state.
@@ -473,7 +461,6 @@ class PowerGauge(Metric):
         self.update_period = update_period
         self.prometheus_url = prometheus_url
         self.job = job
-        self.gpu_gauges = {}
         self.window_state: dict[str, MonitoringProcessState] = {}
 
     def begin_window(self, name: str, sync_execution: bool = False) -> None:
@@ -521,13 +508,8 @@ class PowerGauge(Metric):
             sync_execution (bool, optional): Whether to execute monitoring synchronously. Defaults to False.
         """
         state = self.window_state.pop(name)
-
-        if self.queue is None:
-            raise RuntimeError("Queue is not initialized.")
         state.queue.put("stop")
-
         state.proc.join(timeout=20)
-
         if state.proc.is_alive():
             state.proc.terminate()
 
@@ -550,7 +532,6 @@ def power_monitoring_loop(
         prometheus_url (str): URL of the Prometheus Push Gateway where metrics are pushed.
         job (str): Name of the Prometheus job to associate with the metrics.
     """
-    gpu_gauges = {}
     power_monitor = PowerMonitor(gpu_indices=gpu_indices)
     registry = CollectorRegistry()
 

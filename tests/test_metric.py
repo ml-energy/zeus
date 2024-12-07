@@ -13,9 +13,12 @@ from zeus.metric import EnergyHistogram, EnergyCumulativeCounter, PowerGauge
 def mock_get_cpus():
     """Fixture to mock `get_cpus()` to avoid RAPL-related errors."""
     with patch("zeus.metric.get_cpus", autospec=True) as mock_get_cpus:
-        mock_cpu = MagicMock()
-        mock_cpu.cpus = []
-        mock_get_cpus.return_value = mock_cpu
+        mock_cpu_0 = MagicMock()
+        mock_cpu_0.supportsGetDramEnergyConsumption.return_value = True
+        mock_cpu_1 = MagicMock()
+        mock_cpu_1.supportsGetDramEnergyConsumption.return_value = False
+
+        mock_get_cpus.return_value.cpus = [mock_cpu_0, mock_cpu_1]
         yield mock_get_cpus
 
 
@@ -25,8 +28,8 @@ def mock_zeus_monitor():
     with patch("zeus.metric.ZeusMonitor", autospec=True) as zeus_monitor:
         mock_instance = zeus_monitor.return_value
         mock_instance.end_window.return_value = MagicMock(
-            gpu_energy={0: 30.0, 1: 35.0, 2: 40.0},
-            cpu_energy={0: 20.0, 1: 25.0},
+            gpu_energy={0: 50.0, 1: 100.0, 2: 200.0},
+            cpu_energy={0: 40.0, 1: 50.0},
             dram_energy={},
         )
         mock_instance.gpu_indices = [0, 1, 2]
@@ -58,32 +61,22 @@ def mock_histogram():
         yield histogram
 
 
-@pytest.fixture
-def mock_gauge():
-    """Fixture to mock Prometheus Gauge creation."""
-    with patch("zeus.metric.Gauge", autospec=True) as gauge:
-        gauge.side_effect = lambda *args, **kwargs: MagicMock()
-        yield gauge
-
-
 def test_energy_histogram(
     mock_get_cpus: MagicMock,
     mock_zeus_monitor: MagicMock,
     mock_histogram: MagicMock,
 ) -> None:
-    """Test EnergyHistogram class.
-
-    Validates that GPU, CPU, and DRAM histograms are properly initialized,
-    and that the correct energy values are recorded.
-
-    Args:
-        mock_get_cpus (MagicMock): Mocked `get_cpus` fixture.
-        mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.
-        mock_histogram (MagicMock): Mocked Prometheus Histogram fixture.
-    """
+    """Test EnergyHistogram class."""
     cpu_indices = [0, 1]
     gpu_indices = [0, 1, 2]
     prometheus_url = "http://localhost:9091"
+    window_name = "test_window"
+
+    # Ensure mocked CPUs have the required method
+    mock_get_cpus.return_value.cpus = [
+        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=True)),
+        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=False)),
+    ]
 
     histogram_metric = EnergyHistogram(
         cpu_indices=cpu_indices,
@@ -91,85 +84,89 @@ def test_energy_histogram(
         prometheus_url=prometheus_url,
         job="test_energy_histogram",
     )
-    if histogram_metric.gpu_histograms:
-        for _gpu_index, gpu_histogram in histogram_metric.gpu_histograms.items():
-            gpu_histogram.labels = MagicMock(return_value=gpu_histogram)
-            gpu_histogram.observe = MagicMock()
 
-    if histogram_metric.cpu_histograms:
-        for _cpu_index, cpu_histogram in histogram_metric.cpu_histograms.items():
-            cpu_histogram.labels = MagicMock(return_value=cpu_histogram)
-            cpu_histogram.observe = MagicMock()
+    # Mock single Histogram objects for GPU, CPU, and DRAM
+    gpu_mock_histogram = mock_histogram(
+        name="gpu_energy_histogram",
+        documentation="Mocked GPU histogram",
+        labelnames=["window", "index"],
+    )
 
-    if histogram_metric.dram_histograms:
-        for _dram_index, dram_histogram in histogram_metric.dram_histograms.items():
-            dram_histogram.labels = MagicMock(return_value=dram_histogram)
-            dram_histogram.observe = MagicMock()
+    cpu_mock_histogram = mock_histogram(
+        name="cpu_energy_histogram",
+        documentation="Mocked CPU histogram",
+        labelnames=["window", "index"],
+    )
 
-    histogram_metric.begin_window("test_window")
+    dram_mock_histogram = mock_histogram(
+        name="dram_energy_histogram",
+        documentation="Mocked DRAM histogram",
+        labelnames=["window", "index"],
+    )
+
+    # Attach mocked histograms to the metric
+    histogram_metric.gpu_histograms = gpu_mock_histogram
+    histogram_metric.cpu_histograms = cpu_mock_histogram
+    histogram_metric.dram_histograms = dram_mock_histogram
+
+    # Begin and end the monitoring window
+    histogram_metric.begin_window(window_name)
     with patch("http.client.HTTPConnection", autospec=True) as mock_http:
         mock_http_instance = mock_http.return_value
         mock_http_instance.getresponse.return_value.code = 200
         mock_http_instance.getresponse.return_value.msg = "OK"
         mock_http_instance.getresponse.return_value.info = lambda: {}
         mock_http_instance.sock = MagicMock()
-        histogram_metric.end_window("test_window")
-    # Assert GPU histograms were observed
-    if mock_zeus_monitor.return_value.end_window.return_value.gpu_energy:
-        for (
-            gpu_index,
-            energy,
-        ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
-            calls = [
-                call[0][0]
-                for call in histogram_metric.gpu_histograms[
-                    gpu_index
-                ].observe.call_args_list
-            ]
-            assert energy in calls, f"Expected {energy} in {calls}"
+        histogram_metric.end_window(window_name)
 
-    # Assert CPU histograms were observed
-    if mock_zeus_monitor.return_value.end_window.return_value.cpu_energy:
-        for (
-            cpu_index,
-            energy,
-        ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
-            calls = [
-                call[0][0]
-                for call in histogram_metric.cpu_histograms[
-                    cpu_index
-                ].observe.call_args_list
-            ]
-            assert energy in calls, f"Expected CPU energy {energy} in {calls}"
+    # Validate GPU histogram observations
+    for (
+        gpu_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
+        gpu_mock_histogram.labels.assert_any_call(window=window_name, index=gpu_index)
+        gpu_mock_histogram.labels.return_value.observe.assert_any_call(energy)
 
-    # Assert DRAM histograms were observed
-    if mock_zeus_monitor.return_value.end_window.return_value.dram_energy:
-        for (
-            dram_index,
-            energy,
-        ) in mock_zeus_monitor.return_value.end_window.return_value.dram_energy.items():
-            calls = [
-                call[0][0]
-                for call in histogram_metric.dram_histograms[
-                    dram_index
-                ].observe.call_args_list
-            ]
-            assert energy in calls, f"Expected DRAM energy {energy} in {calls}"
+    # Validate CPU histogram observations
+    for (
+        cpu_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
+        cpu_mock_histogram.labels.assert_any_call(window=window_name, index=cpu_index)
+        cpu_mock_histogram.labels.return_value.observe.assert_any_call(energy)
+
+    # Validate DRAM histogram observations
+    for (
+        dram_index,
+        energy,
+    ) in mock_zeus_monitor.return_value.end_window.return_value.dram_energy.items():
+        dram_mock_histogram.labels.assert_any_call(window=window_name, index=dram_index)
+        dram_mock_histogram.labels.return_value.observe.assert_any_call(energy)
 
 
+@patch("zeus.metric.energy_monitoring_loop", autospec=True)
+@patch("zeus.metric.mp.get_context", autospec=True)
 def test_energy_cumulative_counter(
-    mock_get_cpus: MagicMock, mock_zeus_monitor: MagicMock
-) -> None:
-    """Test EnergyCumulativeCounter with mocked ZeusMonitor.
-
-    Args:
-        mock_get_cpus (MagicMock): Mocked `get_cpus` fixture.
-        mock_zeus_monitor (MagicMock): Mocked ZeusMonitor fixture.
-    """
+    mock_mp_context: MagicMock,
+    mock_energy_monitoring_loop: MagicMock,
+):
+    """Test EnergyCumulativeCounter with mocked subprocess behavior."""
     cpu_indices = [0, 1]
     gpu_indices = [0, 1, 2]
     prometheus_url = "http://localhost:9091"
 
+    # Mock the context and queue
+    mock_queue = MagicMock()
+    mock_process = MagicMock()
+    mock_mp_context.return_value.Queue.return_value = mock_queue
+    mock_mp_context.return_value.Process.return_value = mock_process
+
+    # Mock the behavior of subprocess
+    mock_energy_monitoring_loop.return_value = (
+        None  # Simulate the subprocess running without errors
+    )
+
+    # Create the EnergyCumulativeCounter instance
     cumulative_counter = EnergyCumulativeCounter(
         cpu_indices=cpu_indices,
         gpu_indices=gpu_indices,
@@ -178,90 +175,78 @@ def test_energy_cumulative_counter(
         job="test_energy_counter",
     )
 
-    for counters in [
-        cumulative_counter.gpu_counters,
-        cumulative_counter.cpu_counters,
-    ]:
-        for counter in counters.values():
-            counter.labels = MagicMock(return_value=counter)
-            counter.inc = MagicMock()
-
+    # Begin a monitoring window
     cumulative_counter.begin_window("test_counter")
+
+    # Assert that the subprocess was started with the correct arguments
+    mock_mp_context.return_value.Process.assert_called_once_with(
+        target=mock_energy_monitoring_loop,
+        args=(
+            "test_counter",
+            mock_queue,
+            cpu_indices,
+            gpu_indices,
+            2,
+            prometheus_url,
+            "test_energy_counter",
+            False,
+        ),
+    )
+    mock_process.start.assert_called_once()
+
+    # End the monitoring window
     cumulative_counter.end_window("test_counter")
-
-    # Assert GPU counters
-    if mock_zeus_monitor.return_value.end_window.return_value.gpu_energy:
-        for (
-            gpu_index,
-            energy,
-        ) in mock_zeus_monitor.return_value.end_window.return_value.gpu_energy.items():
-            assert (
-                gpu_index in cumulative_counter.gpu_counters
-            ), f"GPU counter for index {gpu_index} not initialized"
-            cumulative_counter.gpu_counters[gpu_index].inc.assert_called_with(energy)
-
-    # Assert CPU counters
-    if mock_zeus_monitor.return_value.end_window.return_value.cpu_energy:
-        for (
-            cpu_index,
-            energy,
-        ) in mock_zeus_monitor.return_value.end_window.return_value.cpu_energy.items():
-            assert (
-                cpu_index in cumulative_counter.cpu_counters
-            ), f"CPU counter for index {cpu_index} not initialized"
-            cumulative_counter.cpu_counters[cpu_index].inc.assert_called_with(energy)
+    mock_queue.put.assert_called_once_with("stop")
+    mock_process.join.assert_called_once()
 
 
-@patch("zeus.device.gpu.get_gpus")
+@patch("zeus.metric.power_monitoring_loop", autospec=True)
+@patch("zeus.metric.mp.get_context", autospec=True)
 def test_power_gauge(
-    mock_get_gpus: MagicMock,
-    mock_power_monitor: MagicMock,
-    mock_gauge: MagicMock,
-) -> None:
-    """Test PowerGauge with mocked PowerMonitor and Prometheus Gauges.
-
-    Args:
-        mock_get_gpus (MagicMock): Mocked `get_gpus` function to simulate available GPUs.
-        mock_power_monitor (MagicMock): Mocked PowerMonitor to simulate GPU power data.
-        mock_gauge (MagicMock): Mocked Prometheus Gauge creation.
-    """
+    mock_mp_context: MagicMock,
+    mock_power_monitoring_loop: MagicMock,
+):
+    """Test PowerGauge with mocked subprocess behavior."""
     gpu_indices = [0, 1, 2]
     prometheus_url = "http://localhost:9091"
 
-    # Mock `get_gpus` to simulate available GPUs
-    mock_get_gpus.return_value = MagicMock()
-    mock_get_gpus.return_value.gpus = gpu_indices
+    # Mock the context and queue
+    mock_queue = MagicMock()
+    mock_process = MagicMock()
+    mock_mp_context.return_value.Queue.return_value = mock_queue
+    mock_mp_context.return_value.Process.return_value = mock_process
 
-    mock_gauge.side_effect = lambda *args, **kwargs: MagicMock()
+    # Mock the behavior of subprocess
+    mock_power_monitoring_loop.return_value = (
+        None  # Simulate the subprocess running without errors
+    )
 
+    # Create the EnergyCumulativeCounter instance
     power_gauge = PowerGauge(
         gpu_indices=gpu_indices,
         update_period=2,
         prometheus_url=prometheus_url,
         job="test_power_gauge",
     )
-    if power_gauge.gpu_gauges:
-        for _gpu_index, gauge in power_gauge.gpu_gauges.items():
-            gauge.labels = MagicMock(return_value=gauge)
-            gauge.set = MagicMock()
 
-    power_gauge.begin_window("test_power_window")
-    power_gauge.end_window("test_power_window")
+    # Begin a monitoring window
+    power_gauge.begin_window("test_power_gauge")
 
-    # Assert that the gauges were set with the correct power values
-    if mock_power_monitor.return_value.get_power.return_value:
-        for (
-            gpu_index,
-            power_value,
-        ) in mock_power_monitor.return_value.get_power.return_value.items():
-            try:
-                # Check if `labels` was called with the correct arguments
-                power_gauge.gpu_gauges[gpu_index].labels.assert_called_once_with(
-                    gpu_index=gpu_index, window="test_power_window"
-                )
-                power_gauge.gpu_gauges[gpu_index].set.assert_called_once_with(
-                    power_value
-                )
-            except AssertionError as e:
-                print(f"AssertionError for GPU {gpu_index}:")
-                raise e
+    # Assert that the subprocess was started with the correct arguments
+    mock_mp_context.return_value.Process.assert_called_once_with(
+        target=mock_power_monitoring_loop,
+        args=(
+            "test_power_gauge",
+            mock_queue,
+            gpu_indices,
+            2,
+            prometheus_url,
+            "test_power_gauge",
+        ),
+    )
+    mock_process.start.assert_called_once()
+
+    # End the monitoring window
+    power_gauge.end_window("test_power_gauge")
+    mock_queue.put.assert_called_once_with("stop")
+    mock_process.join.assert_called_once()
