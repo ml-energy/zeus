@@ -121,7 +121,7 @@ Zeus allows for efficient monitoring of energy and power consumption for GPUs, C
 !!! Assumption
     A Prometheus Push Gateway must be deployed and accessible at the URL provided in your Zeus configuration. **This ensures that metrics collected by Zeus can be pushed to Prometheus.**
 
-### Setup Guide
+### Local Setup Guide
 
 #### Step 1: Install and Start the Prometheus Push Gateway
 Choose either Option 1 (Binary) or Option 2 (Docker).
