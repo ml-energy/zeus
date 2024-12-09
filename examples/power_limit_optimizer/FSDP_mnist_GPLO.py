@@ -23,6 +23,9 @@ from torch.distributed.fsdp.wrap import (
     wrap,
 )
 
+from zeus.monitor import ZeusMonitor
+from zeus.optimizer.power_limit import GlobalPowerLimitOptimizer
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -48,12 +51,14 @@ class Net(nn.Module):
         output = F.log_softmax(x, dim=1)
         return output
 
-def train(args, model, rank, world_size, train_loader, optimizer, epoch, sampler=None):
+def train(args, model, rank, world_size, train_loader, optimizer, epoch, plo, sampler=None):
     model.train()
     ddp_loss = torch.zeros(2).to(rank)
     if sampler:
         sampler.set_epoch(epoch)
     for batch_idx, (data, target) in enumerate(train_loader):
+        plo.on_step_begin()
+
         data, target = data.to(rank), target.to(rank)
         optimizer.zero_grad()
         output = model(data)
@@ -62,6 +67,8 @@ def train(args, model, rank, world_size, train_loader, optimizer, epoch, sampler
         optimizer.step()
         ddp_loss[0] += loss.item()
         ddp_loss[1] += len(data)
+
+        plo.on_step_end()
 
     dist.all_reduce(ddp_loss, op=dist.ReduceOp.SUM)
     if rank == 0:
@@ -135,8 +142,15 @@ def fsdp_main(args):
     init_end_event = torch.cuda.Event(enable_timing=True)
     init_start_event.record()
 
+    # Init ZeusMonitor and GPLO
+    monitor = ZeusMonitor(gpu_indices=[local_rank])
+    plo = GlobalPowerLimitOptimizer(monitor)
+
     for epoch in range(1, args.epochs + 1):
-        train(args, model, local_rank, world_size, train_loader, optimizer, epoch, sampler=sampler1)
+        plo.on_epoch_begin()
+        train(args, model, local_rank, world_size, train_loader, optimizer, epoch, plo, sampler=sampler1)
+        plo.on_epoch_end()
+
         test(model, local_rank, world_size, test_loader)
         scheduler.step()
 
