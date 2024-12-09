@@ -7,6 +7,7 @@ import time
 import warnings
 from typing import Sequence
 import multiprocessing as mp
+from multiprocessing.context import SpawnProcess
 from dataclasses import dataclass
 
 from prometheus_client import (
@@ -28,7 +29,7 @@ class MonitoringProcessState:
     """Represents the state of a monitoring window."""
 
     queue: mp.Queue
-    proc: mp.context.SpawnProcess
+    proc: SpawnProcess
 
 
 class Metric(abc.ABC):
