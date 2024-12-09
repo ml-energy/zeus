@@ -28,7 +28,7 @@ class MonitoringProcessState:
     """Represents the state of a monitoring window."""
 
     queue: mp.Queue
-    proc: mp.Process
+    proc: mp.context.SpawnProcess
 
 
 class Metric(abc.ABC):
@@ -39,7 +39,7 @@ class Metric(abc.ABC):
     """
 
     @abc.abstractmethod
-    def begin_window(self, name: str, sync_execution: bool = None) -> None:
+    def begin_window(self, name: str, sync_execution: bool = True) -> None:
         """Start a new measurement window.
 
         Args:
@@ -49,7 +49,7 @@ class Metric(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def end_window(self, name: str, sync_execution: bool = None) -> None:
+    def end_window(self, name: str, sync_execution: bool = True) -> None:
         """End the current measurement window and report metrics.
 
         Args:
@@ -84,7 +84,7 @@ class EnergyHistogram(Metric):
         prometheus_url: str,
         job: str,
         gpu_bucket_range: Sequence[float] = [50.0, 100.0, 200.0, 500.0, 1000.0],
-        cpu_bucket_range: Sequence[float] = [50.0, 100.0, 200.0, 500.0, 1000.0],
+        cpu_bucket_range: Sequence[float] = [10.0, 50.0, 100.0, 500.0, 1000.0],
         dram_bucket_range: Sequence[float] = [5.0, 10.0, 20.0, 50.0, 150.0],
     ) -> None:
         """Initialize the EnergyHistogram class.
@@ -340,7 +340,10 @@ class EnergyCumulativeCounter(Metric):
             raise ValueError(f"No active monitoring process found for '{name}'.")
 
         state = self.window_state.pop(name)
-        self.queue.put("stop")
+        if self.queue is not None:
+            self.queue.put("stop")
+        else:
+            raise RuntimeError("Queue is not initialized")
         state.proc.join(timeout=20)
 
         if state.proc.is_alive():
@@ -371,6 +374,9 @@ def energy_monitoring_loop(
     """
     registry = CollectorRegistry()
     energy_monitor = ZeusMonitor(cpu_indices=cpu_indices, gpu_indices=gpu_indices)
+    gpu_counters = None
+    cpu_counters = None
+    dram_counters = None
 
     if energy_monitor.gpu_indices:
         gpu_counters = Counter(
@@ -508,7 +514,10 @@ class PowerGauge(Metric):
             sync_execution (bool, optional): Whether to execute monitoring synchronously. Defaults to False.
         """
         state = self.window_state.pop(name)
-        state.queue.put("stop")
+        if self.queue is not None:
+            self.queue.put("stop")
+        else:
+            raise RuntimeError("Queue is not initialized")
         state.proc.join(timeout=20)
         if state.proc.is_alive():
             state.proc.terminate()
