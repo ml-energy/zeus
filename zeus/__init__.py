@@ -2,6 +2,7 @@
 
 - [`device`][zeus.device]: Abstraction layer over compute devices
 - [`monitor`][zeus.monitor]: Programmatic power and energy measurement tools
+- [`metric`][zeus.metric]: Tools for defining and tracking power and energy-related metrics
 - [`optimizer`][zeus.optimizer]: A collection of optimizers for time and energy
 - [`utils`][zeus.utils]: Utility functions and classes
 - [`callback`][zeus.callback]: Callback definition

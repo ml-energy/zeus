@@ -88,7 +88,7 @@ To only measure the energy consumption of the CPU used by the current Python pro
 
 You can pass in `cpu_indices=[]` or `gpu_indices=[]` to [`ZeusMonitor`][zeus.monitor.ZeusMonitor] to disable either CPU or GPU measurements.
 
-```python hl_lines="2 5-7"
+```python hl_lines="2 5-15"
 from zeus.monitor import ZeusMonitor
 from zeus.device.cpu import get_current_cpu_index
 
@@ -113,6 +113,214 @@ if __name__ == "__main__":
         avg_time = sum(map(lambda m: m.time, steps)) / len(steps)
         avg_energy = sum(map(lambda m: m.total_energy, steps)) / len(steps)
         print(f"One step takes {avg_time} s and {avg_energy} J for the CPU.")
+```
+## Metric Monitoring
+
+Zeus allows for efficient monitoring of energy and power consumption for GPUs, CPUs, and DRAM using Prometheus. It tracks key metrics such as energy usage, power draw, and cumulative consumption. Users can define measurement windows to track energy usage for specific operations, enabling granular analysis and optimization.
+
+!!! Assumption
+    A Prometheus Push Gateway must be deployed and accessible at the URL provided in your Zeus configuration. **This ensures that metrics collected by Zeus can be pushed to Prometheus.**
+
+### Local Setup Guide
+
+#### Step 1: Install and Start the Prometheus Push Gateway
+Choose either Option 1 (Binary) or Option 2 (Docker).
+
+##### Option 1: Download Binary
+1. Visit the [Prometheus Push Gateway Download Page](https://prometheus.io/download/#pushgateway).
+2. Download the appropriate binary for your operating system.
+3. Extract the binary:
+```sh
+   tar -xvzf prometheus-pushgateway*.tar.gz
+   cd prometheus-pushgateway-*
+```
+4. Start the Push Gateway:
+```sh
+./prometheus-pushgateway --web.listen-address=:9091
+```
+5. Verify the Push Gateway is running by visiting http://localhost:9091 in your browser.
+
+##### Option 2: Using Docker
+1. Pull the official Prometheus Push Gateway Docker image:
+```sh
+docker pull prom/pushgateway
+```
+2. Run the Push Gateway in a container:
+```sh
+docker run -d -p 9091:9091 prom/pushgateway
+```
+3. Verify it is running by visiting http://localhost:9091 in your browser.
+
+#### Step 2: Install and Configure Prometheus
+1. Visit the Prometheus [Prometheus Download Page](https://prometheus.io/download/#prometheus).
+2. Download the appropriate binary for your operating system.
+3. Extract the binary:
+```sh
+tar -xvzf prometheus*.tar.gz
+cd prometheus-*
+```
+4. Update the Prometheus configuration file `prometheus.yml` to scrape metrics from the Push Gateway:
+```sh
+scrape_configs:
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['localhost:9091']  # Replace with your Push Gateway URL
+```
+5. Start Prometheus:
+```sh
+./prometheus --config.file=prometheus.yml
+```
+6. Visit http://localhost:9090 in your browser, or use curl http://localhost:9090/api/v1/targets
+7. Verify Prometheus is running by visiting http://localhost:9090 in your browser.
+
+### Metric Name Construction
+
+Zeus organizes metrics using **static metric names** and **dynamic labels** for flexibility and ease of querying in Prometheus. Metric names are static and cannot be overridden, but users can customize the context of the metrics by naming the window when using `begin_window()` and `end_window()`.
+
+#### Metric Name
+- For Histogram: `energy_monitor_{component}_energy_joules`
+- For Counter: `energy_monitor_{component}_energy_joules`
+- For Gauge: `power_monitor_gpu_power_watts`
+
+component: gpu, cpu, or dram
+
+#### Labels
+- window: The user-defined window name provided during `begin_window()` and `end_window()` (e.g., `energy_histogram.begin_window(f"epoch_energy")`).
+- index: The GPU index (e.g., `0` for GPU 0).
+
+### Usage and Initialization
+[`EnergyHistogram`][zeus.metric.EnergyHistogram] records energy consumption data for GPUs, CPUs, and DRAM in Prometheus Histograms. This is ideal for observing how often energy usage falls within specific ranges.
+
+```python hl_lines="2 5-15"
+from zeus.metric import EnergyHistogram
+
+if __name__ == "__main__":
+    # Initialize EnergyHistogram
+    energy_histogram = EnergyHistogram(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        prometheus_url='http://localhost:9091', 
+        job='training_energy_histogram'
+    )
+
+    for epoch in range(100):
+        # Start monitoring energy for the entire epoch
+        energy_histogram.begin_window("epoch_energy")
+        # Perform epoch-level operations 
+        train_one_epoch(train_loader, model, optimizer, criterion, epoch, args)
+        acc1 = validate(val_loader, model, criterion, args)
+        # End monitoring energy for the epoch
+        energy_histogram.end_window("epoch_energy")
+        print(f"Epoch {epoch} completed. Validation Accuracy: {acc1}%")
+
+```
+You can use the `begin_window` and `end_window` methods to define a measurement window, similar to other ZeusMonitor operations. Energy consumption data will be recorded for the entire duration of the window.
+
+!!! Tip 
+    You can customize the bucket ranges for GPUs, CPUs, and DRAM during initialization to tailor the granularity of energy monitoring. For example:
+    ```python hl_lines="2 5-15"
+    energy_histogram = EnergyHistogram(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        prometheus_url='http://localhost:9091', 
+        job='training_energy_histogram',
+        gpu_bucket_range = [10.0, 25.0, 50.0, 100.0],
+        cpu_bucket_range = [5.0, 15.0, 30.0, 50.0],
+        dram_bucket_range = [2.0, 8.0, 20.0, 40.0],
+    )
+    ```
+
+If no custom `bucket ranges` are specified, Zeus uses these default ranges:
+```
+- GPU: [50.0, 100.0, 200.0, 500.0, 1000.0]
+- CPU: [10.0, 20.0, 50.0, 100.0, 200.0]
+- DRAM: [5.0, 10.0, 20.0, 50.0, 150.0]
+```
+!!! Warning
+    Empty bucket ranges (e.g., []) are not allowed and will raise an error. Ensure you provide a valid range for each device or use the defaults.
+
+ 
+[`EnergyCumulativeCounter`][zeus.metric.EnergyCumulativeCounter] monitors cumulative energy consumption. It tracks energy usage over time, without resetting the values, and is updated periodically.
+
+```python hl_lines="2 5-15"
+
+from zeus.metric import EnergyCumulativeCounter
+
+if __name__ == "__main__":
+
+    cumulative_counter_metric = EnergyCumulativeCounter(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        update_period=2,  
+        prometheus_url='http://localhost:9091',
+        job='energy_counter_job'
+    )
+    train_loader = range(10) 
+    val_loader = range(5)  
+
+    cumulative_counter_metric.begin_window("training_energy_monitoring")
+
+    for epoch in range(100):  
+        print(f"\n--- Epoch {epoch} ---")
+        train_one_epoch(train_loader, model, optimizer, criterion, epoch, args)
+        acc1 = validate(val_loader, model, criterion, args)
+        print(f"Epoch {epoch} completed. Validation Accuracy: {acc1:.2f}%.")
+
+        # Simulate additional operations outside of training
+        print("\nSimulating additional operations...")
+        time.sleep(10)
+
+    cumulative_counter_metric.end_window("training_energy_monitoring")
+```
+In this example, `cumulative_counter_metric` monitors energy usage throughout the entire training process rather than on a per-epoch basis. The `update_period` parameter defines how often the energy measurements are updated and pushed to Prometheus. 
+
+[`PowerGauge`][zeus.metric.PowerGauge] tracks real-time power consumption using Prometheus Gauges which monitors fluctuating values such as power usage.
+
+```python hl_lines="2 5-15"
+from zeus.metric import PowerGauge
+
+if __name__ == "__main__":
+
+    power_gauge_metric = PowerGauge(
+        gpu_indices=[0], 
+        update_period=2,  
+        prometheus_url='http://localhost:9091',
+        job='power_gauge_job'
+    )
+    train_loader = range(10) 
+    val_loader = range(5)  
+
+    power_gauge_metric.begin_window("training_power_monitoring")
+
+    for epoch in range(100):  
+        print(f"\n--- Epoch {epoch} ---")
+        train_one_epoch(train_loader, model, optimizer, criterion, epoch, args)
+        acc1 = validate(val_loader, model, criterion, args)
+        print(f"Epoch {epoch} completed. Validation Accuracy: {acc1:.2f}%.")
+
+        # Simulate additional operations outside of training
+        print("\nSimulating additional operations...")
+        time.sleep(10)
+
+    power_gauge_metric.end_window("training_power_monitoring")
+```
+The `update_period` parameter defines how often the power datas are updated and pushed to Prometheus.
+
+
+### How to Query Metrics in Prometheus
+
+#### Query to View Energy for a Specific Window
+```promql
+energy_monitor_gpu_energy_joules{window="epoch_energy"}
+```
+#### Query to Sum Energy for a Specific Window
+```promql
+sum(energy_monitor_gpu_energy_joules) by (window)
+```
+#### Query to Sum Energy for Specific GPU Across All Windows
+```promql
+sum(energy_monitor_gpu_energy_joules{index="0"})
 ```
 
 ## CLI power and energy monitor
