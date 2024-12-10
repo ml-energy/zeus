@@ -8,7 +8,7 @@ description: Reducing Energy Bloat in Large Model Training
 
 SOSP '24
 
-[**Paper**](https://arxiv.org/abs/2312.06902)
+[**Paper**](https://dl.acm.org/doi/10.1145/3694715.3695970) | [**ArXiv**](https://arxiv.org/abs/2312.06902)
 </div>
 
 <div class="critic-dark" markdown>
