@@ -119,7 +119,7 @@ if __name__ == "__main__":
 Zeus allows for efficient monitoring of energy and power consumption for GPUs, CPUs, and DRAM using Prometheus. It tracks key metrics such as energy usage, power draw, and cumulative consumption. Users can define measurement windows to track energy usage for specific operations, enabling granular analysis and optimization.
 
 !!! Assumption
-    A Prometheus Push Gateway must be deployed and accessible at the URL provided in your Zeus configuration. **This ensures that metrics collected by Zeus can be pushed to Prometheus.**
+    A [Prometheus Push Gateway](https://prometheus.io/docs/instrumenting/pushing/) must be deployed and accessible. This ensures that metrics collected by Zeus can be pushed to Prometheus.
 
 ### Local Setup Guide
 
