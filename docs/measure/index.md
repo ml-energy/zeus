@@ -313,15 +313,17 @@ The `update_period` parameter defines how often the power datas are updated and 
 
 ### How to Query Metrics in Prometheus
 
-#### Query to View Energy for a Specific Window
+Energy for a specific window:
 ```promql
 energy_monitor_gpu_energy_joules{window="epoch_energy"}
 ```
-#### Query to Sum Energy for a Specific Window
+
+Sum of energy for a specific window:
 ```promql
 sum(energy_monitor_gpu_energy_joules) by (window)
 ```
-#### Query to Sum Energy for Specific GPU Across All Windows
+
+Sum of energy for specific GPU across all windows:
 ```promql
 sum(energy_monitor_gpu_energy_joules{index="0"})
 ```
