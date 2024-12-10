@@ -228,9 +228,9 @@ You can use the `begin_window` and `end_window` methods to define a measurement 
         gpu_indices=[0], 
         prometheus_url='http://localhost:9091', 
         job='training_energy_histogram',
-        gpu_bucket_range = [10.0, 25.0, 50.0, 100.0],
-        cpu_bucket_range = [5.0, 15.0, 30.0, 50.0],
-        dram_bucket_range = [2.0, 8.0, 20.0, 40.0],
+        gpu_bucket_range=[10.0, 25.0, 50.0, 100.0],
+        cpu_bucket_range=[5.0, 15.0, 30.0, 50.0],
+        dram_bucket_range=[2.0, 8.0, 20.0, 40.0],
     )
     ```
 
