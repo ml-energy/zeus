@@ -190,7 +190,7 @@ component: gpu, cpu, or dram
 
 #### Labels
 - window: The user-defined window name provided during `begin_window()` and `end_window()` (e.g., `energy_histogram.begin_window(f"epoch_energy")`).
-- index: The GPU index (e.g., `0` for GPU 0).
+- index: The index of the device (e.g., `0` for GPU 0).
 
 ### Usage and Initialization
 [`EnergyHistogram`][zeus.metric.EnergyHistogram] records energy consumption data for GPUs, CPUs, and DRAM in Prometheus Histograms. This is ideal for observing how often energy usage falls within specific ranges.
