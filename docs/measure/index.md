@@ -181,7 +181,10 @@ Zeus organizes metrics using **static metric names** and **dynamic labels** for 
 #### Metric Name
 - For Histogram: `energy_monitor_{component}_energy_joules`
 - For Counter: `energy_monitor_{component}_energy_joules`
-- For Gauge: `power_monitor_gpu_power_watts`
+- For Gauge: `power_monitor_{component}_power_watts`
+
+Note that Gauge only supports the GPU component at the moment. Tracking issue: [#128](https://github.com/ml-energy/zeus/issues/128)
+
 
 component: gpu, cpu, or dram
 
