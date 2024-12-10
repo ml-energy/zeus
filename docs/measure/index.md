@@ -235,11 +235,10 @@ You can use the `begin_window` and `end_window` methods to define a measurement 
     ```
 
 If no custom `bucket ranges` are specified, Zeus uses these default ranges:
-```
-- GPU: [50.0, 100.0, 200.0, 500.0, 1000.0]
-- CPU: [10.0, 20.0, 50.0, 100.0, 200.0]
-- DRAM: [5.0, 10.0, 20.0, 50.0, 150.0]
-```
+
+- GPU: `[50.0, 100.0, 200.0, 500.0, 1000.0]`
+- CPU: `[10.0, 20.0, 50.0, 100.0, 200.0]`
+- DRAM: `[5.0, 10.0, 20.0, 50.0, 150.0]`
 !!! Warning
     Empty bucket ranges (e.g., []) are not allowed and will raise an error. Ensure you provide a valid range for each device or use the defaults.
 
