@@ -263,9 +263,7 @@ class GlobalPowerLimitOptimizer(Callback):
             pls.append(gpus.getPowerManagementLimitConstraints(index))
         if not all(pls[0] == pl for pl in pls):
             raise ValueError("Power limits ranges are not uniform across GPUs.")
-        self.power_limits = list(
-            range(pls[0][1], pls[0][0] - self.pl_step, -self.pl_step)
-        )
+        self.power_limits = list(range(pls[0][1], pls[0][0] - 1, -self.pl_step))
 
         # Turn on persistence mode and set to the highest power limit.
         try:
