@@ -144,7 +144,7 @@ def fsdp_main(args):
 
     # Init ZeusMonitor and GPLO
     monitor = ZeusMonitor(gpu_indices=[local_rank])
-    plo = GlobalPowerLimitOptimizer(monitor)
+    plo = GlobalPowerLimitOptimizer(monitor, profile_steps=200)
 
     for epoch in range(1, args.epochs + 1):
         plo.on_epoch_begin()
