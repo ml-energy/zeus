@@ -201,7 +201,7 @@ def main():
     if args.gpu == 0:
         callback_set: list[Callback] = [
             GlobalPowerLimitOptimizer(
-                monitor=ZeusMonitor(gpu_indices=None),  # All visible GPUs.
+                monitor=ZeusMonitor(gpu_indices=args.gpu),  # Since there is only one GPU per process, monitor it (give it local rank).
                 optimum_selector=MaxSlowdownConstraint(
                     factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
                 ),
