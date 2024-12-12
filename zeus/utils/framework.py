@@ -112,7 +112,7 @@ def all_reduce(
     If running in a distributed setting, the objects are reduced across all replicas.
     If running in a non-distributed setting, the operation is just done on the single object.
     """
-    if torch_is_available():
+    if torch_is_available(ensure_cuda=False):
         torch = MODULE_CACHE["torch"]
 
         # wrap object in a tensor if it is not already
@@ -146,7 +146,7 @@ def all_reduce(
 
 def is_distributed() -> bool:
     """Check if the current execution is distributed across multiple devices."""
-    if torch_is_available():
+    if torch_is_available(ensure_cuda=False):
         torch = MODULE_CACHE["torch"]
         return torch.distributed.is_available() and torch.distributed.is_initialized()
     if jax_is_available():
