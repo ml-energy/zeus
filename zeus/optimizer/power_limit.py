@@ -206,23 +206,20 @@ class GlobalPowerLimitOptimizer(Callback):
     Non-distributed training (Single GPU or Multi-GPU on a single node):
     Launch one instance of `ZeusMonitor` and `GlobalPowerLimitOptimizer`, and have `ZeusMonitor` track all desired GPUs.
     For example, to track all GPUs on a single node:
-
     ```python
     monitor = ZeusMonitor(gpu_indices=None) # monitor all GPUs
     plo = GlobalPowerLimitOptimizer(monitor)
     ```
 
     Distributed training (Multi-GPU on multiple nodes):
-    It is recommended to launch one instance of `ZeusMonitor` and `GlobalPowerLimitOptimizer`
-    per local rank (per GPU on each node), and pass in the local rank to `ZeusMonitor` as shown below:
-
+    `ZeusMonitor` and `GlobalPowerLimitOptimizer` make the assumption that each GPU is monitored by one and only one instance of `ZeusMonitor` to ensure correct functionality.
+    Therefore, it is recommended to launch one instance of `ZeusMonitor` and `GlobalPowerLimitOptimizer`
+    per device (per GPU on each node), and pass in the local rank to `ZeusMonitor` as shown below:
     ```python
     monitor = ZeusMonitor(gpu_indices=[local_rank]) # pass in local rank to gpu_indices.
     plo = GlobalPowerLimitOptimizer(monitor)
     ```
-
     Internally, `GlobalPowerLimitOptimizer` performs an all-reduce over all devices to compute the optimal power limit.
-    Therefore, it is important for every GPU to have only one instance of ZeusMonitor and GlobalPowerLimitOptimizer monitoring it.
     """
 
     def __init__(
@@ -279,6 +276,7 @@ class GlobalPowerLimitOptimizer(Callback):
 
         gpus = get_gpus(ensure_homogeneous=True)
 
+        # Warn if distributed training is enabled with multiple GPUs monitored.
         if is_distributed() and len(monitor.gpu_indices) > 1:
             self.logger.warning(
                 "Distributed training is enabled with %d GPUs monitored. "
