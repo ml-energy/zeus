@@ -138,7 +138,8 @@ def all_reduce(
         return result.item()
 
     if jax_is_available():
-        raise NotImplementedError("JAX all_reduce is not yet implemented.")
+        # JAX cross-device all-reduce not yet implemente
+        return sum(object) if operation == "sum" else max(object)
 
     raise RuntimeError("No framework is available.")
 

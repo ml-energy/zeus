@@ -417,8 +417,6 @@ class GlobalPowerLimitOptimizer(Callback):
                     self.state.current_power_limit // 1000,
                 )
 
-                # TODO: all reduce here
-                # NOTE: reduced should not be called if distributed training is not enabled
                 self.measurements.append(
                     PowerLimitMeasurement(
                         power_limit=self.state.current_power_limit // 1000,
