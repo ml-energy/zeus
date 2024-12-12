@@ -30,7 +30,7 @@ When using `ZeusMonitor` and/or `GlobalPowerLimitOptimizer` in a multi-GPU Distr
 
 ```python
 monitor = ZeusMonitor(gpu_indices=[local_rank]) # pass in local rank to gpu_indices.
-plo = GlobalPowerLimitOptimizer(monitor profile_steps=200)
+plo = GlobalPowerLimitOptimizer(monitor)
 ```
 
 Ensure that only one GPU is monitored per `ZeusMonitor`. Internally, `GlobalPowerLimitOptimizer` performs an [All-Reduce](https://pytorch.org/docs/stable/distributed.html) to synchronize before making a power limit decision.

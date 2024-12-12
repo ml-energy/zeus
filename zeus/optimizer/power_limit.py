@@ -28,7 +28,7 @@ from abc import ABC, abstractmethod
 
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
-from zeus.utils.framework import all_reduce
+from zeus.utils.framework import all_reduce, is_distributed
 from zeus.utils.logging import get_logger
 from zeus.utils.metric import zeus_cost
 from zeus.utils.pydantic_v1 import BaseModel, PositiveInt, PositiveFloat
@@ -202,6 +202,27 @@ class GlobalPowerLimitOptimizer(Callback):
     """Optimizer for the power limit knob.
 
     This optimizer uses the JIT profiling log to determine the optimal power limit.
+
+    Non-distributed training (Single GPU or Multi-GPU on a single node):
+    Launch one instance of `ZeusMonitor` and `GlobalPowerLimitOptimizer`, and have `ZeusMonitor` track all desired GPUs.
+    For example, to track all GPUs on a single node:
+
+    ```python
+    monitor = ZeusMonitor(gpu_indices=None) # monitor all GPUs
+    plo = GlobalPowerLimitOptimizer(monitor)
+    ```
+
+    Distributed training (Multi-GPU on multiple nodes):
+    It is recommended to launch one instance of `ZeusMonitor` and `GlobalPowerLimitOptimizer`
+    per local rank (per GPU on each node), and pass in the local rank to `ZeusMonitor` as shown below:
+
+    ```python
+    monitor = ZeusMonitor(gpu_indices=[local_rank]) # pass in local rank to gpu_indices.
+    plo = GlobalPowerLimitOptimizer(monitor)
+    ```
+
+    Internally, `GlobalPowerLimitOptimizer` performs an all-reduce over all devices to compute the optimal power limit.
+    Therefore, it is important for every GPU to have only one instance of ZeusMonitor and GlobalPowerLimitOptimizer monitoring it.
     """
 
     def __init__(
@@ -256,9 +277,18 @@ class GlobalPowerLimitOptimizer(Callback):
         # Setup logging.
         self.logger = get_logger(type(self).__name__)
 
+        gpus = get_gpus(ensure_homogeneous=True)
+
+        if is_distributed() and len(monitor.gpu_indices) > 1:
+            self.logger.warning(
+                "Distributed training is enabled with %d GPUs monitored. "
+                "For distributed training, it is recommended to monitor only one GPU per `ZeusMonitor` instance "
+                "since `GlobalPowerLimitOptimizer` performs an all-reduce operation internally over all devices.",
+                len(monitor.gpu_indices),
+            )
+
         # Set the range of power limits to explore.
         # Assert that supported power limits ranges are uniform across GPUs.
-        gpus = get_gpus(ensure_homogeneous=True)
         pls = []
         for index in monitor.gpu_indices:
             pls.append(gpus.getPowerManagementLimitConstraints(index))
@@ -394,7 +424,9 @@ class GlobalPowerLimitOptimizer(Callback):
                 self.measurements.append(
                     PowerLimitMeasurement(
                         power_limit=self.state.current_power_limit // 1000,
-                        energy=all_reduce(list(measurement.gpu_energy.values()), operation="sum"),
+                        energy=all_reduce(
+                            list(measurement.gpu_energy.values()), operation="sum"
+                        ),
                         time=all_reduce([measurement.time], operation="max"),
                     )
                 )

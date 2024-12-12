@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import types
-from typing import Literal, Any, List
+from typing import Literal, List
 from functools import lru_cache
 
 from zeus.utils.logging import get_logger
@@ -103,73 +103,15 @@ def sync_execution(
 
     raise RuntimeError("No framework is available.")
 
-def all_gather(object: Any) -> List[Any]:
-    """Gather objects from all replicas."""
 
-    if torch_is_available():
-        torch = MODULE_CACHE["torch"]
-        world_size = torch.distributed.get_world_size()
-        # If there is only one process (not distributed), return the object as is
-        if world_size == 1:
-            return [object]
-        gathered_objects = [None] * world_size
-        torch.distributed.all_gather(gathered_objects, object)
-        return gathered_objects
-
-    # TODO: FIX JAX
-    if jax_is_available():
-        jax = MODULE_CACHE["jax"]
-        n_devices = jax.local_device_count()
-        if n_devices == 1:
-            return [object]
-
-        gathered_objects = [object] * n_devices
-        return gathered_objects
-
-    raise RuntimeError("No framework is available.")
-
-# TODO: fix type hints
-# def all_reduce_sum(object: List[int] | List[float] | int | float) -> int | float:
-#     """Reduce objects from all replicas by summing them."""
-#     if torch_is_available():
-#         torch = MODULE_CACHE["torch"]
-#         # wrap object in a tensor if it is not already
-#         if not isinstance(object, torch.Tensor):
-#             object = torch.Tensor(object)
-#         # compute local sum
-#         sum = torch.sum(object)
-
-#         # all-reduce only if torch.distributed is available and initialized
-#         if torch.distributed.is_available() and torch.distributed.is_initialized():
-#             torch.distributed.all_reduce(sum, op=torch.distributed.ReduceOp.SUM)
-#         return sum.item()
-#     if jax_is_available():
-#         raise NotImplementedError("JAX is not supported yet.")
-
-# # TODO: fix type hints
-# def all_reduce_max(object: List[int] | List[float] | int | float) -> int | float:
-#     """Reduce objects from all replicas by taking the maximum."""
-#     if torch_is_available():
-#         torch = MODULE_CACHE["torch"]
-#         # wrap object in a tensor if it is not already
-#         if not isinstance(object, torch.Tensor):
-#             object = torch.Tensor(object)
-#         # compute local max
-#         max = torch.max(object)
-        
-#         # all-reduce only if torch.distributed is available and initialized
-#         if torch.distributed.is_available() and torch.distributed.is_initialized():
-#             torch.distributed.all_reduce(max, op=torch.distributed.ReduceOp.MAX)
-#         return max.item()
-#     if jax_is_available():
-#         raise NotImplementedError("JAX is not supported yet.")
-    
-def all_reduce(object: List[int] | List[float], operation: Literal["sum", "max"]) -> int | float:
+def all_reduce(
+    object: List[int] | List[float], operation: Literal["sum", "max"]
+) -> int | float:
     """Reduce objects from all replicas through the specified operation.
-    
-    If running in a distributed setting, the objects are reduced across all replicas. 
-    If running in a non-distributed setting, the operation is just done on the single object."""
-    
+
+    If running in a distributed setting, the objects are reduced across all replicas.
+    If running in a non-distributed setting, the operation is just done on the single object.
+    """
     if torch_is_available():
         torch = MODULE_CACHE["torch"]
 
@@ -196,6 +138,16 @@ def all_reduce(object: List[int] | List[float], operation: Literal["sum", "max"]
         return result.item()
 
     if jax_is_available():
-        raise NotImplementedError("JAX is not supported yet.")
-    
+        raise NotImplementedError("JAX all_reduce is not yet implemented.")
+
     raise RuntimeError("No framework is available.")
+
+
+def is_distributed() -> bool:
+    """Check if the current execution is distributed across multiple devices."""
+    if torch_is_available():
+        torch = MODULE_CACHE["torch"]
+        return torch.distributed.is_available() and torch.distributed.is_initialized()
+    if jax_is_available():
+        return False  # JAX not yet implemented
+    return False
