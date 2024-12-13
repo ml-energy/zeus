@@ -142,7 +142,7 @@ def all_reduce(
         if jax.process_count() == 1:
             return object
 
-        raise NotImplementedError("JAX all-reduce not yet implemented")
+        raise NotImplementedError("JAX distributed all-reduce not yet implemented")
 
     raise RuntimeError("No framework is available.")
 
@@ -155,4 +155,3 @@ def is_distributed() -> bool:
     if jax_is_available():
         jax = MODULE_CACHE["jax"]
         return jax.process_count() > 1
-    return False
