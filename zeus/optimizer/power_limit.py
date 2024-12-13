@@ -204,7 +204,7 @@ class GlobalPowerLimitOptimizer(Callback):
     This optimizer uses the JIT profiling log to determine the optimal power limit.
 
     ## Usage with distributed data parallelism
-    
+
     The global power limit optimizer expects one process to control each GPU used for training.
     For instance, `torchrun` will automatically spawn one process for each GPU on the node.
     Correspondingly, the [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] instance passed in
@@ -213,8 +213,8 @@ class GlobalPowerLimitOptimizer(Callback):
     called `torch.cuda.set_device` early on, so `torch.cuda.current_device` will give you the GPU index.
     `GlobalPowerLimitOptimizer` will internally do an AllReduce across all GPUs to aggregate
     time and energy measurements, and then select the globally optimal power limit.
-   
-    
+
+
     ```python
     monitor = ZeusMonitor(gpu_indices=[local_rank])  # pass in local rank to gpu_indices.
     plo = GlobalPowerLimitOptimizer(monitor)
@@ -419,9 +419,11 @@ class GlobalPowerLimitOptimizer(Callback):
                 self.measurements.append(
                     PowerLimitMeasurement(
                         power_limit=self.state.current_power_limit // 1000,
-                        energy=sum(all_reduce(
-                            list(measurement.gpu_energy.values()), operation="sum"
-                        )),
+                        energy=sum(
+                            all_reduce(
+                                list(measurement.gpu_energy.values()), operation="sum"
+                            )
+                        ),
                         time=max(all_reduce([measurement.time], operation="max")),
                     )
                 )

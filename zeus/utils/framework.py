@@ -108,13 +108,17 @@ def all_reduce(
     object: list[int] | list[float], operation: Literal["sum", "max"]
 ) -> list[int] | list[float]:
     """Reduce objects from all replicas through the specified operation.
-    
-    If the current execution is not distributed, the object is returned as is."""
+
+    If the current execution is not distributed, the object is returned as is.
+    """
     if torch_is_available(ensure_cuda=False):
         torch = MODULE_CACHE["torch"]
 
         # if torch.distributed is not available or not initialized, return the object as is
-        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+        if (
+            not torch.distributed.is_available()
+            or not torch.distributed.is_initialized()
+        ):
             return object
 
         # wrap object in a tensor if it is not already
@@ -123,10 +127,8 @@ def all_reduce(
 
         # determine operation
         if operation == "sum":
-            torch_func = torch.sum
             torch_op = torch.distributed.ReduceOp.SUM
         elif operation == "max":
-            torch_func = torch.max
             torch_op = torch.distributed.ReduceOp.MAX
         else:
             raise ValueError(f"all_reduce unsupported operation: {operation}")
