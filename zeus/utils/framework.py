@@ -102,3 +102,56 @@ def sync_execution(
         return
 
     raise RuntimeError("No framework is available.")
+
+
+def all_reduce(
+    object: list[int] | list[float], operation: Literal["sum", "max"]
+) -> list[int] | list[float]:
+    """Reduce objects from all replicas through the specified operation.
+
+    If the current execution is not distributed, the object is returned as is.
+    """
+    if torch_is_available(ensure_cuda=False):
+        torch = MODULE_CACHE["torch"]
+
+        # if torch.distributed is not available or not initialized, return the object as is
+        if (
+            not torch.distributed.is_available()
+            or not torch.distributed.is_initialized()
+        ):
+            return object
+
+        # wrap object in a tensor
+        tensor = torch.Tensor(object).cuda()
+
+        # determine operation
+        if operation == "sum":
+            torch_op = torch.distributed.ReduceOp.SUM
+        elif operation == "max":
+            torch_op = torch.distributed.ReduceOp.MAX
+        else:
+            raise ValueError(f"all_reduce unsupported operation: {operation}")
+
+        torch.distributed.all_reduce(tensor, op=torch_op)
+        return tensor.cpu().tolist()
+
+    if jax_is_available():
+        # Check if not distributed
+        jax = MODULE_CACHE["jax"]
+        if jax.process_count() == 1:
+            return object
+
+        raise NotImplementedError("JAX distributed all-reduce not yet implemented")
+
+    raise RuntimeError("No framework is available.")
+
+
+def is_distributed() -> bool:
+    """Check if the current execution is distributed across multiple devices."""
+    if torch_is_available(ensure_cuda=False):
+        torch = MODULE_CACHE["torch"]
+        return torch.distributed.is_available() and torch.distributed.is_initialized()
+    if jax_is_available():
+        jax = MODULE_CACHE["jax"]
+        return jax.process_count() > 1
+    raise RuntimeError("No framework is available.")
