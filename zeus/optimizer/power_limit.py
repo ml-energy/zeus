@@ -419,10 +419,10 @@ class GlobalPowerLimitOptimizer(Callback):
                 self.measurements.append(
                     PowerLimitMeasurement(
                         power_limit=self.state.current_power_limit // 1000,
-                        energy=all_reduce(
+                        energy=sum(all_reduce(
                             list(measurement.gpu_energy.values()), operation="sum"
-                        ),
-                        time=all_reduce([measurement.time], operation="max"),
+                        )),
+                        time=max(all_reduce([measurement.time], operation="max")),
                     )
                 )
                 # If we're done profiling all power limits, compute the optimal

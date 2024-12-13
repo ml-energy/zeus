@@ -197,21 +197,19 @@ def main():
         sampler=val_sampler,
     )
 
-    # The rank 0 process will monitor and optimize the power limit of all GPUs.
-    if args.gpu == 0:
-        callback_set: list[Callback] = [
-            GlobalPowerLimitOptimizer(
-                monitor=ZeusMonitor(gpu_indices=args.gpu),  # Since there is only one GPU per process, monitor it (give it local rank).
-                optimum_selector=MaxSlowdownConstraint(
-                    factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
-                ),
-                warmup_steps=10,
-                profile_steps=40,
-                pl_step=25,
-            )
-        ]
-    else:
-        callback_set = []
+    # All proceses will monitor and optimize the power limit of all GPUs (one process per GPU).
+    callback_set: list[Callback] = [
+        GlobalPowerLimitOptimizer(
+            monitor=ZeusMonitor(gpu_indices=args.gpu),  # Since there is only one GPU per process, monitor it (give it local rank).
+            optimum_selector=MaxSlowdownConstraint(
+                factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
+            ),
+            warmup_steps=10,
+            profile_steps=40,
+            pl_step=25,
+        )
+    ]
+
     callbacks = CallbackSet(callback_set)
 
     for epoch in range(args.epochs):

@@ -106,14 +106,16 @@ def sync_execution(
 
 def all_reduce(
     object: list[int] | list[float], operation: Literal["sum", "max"]
-) -> int | float:
+) -> list[int] | list[float]:
     """Reduce objects from all replicas through the specified operation.
-
-    If running in a distributed setting, the objects are reduced across all replicas.
-    If running in a non-distributed setting, the operation is just done on the single object.
-    """
+    
+    If the current execution is not distributed, the object is returned as is."""
     if torch_is_available(ensure_cuda=False):
         torch = MODULE_CACHE["torch"]
+
+        # if torch.distributed is not available or not initialized, return the object as is
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+            return object
 
         # wrap object in a tensor if it is not already
         if not isinstance(object, torch.Tensor):
@@ -129,17 +131,16 @@ def all_reduce(
         else:
             raise ValueError(f"all_reduce unsupported operation: {operation}")
 
-        # compute local operation
-        result = torch_func(object)
-
-        # all-reduce only if torch.distributed is available and initialized
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(result.cuda(), op=torch_op)
-        return result.item()
+        torch.distributed.all_reduce(object.cuda(), op=torch_op)
+        return object.cpu().tolist()
 
     if jax_is_available():
-        # JAX cross-device all-reduce not yet implemente
-        return sum(object) if operation == "sum" else max(object)
+        # Check if not distributed
+        jax = MODULE_CACHE["jax"]
+        if jax.process_count() == 1:
+            return object
+
+        raise NotImplementedError("JAX all-reduce not yet implemented")
 
     raise RuntimeError("No framework is available.")
 
@@ -150,5 +151,6 @@ def is_distributed() -> bool:
         torch = MODULE_CACHE["torch"]
         return torch.distributed.is_available() and torch.distributed.is_initialized()
     if jax_is_available():
-        return False  # JAX not yet implemented
+        jax = MODULE_CACHE["jax"]
+        return jax.process_count() > 1
     return False
