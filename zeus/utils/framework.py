@@ -122,7 +122,7 @@ def all_reduce(
             return object
 
         # wrap object in a tensor
-        tensor = torch.Tensor(object, device="cuda")
+        tensor = torch.Tensor(object).cuda()
 
         # determine operation
         if operation == "sum":
