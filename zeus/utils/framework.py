@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import types
-from typing import Literal, List
+from typing import Literal
 from functools import lru_cache
 
 from zeus.utils.logging import get_logger
@@ -105,7 +105,7 @@ def sync_execution(
 
 
 def all_reduce(
-    object: List[int] | List[float], operation: Literal["sum", "max"]
+    object: list[int] | list[float], operation: Literal["sum", "max"]
 ) -> int | float:
     """Reduce objects from all replicas through the specified operation.
 

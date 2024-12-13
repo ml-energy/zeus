@@ -26,14 +26,14 @@ You just need to download and extract the ImageNet data and mount it to the Dock
 
 ## Multi-GPU Distributed Training (Pytorch DDP and FSDP)
 
-When using `ZeusMonitor` and/or `GlobalPowerLimitOptimizer` in a multi-GPU Distributed context, launch one instance of `ZeusMonitor` and/or `GlobalPowerLimitOptimizer` per local rank (per GPU on each node), and pass in the local rank to `ZeusMonitor` as shown below:
+When using `ZeusMonitor` and/or `GlobalPowerLimitOptimizer` in a multi-GPU Distributed context, construct one instance of `ZeusMonitor` and/or `GlobalPowerLimitOptimizer` per local rank (per GPU on each node), and pass in the local rank to `ZeusMonitor` as shown below:
 
 ```python
 monitor = ZeusMonitor(gpu_indices=[local_rank]) # pass in local rank to gpu_indices.
 plo = GlobalPowerLimitOptimizer(monitor)
 ```
 
-Ensure that only one GPU is monitored per `ZeusMonitor`. Internally, `GlobalPowerLimitOptimizer` performs an [All-Reduce](https://pytorch.org/docs/stable/distributed.html) to synchronize before making a power limit decision.
+Ensure that only one GPU is monitored per `ZeusMonitor`. Internally, `GlobalPowerLimitOptimizer` performs an [AllReduce](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html) to aggregate time and energy measurements across all GPUs before making a power limit decision.
 
 ## Example command
 
@@ -59,12 +59,6 @@ torchrun \
     --nnodes 1 \
     --nproc_per_node=gpu    `# Number of processes per node, should be equal to the number of GPUs.` \
     train_fsdp.py \
-    --batch-size 64         `# Batch size for training.` \
-    --test-batch-size 1000  `# Batch size for testing.` \
-    --epochs 10             `# Number of epochs to train.` \
-    --lr 1.0                `# Learning rate.` \
-    --gamma 0.7             `# Learning rate step gamma.` \
-    --save-model            `# Save the trained model.` \
     [DATA_DIR]
 ```
 

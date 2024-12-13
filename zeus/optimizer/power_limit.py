@@ -203,23 +203,22 @@ class GlobalPowerLimitOptimizer(Callback):
 
     This optimizer uses the JIT profiling log to determine the optimal power limit.
 
-    Non-distributed training (Single GPU or Multi-GPU on a single node):
-    Launch one instance of `ZeusMonitor` and `GlobalPowerLimitOptimizer`, and have `ZeusMonitor` track all desired GPUs.
-    For example, to track all GPUs on a single node:
+    ## Usage with distributed data parallelism
+    
+    The global power limit optimizer expects one process to control each GPU used for training.
+    For instance, `torchrun` will automatically spawn one process for each GPU on the node.
+    Correspondingly, the [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] instance passed in
+    should be monitoring **one GPU**: the one being managed by the current process. The index of
+    this GPU would typically match the local rank of the process. In the case of PyTorch, users would have
+    called `torch.cuda.set_device` early on, so `torch.cuda.current_device` will give you the GPU index.
+    `GlobalPowerLimitOptimizer` will internally do an AllReduce across all GPUs to aggregate
+    time and energy measurements, and then select the globally optimal power limit.
+   
+    
     ```python
-    monitor = ZeusMonitor(gpu_indices=None) # monitor all GPUs
+    monitor = ZeusMonitor(gpu_indices=[local_rank])  # pass in local rank to gpu_indices.
     plo = GlobalPowerLimitOptimizer(monitor)
     ```
-
-    Distributed training (Multi-GPU on multiple nodes):
-    `ZeusMonitor` and `GlobalPowerLimitOptimizer` make the assumption that each GPU is monitored by one and only one instance of `ZeusMonitor` to ensure correct functionality.
-    Therefore, it is recommended to launch one instance of `ZeusMonitor` and `GlobalPowerLimitOptimizer`
-    per device (per GPU on each node), and pass in the local rank to `ZeusMonitor` as shown below:
-    ```python
-    monitor = ZeusMonitor(gpu_indices=[local_rank]) # pass in local rank to gpu_indices.
-    plo = GlobalPowerLimitOptimizer(monitor)
-    ```
-    Internally, `GlobalPowerLimitOptimizer` performs an all-reduce over all devices to compute the optimal power limit.
     """
 
     def __init__(
