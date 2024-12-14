@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
+import multiprocessing as mp
 import pytest
 import requests
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 
-from zeus.carbon import (
+from zeus.monitor.carbon import (
+    CarbonEmissionMonitor,
+    _polling_process,
     ElectrictyMapsClient,
     get_ip_lat_long,
     ZeusCarbonIntensityNotFoundError,
@@ -102,3 +106,390 @@ def test_get_current_carbon_intensity_no_response(mock_requests):
 
     with pytest.raises(ZeusCarbonIntensityNotFoundError):
         provider.get_current_carbon_intensity()
+
+
+@pytest.fixture
+def mock_zeus_monitor():
+    patch_zeus_monitor = patch("zeus.monitor.carbon.ZeusMonitor", autospec=True)
+    zeus_monitor = patch_zeus_monitor.start()
+
+    # Configure the mock
+    mock_instance = zeus_monitor.return_value
+    mock_instance.end_window.return_value = MagicMock(
+        gpu_energy={0: 30.0, 1: 35.0, 2: 40.0},
+        cpu_energy={0: 20.0, 1: 25.0},
+        dram_energy={},
+    )
+    mock_instance.gpu_indices = [0, 1, 2]
+    mock_instance.cpu_indices = [0, 1]
+
+    yield
+
+    patch_zeus_monitor.stop()
+
+
+@pytest.fixture
+def mock_carbon_history():
+    real_requests_get = requests.get
+
+    def mock_requests_get(url, *args, **kwargs):
+        current_time = MockDateTime.get_previous_hour()
+        TIME_TO_SWITCH = MockDateTime(2024, 12, 1, 7, 0, tzinfo=timezone.utc)
+        if (
+            url
+            == "https://api.electricitymap.org/v3/carbon-intensity/history?lat=42.2776&lon=-83.7409&disableEstimations=False&emissionFactorType=lifecycle"
+            and current_time < TIME_TO_SWITCH
+        ):
+            with open("tests/carbon_history_files/carbon_history_file1", "r") as file:
+                content = file.read()
+            return MockHttpResponse(content)
+        elif (
+            url
+            == "https://api.electricitymap.org/v3/carbon-intensity/history?lat=42.2776&lon=-83.7409&disableEstimations=False&emissionFactorType=lifecycle"
+        ):
+            with open("tests/carbon_history_files/carbon_history_file2", "r") as file:
+                content = file.read()
+            return MockHttpResponse(content)
+        else:
+            return real_requests_get(url)
+
+    patch_request_get = patch("requests.get", side_effect=mock_requests_get)
+    patch_request_get.start()
+
+    yield
+
+    patch_request_get.stop()
+
+
+class MockDateTime(datetime):
+    times = []
+    i = 0
+
+    @classmethod
+    def now(cls, tz=None):
+        old_index = cls.i
+        cls.i += 1
+        return cls.times[old_index]
+
+    @classmethod
+    def get_previous_hour(cls):
+        return cls.times[
+            cls.i - 1
+        ]  # minus one to handle off by one error: want to get previous hour
+
+
+@pytest.fixture
+def mock_datetime():
+    patch_datetime_now = patch("zeus.monitor.carbon.datetime", new=MockDateTime)
+    patch_datetime_now.start()
+
+    yield
+
+    patch_datetime_now.stop()
+
+
+def get_expected_cpu_gpu_carbon_emision(datetimes):
+    expected_gpu_values = [0, 0, 0]
+    expected_cpu_values = [0, 0]
+    unique_datetimes = set()
+
+    # converts datetime objects to the most recent whole hour and turn into string format used in json response
+    def convert(now):
+        # converts datetime objects into string format used in json response
+        hour_floor = now.replace(minute=0, second=0, microsecond=0)
+        return hour_floor.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    for datetime in datetimes:
+        unique_datetimes.add(convert(datetime))
+
+    with (
+        open("tests/carbon_history_files/carbon_history_file1", "r") as file1,
+        open("tests/carbon_history_files/carbon_history_file2", "r") as file2,
+    ):
+        content1 = json.loads(file1.read())
+        content2 = json.loads(file2.read())
+        for time in unique_datetimes:
+            for measurement in content1["history"]:
+                if measurement["datetime"] == time:
+                    expected_gpu_values[0] += (
+                        30.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_gpu_values[1] += (
+                        35.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_gpu_values[2] += (
+                        40.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_cpu_values[0] += (
+                        20.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_cpu_values[1] += (
+                        25.0 / 3600 * measurement["carbonIntensity"]
+                    )
+
+            for measurement in content2["history"]:
+                if measurement["datetime"] == time:
+                    expected_gpu_values[0] += (
+                        30.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_gpu_values[1] += (
+                        35.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_gpu_values[2] += (
+                        40.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_cpu_values[0] += (
+                        20.0 / 3600 * measurement["carbonIntensity"]
+                    )
+                    expected_cpu_values[1] += (
+                        25.0 / 3600 * measurement["carbonIntensity"]
+                    )
+
+    return expected_gpu_values, expected_cpu_values
+
+
+# test single window active for a window length of less than an one hour
+def test_single_window_one_hour(mock_zeus_monitor, mock_carbon_history, mock_datetime):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    gpu_indices = [0, 1, 2]
+    cpu_indices = [0, 1]
+    provider = ElectrictyMapsClient(
+        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
+    )
+
+    MockDateTime.times = [
+        MockDateTime(2024, 12, 1, 6, 30, tzinfo=timezone.utc),  # test_window start
+        MockDateTime(2024, 12, 1, 6, 45, tzinfo=timezone.utc),  # test_window end
+    ]
+    MockDateTime.i = 0
+    command_q.put((CarbonEmissionMonitor.Op.BEGIN, "test_window"))  # (op, key)
+    command_q.put((CarbonEmissionMonitor.Op.END, "test_window"))
+
+    _polling_process(command_q, finished_q, gpu_indices, cpu_indices, provider)
+
+    _, gpu_carbon_emission, cpu_carbon_emission = finished_q.get()
+
+    # expected_values
+    expected_gpu_values, expected_cpu_values = get_expected_cpu_gpu_carbon_emision(
+        MockDateTime.times
+    )
+
+    assert gpu_carbon_emission[0] == pytest.approx(expected_gpu_values[0])
+    assert gpu_carbon_emission[1] == pytest.approx(expected_gpu_values[1])
+    assert gpu_carbon_emission[2] == pytest.approx(expected_gpu_values[2])
+    assert cpu_carbon_emission is not None
+    assert cpu_carbon_emission[0] == pytest.approx(expected_cpu_values[0])
+    assert cpu_carbon_emission[1] == pytest.approx(expected_cpu_values[1])
+
+
+# test single window active for a window length of at least 24 hours
+def test_single_window_one_day(mock_zeus_monitor, mock_carbon_history, mock_datetime):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    gpu_indices = [0, 1, 2]
+    cpu_indices = [0, 1]
+    provider = ElectrictyMapsClient(
+        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
+    )
+
+    # times so that exactly 25 iterations inside the polling loop executes
+    MockDateTime.times = [
+        MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window start
+        MockDateTime(
+            2024, 11, 30, 8, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 11, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 12, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 13, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 14, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 15, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 16, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 17, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 18, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 19, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 20, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 21, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 22, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 23, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 0, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 1, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 2, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 3, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 4, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 6, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 7, 0, tzinfo=timezone.utc),  # test_window end
+    ]
+    MockDateTime.i = 0
+
+    command_q.put((CarbonEmissionMonitor.Op.BEGIN, "test_window"))
+    # polling process always calls get for each iteration
+    # add nextiter ops to fast forward the polling process
+    for i in range(23):
+        command_q.put((CarbonEmissionMonitor.Op.NEXTITER, None))
+    command_q.put((CarbonEmissionMonitor.Op.END, "test_window"))
+
+    _polling_process(command_q, finished_q, gpu_indices, cpu_indices, provider)
+
+    _, gpu_carbon_emission, cpu_carbon_emission = finished_q.get()
+
+    expected_gpu_values, expected_cpu_values = get_expected_cpu_gpu_carbon_emision(
+        MockDateTime.times
+    )
+
+    assert gpu_carbon_emission[0] == pytest.approx(expected_gpu_values[0])
+    assert gpu_carbon_emission[1] == pytest.approx(expected_gpu_values[1])
+    assert gpu_carbon_emission[2] == pytest.approx(expected_gpu_values[2])
+    assert cpu_carbon_emission is not None
+    assert cpu_carbon_emission[0] == pytest.approx(expected_cpu_values[0])
+    assert cpu_carbon_emission[1] == pytest.approx(expected_cpu_values[1])
+
+
+# test multiple windows active for a window length of less than an one hour
+def test_multiple_windows_one_hour(
+    mock_zeus_monitor, mock_carbon_history, mock_datetime
+):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    gpu_indices = [0, 1, 2]
+    cpu_indices = [0, 1]
+    provider = ElectrictyMapsClient(
+        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
+    )
+
+    MockDateTime.times = [
+        MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window1 start
+        MockDateTime(
+            2024, 12, 1, 6, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 12, 1, 6, 0, tzinfo=timezone.utc),  # test_window2 start
+        MockDateTime(2024, 12, 1, 6, 30, tzinfo=timezone.utc),  # test_window1 end
+        MockDateTime(2024, 12, 1, 6, 30, tzinfo=timezone.utc),  # test_window2 end
+    ]
+    MockDateTime.i = 0
+    command_q.put((CarbonEmissionMonitor.Op.BEGIN, "test_window1"))  # (op, key)
+    command_q.put((CarbonEmissionMonitor.Op.BEGIN, "test_window2"))  # (op, key)
+    command_q.put((CarbonEmissionMonitor.Op.END, "test_window1"))
+    command_q.put((CarbonEmissionMonitor.Op.END, "test_window2"))
+
+    _polling_process(command_q, finished_q, gpu_indices, cpu_indices, provider)
+
+    # retrieve values
+    _, gpu_carbon_emission1, cpu_carbon_emission1 = finished_q.get()
+    _, gpu_carbon_emission2, cpu_carbon_emission2 = finished_q.get()
+
+    # expected_values
+    expected_gpu_values1, expected_cpu_values1 = get_expected_cpu_gpu_carbon_emision(
+        MockDateTime.times[:4]
+    )
+    expected_gpu_values2, expected_cpu_values2 = get_expected_cpu_gpu_carbon_emision(
+        MockDateTime.times[2:]
+    )
+
+    # assert statements for test_window1
+    assert gpu_carbon_emission1[0] == pytest.approx(expected_gpu_values1[0])
+    assert gpu_carbon_emission1[1] == pytest.approx(expected_gpu_values1[1])
+    assert gpu_carbon_emission1[2] == pytest.approx(expected_gpu_values1[2])
+    assert cpu_carbon_emission1 is not None
+    assert cpu_carbon_emission1[0] == pytest.approx(expected_cpu_values1[0])
+    assert cpu_carbon_emission1[1] == pytest.approx(expected_cpu_values1[1])
+
+    # assert statements for test_window2
+    assert gpu_carbon_emission2[0] == pytest.approx(expected_gpu_values2[0])
+    assert gpu_carbon_emission2[1] == pytest.approx(expected_gpu_values2[1])
+    assert gpu_carbon_emission2[2] == pytest.approx(expected_gpu_values2[2])
+    assert cpu_carbon_emission2 is not None
+    assert cpu_carbon_emission2[0] == pytest.approx(expected_cpu_values2[0])
+    assert cpu_carbon_emission2[1] == pytest.approx(expected_cpu_values2[1])
+
+
+# test multiple windows active for a window length of at least a day
+def test_multiple_windows_one_day(
+    mock_zeus_monitor, mock_carbon_history, mock_datetime
+):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    gpu_indices = [0, 1, 2]
+    cpu_indices = [0, 1]
+    provider = ElectrictyMapsClient(
+        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
+    )
+
+    MockDateTime.times = [
+        MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window1 start
+        MockDateTime(
+            2024, 11, 30, 8, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # test_window2 start
+        MockDateTime(
+            2024, 11, 30, 9, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 11, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 12, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 13, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 14, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 15, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 16, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 17, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 18, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 19, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 20, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 21, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 22, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 23, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 0, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 1, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 2, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 3, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 4, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 6, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 7, 0, tzinfo=timezone.utc),  # test_window1 end
+        MockDateTime(
+            2024, 12, 1, 8, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "end" is called
+        MockDateTime(2024, 12, 1, 8, 0, tzinfo=timezone.utc),  # test_window2 end
+    ]
+    MockDateTime.i = 0
+    command_q.put((CarbonEmissionMonitor.Op.BEGIN, "test_window1"))
+    command_q.put((CarbonEmissionMonitor.Op.BEGIN, "test_window2"))
+    for i in range(22):
+        command_q.put((CarbonEmissionMonitor.Op.NEXTITER, None))
+    command_q.put((CarbonEmissionMonitor.Op.END, "test_window1"))
+    command_q.put((CarbonEmissionMonitor.Op.END, "test_window2"))
+
+    _polling_process(command_q, finished_q, gpu_indices, cpu_indices, provider)
+
+    # retrieve values
+    _, gpu_carbon_emission1, cpu_carbon_emission1 = finished_q.get()
+    _, gpu_carbon_emission2, cpu_carbon_emission2 = finished_q.get()
+
+    # expected_values
+    expected_gpu_values1, expected_cpu_values1 = get_expected_cpu_gpu_carbon_emision(
+        MockDateTime.times[:27]
+    )
+    expected_gpu_values2, expected_cpu_values2 = get_expected_cpu_gpu_carbon_emision(
+        MockDateTime.times[2:]
+    )
+
+    # assert statements for test_window1
+    assert gpu_carbon_emission1[0] == pytest.approx(expected_gpu_values1[0])
+    assert gpu_carbon_emission1[1] == pytest.approx(expected_gpu_values1[1])
+    assert gpu_carbon_emission1[2] == pytest.approx(expected_gpu_values1[2])
+    assert cpu_carbon_emission1 is not None
+    assert cpu_carbon_emission1[0] == pytest.approx(expected_cpu_values1[0])
+    assert cpu_carbon_emission1[1] == pytest.approx(expected_cpu_values1[1])
+
+    # assert statements for test_window2
+    assert gpu_carbon_emission2[0] == pytest.approx(expected_gpu_values2[0])
+    assert gpu_carbon_emission2[1] == pytest.approx(expected_gpu_values2[1])
+    assert gpu_carbon_emission2[2] == pytest.approx(expected_gpu_values2[2])
+    assert cpu_carbon_emission2 is not None
+    assert cpu_carbon_emission2[0] == pytest.approx(expected_cpu_values2[0])
+    assert cpu_carbon_emission2[1] == pytest.approx(expected_cpu_values2[1])
