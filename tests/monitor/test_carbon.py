@@ -202,7 +202,7 @@ def mock_datetime():
         )
 
     patch_dateutil_parser = patch(
-        "zeus.monitor.carbon.dateutil.parser.parse", side_effect=mock_parse
+        "zeus.monitor.carbon.parser.parse", side_effect=mock_parse
     )
     patch_datetime_now.start()
     patch_dateutil_parser.start()
