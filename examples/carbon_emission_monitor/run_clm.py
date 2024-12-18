@@ -765,11 +765,12 @@ def main():
     else:
         trainer.create_model_card(**kwargs)
         
-    print("Measurements:")
-    print("Train:")
-    print(train_measurement)
-    print("Evaluation:")
-    print(eval_measurement)
+    if train_measurement is not None:
+        print("Train energy & carbon measurements:")
+        print(train_measurement)
+    if eval_measurement is not None:
+        print("Evaluation energy & carbon measurements:")
+        print(eval_measurement)
 
 
 def _mp_fn(index):

@@ -11,12 +11,12 @@ import multiprocessing as mp
 
 from typing import Literal
 from datetime import datetime, timezone, timedelta
+from dateutil import parser
 from collections import defaultdict
 
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
 from zeus.utils.logging import get_logger
-from zeus.utils.framework import sync_execution as sync_execution_fn
 
 logger = get_logger(__name__)
 
@@ -37,6 +37,14 @@ def get_ip_lat_long() -> tuple[float, float]:
         raise
 
 
+class ZeusCarbonIntensityHTTPError(ZeusBaseError):
+    """Exception when HTTP request to carbon intensity provider fails."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize HTTP request exception."""
+        super().__init__(message)
+
+
 class ZeusCarbonIntensityNotFoundError(ZeusBaseError):
     """Exception when carbon intensity measurement could not be retrieved."""
 
@@ -54,7 +62,7 @@ class CarbonIntensityProvider(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_recent_carbon_intensity(self) -> dict[str, float]:
+    def get_recent_carbon_intensity(self) -> dict[datetime, float]:
         """Abstract method for fetching the current carbon intensity of the set location of the class."""
         pass
 
@@ -78,9 +86,9 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
         """Iniitializes ElectricityMaps Carbon Provider.
 
         Args:
-                        location: tuple of latitude and longitude (latitude, longitude)
-                        estimate: bool to toggle whether carbon intensity is estimated or not
-                        emission_factor_type: emission factor to be measured (`direct` or `lifestyle`)
+            location: tuple of latitude and longitude (latitude, longitude)
+            estimate: bool to toggle whether carbon intensity is estimated or not
+            emission_factor_type: emission factor to be measured (`direct` or `lifestyle`)
         """
         self.lat, self.long = location
         self.estimate = estimate
@@ -89,8 +97,7 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
     def get_current_carbon_intensity(self) -> float:
         """Fetches current carbon intensity of the location of the class.
 
-        !!! Note
-                        In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
+        In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
         """
         try:
             url = (
@@ -99,10 +106,9 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
             )
             resp = requests.get(url)
         except requests.exceptions.RequestException as e:
-            logger.exception(
-                "Failed to retrieve current carbon intensity measurement: %s", e
-            )
-            raise
+            raise ZeusCarbonIntensityHTTPError(
+                f"Failed to retrieve current carbon intensity measurement: {e}"
+            ) from e
 
         try:
             return resp.json()["carbonIntensity"]
@@ -114,11 +120,10 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
                 f"JSON Response: {resp.text}"
             ) from e
 
-    def get_recent_carbon_intensity(self) -> dict[str, float]:
+    def get_recent_carbon_intensity(self) -> dict[datetime, float]:
         """Fetches recent (within last 24 hours) carbon intensity of the location of the class.
 
-        !!! Note
-                        In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
+        In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
         """
         try:
             url = (
@@ -127,14 +132,13 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
             )
             resp = requests.get(url)
         except requests.exceptions.RequestException as e:
-            logger.exception(
-                "Failed to retrieve recent carbon intensity measurement: %s", e
-            )
-            raise
+            raise ZeusCarbonIntensityHTTPError(
+                f"Failed to retrieve recent carbon intensity measurement: {e}"
+            ) from e
 
         try:
-            recent_carbon_intensities: dict[str, float] = {
-                measurement["datetime"]: measurement["carbonIntensity"]
+            recent_carbon_intensities: dict[datetime, float] = {
+                parser.parse(measurement["datetime"]): measurement["carbonIntensity"]
                 for measurement in resp.json()["history"]
             }
             return recent_carbon_intensities
@@ -152,23 +156,26 @@ class CarbonEmissionMeasurement:
     """Measurement result of one window.
 
     Attributes:
-                    time: Time elapsed (in seconds) during the measurement window.
-                    gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
-                                    measurement window. GPU indices are from the DL framework's perspective
-                                    after applying `CUDA_VISIBLE_DEVICES`.
-                    gpu_carbon_emission: Maps GPU indices to the carbon emission produced (in mgCO2eq) during the
-                                    measurement window. GPU indices are from the DL framework's perspective
-                                    after applying `CUDA_VISIBLE_DEVICES`.
-                    cpu_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
-                                    window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
-                                    be 'None' if CPU measurement is not available.
-                    cpu_carbon_emission: Maps CPU indices to the carbon emission produced (in mgCO2eq) during the measurement
-                                    window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
-                                    be 'None' if CPU measurement is not available.
-                    dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
-                                    window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
-                                    measurements are taken from sub-packages within each powerzone. This can be 'None' if
-                                    CPU measurement is not available or DRAM measurement is not available.
+        time: Time elapsed (in seconds) during the measurement window.
+        gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
+            measurement window. GPU indices are from the DL framework's perspective
+            after applying `CUDA_VISIBLE_DEVICES`.
+        gpu_carbon_emission: Maps GPU indices to the carbon emission produced (in gCO2eq) during the
+            measurement window. GPU indices are from the DL framework's perspective
+            after applying `CUDA_VISIBLE_DEVICES`.
+        cpu_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
+            be 'None' if CPU measurement is not available.
+        cpu_carbon_emission: Maps CPU indices to the carbon emission produced (in gCO2eq) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
+            be 'None' if CPU measurement is not available.
+        dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d) and DRAM
+            measurements are taken from sub-packages within each powerzone. This can be 'None' if
+            CPU measurement is not available or DRAM measurement is not available.
+        dram_carbon_emission: Maps CPU indices to the carbon emission produced(in gCO2eq) during the measurement
+            window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can be 'None' if
+            CPU measurement is not available or DRAM measurement is not available.
     """
 
     time: float
@@ -177,6 +184,15 @@ class CarbonEmissionMeasurement:
     cpu_energy: dict[int, float] | None = None
     cpu_carbon_emission: dict[int, float] | None = None
     dram_energy: dict[int, float] | None = None
+    dram_carbon_emission: dict[int, float] | None = None
+
+
+class Op(Enum):
+    """Enum used to communicate between CarbonEmissionMonitor and _polling_process."""
+
+    BEGIN = 0
+    END = 1
+    NEXTITER = 2
 
 
 class CarbonEmissionMonitor:
@@ -191,15 +207,8 @@ class CarbonEmissionMonitor:
     measurement windows are supported.
 
     !!! Note
-                    When carbon_intensity_provider must have estimate turned on because during some hours, carbon intensity values are not recorded by ElectricityMaps.
+        carbon_intensity_provider must have estimate turned on because during some hours, carbon intensity values are not recorded by ElectricityMaps.
     """
-
-    class Op(Enum):
-        """Enum used to communicate between CarbonEmissionMonitor and _polling_process."""
-
-        BEGIN = 0
-        END = 1
-        NEXTITER = 2
 
     def __init__(
         self,
@@ -211,26 +220,26 @@ class CarbonEmissionMonitor:
         """Iniitializes Carbon Emission Monitor.
 
         Args:
-                        carbon_intensity_provider: provider for which carbon intensity values will be fetched from
-                        gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurements
-                                        will begin and end at the same time for these GPUs (i.e., synchronized).
-                                        If None, all the GPUs available will be used. `CUDA_VISIBLE_DEVICES`
-                                        is respected if set, e.g., GPU index `1` passed into `gpu_indices` when
-                                        `CUDA_VISIBLE_DEVICES=2,3` will be interpreted as CUDA device `3`.
-                                        `CUDA_VISIBLE_DEVICES`s formatted with comma-separated indices are supported.
-                        cpu_indices: Indices of the CPU packages to monitor. If None, all CPU packages will
-                                        be used.
-                        sync_execution_with: Deep learning framework to use to synchronize CPU/GPU computations.
-                                        Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
-                                        See [`sync_execution`][zeus.utils.framework.sync_execution] for more details.
+            carbon_intensity_provider: provider for which carbon intensity values will be fetched from
+            gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurements
+                will begin and end at the same time for these GPUs (i.e., synchronized).
+                If None, all the GPUs available will be used. `CUDA_VISIBLE_DEVICES`
+                is respected if set, e.g., GPU index `1` passed into `gpu_indices` when
+                `CUDA_VISIBLE_DEVICES=2,3` will be interpreted as CUDA device `3`.
+                `CUDA_VISIBLE_DEVICES`s formatted with comma-separated indices are supported.
+            cpu_indices: Indices of the CPU packages to monitor. If None, all CPU packages will
+                be used.
+            sync_execution_with: Deep learning framework to use to synchronize CPU/GPU computations.
+                Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
+                See [`sync_execution`][zeus.utils.framework.sync_execution] for more details.
         """
         self.zeus_monitor = ZeusMonitor(
-            gpu_indices=gpu_indices, cpu_indices=cpu_indices
+            gpu_indices=gpu_indices,
+            cpu_indices=cpu_indices,
+            sync_execution_with=sync_execution_with,
         )
         self.carbon_intensity_provider = carbon_intensity_provider
-        self.sync_with: Literal["torch", "jax"] = sync_execution_with
         self.current_keys = set()
-        self.finished_keys = {}
 
         # set up process and shared queues
         self.context = mp.get_context("spawn")
@@ -241,24 +250,20 @@ class CarbonEmissionMonitor:
         """Begin a new measurement window.
 
         Args:
-                        key: Unique name of the measurement window.
-                        sync_execution: Whether to wait for asynchronously dispatched computations
-                                        to finish before starting the measurement window. For instance, PyTorch
-                                        and JAX will run GPU computations asynchronously, and waiting them to
-                                        finish is necessary to ensure that the measurement window captures all
-                                        and only the computations dispatched within the window.
+            key: Unique name of the measurement window.
+            sync_execution: Whether to wait for asynchronously dispatched computations
+                to finish before starting the measurement window. For instance, PyTorch
+                and JAX will run GPU computations asynchronously, and waiting them to
+                finish is necessary to ensure that the measurement window captures all
+                and only the computations dispatched within the window.
         """
         # check if key is already used
         if key in self.current_keys:
             raise ValueError(f"Measurement window '{key}' already exists")
         self.current_keys.add(key)
 
-        # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
-        if sync_execution and self.zeus_monitor.gpu_indices:
-            sync_execution_fn(self.zeus_monitor.gpu_indices, sync_with=self.sync_with)
-
         # start window
-        self.zeus_monitor.begin_window(key)
+        self.zeus_monitor.begin_window(key, sync_execution=sync_execution)
 
         # if there were previously no active windows, start polling process
         if len(self.current_keys) == 1:
@@ -275,7 +280,7 @@ class CarbonEmissionMonitor:
             self.polling_process.start()
 
         # start subwindows
-        self.command_q.put((self.Op.BEGIN, key))
+        self.command_q.put((Op.BEGIN, key))
 
     def end_window(
         self, key: str, sync_execution: bool = True
@@ -283,51 +288,39 @@ class CarbonEmissionMonitor:
         """End a measurement window and return the time, energy consumption, and carbon emission.
 
         Args:
-                        key: Name of an active measurement window.
-                        sync_execution: Whether to wait for asynchronously dispatched computations
-                                        to finish before starting the measurement window. For instance, PyTorch
-                                        and JAX will run GPU computations asynchronously, and waiting them to
-                                        finish is necessary to ensure that the measurement window captures all
-                                        and only the computations dispatched within the window.
+            key: Name of an active measurement window.
+            sync_execution: Whether to wait for asynchronously dispatched computations
+                to finish before starting the measurement window. For instance, PyTorch
+                and JAX will run GPU computations asynchronously, and waiting them to
+                finish is necessary to ensure that the measurement window captures all
+                and only the computations dispatched within the window.
         """
         # check if begin_window has been called with key before
         if key not in self.current_keys:
             raise ValueError(f"Measurement window '{key}' does not exist")
 
-        # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
-        if sync_execution and self.zeus_monitor.gpu_indices:
-            sync_execution_fn(self.zeus_monitor.gpu_indices, sync_with=self.sync_with)
-
         # end window
-        self.command_q.put((self.Op.END, key))
+        self.command_q.put((Op.END, key))
+        (
+            gpu_carbon_emissions,
+            cpu_carbon_emissions,
+            dram_carbon_emissions,
+        ) = self.finished_q.get()
+        self.current_keys.remove(key)
 
-        # continue fetching until you find the key you have received
-        while key not in self.finished_keys:
-            try:
-                (
-                    retrieved_key,
-                    gpu_carbon_emission,
-                    cpu_carbon_emission,
-                ) = self.finished_q.get_nowait()
-                self.finished_keys[retrieved_key] = (
-                    gpu_carbon_emission,
-                    cpu_carbon_emission,
-                )
-                self.current_keys.remove(key)
-            except queue.Empty:
-                pass
-        overall_measurement = self.zeus_monitor.end_window(key)
+        overall_measurement = self.zeus_monitor.end_window(
+            key, sync_execution=sync_execution
+        )
 
         measurement = CarbonEmissionMeasurement(
             time=overall_measurement.time,
             gpu_energy=overall_measurement.gpu_energy,
             cpu_energy=overall_measurement.cpu_energy,
             dram_energy=overall_measurement.dram_energy,
-            gpu_carbon_emission=self.finished_keys[key][0],
-            cpu_carbon_emission=self.finished_keys[key][1] or None,
+            gpu_carbon_emission=gpu_carbon_emissions,
+            cpu_carbon_emission=cpu_carbon_emissions or None,
+            dram_carbon_emission=dram_carbon_emissions or None,
         )
-
-        del self.finished_keys[key]
 
         return measurement
 
@@ -348,44 +341,54 @@ def _polling_process(
     cpu_carbon_emissions = defaultdict(
         lambda: defaultdict(float)
     )  # {window_key -> {cpu index -> cumulative carbon emission}}
+    dram_carbon_emissions = defaultdict(
+        lambda: defaultdict(float)
+    )  # {window_key -> {dram cpu index -> cumulative carbon emission}}
     energy_measurements = defaultdict(
         lambda: defaultdict(lambda: defaultdict(float))
     )  # {window_key -> {hour -> {gpu/cpu index -> energy}}}
     keys = set()
 
     # record energy measurement
-    def _update_energy_measurements(key: str, hour_key: str):
-        measurement = zeus_monitor.end_window(key)
+    def _update_energy_measurements(key: str, datetime: datetime):
+        measurement = zeus_monitor.end_window(key, sync_execution=False)
 
         for gpu_index, energy_measurement in measurement.gpu_energy.items():
-            energy_measurements[key][hour_key][f"gpu_{gpu_index}"] = energy_measurement
+            energy_measurements[key][datetime][f"gpu_{gpu_index}"] = energy_measurement
 
         if measurement.cpu_energy:
             for cpu_index, energy_measurement in measurement.cpu_energy.items():
-                energy_measurements[key][hour_key][
+                energy_measurements[key][datetime][
                     f"cpu_{cpu_index}"
+                ] = energy_measurement
+
+        if measurement.dram_energy:
+            for dram_index, energy_measurement in measurement.dram_energy.items():
+                energy_measurements[key][datetime][
+                    f"dram_{dram_index}"
                 ] = energy_measurement
 
     # update cumulative carbon emissions
     def _update_carbon_emissions(key: str):
         carbon_intensities = carbon_intensity_provider.get_recent_carbon_intensity()
+        print(carbon_intensities)
 
-        for hour_key, carbon_intensity in carbon_intensities.items():
-            for gpu_index in zeus_monitor.gpu_indices:
-                # divide by 3600 to convert joules -> Wh
-                gpu_carbon_emissions[key][gpu_index] += (
-                    energy_measurements[key][hour_key][f"gpu_{gpu_index}"]
-                    / 3600
-                    * carbon_intensity
-                )
+        for dt, measurement_map in energy_measurements[key].items():
+            for index, energy in measurement_map.items():
+                hardware_type, num_index = index.split("_")
 
-            for cpu_index in zeus_monitor.cpu_indices:
-                # divide by 3600 to convert joules -> Wh
-                cpu_carbon_emissions[key][cpu_index] += (
-                    energy_measurements[key][hour_key][f"cpu_{cpu_index}"]
-                    / 3600
-                    * carbon_intensity
-                )
+                if hardware_type == "gpu":
+                    gpu_carbon_emissions[key][int(num_index)] += (
+                        energy / 3.6e6 * carbon_intensities[dt]
+                    )
+                elif hardware_type == "cpu":
+                    cpu_carbon_emissions[key][int(num_index)] += (
+                        energy / 3.6e6 * carbon_intensities[dt]
+                    )
+                elif hardware_type == "dram":
+                    dram_carbon_emissions[key][int(num_index)] += (
+                        energy / 3.6e6 * carbon_intensities[dt]
+                    )
 
         del energy_measurements[key]
 
@@ -394,11 +397,10 @@ def _polling_process(
         now = datetime.now(timezone.utc)
         hour_floor = now.replace(minute=0, second=0, microsecond=0)
         hour_ceil = hour_floor + timedelta(hours=1)
-        hour_key = hour_floor.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
         # start windows
         for key in keys:
-            zeus_monitor.begin_window(key)
+            zeus_monitor.begin_window(key, sync_execution=False)
 
         try:
             # continuously fetch from command q until hit hour
@@ -406,27 +408,25 @@ def _polling_process(
                 seconds_until_hour = (hour_ceil - now).total_seconds()
                 op, key = command_q.get(timeout=seconds_until_hour)
 
-                if op == CarbonEmissionMonitor.Op.BEGIN:
-                    zeus_monitor.begin_window(key)
+                if op == Op.BEGIN:
+                    zeus_monitor.begin_window(key, sync_execution=False)
                     keys.add(key)
-                elif op == CarbonEmissionMonitor.Op.END:
+                elif op == Op.END:
                     # update if has not been updated in a while
-                    _update_energy_measurements(key, hour_key)
+                    _update_energy_measurements(key, hour_floor)
                     _update_carbon_emissions(key)
                     finished_q.put(
                         (
-                            key,
-                            dict(gpu_carbon_emissions[key]),
-                            dict(cpu_carbon_emissions[key]),
+                            dict(gpu_carbon_emissions.pop(key)),
+                            dict(cpu_carbon_emissions.pop(key)),
+                            dict(dram_carbon_emissions.pop(key)),
                         )
                     )
                     keys.remove(key)
-                    del gpu_carbon_emissions[key]
-                    del cpu_carbon_emissions[key]
 
                     if len(keys) == 0:
                         return
-                elif op == CarbonEmissionMonitor.Op.NEXTITER:
+                elif op == Op.NEXTITER:
                     # for testing purposes only, force monitor to move onto next hour
                     # this op will never be sent into command q outside of testing environments
                     break
@@ -439,7 +439,7 @@ def _polling_process(
         # record energy values
         index += 1
         for key in keys:
-            _update_energy_measurements(key, hour_key)
+            _update_energy_measurements(key, hour_floor)
 
         # if 23 hours has passed, update cumulative carbon emission
         if index - last_index == 23:

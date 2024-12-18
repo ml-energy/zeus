@@ -12,14 +12,13 @@ pip install -r requirements.txt
 
 ## `CarbonEmissionMonitor`
 
-[`CarbonEmissionMonitor`](https://ml.energy/zeus/reference/monitor/energy/#zeus.monitor.energy.ZeusMonitor): Measures the GPU time, energy consumption, and carbon emission of arbitrary code blocks.
+[`CarbonEmissionMonitor`](https://ml.energy/zeus/reference/monitor/carbon/#zeus.monitor.carbon.CarbonEmissionMonitor): Measures the GPU time, energy consumption, and carbon emission of arbitrary code blocks.
 
 ## Running the Example
 
 By default, `Trainer` will make use of all available GPUs. If you would like to use only a subset of the GPUs, specify the `CUDA_VISIBLE_DEVICES` environment variable, which Zeus will also automatically respect.
 
 ```bash
-# For Trainer.
 python run_clm.py \
     --model_name_or_path gpt2 \
     --dataset_name wikitext \
