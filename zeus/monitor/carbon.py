@@ -66,6 +66,17 @@ class CarbonIntensityProvider(abc.ABC):
         """Abstract method for fetching the current carbon intensity of the set location of the class."""
         pass
 
+    @property
+    @abc.abstractmethod
+    def update_period(self) -> timedelta:
+        """Abstract method for how long each carbon intensity value in the history dict remains current."""
+        return timedelta(hours=1)
+
+    @property
+    @abc.abstractmethod
+    def history_length(self) -> timedelta:
+        """Abstract method for how many carbon intensity values are in the history dict."""
+        return timedelta(hours=1)
 
 class ElectrictyMapsClient(CarbonIntensityProvider):
     """Carbon Intensity Provider with ElectricityMaps API.
@@ -150,6 +161,15 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
                 f"JSON Response: {resp.text}"
             ) from e
 
+    @property
+    def update_period(self) -> timedelta:
+        """Returns timedelta for how long each carbon intensity value in the history dict remains current."""
+        return timedelta(hours=1)
+
+    @property
+    def history_length(self) -> int:
+        """Returns number of carbon intensity values in history dict."""
+        return 24
 
 @dataclass
 class CarbonEmissionMeasurement:
@@ -173,7 +193,7 @@ class CarbonEmissionMeasurement:
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d) and DRAM
             measurements are taken from sub-packages within each powerzone. This can be 'None' if
             CPU measurement is not available or DRAM measurement is not available.
-        dram_carbon_emission: Maps CPU indices to the carbon emission produced(in gCO2eq) during the measurement
+        dram_carbon_emission: Maps CPU indices to the carbon emission produced (in gCO2eq) during the measurement
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can be 'None' if
             CPU measurement is not available or DRAM measurement is not available.
     """
@@ -207,7 +227,9 @@ class CarbonEmissionMonitor:
     measurement windows are supported.
 
     !!! Note
-        carbon_intensity_provider must have estimate turned on because during some hours, carbon intensity values are not recorded by ElectricityMaps.
+        `carbon_intensity_provider` must have `estimate` turned on because during some hours,
+        ElectricityMaps does not have carbon intensity values available and has to rely on
+        estimation.
     """
 
     def __init__(
@@ -371,7 +393,6 @@ def _polling_process(
     # update cumulative carbon emissions
     def _update_carbon_emissions(key: str):
         carbon_intensities = carbon_intensity_provider.get_recent_carbon_intensity()
-        print(carbon_intensities)
 
         for dt, measurement_map in energy_measurements[key].items():
             for index, energy in measurement_map.items():
@@ -396,7 +417,7 @@ def _polling_process(
         # calculate current time
         now = datetime.now(timezone.utc)
         hour_floor = now.replace(minute=0, second=0, microsecond=0)
-        hour_ceil = hour_floor + timedelta(hours=1)
+        hour_ceil = hour_floor + carbon_intensity_provider.update_period
 
         # start windows
         for key in keys:
@@ -441,8 +462,9 @@ def _polling_process(
         for key in keys:
             _update_energy_measurements(key, hour_floor)
 
-        # if 23 hours has passed, update cumulative carbon emission
-        if index - last_index == 23:
+        # check if we need to fetch carbon intensity measurements
+        # only need to fetch if oldest energy measurement's datetime is about to be outside the time range covered by fetched carbon intensity values
+        if index - last_index == carbon_intensity_provider.history_length - 1:
             for key in keys:
                 _update_carbon_emissions(key)
             last_index = index
