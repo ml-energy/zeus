@@ -70,13 +70,14 @@ class CarbonIntensityProvider(abc.ABC):
     @abc.abstractmethod
     def update_period(self) -> timedelta:
         """Abstract method for how long each carbon intensity value in the history dict remains current."""
-        return timedelta(hours=1)
+        pass
 
     @property
     @abc.abstractmethod
-    def history_length(self) -> timedelta:
+    def history_length(self) -> int:
         """Abstract method for how many carbon intensity values are in the history dict."""
-        return timedelta(hours=1)
+        pass
+
 
 class ElectrictyMapsClient(CarbonIntensityProvider):
     """Carbon Intensity Provider with ElectricityMaps API.
@@ -170,6 +171,7 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
     def history_length(self) -> int:
         """Returns number of carbon intensity values in history dict."""
         return 24
+
 
 @dataclass
 class CarbonEmissionMeasurement:
