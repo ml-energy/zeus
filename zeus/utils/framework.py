@@ -144,9 +144,9 @@ def all_reduce(
         array = jax.numpy.array(object)
 
         if operation == "sum":
-            reduced = jax.lax.psum(array)
+            reduced = jax.pmap(lambda x: jax.lax.psum(x, axis_name="i"), axis_name="i")(array)
         elif operation == "max":
-            reduced = jax.lax.pmax(array)
+            reduced = jax.pmap(lambda x: jax.lax.pmax(x, axis_name="i"), axis_name="i")(array)
         else:
             raise ValueError(f"all_reduce unsupported operation: {operation}")
 

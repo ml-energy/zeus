@@ -101,25 +101,26 @@ def get_train_batches():
   # tfds.dataset_as_numpy converts the tf.data.Dataset into an iterable of NumPy arrays
   return tfds.as_numpy(ds)
 
-monitor = ZeusMonitor()
-plo = GlobalPowerLimitOptimizer(monitor)
+if __name__ == "__main__":
+  monitor = ZeusMonitor(sync_execution_with="jax")
+  plo = GlobalPowerLimitOptimizer(monitor)
 
-for epoch in range(num_epochs):
-  start_time = time.time()
+  for epoch in range(num_epochs):
+    start_time = time.time()
 
-  plo.on_epoch_begin()
-  for x, y in get_train_batches():
-    plo.on_step_begin()
-    x = jnp.reshape(x, (len(x), num_pixels))
-    y = one_hot(y, num_labels)
-    params = update(params, x, y)
-    plo.on_step_end()
-  plo.on_epoch_end()
+    plo.on_epoch_begin()
+    for x, y in get_train_batches():
+      plo.on_step_begin()
+      x = jnp.reshape(x, (len(x), num_pixels))
+      y = one_hot(y, num_labels)
+      params = update(params, x, y)
+      plo.on_step_end()
+    plo.on_epoch_end()
 
-  epoch_time = time.time() - start_time
+    epoch_time = time.time() - start_time
 
-  train_acc = accuracy(params, train_images, train_labels)
-  test_acc = accuracy(params, test_images, test_labels)
-  print("Epoch {} in {:0.2f} sec".format(epoch, epoch_time))
-  print("Training set accuracy {}".format(train_acc))
-  print("Test set accuracy {}".format(test_acc))
+    train_acc = accuracy(params, train_images, train_labels)
+    test_acc = accuracy(params, test_images, test_labels)
+    print("Epoch {} in {:0.2f} sec".format(epoch, epoch_time))
+    print("Training set accuracy {}".format(train_acc))
+    print("Test set accuracy {}".format(test_acc))
