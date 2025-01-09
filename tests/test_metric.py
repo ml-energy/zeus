@@ -30,7 +30,7 @@ def mock_zeus_monitor():
         mock_instance.end_window.return_value = MagicMock(
             gpu_energy={0: 50.0, 1: 100.0, 2: 200.0},
             cpu_energy={0: 40.0, 1: 50.0},
-            dram_energy={},
+            dram_energy={0: 10},
         )
         mock_instance.gpu_indices = [0, 1, 2]
         mock_instance.cpu_indices = [0, 1]
@@ -69,19 +69,19 @@ def test_energy_histogram(
     """Test EnergyHistogram class."""
     cpu_indices = [0, 1]
     gpu_indices = [0, 1, 2]
-    prometheus_url = "http://localhost:9091"
+    pushgateway_url = "http://localhost:9091"
     window_name = "test_window"
 
     # Ensure mocked CPUs have the required method
     mock_get_cpus.return_value.cpus = [
-        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=True)),
+        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=False)),
         MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=False)),
     ]
 
     histogram_metric = EnergyHistogram(
         cpu_indices=cpu_indices,
         gpu_indices=gpu_indices,
-        prometheus_url=prometheus_url,
+        pushgateway_url=pushgateway_url,
         job="test_energy_histogram",
     )
 
@@ -110,14 +110,14 @@ def test_energy_histogram(
     histogram_metric.dram_histograms = dram_mock_histogram
 
     # Begin and end the monitoring window
-    histogram_metric.begin_window(window_name)
+    histogram_metric.begin_window(window_name, False)
     with patch("http.client.HTTPConnection", autospec=True) as mock_http:
         mock_http_instance = mock_http.return_value
         mock_http_instance.getresponse.return_value.code = 200
         mock_http_instance.getresponse.return_value.msg = "OK"
         mock_http_instance.getresponse.return_value.info = lambda: {}
         mock_http_instance.sock = MagicMock()
-        histogram_metric.end_window(window_name)
+        histogram_metric.end_window(window_name, False)
 
     # Validate GPU histogram observations
     for (
@@ -153,13 +153,15 @@ def test_energy_cumulative_counter(
     """Test EnergyCumulativeCounter with mocked subprocess behavior."""
     cpu_indices = [0, 1]
     gpu_indices = [0, 1, 2]
-    prometheus_url = "http://localhost:9091"
+    pushgateway_url = "http://localhost:9091"
 
     # Mock the context and queue
     mock_queue = MagicMock()
     mock_process = MagicMock()
     mock_mp_context.return_value.Queue.return_value = mock_queue
-    mock_mp_context.return_value.Process.return_value = mock_process
+    mock_mp_context.return_value.Process.return_value = (
+        mock_process  # Ensure Process returns mock_process
+    )
 
     # Mock the behavior of subprocess
     mock_energy_monitoring_loop.return_value = (
@@ -171,7 +173,7 @@ def test_energy_cumulative_counter(
         cpu_indices=cpu_indices,
         gpu_indices=gpu_indices,
         update_period=2,
-        prometheus_url=prometheus_url,
+        pushgateway_url=pushgateway_url,
         job="test_energy_counter",
     )
 
@@ -187,17 +189,23 @@ def test_energy_cumulative_counter(
             cpu_indices,
             gpu_indices,
             2,
-            prometheus_url,
+            pushgateway_url,
             "test_energy_counter",
-            False,
         ),
     )
     mock_process.start.assert_called_once()
+
+    # Assert the window state is updated correctly
+    assert "test_counter" in cumulative_counter.window_state
+    state = cumulative_counter.window_state["test_counter"]
+    assert state.queue == mock_queue
+    assert state.proc == mock_process
 
     # End the monitoring window
     cumulative_counter.end_window("test_counter")
     mock_queue.put.assert_called_once_with("stop")
     mock_process.join.assert_called_once()
+    assert "test_counter" not in cumulative_counter.window_state
 
 
 @patch("zeus.metric.power_monitoring_loop", autospec=True)
@@ -208,7 +216,7 @@ def test_power_gauge(
 ):
     """Test PowerGauge with mocked subprocess behavior."""
     gpu_indices = [0, 1, 2]
-    prometheus_url = "http://localhost:9091"
+    pushgateway_url = "http://localhost:9091"
 
     # Mock the context and queue
     mock_queue = MagicMock()
@@ -225,7 +233,7 @@ def test_power_gauge(
     power_gauge = PowerGauge(
         gpu_indices=gpu_indices,
         update_period=2,
-        prometheus_url=prometheus_url,
+        pushgateway_url=pushgateway_url,
         job="test_power_gauge",
     )
 
@@ -240,13 +248,20 @@ def test_power_gauge(
             mock_queue,
             gpu_indices,
             2,
-            prometheus_url,
+            pushgateway_url,
             "test_power_gauge",
         ),
     )
     mock_process.start.assert_called_once()
 
+    # Assert the window state is updated correctly
+    assert "test_power_gauge" in power_gauge.window_state
+    state = power_gauge.window_state["test_power_gauge"]
+    assert state.queue == mock_queue
+    assert state.proc == mock_process
+
     # End the monitoring window
     power_gauge.end_window("test_power_gauge")
     mock_queue.put.assert_called_once_with("stop")
     mock_process.join.assert_called_once()
+    assert "test_power_gauge" not in power_gauge.window_state
