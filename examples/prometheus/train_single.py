@@ -179,14 +179,14 @@ def main():
     energy_histogram = EnergyHistogram(
         cpu_indices=[0,1], 
         gpu_indices=[0], 
-        prometheus_url='http://localhost:9091', 
+        pushgateway_url='http://localhost:9091', 
         job='training_energy_histogram'
     )
     # Gauge to track power consumption over time
     power_gauge = PowerGauge(
         gpu_indices=[0], 
         update_period=2, 
-        prometheus_url='http://localhost:9091', 
+        pushgateway_url='http://localhost:9091', 
         job='training_power_gauge'
     )
     # Counter to track energy consumption over time
@@ -194,7 +194,7 @@ def main():
         cpu_indices=[0,1], 
         gpu_indices=[0], 
         update_period=2, 
-        prometheus_url='http://localhost:9091', 
+        pushgateway_url='http://localhost:9091', 
         job='training_energy_counter'
     )
 
