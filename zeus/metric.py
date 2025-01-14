@@ -349,7 +349,6 @@ def energy_monitoring_loop(
         update_period (int): The interval (in seconds) between consecutive energy data updates.
         pushgateway_url (str): The URL of the Prometheus Push Gateway where the metrics will be pushed.
         job (str): The name of the Prometheus job associated with these metrics.
-        sync_execution (bool): Whether to execute monitoring synchronously.
     """
     registry = CollectorRegistry()
     energy_monitor = ZeusMonitor(cpu_indices=cpu_indices, gpu_indices=gpu_indices)
