@@ -74,7 +74,7 @@ def test_energy_histogram(
 
     # Ensure mocked CPUs have the required method
     mock_get_cpus.return_value.cpus = [
-        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=False)),
+        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=True)),
         MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=False)),
     ]
 
