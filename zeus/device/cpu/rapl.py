@@ -261,6 +261,33 @@ class RAPLCPU(cpu_common.CPU):
         return self.dram is not None
 
 
+class ZeusdRAPLCPU(RAPLCPU):
+    """Add description."""
+
+    def __init__(
+        self,
+        cpu_index: int,
+        rapl_dir: str,
+        zeusd_sock_path: str = "/var/run/zeusd.sock",
+    ) -> None:
+        """Add description."""
+        super().__init__(cpu_index, rapl_dir)
+        self.zeusd_sock_path = zeusd_sock_path
+
+        self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
+        self._url_prefix = f"http://zeusd/gpu/{gpu_index}"
+
+    def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
+        """Add description."""
+        # TODO: finish
+        pass
+
+    def supportsGetDramEnergyConsumption(self) -> bool:
+        """Add description."""
+        # TODO: finish
+        pass
+
+
 class RAPLCPUs(cpu_common.CPUs):
     """RAPL CPU Manager object, containing individual RAPLCPU objects, abstracting RAPL calls and handling related exceptions."""
 
