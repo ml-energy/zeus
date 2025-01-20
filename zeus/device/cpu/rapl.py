@@ -319,13 +319,32 @@ class RAPLCPUs(cpu_common.CPUs):
         """Initialize all Intel CPUs."""
         self._cpus = []
 
+        cpu_indices = []
         def sort_key(dir):
             return int(dir.split(":")[1])
-
         for dir in sorted(glob(f"{self.rapl_dir}/intel-rapl:*"), key=sort_key):
             parts = dir.split(":")
             if len(parts) > 1 and parts[1].isdigit():
-                self._cpus.append(RAPLCPU(int(parts[1]), self.rapl_dir))
+                cpu_indices.append(int(parts[1]))
+
+        # If `ZEUSD_SOCK_PATH` is set, always use ZeusdRAPLCPU
+        if (sock_path := os.environ.get("ZEUSD_SOCK_PATH")) is not None:
+            if not Path(sock_path).exists():
+                raise ZeusdError(
+                    f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}"
+                )
+            if not Path(sock_path).is_socket():
+                raise ZeusdError(f"ZEUSD_SOCK_PATH is not a socket: {sock_path}")
+            if not os.access(sock_path, os.W_OK):
+                raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
+            self._cpus = [
+                ZeusdRAPLCPU(cpu_index, self.rapl_dir, sock_path) for cpu_index in cpu_indices
+            ]
+        else:
+            self._cpus = [
+                RAPLCPU(cpu_index, self.rapl_dir) for cpu_index in cpu_indices
+            ]
+
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""
