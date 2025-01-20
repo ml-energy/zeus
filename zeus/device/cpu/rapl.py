@@ -271,21 +271,32 @@ class ZeusdRAPLCPU(RAPLCPU):
         zeusd_sock_path: str = "/var/run/zeusd.sock",
     ) -> None:
         """Add description."""
+        self.cpu_index = cpu_index
         super().__init__(cpu_index, rapl_dir)
-        self.zeusd_sock_path = zeusd_sock_path
 
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
         self._url_prefix = f"http://zeusd/gpu/{gpu_index}"
 
     def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
         """Add description."""
-        # TODO: finish
-        pass
+        resp = self._client.post(
+            self._url_prefix + f"/{self.cpu_index}/get_index_energy",
+            json={
+                "cpu": True,
+                "dram": True,
+            },
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")
+        data = resp.json()
+        cpu_mj = data.get("cpu_energy_uj") / 1000
+        dram_mj = data.get("dram_energy_uj") / 1000
+        return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
     def supportsGetDramEnergyConsumption(self) -> bool:
         """Add description."""
         # TODO: finish
-        pass
+        return super().supportsGetDramEnergyConsumption()
 
 
 class RAPLCPUs(cpu_common.CPUs):
