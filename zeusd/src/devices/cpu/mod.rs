@@ -35,6 +35,11 @@ pub struct RaplResponse {
     pub dram_energy_uj: Option<u64>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DramResponse {
+    pub dram_available: bool,
+}
+
 pub trait CpuManager {
     /// Get the number of CPUs available.
     fn device_count() -> Result<usize, ZeusdError>;
@@ -128,6 +133,8 @@ impl CpuManagementTasks {
 pub enum CpuCommand {
     /// Get the CPU and DRAM energy measurement for the CPU index
     GetIndexEnergy { cpu: bool, dram: bool },
+    /// Return if the specified CPU supports DRAM energy measurement
+    SupportsDramEnergy,
     /// Stop the monitoring task for CPU and DRAM if they have been started.
     StopMonitoring,
 }
@@ -175,6 +182,11 @@ impl CpuCommand {
                 Ok(RaplResponse {
                     cpu_energy_uj,
                     dram_energy_uj,
+                })
+            }
+            Self::SupportsDramEnergy {} => {
+                Ok(DramResponse {
+                    dram_available: device.is_dram_available(),
                 })
             }
             Self::StopMonitoring {} => {
