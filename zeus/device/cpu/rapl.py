@@ -18,6 +18,7 @@ import multiprocessing as mp
 import os
 import time
 import warnings
+from pathlib import Path
 from functools import lru_cache
 from glob import glob
 from multiprocessing.sharedctypes import Synchronized
