@@ -24,6 +24,8 @@ from glob import glob
 from multiprocessing.sharedctypes import Synchronized
 from typing import Sequence
 
+import httpx
+
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
 from zeus.device.exception import ZeusBaseCPUError
@@ -273,15 +275,14 @@ class ZeusdRAPLCPU(RAPLCPU):
     ) -> None:
         """Add description."""
         self.cpu_index = cpu_index
-        super().__init__(cpu_index, rapl_dir)
 
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
-        self._url_prefix = f"http://zeusd/gpu/{gpu_index}"
+        self._url_prefix = f"http://zeusd/cpu/{cpu_index}"
 
     def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
         """Add description."""
         resp = self._client.post(
-            self._url_prefix + f"/{self.cpu_index}/get_index_energy",
+            self._url_prefix + f"/get_index_energy",
             json={
                 "cpu": True,
                 "dram": True,
@@ -289,15 +290,24 @@ class ZeusdRAPLCPU(RAPLCPU):
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")
+            
         data = resp.json()
-        cpu_mj = data.get("cpu_energy_uj") / 1000
-        dram_mj = data.get("dram_energy_uj") / 1000
+        cpu_uj = data.get("cpu_energy_uj")
+        dram_uj = data.get("dram_energy_uj")
+        cpu_mj = None if cpu_uj is None else cpu_uj / 1000
+        dram_mj = None if dram_uj is None else dram_uj / 1000
+
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
     def supportsGetDramEnergyConsumption(self) -> bool:
         """Add description."""
-        # TODO: finish
-        return super().supportsGetDramEnergyConsumption()
+        resp = self._client.get(
+            self._url_prefix + f"/supportsDramEnergy",
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to get whether DRAM energy is supported: {resp.text}")
+        data = resp.json()
+        return data.get("dram_available")
 
 
 class RAPLCPUs(cpu_common.CPUs):
