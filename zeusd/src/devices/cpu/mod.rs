@@ -42,6 +42,7 @@ pub struct DramResponse {
 
 /// Unified CPU response type
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
 pub enum CpuResponse {
     Rapl(RaplResponse),
     Dram(DramResponse),
