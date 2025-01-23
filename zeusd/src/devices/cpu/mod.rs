@@ -40,6 +40,13 @@ pub struct DramResponse {
     pub dram_available: bool,
 }
 
+/// Unified CPU response type
+#[derive(Serialize, Deserialize, Debug)]
+pub enum CpuResponse {
+    Rapl(RaplResponse),
+    Dram(DramResponse),
+}
+
 pub trait CpuManager {
     /// Get the number of CPUs available.
     fn device_count() -> Result<usize, ZeusdError>;
@@ -60,7 +67,7 @@ pub trait CpuManager {
 
 pub type CpuCommandRequest = (
     CpuCommand,
-    Option<Sender<Result<RaplResponse, ZeusdError>>>,
+    Option<Sender<Result<CpuResponse, ZeusdError>>>,
     Instant,
     Span,
 );
@@ -94,7 +101,7 @@ impl CpuManagementTasks {
         cpu_id: usize,
         command: CpuCommand,
         request_start_time: Instant,
-    ) -> Result<RaplResponse, ZeusdError> {
+    ) -> Result<CpuResponse, ZeusdError> {
         if cpu_id >= self.senders.len() {
             return Err(ZeusdError::CpuNotFoundError(cpu_id));
         }
@@ -163,7 +170,7 @@ impl CpuCommand {
         &self,
         device: &mut T,
         _request_arrival_time: Instant,
-    ) -> Result<RaplResponse, ZeusdError>
+    ) -> Result<CpuResponse, ZeusdError>
     where
         T: CpuManager,
     {
@@ -179,22 +186,24 @@ impl CpuCommand {
                 } else {
                     None
                 };
-                Ok(RaplResponse {
+                // Wrap the RaplResponse in CpuResponse::Rapl
+                Ok(CpuResponse::Rapl(RaplResponse {
                     cpu_energy_uj,
                     dram_energy_uj,
-                })
+                }))
             }
-            Self::SupportsDramEnergy {} => {
-                Ok(DramResponse {
+            Self::SupportsDramEnergy => {
+                // Wrap the DramResponse in CpuResponse::Dram
+                Ok(CpuResponse::Dram(DramResponse {
                     dram_available: device.is_dram_available(),
-                })
+                }))
             }
-            Self::StopMonitoring {} => {
+            Self::StopMonitoring => {
                 device.stop_monitoring();
-                Ok(RaplResponse {
+                Ok(CpuResponse::Rapl(RaplResponse {
                     cpu_energy_uj: Some(0),
                     dram_energy_uj: Some(0),
-                })
+                }))
             }
         }
     }

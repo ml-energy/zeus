@@ -4,7 +4,7 @@ use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
-use crate::devices::cpu::{CpuCommand, CpuManagementTasks};
+use crate::devices::cpu::{CpuCommand, CpuManagementTasks, CpuResponse};
 use crate::error::ZeusdError;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -45,7 +45,12 @@ async fn get_index_energy_handler(
         .send_command_blocking(cpu_id, request.into(), now)
         .await?;
 
-    Ok(HttpResponse::Ok().json(measurement))
+    let response = match measurement {
+        CpuResponse::Rapl(r) => serde_json::to_value(r)?,
+        CpuResponse::Dram(d) => serde_json::to_value(d)?,
+    };
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 
@@ -68,7 +73,12 @@ async fn supports_dram_energy_handler(
         .send_command_blocking(cpu_id, CpuCommand::SupportsDramEnergy, now)
         .await?;
 
-    Ok(HttpResponse::Ok().json(answer))
+    let response = match answer {
+        CpuResponse::Rapl(r) => serde_json::to_value(r)?,
+        CpuResponse::Dram(d) => serde_json::to_value(d)?,
+    };
+
+    Ok(HttpResponse::Ok().json(response))
 }
 
 
