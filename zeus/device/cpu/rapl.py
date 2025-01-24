@@ -265,22 +265,30 @@ class RAPLCPU(cpu_common.CPU):
 
 
 class ZeusdRAPLCPU(RAPLCPU):
-    """Add description."""
+    """A RAPLCPU that interfaces with RAPL via zeusd.
+
+    The parent RAPLCPU class requires root privileges to interface with RAPL.
+    ZeusdRAPLCPU (this class) overrides RAPLCPU's methods so that they instead send requests
+    to the Zeus daemon, which will interface with RAPL on behalf of ZeusdRAPLCPU. As a result,
+    ZeusdRAPLCPU does not need root privileges to monitor CPU and DRAM energy consumption.
+
+    See [here](https://ml.energy/zeus/getting_started/#system-privileges)
+    for details on system privileges required.
+    """
 
     def __init__(
         self,
         cpu_index: int,
-        rapl_dir: str,
         zeusd_sock_path: str = "/var/run/zeusd.sock",
     ) -> None:
-        """Add description."""
+        """Initialize the Intel CPU with a specified index."""
         self.cpu_index = cpu_index
 
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
         self._url_prefix = f"http://zeusd/cpu/{cpu_index}"
 
     def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
-        """Add description."""
+        """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         resp = self._client.post(
             self._url_prefix + f"/get_index_energy",
             json={
@@ -300,14 +308,17 @@ class ZeusdRAPLCPU(RAPLCPU):
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
     def supportsGetDramEnergyConsumption(self) -> bool:
-        """Add description."""
+        """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         resp = self._client.get(
             self._url_prefix + f"/supportsDramEnergy",
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to get whether DRAM energy is supported: {resp.text}")
         data = resp.json()
-        return data.get("dram_available")
+        dram_available = data.get("dram_available")
+        if dram_available is None:
+            raise ZeusdError(f"Failed to get whether DRAM energy is supported.")
+        return dram_available
 
 
 class RAPLCPUs(cpu_common.CPUs):
@@ -349,7 +360,7 @@ class RAPLCPUs(cpu_common.CPUs):
             if not os.access(sock_path, os.W_OK):
                 raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
             self._cpus = [
-                ZeusdRAPLCPU(cpu_index, self.rapl_dir, sock_path) for cpu_index in cpu_indices
+                ZeusdRAPLCPU(cpu_index, sock_path) for cpu_index in cpu_indices
             ]
         else:
             self._cpus = [
