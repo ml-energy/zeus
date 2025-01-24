@@ -138,20 +138,12 @@ def all_reduce(
     if jax_is_available():
         # Check if not distributed
         jax = MODULE_CACHE["jax"]
-        if jax.device_count() == 1:
+        # if jax is not distributed, return the object as is
+        if jax.process_count() == 1:
             return object
 
-        array = jax.numpy.array(object)
-
-        if operation == "sum":
-            reduced = jax.pmap(lambda x: jax.lax.psum(x, axis_name="i"), axis_name="i")(array)
-        elif operation == "max":
-            reduced = jax.pmap(lambda x: jax.lax.pmax(x, axis_name="i"), axis_name="i")(array)
-        else:
-            raise ValueError(f"all_reduce unsupported operation: {operation}")
-
-        # Convert back to list and return
-        return reduced.tolist()
+        # TODO: Implement JAX distributed all-reduce logic.
+        raise NotImplementedError("JAX distributed is not supported yet.")
 
     raise RuntimeError("No framework is available.")
 
