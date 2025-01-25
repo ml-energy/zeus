@@ -164,7 +164,7 @@ In order for your recurring training job to communicate with the BSO server, you
 1. Install the Zeus package, including dependencies needed for the batch size optimizer.
 
     ```sh
-    pip install zeus-ml[bso]
+    pip install zeus[bso]
     ```
 
 2. Integrate [`BatchSizeOptimizer`][zeus.optimizer.batch_size.client.BatchSizeOptimizer] to your training script.

@@ -10,7 +10,7 @@ Some optimizers or examples may require some extra setup steps, which are descri
 Install the Zeus Python package simply with:
 
 ```sh
-pip install zeus-ml
+pip install zeus
 ```
 
 ### From source for development
