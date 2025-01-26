@@ -36,6 +36,7 @@ zeus/
 │  ├── device/        #    - Abstraction layer over CPU and GPU devices
 │  ├── utils/         #    - Utility functions and classes
 │  ├── _legacy/       #    - Legacy code to keep our research papers reproducible
+│  ├── metric.py      #    - Prometheus metric export support
 │  ├── show_env.py    #    - Installation & device detection verification script
 │  └── callback.py    #    - Base class for callbacks during training
 │
