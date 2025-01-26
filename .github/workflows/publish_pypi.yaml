@@ -6,9 +6,11 @@ on:
       - zeus-v*
 
 jobs:
-  publish:
+  pypi-publish:
     runs-on: ubuntu-latest
     if: github.repository_owner == 'ml-energy'
+    permissions:
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -21,5 +23,3 @@ jobs:
         run: pip install build && python -m build
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_KEY }}

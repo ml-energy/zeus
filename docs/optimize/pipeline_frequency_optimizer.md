@@ -97,7 +97,7 @@ As another example, in Megatron-LM, users can pass in their custom `forward_step
 
 ### Integrate `PipelineFrequencyOptimizer`
 
-1. Add `zeus-ml[pfo]` to your dependencies.
+1. Add `zeus[pfo]` to your dependencies.
 1. Instantiate the [`PipelineFrequencyOptimizer`][zeus.optimizer.pipeline_frequency.optimizer.PipelineFrequencyOptimizer] somewhere before actual training runs. Let's call the object `opt`.
 1. Surround one training step with `opt.on_step_begin()` and `opt.on_step_end()`.
 1. Wrap the forward pass region with `opt.on_instruction_begin("forward")` and `opt.on_instruction_end("forward")`.

@@ -15,7 +15,7 @@ To run the `SFTTrainer` integration script (`run_gemma_sft_qlora.py`):
 ```sh
 pip install -r requirements-qlora.txt
 ```
-Note that you may have to tweak `requirements-qlora.txt` depending on your setup. The current requirements file assumes that you are using CUDA 11, and installs `nvidia-cusparse-cu11` for `bitsandbytes`. Basically, you want to get a setup where training runs, and just add `pip install zeus-ml` on top of it.
+Note that you may have to tweak `requirements-qlora.txt` depending on your setup. The current requirements file assumes that you are using CUDA 11, and installs `nvidia-cusparse-cu11` for `bitsandbytes`. Basically, you want to get a setup where training runs, and just add `pip install zeus` on top of it.
 
 ## `ZeusMonitor` and `HFGlobalPowerLimitOptimizer`
 
