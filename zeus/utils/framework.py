@@ -139,7 +139,7 @@ def all_reduce(
         # Check if not distributed
         jax = MODULE_CACHE["jax"]
         # if jax is not distributed, return the object as is
-        if jax.process_count() == 1:
+        if jax.device_count() == 1:
             return object
 
         # TODO: Implement JAX distributed all-reduce logic.
