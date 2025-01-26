@@ -17,13 +17,11 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from torch.utils.data import Subset
 
 # ZEUS
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer.power_limit import MaxSlowdownConstraint, GlobalPowerLimitOptimizer
 from zeus.utils.env import get_env
-from zeus.callback import Callback, CallbackSet
 
 
 def parse_args() -> argparse.Namespace:
@@ -197,29 +195,24 @@ def main():
         sampler=val_sampler,
     )
 
-    # The rank 0 process will monitor and optimize the power limit of all GPUs.
-    if args.gpu == 0:
-        callback_set: list[Callback] = [
-            GlobalPowerLimitOptimizer(
-                monitor=ZeusMonitor(gpu_indices=None),  # All visible GPUs.
-                optimum_selector=MaxSlowdownConstraint(
-                    factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
-                ),
-                warmup_steps=10,
-                profile_steps=40,
-                pl_step=25,
-            )
-        ]
-    else:
-        callback_set = []
-    callbacks = CallbackSet(callback_set)
+    # ZEUS
+    plo = GlobalPowerLimitOptimizer(
+        # Each process manages and monitors exactly one GPU in DDP training.
+        monitor=ZeusMonitor(gpu_indices=[args.gpu]),
+        optimum_selector=MaxSlowdownConstraint(
+            factor=get_env("ZEUS_MAX_SLOWDOWN", float, 1.1),
+        ),
+        warmup_steps=10,
+        profile_steps=40,
+        pl_step=25,
+    )
 
     for epoch in range(args.epochs):
         train_sampler.set_epoch(epoch)
 
-        callbacks.on_epoch_begin()
-        train(train_loader, model, criterion, optimizer, epoch, args, callbacks)
-        callbacks.on_epoch_end()
+        plo.on_epoch_begin()
+        train(train_loader, model, criterion, optimizer, epoch, args, plo)
+        plo.on_epoch_end()
 
         acc1 = validate(val_loader, model, criterion, args)
         print(f"Top-1 accuracy: {acc1}")
@@ -227,7 +220,7 @@ def main():
         scheduler.step()
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args, callbacks):
+def train(train_loader, model, criterion, optimizer, epoch, args, plo):
     batch_time = AverageMeter("Time", ":6.3f")
     data_time = AverageMeter("Data", ":6.3f")
     losses = AverageMeter("Loss", ":.4e")
@@ -245,7 +238,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, callbacks):
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
-        callbacks.on_step_begin()  # Mark the beginning of the training step.
+        plo.on_step_begin()  # Mark the beginning of the training step.
 
         # Load data to GPU
         images = images.cuda(args.gpu)
@@ -273,7 +266,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, callbacks):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        callbacks.on_step_end()
+        plo.on_step_end()
 
         if i % args.print_freq == 0:
             progress.display(i + 1)
