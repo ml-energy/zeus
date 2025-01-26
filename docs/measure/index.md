@@ -2,6 +2,9 @@
 
 !!! Important
     This page assumes that your environment is already set up. Please refer to the [Getting Started](../getting_started/index.md) guide if not.
+    
+!!! Tip
+    Once you've installed Zeus, you can use our [environment validation script](../getting_started/index.md#verifying-installation) to see if devices are being detected by Zeus as expected.
 
 Zeus makes it very easy to measure time, power, and energy both programmatically in Python and also on the command line.
 Measuring power and energy is also very low overhead, typically taking less than 10 ms for each call.
@@ -76,43 +79,191 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
     This is usually what you want, except when using more advanced device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX to partition CPUs into more pieces).
     In such cases, you probably want to opt out from using this function and handle synchronization manually at the appropriate granularity.
 
-## CPU measurements using Intel RAPL
+## Hardware Support
 
-[`ZeusMonitor`][zeus.monitor.ZeusMonitor] supports CPU/DRAM energy measurement as well!
+For GPUs, we currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.1 or later).
 
-The RAPL interface for CPU energy measurement is available for the majority of Intel and AMD CPUs.
+CPU measurement is supported for devices that have the RAPL interface built in.
+This includes the majority of Intel CPUs and most modern AMD CPUs.
 DRAM energy measurement are available on some CPUs as well.
-To check support, refer to [Verifying installation](../getting_started/index.md#verifying-installation).
 
-To only measure the energy consumption of the CPU used by the current Python process, you can use the [`get_current_cpu_index`][zeus.device.cpu.get_current_cpu_index] function, which retrieves the CPU index where the specified process ID is running.
+To check CPU/GPU/DRAM measurement support, refer to [Verifying installation](../getting_started/index.md#verifying-installation).
 
-You can pass in `cpu_indices=[]` or `gpu_indices=[]` to [`ZeusMonitor`][zeus.monitor.ZeusMonitor] to disable either CPU or GPU measurements.
+### [`get_gpus`][zeus.device.get_gpus] and [`get_cpus`][zeus.device.get_cpus]
 
-```python hl_lines="2 5-7"
-from zeus.monitor import ZeusMonitor
-from zeus.device.cpu import get_current_cpu_index
+The [`get_gpus`][zeus.device.get_gpus] function returns a [`GPUs`][zeus.device.gpu.GPUs] object, which can be either an [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object depending on the availability of `nvml` or `amdsmi`. Each [`GPUs`][zeus.device.gpu.GPUs] object contains one or more [`GPU`][zeus.device.gpu.common.GPU] instances, which are specifically [`NVIDIAGPU`][zeus.device.gpu.nvidia.NVIDIAGPU] or [`AMDGPU`][zeus.device.gpu.amd.AMDGPU] objects.
+
+These [`GPU`][zeus.device.gpu.common.GPU] objects directly call respective `nvml` or `amdsmi` methods, providing a one-to-one mapping of methods for seamless GPU abstraction and support for multiple GPU types. For example:
+- [`NVIDIAGPU.getName`][zeus.device.gpu.nvidia.NVIDIAGPU.getName] calls `pynvml.nvmlDeviceGetName`.
+- [`AMDGPU.getName`][zeus.device.gpu.amd.AMDGPU.getName] calls `amdsmi.amdsmi_get_gpu_asic_info`.
+
+[`get_cpus`][zeus.device.get_cpus] is similar to [`get_gpus`][zeus.device.get_gpus], but rather abstracts over CPU vendors.
+
+### Limitations of AMD GPU support
+
+#### AMD GPUs Initialization
+`amdsmi.amdsmi_get_energy_count` sometimes returns invalid values on certain GPUs or ROCm versions (e.g., MI100 on ROCm 6.2). See [ROCm issue #38](https://github.com/ROCm/amdsmi/issues/38) for more details. During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, we call `amdsmi.amdsmi_get_energy_count` twice for each GPU, with a 0.5-second delay between calls. This difference is compared to power measurements to determine if `amdsmi.amdsmi_get_energy_count` is stable and reliable. Initialization takes 0.5 seconds regardless of the number of AMD GPUs.
+
+`amdsmi.amdsmi_get_power_info` provides "average_socket_power" and "current_socket_power" fields, but the "current_socket_power" field is sometimes not supported and returns "N/A." During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, this method is checked, and if "N/A" is returned, the [`AMDGPU.getInstantPowerUsage`][zeus.device.gpu.amd.AMDGPU.getInstantPowerUsage] method is disabled. Instead, [`AMDGPU.getAveragePowerUsage`][zeus.device.gpu.amd.AMDGPU.getAveragePowerUsage] needs to be used.
+
+#### Supported AMD SMI Versions
+Only ROCm >= 6.1 is supported, as the AMDSMI APIs for power and energy return wrong values. For more information, see [ROCm issue #22](https://github.com/ROCm/amdsmi/issues/22). Ensure your `amdsmi` and ROCm versions are up to date.
+
+### Note on NUMA CPUs
+
+If you have more than one CPU sockets, for instance, running our [environment validation script](../getting_started/index.md#verifying-installation) will show two RAPL devices.
+To only measure the energy consumption of the CPU used by the current Python process, you can use the [`get_current_cpu_index`][zeus.device.cpu.get_current_cpu_index] helper function to retrieve the CPU index where the specified process ID is running and pass in only that index to the `cpu_indices` argument.
+
+## Metric Monitoring
+
+You can export Zeus measurements as Prometheus metrics.
+Three metrics are currently supported:  
+
+1. Energy consumption of a fixed code range (Histogram)
+2. Power draw over time (Gauge)
+3. Cumulative energy consumption over time (Counter)
+
+!!! Prerequisite
+    As Zeus is a library integrated to applications that are not necessarily servers, Zeus uses the **push** model for metric collection. As such, the [Prometheus Push Gateway](https://prometheus.io/docs/instrumenting/pushing/) must be deployed and accessible to the Zeus-integrated application. Example Prometheus configurations can be found in our [docker examples](https://github.com/ml-energy/zeus/tree/master/docker/prometheus).
+
+    ```sh
+    docker run -d -p 9091:9091 prom/pushgateway
+    ```
+
+### Supported Metrics and Naming
+
+Zeus organizes metrics using **static metric names** and **dynamic labels** for flexibility and ease of querying in Prometheus. Metric names are static and cannot be overridden, but users can customize the context of the metrics by naming the window when using `begin_window()` and `end_window()`.
+
+**Metric Name** (`component` is `gpu`, `cpu`, or `dram`)
+
+- Energy histogram: `energy_monitor_{component}_energy_joules`
+- Cumulative energy counter: `energy_monitor_{component}_energy_joules`
+- Power gauge: `power_monitor_{component}_power_watts`
+
+Note that the power gauge metric only supports the GPU component at the moment. Tracking issue: [#128](https://github.com/ml-energy/zeus/issues/128)
+
+**Labels**
+
+- `window`: The user-defined window name provided to `begin_window()` and `end_window()` (e.g., `energy_histogram.begin_window("epoch_energy")`).
+- `index`: The index of the device (e.g., `0` for GPU 0).
+
+### [`EnergyHistogram`][zeus.metric.EnergyHistogram]
+
+This metric records energy consumption for GPUs, CPUs, and DRAM as Prometheus Histograms. This is ideal for observing the energy consumption distribution of a fixed and repeated code range.
+
+```python hl_lines="1 4-9 12 15"
+from zeus.metric import EnergyHistogram
 
 if __name__ == "__main__":
-    # Get the CPU index of the current process
-    current_cpu_index = get_current_cpu_index()
-    monitor = ZeusMonitor(cpu_indices=[current_cpu_index], gpu_indices=[])
+    energy_histogram = EnergyHistogram(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        prometheus_url='http://localhost:9091', 
+        job='training_energy_histogram'
+    )
 
     for epoch in range(100):
-        monitor.begin_window("epoch")
+        energy_histogram.begin_window("epoch_energy")
+        train_one_epoch(train_loader, model, optimizer, criterion, epoch, args)
+        acc1 = validate(val_loader, model, criterion, args)
+        energy_histogram.end_window("epoch_energy")
+        print(f"Epoch {epoch} completed. Validation Accuracy: {acc1}%")
 
-        steps = []
-        for x, y in train_loader:
-            monitor.begin_window("step")
-            train_one_step(x, y)
-            result = monitor.end_window("step")
-            steps.append(result)
+```
 
-        mes = monitor.end_window("epoch")
-        print(f"Epoch {epoch} consumed {mes.time} s and {mes.total_energy} J.")
+!!! Tip 
+    Bucket ranges for GPUs, CPUs, and DRAM can be set during initialization.
 
-        avg_time = sum(map(lambda m: m.time, steps)) / len(steps)
-        avg_energy = sum(map(lambda m: m.total_energy, steps)) / len(steps)
-        print(f"One step takes {avg_time} s and {avg_energy} J for the CPU.")
+    ```python
+    energy_histogram = EnergyHistogram(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        prometheus_url="http://localhost:9091", 
+        job="training_energy_histogram",
+        gpu_bucket_range=[10.0, 25.0, 50.0, 100.0],
+        cpu_bucket_range=[5.0, 15.0, 30.0, 50.0],
+        dram_bucket_range=[2.0, 8.0, 20.0, 40.0],
+    )
+    ```
+
+### [`EnergyCumulativeCounter`][zeus.metric.EnergyCumulativeCounter]
+
+This metric monitors cumulative energy consumption over time.
+
+```python hl_lines="1 4-10 14 22"
+from zeus.metric import EnergyCumulativeCounter
+
+if __name__ == "__main__":
+    cumulative_counter_metric = EnergyCumulativeCounter(
+        cpu_indices=[0], 
+        gpu_indices=[0], 
+        update_period=2,  
+        prometheus_url='http://localhost:9091',
+        job='energy_counter_job'
+    )
+    train_loader = range(10) 
+    val_loader = range(5)  
+
+    cumulative_counter_metric.begin_window("training_energy")
+
+    for epoch in range(100):  
+        print(f"\n--- Epoch {epoch} ---")
+        train_one_epoch(train_loader, model, optimizer, criterion, epoch, args)
+        acc1 = validate(val_loader, model, criterion, args)
+        print(f"Epoch {epoch} completed. Validation Accuracy: {acc1:.2f}%.")
+
+    cumulative_counter_metric.end_window("training_energy")
+```
+
+Metric observations are pushed to Prometheus every `update_period` seconds.
+
+### [`PowerGauge`][zeus.metric.PowerGauge]
+
+This metric tracks real-time power consumption using Prometheus Gauges.
+
+```python hl_lines="1 4-9 13 21"
+from zeus.metric import PowerGauge
+
+if __name__ == "__main__":
+    power_gauge_metric = PowerGauge(
+        gpu_indices=[0], 
+        update_period=2,  
+        prometheus_url='http://localhost:9091',
+        job='power_gauge_job'
+    )
+    train_loader = range(10) 
+    val_loader = range(5)  
+
+    power_gauge_metric.begin_window("training_power")
+
+    for epoch in range(100):  
+        print(f"\n--- Epoch {epoch} ---")
+        train_one_epoch(train_loader, model, optimizer, criterion, epoch, args)
+        acc1 = validate(val_loader, model, criterion, args)
+        print(f"Epoch {epoch} completed. Validation Accuracy: {acc1:.2f}%.")
+
+    power_gauge_metric.end_window("training_power")
+```
+
+Metric observations are pushed to Prometheus every `update_period` seconds.
+
+### Querying Metrics in Prometheus
+
+Once metrics are pushed to Prometheus, you can use PromQL to run simple analytics.
+
+*Energy for a specific window*
+```promql
+energy_monitor_gpu_energy_joules{window="epoch_energy"}
+```
+
+*Sum of energy for a specific window*
+```promql
+sum(energy_monitor_gpu_energy_joules) by (window)
+```
+
+*Sum of energy for specific GPU across all windows*
+```promql
+sum(energy_monitor_gpu_energy_joules{index="0"})
 ```
 
 ## CLI power and energy monitor
@@ -149,23 +300,3 @@ Total time (s): 4.421529293060303
 Total energy (J):
 {'GPU0': 198.52566362297537, 'GPU1': 206.22215216255188, 'GPU2': 201.08565518283845, 'GPU3': 201.79834523367884}
 ```
-
-## Hardware Support
-We currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.1 or later).
-
-### `get_gpus`
-The [`get_gpus`][zeus.device.get_gpus] function returns a [`GPUs`][zeus.device.gpu.GPUs] object, which can be either an [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object depending on the availability of `nvml` or `amdsmi`. Each [`GPUs`][zeus.device.gpu.GPUs] object contains one or more [`GPU`][zeus.device.gpu.common.GPU] instances, which are specifically [`NVIDIAGPU`][zeus.device.gpu.nvidia.NVIDIAGPU] or [`AMDGPU`][zeus.device.gpu.amd.AMDGPU] objects.
-
-These [`GPU`][zeus.device.gpu.common.GPU] objects directly call respective `nvml` or `amdsmi` methods, providing a one-to-one mapping of methods for seamless GPU abstraction and support for multiple GPU types. For example:
-- [`NVIDIAGPU.getName`][zeus.device.gpu.nvidia.NVIDIAGPU.getName] calls `pynvml.nvmlDeviceGetName`.
-- [`AMDGPU.getName`][zeus.device.gpu.amd.AMDGPU.getName] calls `amdsmi.amdsmi_get_gpu_asic_info`.
-
-### Notes on AMD GPUs
-
-#### AMD GPUs Initialization
-`amdsmi.amdsmi_get_energy_count` sometimes returns invalid values on certain GPUs or ROCm versions (e.g., MI100 on ROCm 6.2). See [ROCm issue #38](https://github.com/ROCm/amdsmi/issues/38) for more details. During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, we call `amdsmi.amdsmi_get_energy_count` twice for each GPU, with a 0.5-second delay between calls. This difference is compared to power measurements to determine if `amdsmi.amdsmi_get_energy_count` is stable and reliable. Initialization takes 0.5 seconds regardless of the number of AMD GPUs.
-
-`amdsmi.amdsmi_get_power_info` provides "average_socket_power" and "current_socket_power" fields, but the "current_socket_power" field is sometimes not supported and returns "N/A." During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, this method is checked, and if "N/A" is returned, the [`AMDGPU.getInstantPowerUsage`][zeus.device.gpu.amd.AMDGPU.getInstantPowerUsage] method is disabled. Instead, [`AMDGPU.getAveragePowerUsage`][zeus.device.gpu.amd.AMDGPU.getAveragePowerUsage] needs to be used.
-
-#### Supported AMD SMI Versions
-Only ROCm >= 6.1 is supported, as the AMDSMI APIs for power and energy return wrong values. For more information, see [ROCm issue #22](https://github.com/ROCm/amdsmi/issues/22). Ensure your `amdsmi` and ROCm versions are up to date.
