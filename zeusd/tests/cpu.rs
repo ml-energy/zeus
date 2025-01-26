@@ -154,3 +154,21 @@ async fn test_invalid_requests() {
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
 }
+
+#[tokio::test]
+async fn test_supports_dram_energy() {
+    let app = TestApp::start().await;
+    let url = format!("http://127.0.0.1:{}/cpu/0/supportsDramEnergy", app.port);
+    let client = reqwest::Client::new();
+    
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+
+    let dram_response: DramResponse = serde_json::from_str(&resp.text().await.unwrap())
+    .expect("Failed to deserialize response body");
+    assert_eq!(dram_response.dram_available, true);
+}
