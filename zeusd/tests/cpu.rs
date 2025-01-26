@@ -1,6 +1,7 @@
 mod helpers;
 
 use zeusd::devices::cpu::RaplResponse;
+use zeusd::devices::cpu::DramResponse;
 use zeusd::routes::cpu::GetIndexEnergy;
 
 use crate::helpers::{TestApp, ZeusdRequest};
