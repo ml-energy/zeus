@@ -48,7 +48,6 @@ async fn get_index_energy_handler(
     Ok(HttpResponse::Ok().json(measurement))
 }
 
-
 #[actix_web::get("/{cpu_id}/supportsDramEnergy")]
 #[tracing::instrument(
     skip(cpu_id, _device_tasks),
@@ -70,7 +69,6 @@ async fn supports_dram_energy_handler(
 
     Ok(HttpResponse::Ok().json(answer))
 }
-
 
 pub fn cpu_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(get_index_energy_handler);

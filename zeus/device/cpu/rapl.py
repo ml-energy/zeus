@@ -298,7 +298,7 @@ class ZeusdRAPLCPU(RAPLCPU):
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")
-            
+
         data = resp.json()
         cpu_uj = data.get("cpu_energy_uj")
         dram_uj = data.get("dram_energy_uj")
@@ -313,7 +313,9 @@ class ZeusdRAPLCPU(RAPLCPU):
             self._url_prefix + f"/supportsDramEnergy",
         )
         if resp.status_code != 200:
-            raise ZeusdError(f"Failed to get whether DRAM energy is supported: {resp.text}")
+            raise ZeusdError(
+                f"Failed to get whether DRAM energy is supported: {resp.text}"
+            )
         data = resp.json()
         dram_available = data.get("dram_available")
         if dram_available is None:
@@ -342,8 +344,10 @@ class RAPLCPUs(cpu_common.CPUs):
         self._cpus = []
 
         cpu_indices = []
+
         def sort_key(dir):
             return int(dir.split(":")[1])
+
         for dir in sorted(glob(f"{self.rapl_dir}/intel-rapl:*"), key=sort_key):
             parts = dir.split(":")
             if len(parts) > 1 and parts[1].isdigit():
@@ -366,7 +370,6 @@ class RAPLCPUs(cpu_common.CPUs):
             self._cpus = [
                 RAPLCPU(cpu_index, self.rapl_dir) for cpu_index in cpu_indices
             ]
-
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""
