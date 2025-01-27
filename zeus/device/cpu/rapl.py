@@ -29,6 +29,7 @@ import httpx
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
 from zeus.device.exception import ZeusBaseCPUError
+from zeus.device.exception import ZeusdError
 from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
@@ -290,7 +291,7 @@ class ZeusdRAPLCPU(RAPLCPU):
     def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         resp = self._client.post(
-            self._url_prefix + f"/get_index_energy",
+            self._url_prefix + "/get_index_energy",
             json={
                 "cpu": True,
                 "dram": True,
@@ -310,7 +311,7 @@ class ZeusdRAPLCPU(RAPLCPU):
     def supportsGetDramEnergyConsumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         resp = self._client.get(
-            self._url_prefix + f"/supportsDramEnergy",
+            self._url_prefix + "/supportsDramEnergy",
         )
         if resp.status_code != 200:
             raise ZeusdError(
@@ -319,7 +320,7 @@ class ZeusdRAPLCPU(RAPLCPU):
         data = resp.json()
         dram_available = data.get("dram_available")
         if dram_available is None:
-            raise ZeusdError(f"Failed to get whether DRAM energy is supported.")
+            raise ZeusdError("Failed to get whether DRAM energy is supported.")
         return dram_available
 
 
