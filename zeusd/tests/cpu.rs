@@ -159,7 +159,7 @@ async fn test_invalid_requests() {
 #[tokio::test]
 async fn test_supports_dram_energy() {
     let app = TestApp::start().await;
-    let url = format!("http://127.0.0.1:{}/cpu/0/supportsDramEnergy", app.port);
+    let url = format!("http://127.0.0.1:{}/cpu/0/supports_dram_energy", app.port);
     let client = reqwest::Client::new();
 
     let resp = client
