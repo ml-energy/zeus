@@ -301,10 +301,9 @@ class ZeusdRAPLCPU(RAPLCPU):
             raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")
 
         data = resp.json()
-        cpu_uj = data.get("cpu_energy_uj")
+        cpu_mj = data["cpu_energy_uj"] / 1000
         dram_uj = data.get("dram_energy_uj")
-        cpu_mj = None if cpu_uj is None else cpu_uj / 1000
-        dram_mj = None if dram_uj is None else dram_uj / 1000
+        dram_mj = dram_uj / 1000 if dram_uj is not None else None
 
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
