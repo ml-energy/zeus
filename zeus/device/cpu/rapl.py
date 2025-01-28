@@ -28,8 +28,7 @@ import httpx
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
-from zeus.device.exception import ZeusBaseCPUError
-from zeus.device.exception import ZeusdError
+from zeus.device.exception import ZeusBaseCPUError, ZeusdError
 from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
