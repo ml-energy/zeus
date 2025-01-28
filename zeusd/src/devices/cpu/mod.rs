@@ -36,7 +36,7 @@ pub struct RaplResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct DramResponse {
+pub struct DramAvailabilityResponse {
     pub dram_available: bool,
 }
 
@@ -45,7 +45,7 @@ pub struct DramResponse {
 #[serde(untagged)]
 pub enum CpuResponse {
     Rapl(RaplResponse),
-    Dram(DramResponse),
+    Dram(DramAvailabilityResponse),
 }
 
 pub trait CpuManager {
@@ -194,8 +194,8 @@ impl CpuCommand {
                 }))
             }
             Self::SupportsDramEnergy => {
-                // Wrap the DramResponse in CpuResponse::Dram
-                Ok(CpuResponse::Dram(DramResponse {
+                // Wrap the DramAvailabilityResponse in CpuResponse::Dram
+                Ok(CpuResponse::Dram(DramAvailabilityResponse {
                     dram_available: device.is_dram_available(),
                 }))
             }

@@ -1,6 +1,6 @@
 mod helpers;
 
-use zeusd::devices::cpu::DramResponse;
+use zeusd::devices::cpu::DramAvailabilityResponse;
 use zeusd::devices::cpu::RaplResponse;
 use zeusd::routes::cpu::GetIndexEnergy;
 
@@ -169,7 +169,7 @@ async fn test_supports_dram_energy() {
         .expect("Failed to send request");
     assert_eq!(resp.status(), 200);
 
-    let dram_response: DramResponse = serde_json::from_str(&resp.text().await.unwrap())
+    let dram_response: DramAvailabilityResponse = serde_json::from_str(&resp.text().await.unwrap())
         .expect("Failed to deserialize response body");
     assert_eq!(dram_response.dram_available, true);
 }
