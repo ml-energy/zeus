@@ -48,7 +48,7 @@ async fn get_index_energy_handler(
     Ok(HttpResponse::Ok().json(measurement))
 }
 
-#[actix_web::get("/{cpu_id}/supportsDramEnergy")]
+#[actix_web::get("/{cpu_id}/supports_dram_energy")]
 #[tracing::instrument(
     skip(cpu_id, _device_tasks),
     fields(

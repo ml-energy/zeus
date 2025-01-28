@@ -310,7 +310,7 @@ class ZeusdRAPLCPU(RAPLCPU):
     def supportsGetDramEnergyConsumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         resp = self._client.get(
-            self._url_prefix + "/supportsDramEnergy",
+            self._url_prefix + "/supports_dram_energy",
         )
         if resp.status_code != 200:
             raise ZeusdError(
