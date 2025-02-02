@@ -323,7 +323,9 @@ class ZeusdRAPLCPU(RAPLCPU):
         dram_uj = data.get("dram_energy_uj")
         if dram_uj is None:
             if self.dram_available:
-                raise ZeusdError("DRAM energy should be available but no measurement was found")
+                raise ZeusdError(
+                    "DRAM energy should be available but no measurement was found"
+                )
         else:
             dram_mj = dram_uj / 1000
 
