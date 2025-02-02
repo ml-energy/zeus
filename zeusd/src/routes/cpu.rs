@@ -24,7 +24,7 @@ impl From<GetIndexEnergy> for CpuCommand {
 
 #[actix_web::post("/{cpu_id}/get_index_energy")]
 #[tracing::instrument(
-    skip(cpu_id, request, _device_tasks),
+    skip(request, _device_tasks),
     fields(
         cpu_id = %cpu_id,
         cpu = %request.cpu,
@@ -50,7 +50,7 @@ async fn get_index_energy_handler(
 
 #[actix_web::get("/{cpu_id}/supports_dram_energy")]
 #[tracing::instrument(
-    skip(cpu_id, _device_tasks),
+    skip(_device_tasks),
     fields(
         cpu_id = %cpu_id,
     )
