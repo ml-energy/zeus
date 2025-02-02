@@ -287,6 +287,24 @@ class ZeusdRAPLCPU(RAPLCPU):
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
         self._url_prefix = f"http://zeusd/cpu/{cpu_index}"
 
+        self.dram_available = self._supportsGetDramEnergyConsumption()
+
+    def _supportsGetDramEnergyConsumption(self) -> bool:
+        """Calls zeusd to return if the specified CPU powerzone
+        supports retrieving the subpackage energy consumption."""
+        resp = self._client.get(
+            self._url_prefix + "/supports_dram_energy",
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(
+                f"Failed to get whether DRAM energy is supported: {resp.text}"
+            )
+        data = resp.json()
+        dram_available = data.get("dram_available")
+        if dram_available is None:
+            raise ZeusdError("Failed to get whether DRAM energy is supported.")
+        return dram_available
+
     def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         resp = self._client.post(
@@ -301,25 +319,20 @@ class ZeusdRAPLCPU(RAPLCPU):
 
         data = resp.json()
         cpu_mj = data["cpu_energy_uj"] / 1000
+
+        dram_mj = None
         dram_uj = data.get("dram_energy_uj")
-        dram_mj = dram_uj / 1000 if dram_uj is not None else None
+        if dram_uj is None:
+            if self.dram_available:
+                raise ZeusdError("DRAM energy should be available but no measurement was found")
+        else:
+            dram_mj = dram_uj / 1000
 
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
     def supportsGetDramEnergyConsumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
-        resp = self._client.get(
-            self._url_prefix + "/supports_dram_energy",
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(
-                f"Failed to get whether DRAM energy is supported: {resp.text}"
-            )
-        data = resp.json()
-        dram_available = data.get("dram_available")
-        if dram_available is None:
-            raise ZeusdError("Failed to get whether DRAM energy is supported.")
-        return dram_available
+        return self.dram_available
 
 
 class RAPLCPUs(cpu_common.CPUs):
