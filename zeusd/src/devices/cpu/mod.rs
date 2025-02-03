@@ -35,6 +35,19 @@ pub struct RaplResponse {
     pub dram_energy_uj: Option<u64>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DramAvailabilityResponse {
+    pub dram_available: bool,
+}
+
+/// Unified CPU response type
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum CpuResponse {
+    Rapl(RaplResponse),
+    Dram(DramAvailabilityResponse),
+}
+
 pub trait CpuManager {
     /// Get the number of CPUs available.
     fn device_count() -> Result<usize, ZeusdError>;
@@ -55,7 +68,7 @@ pub trait CpuManager {
 
 pub type CpuCommandRequest = (
     CpuCommand,
-    Option<Sender<Result<RaplResponse, ZeusdError>>>,
+    Option<Sender<Result<CpuResponse, ZeusdError>>>,
     Instant,
     Span,
 );
@@ -89,7 +102,7 @@ impl CpuManagementTasks {
         cpu_id: usize,
         command: CpuCommand,
         request_start_time: Instant,
-    ) -> Result<RaplResponse, ZeusdError> {
+    ) -> Result<CpuResponse, ZeusdError> {
         if cpu_id >= self.senders.len() {
             return Err(ZeusdError::CpuNotFoundError(cpu_id));
         }
@@ -128,6 +141,8 @@ impl CpuManagementTasks {
 pub enum CpuCommand {
     /// Get the CPU and DRAM energy measurement for the CPU index
     GetIndexEnergy { cpu: bool, dram: bool },
+    /// Return if the specified CPU supports DRAM energy measurement
+    SupportsDramEnergy,
     /// Stop the monitoring task for CPU and DRAM if they have been started.
     StopMonitoring,
 }
@@ -156,7 +171,7 @@ impl CpuCommand {
         &self,
         device: &mut T,
         _request_arrival_time: Instant,
-    ) -> Result<RaplResponse, ZeusdError>
+    ) -> Result<CpuResponse, ZeusdError>
     where
         T: CpuManager,
     {
@@ -172,17 +187,24 @@ impl CpuCommand {
                 } else {
                     None
                 };
-                Ok(RaplResponse {
+                // Wrap the RaplResponse in CpuResponse::Rapl
+                Ok(CpuResponse::Rapl(RaplResponse {
                     cpu_energy_uj,
                     dram_energy_uj,
-                })
+                }))
             }
-            Self::StopMonitoring {} => {
+            Self::SupportsDramEnergy => {
+                // Wrap the DramAvailabilityResponse in CpuResponse::Dram
+                Ok(CpuResponse::Dram(DramAvailabilityResponse {
+                    dram_available: device.is_dram_available(),
+                }))
+            }
+            Self::StopMonitoring => {
                 device.stop_monitoring();
-                Ok(RaplResponse {
+                Ok(CpuResponse::Rapl(RaplResponse {
                     cpu_energy_uj: Some(0),
                     dram_energy_uj: Some(0),
-                })
+                }))
             }
         }
     }

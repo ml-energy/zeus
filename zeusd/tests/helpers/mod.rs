@@ -266,7 +266,7 @@ impl_zeusd_request_cpu!(GetIndexEnergy);
 /// A test application that starts a server over TCP and provides helper methods
 /// for sending requests and fetching what happened to the fake GPUs.
 pub struct TestApp {
-    port: u16,
+    pub port: u16,
     observers: Vec<TestGpuObserver>,
     cpu_injectors: Vec<TestCpuInjector>,
 }

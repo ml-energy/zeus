@@ -18,14 +18,17 @@ import multiprocessing as mp
 import os
 import time
 import warnings
+from pathlib import Path
 from functools import lru_cache
 from glob import glob
 from multiprocessing.sharedctypes import Synchronized
 from typing import Sequence
 
+import httpx
+
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
-from zeus.device.exception import ZeusBaseCPUError
+from zeus.device.exception import ZeusBaseCPUError, ZeusdError
 from zeus.utils.logging import get_logger
 
 logger = get_logger(name=__name__)
@@ -261,6 +264,78 @@ class RAPLCPU(cpu_common.CPU):
         return self.dram is not None
 
 
+class ZeusdRAPLCPU(RAPLCPU):
+    """A RAPLCPU that interfaces with RAPL via zeusd.
+
+    The parent RAPLCPU class requires root privileges to interface with RAPL.
+    ZeusdRAPLCPU (this class) overrides RAPLCPU's methods so that they instead send requests
+    to the Zeus daemon, which will interface with RAPL on behalf of ZeusdRAPLCPU. As a result,
+    ZeusdRAPLCPU does not need root privileges to monitor CPU and DRAM energy consumption.
+
+    See [here](https://ml.energy/zeus/getting_started/#system-privileges)
+    for details on system privileges required.
+    """
+
+    def __init__(
+        self,
+        cpu_index: int,
+        zeusd_sock_path: str = "/var/run/zeusd.sock",
+    ) -> None:
+        """Initialize the Intel CPU with a specified index."""
+        self.cpu_index = cpu_index
+
+        self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
+        self._url_prefix = f"http://zeusd/cpu/{cpu_index}"
+
+        self.dram_available = self._supportsGetDramEnergyConsumption()
+
+    def _supportsGetDramEnergyConsumption(self) -> bool:
+        """Calls zeusd to return if the specified CPU supports DRAM energy monitoring."""
+        resp = self._client.get(
+            self._url_prefix + "/supports_dram_energy",
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(
+                f"Failed to get whether DRAM energy is supported: {resp.text}"
+            )
+        data = resp.json()
+        dram_available = data.get("dram_available")
+        if dram_available is None:
+            raise ZeusdError("Failed to get whether DRAM energy is supported.")
+        return dram_available
+
+    def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
+        """Returns the total energy consumption of the specified powerzone. Units: mJ."""
+        resp = self._client.post(
+            self._url_prefix + "/get_index_energy",
+            json={
+                "cpu": True,
+                "dram": True,
+            },
+        )
+        if resp.status_code != 200:
+            raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")
+
+        data = resp.json()
+        cpu_mj = data["cpu_energy_uj"] / 1000
+
+        dram_mj = None
+        dram_uj = data.get("dram_energy_uj")
+        if dram_uj is None:
+            if self.dram_available:
+                raise ZeusdError(
+                    "DRAM energy should be available but no measurement was found"
+                )
+        else:
+            dram_mj = dram_uj / 1000
+
+        return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
+
+    def supportsGetDramEnergyConsumption(self) -> bool:
+        """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
+        return self.dram_available
+
+
 class RAPLCPUs(cpu_common.CPUs):
     """RAPL CPU Manager object, containing individual RAPLCPU objects, abstracting RAPL calls and handling related exceptions."""
 
@@ -281,13 +356,33 @@ class RAPLCPUs(cpu_common.CPUs):
         """Initialize all Intel CPUs."""
         self._cpus = []
 
+        cpu_indices = []
+
         def sort_key(dir):
             return int(dir.split(":")[1])
 
         for dir in sorted(glob(f"{self.rapl_dir}/intel-rapl:*"), key=sort_key):
             parts = dir.split(":")
             if len(parts) > 1 and parts[1].isdigit():
-                self._cpus.append(RAPLCPU(int(parts[1]), self.rapl_dir))
+                cpu_indices.append(int(parts[1]))
+
+        # If `ZEUSD_SOCK_PATH` is set, always use ZeusdRAPLCPU
+        if (sock_path := os.environ.get("ZEUSD_SOCK_PATH")) is not None:
+            if not Path(sock_path).exists():
+                raise ZeusdError(
+                    f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}"
+                )
+            if not Path(sock_path).is_socket():
+                raise ZeusdError(f"ZEUSD_SOCK_PATH is not a socket: {sock_path}")
+            if not os.access(sock_path, os.W_OK):
+                raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
+            self._cpus = [
+                ZeusdRAPLCPU(cpu_index, sock_path) for cpu_index in cpu_indices
+            ]
+        else:
+            self._cpus = [
+                RAPLCPU(cpu_index, self.rapl_dir) for cpu_index in cpu_indices
+            ]
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""

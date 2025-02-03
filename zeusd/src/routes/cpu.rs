@@ -24,7 +24,7 @@ impl From<GetIndexEnergy> for CpuCommand {
 
 #[actix_web::post("/{cpu_id}/get_index_energy")]
 #[tracing::instrument(
-    skip(cpu_id, request, _device_tasks),
+    skip(request, _device_tasks),
     fields(
         cpu_id = %cpu_id,
         cpu = %request.cpu,
@@ -48,6 +48,29 @@ async fn get_index_energy_handler(
     Ok(HttpResponse::Ok().json(measurement))
 }
 
+#[actix_web::get("/{cpu_id}/supports_dram_energy")]
+#[tracing::instrument(
+    skip(_device_tasks),
+    fields(
+        cpu_id = %cpu_id,
+    )
+)]
+async fn supports_dram_energy_handler(
+    cpu_id: web::Path<usize>,
+    _device_tasks: web::Data<CpuManagementTasks>,
+) -> Result<HttpResponse, ZeusdError> {
+    let now = Instant::now();
+    tracing::info!("Received request");
+    let cpu_id = cpu_id.into_inner();
+
+    let answer = _device_tasks
+        .send_command_blocking(cpu_id, CpuCommand::SupportsDramEnergy, now)
+        .await?;
+
+    Ok(HttpResponse::Ok().json(answer))
+}
+
 pub fn cpu_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(get_index_energy_handler);
+    cfg.service(supports_dram_energy_handler);
 }
