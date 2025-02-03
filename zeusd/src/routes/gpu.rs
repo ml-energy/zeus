@@ -48,7 +48,7 @@ macro_rules! impl_handler_for_gpu_command {
         // Generate the request handler.
         #[actix_web::$path]
         #[tracing::instrument(
-            skip(gpu_id, request, device_tasks),
+            skip(request, device_tasks),
             fields(
                 gpu_id = %gpu_id,
                 block = %request.block,
