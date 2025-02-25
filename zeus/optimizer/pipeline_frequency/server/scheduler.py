@@ -7,7 +7,6 @@ from pathlib import Path
 from contextlib import suppress
 from abc import ABC, abstractmethod
 from typing import Callable, Literal, Generator, Sequence, Type
-from fastapi.logger import logger
 
 from zeus.optimizer.pipeline_frequency.common import (
     PFOServerSettings,
@@ -20,13 +19,9 @@ from zeus.utils.logging import get_logger
 
 from zeus.optimizer.pipeline_frequency.profiling.models import (
     PerseusSettings,
-    JobInfo,
-    RankInfo,
     PowerStateSchedule,
-    ProfilingResult,
     PipeInstruction,
 )
-
 
 logger = get_logger(__name__)
 

@@ -17,7 +17,10 @@ from zeus.optimizer.pipeline_frequency.profiling.models import (
     ProfilingResult,
     PipeInstruction,
 )
-from zeus.optimizer.pipeline_frequency.server.scheduler import PowerStateSchedulerV2, make_3d_parallel
+from zeus.optimizer.pipeline_frequency.server.scheduler import (
+    PowerStateSchedulerV2,
+    make_3d_parallel,
+)
 
 
 class InstructionProfiler(PowerStateSchedulerV2):

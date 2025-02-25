@@ -36,16 +36,16 @@ class PerseusSettings(BaseSettings):
     dump_dir: str = "dump"
 
     @validator("scheduler", pre=True)
-    def _fix_scheduler_import_path(cls, value):
+    def _fix_scheduler_import_path(self, value):
         """Prepend `perseus.server.scheduler.` to the scheduler type name."""
         return f"perseus.server.scheduler.{value}"
 
     @validator("log_level")
-    def _make_upper_case(cls, value):
+    def _make_upper_case(self, value):
         return value.upper()
 
     @validator("mode")
-    def _set_mode(cls, mode, values):
+    def _set_mode(self, mode, values):
         """Return the power control mode of the scheduler."""
         try:
             scheduler = values["scheduler"]
@@ -54,7 +54,7 @@ class PerseusSettings(BaseSettings):
                 "Scheduler not set. Please make sure the environment variable "
                 "`PERSEUS_SCHEDULER` is a valid scheduler in `perseus.server.scheduler`, "
                 "e.g., `AllMaxFrequency`, `InstructionProfiler`.",
-            )
+            ) from None
 
         # If the scheduler doesn't have a `mode` set, it means it supports both.
         # Then, the user must specify which mode to user through the `PERSEUS_MODE` env var.
@@ -92,7 +92,7 @@ class ServerInfo(BaseModel):
     dump_dir: str
 
     @validator("scheduler", pre=True)
-    def _convert_class_to_str(cls, value):
+    def _convert_class_to_str(self, value):
         if not isinstance(value, str):
             return value.__name__
         return value
@@ -142,12 +142,12 @@ class JobInfo(BaseModel):
     num_microbatches: int = Field(ge=1)
 
     @validator("job_id")
-    def _check_empty_job_id(cls, job_id):
+    def _check_empty_job_id(self, job_id):
         assert not job_id
         return job_id
 
     @validator("world_size")
-    def _check_world_size(cls, world_size, values):
+    def _check_world_size(self, world_size, values):
         """Product of PP, DP, and TP degree would be identical to the world size."""
         assert (
             values["pp_degree"] * values["dp_degree"] * values["tp_degree"]
@@ -197,7 +197,7 @@ class RankInfo(BaseModel):
     power_state_range: list[int]
 
     @validator("power_state_range")
-    def _validate_power_state_and_sort(cls, value):
+    def _validate_power_state_and_sort(self, value):
         if any(ps <= 0 for ps in value):
             raise ValueError("Power state values must be positive integers.")
         if len(value) != len(set(value)):
