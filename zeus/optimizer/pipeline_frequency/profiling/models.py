@@ -72,7 +72,7 @@ class PerseusSettings(BaseSettings):
 
         return scheduler.mode
 
-    class Config:
+    class PerseusConfig:  # type: ignore
         """Configuration class read by pydantic."""
 
         env_prefix = "perseus_"
