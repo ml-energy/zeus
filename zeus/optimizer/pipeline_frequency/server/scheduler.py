@@ -18,8 +18,11 @@ from zeus.optimizer.pipeline_frequency.common import (
 from zeus.utils.logging import get_logger
 
 from zeus.optimizer.pipeline_frequency.profiling.models import (
-    PerseusSettings,
+    JobInfoPerseus,
+    RankInfoPerseus,
+    ProfilingResultPerseus,
     PowerStateSchedule,
+    PerseusSettings,
     PipeInstruction,
 )
 
@@ -294,8 +297,8 @@ class PowerStateScheduler(ABC):
 
     def __init__(
         self,
-        job_info: JobInfo,
-        rank_infos: list[RankInfo],
+        job_info: JobInfoPerseus,
+        rank_infos: list[RankInfoPerseus],
         perseus_settings: PerseusSettings,
     ) -> None:
         """Initialize the scheduler.
@@ -333,7 +336,7 @@ class PowerStateScheduler(ABC):
         return schedules
 
     @abstractmethod
-    def observe(self, profiling_results: list[ProfilingResult]) -> None:
+    def observe(self, profiling_results: list[ProfilingResultPerseus]) -> None:
         """Ingest the profiling results for the previous schedule.
 
         Args:
@@ -354,8 +357,8 @@ class PowerStateSchedulerV2(PowerStateScheduler):
 
     def __init__(
         self,
-        job_info: JobInfo,
-        rank_infos: list[RankInfo],
+        job_info: JobInfoPerseus,
+        rank_infos: list[RankInfoPerseus],
         perseus_settings: PerseusSettings,
     ) -> None:
         """Initialize the scheduler.
@@ -369,7 +372,7 @@ class PowerStateSchedulerV2(PowerStateScheduler):
         self._generator = self._run()
         self._next_schedule: list[PowerStateSchedule] | None = None
 
-    def observe(self, profiling_results: list[ProfilingResult]) -> None:
+    def observe(self, profiling_results: list[ProfilingResultPerseus]) -> None:
         """Ingest the profiling results for the previous schedule.
 
         Args:
@@ -397,7 +400,9 @@ class PowerStateSchedulerV2(PowerStateScheduler):
         return self._next_schedule
 
     @abstractmethod
-    def _run(self) -> Generator[list[PowerStateSchedule], list[ProfilingResult], None]:
+    def _run(
+        self,
+    ) -> Generator[list[PowerStateSchedule], list[ProfilingResultPerseus], None]:
         """Yield next schedules and receives profiling results in one place.
 
         This is an alternative way to write a power state scheduler. The advantage is
@@ -458,8 +463,8 @@ def make_3d_parallel(
     class Wrapper(sched_cls):  # type: ignore[valid-type,misc]
         def __init__(
             self,
-            job_info: JobInfo,
-            rank_infos: list[RankInfo],
+            job_info: JobInfoPerseus,
+            rank_infos: list[RankInfoPerseus],
             perseus_settings: PerseusSettings,
             *args,
             **kwargs,
@@ -483,19 +488,19 @@ def make_3d_parallel(
 
             super().__init__(job_info, rank_infos, perseus_settings, *args, **kwargs)
 
-        def observe(self, profiling_results: list[ProfilingResult]) -> None:
+        def observe(self, profiling_results: list[ProfilingResultPerseus]) -> None:
             """Aggregate results so that each pipeline stage has one result."""
             # Aggregate results from ranks that share the same pp_rank.
             rank_to_pp_rank = {
                 rank_info.rank: rank_info.pp_rank for rank_info in self._orig_rank_infos
             }
-            pp_results: list[list[ProfilingResult]] = [
+            pp_results: list[list[ProfilingResultPerseus]] = [
                 [] for _ in range(self._orig_job_info.pp_degree)
             ]
             for result in profiling_results:
                 pp_results[rank_to_pp_rank[result.rank]].append(result)
 
-            # For each stage, construct a new ProfilingResult that aggregates all ranks.
+            # For each stage, construct a new ProfilingResultPerseus that aggregates all ranks.
             # For iter_time and values in time_breakdown, take the max.
             # For iter_energy and values in energy_breakdown, take the sum.
             def agg_list(values: Sequence[list[float]], fun: Callable) -> list[float]:
@@ -508,7 +513,7 @@ def make_3d_parallel(
 
             agg_results = []
             for pp_rank, results in enumerate(pp_results):
-                agg_result = ProfilingResult(
+                agg_result = ProfilingResultPerseus(
                     rank=pp_rank,
                     iter_time=agg_list([result.iter_time for result in results], max),
                     iter_energy=agg_list(

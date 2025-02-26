@@ -11,10 +11,10 @@ from fastapi.logger import logger
 
 from zeus.optimizer.pipeline_frequency.profiling.models import (
     PerseusSettings,
-    JobInfo,
-    RankInfo,
+    JobInfoPerseus,
+    RankInfoPerseus,
     PowerStateSchedule,
-    ProfilingResult,
+    ProfilingResultPerseus,
     PipeInstruction,
 )
 from zeus.optimizer.pipeline_frequency.server.scheduler import (
@@ -31,8 +31,8 @@ class InstructionProfiler(PowerStateSchedulerV2):
 
     def __init__(
         self,
-        job_info: JobInfo,
-        rank_infos: list[RankInfo],
+        job_info: JobInfoPerseus,
+        rank_infos: list[RankInfoPerseus],
         perseus_settings: PerseusSettings,
         warmup_step_ratio: float = 0.1,
         minimum_power_state: int = 850,
@@ -58,7 +58,9 @@ class InstructionProfiler(PowerStateSchedulerV2):
         self._header = ["stage", "instruction", self.mode, "time", "energy"]
         self._records: list[tuple[int, PipeInstruction, int, float, float]] = []
 
-    def _run(self) -> Generator[list[PowerStateSchedule], list[ProfilingResult], None]:
+    def _run(
+        self,
+    ) -> Generator[list[PowerStateSchedule], list[ProfilingResultPerseus], None]:
         # Warm up the GPUs.
         max_power_state = max(self.power_state_range)
         for _ in range(2):
@@ -127,8 +129,8 @@ class PointSolution(PowerStateSchedulerV2):
 
     def __init__(
         self,
-        job_info: JobInfo,
-        rank_infos: list[RankInfo],
+        job_info: JobInfoPerseus,
+        rank_infos: list[RankInfoPerseus],
         perseus_settings: PerseusSettings,
         warmup_iters: int = 2,
         solution_path: str = "frequencies.py",
@@ -173,7 +175,9 @@ class PointSolution(PowerStateSchedulerV2):
         # Convert the solution to a list of power states.
         return self._config_to_schedule(solution)
 
-    def _run(self) -> Generator[list[PowerStateSchedule], list[ProfilingResult], None]:
+    def _run(
+        self,
+    ) -> Generator[list[PowerStateSchedule], list[ProfilingResultPerseus], None]:
         # Warm up the GPUs.
         max_power_state = max(self.power_state_range)
         for _ in range(self.warmup_iters):

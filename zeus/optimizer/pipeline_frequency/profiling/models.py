@@ -113,7 +113,7 @@ class PipeInstruction(str, Enum):
     PURE_BACKWARD = "pure_backward"
 
 
-class JobInfo(BaseModel):
+class JobInfoPerseus(BaseModel):
     """Training job information reported to the server.
 
     Attributes:
@@ -173,7 +173,7 @@ class JobInfo(BaseModel):
         )
 
 
-class RankInfo(BaseModel):
+class RankInfoPerseus(BaseModel):
     """Information passed to the server from each rank.
 
     Attributes:
@@ -216,7 +216,7 @@ class PowerStateSchedule(BaseModel):
     power_states: list[int]
 
 
-class ProfilingResult(BaseModel):
+class ProfilingResultPerseus(BaseModel):
     """Profiling results for a `PowerStateSchedule` of a rank.
 
     Attributes:
