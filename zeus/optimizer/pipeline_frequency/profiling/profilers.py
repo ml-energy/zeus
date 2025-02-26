@@ -17,9 +17,9 @@ from zeus.optimizer.pipeline_frequency.profiling.models import (
     ProfilingResultPerseus,
     PipeInstruction,
 )
-from zeus.optimizer.pipeline_frequency.server.scheduler import (
+from zeus.optimizer.pipeline_frequency.profiling.interfaces import (
     PowerStateSchedulerV2,
-    make_3d_parallel,
+    make_3d_parallel_perseus,
 )
 
 
@@ -124,7 +124,7 @@ class InstructionProfiler(PowerStateSchedulerV2):
         raise RuntimeError("[profiling-done] Profiling is done, so stop training!")
 
 
-class PointSolution(PowerStateSchedulerV2):
+class PointSolutionPerseus(PowerStateSchedulerV2):
     """Reads in point solutions and just executes them."""
 
     def __init__(
@@ -197,4 +197,4 @@ class PointSolution(PowerStateSchedulerV2):
         raise RuntimeError("[profiling-done] All solutions are done, so stop training!")
 
 
-PointSolution3D = make_3d_parallel(PointSolution)
+PointSolution3_perseus = make_3d_parallel_perseus(PointSolutionPerseus)

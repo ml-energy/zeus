@@ -64,7 +64,7 @@ class PFOServerSettings(BaseSettings):
     def _make_upper_case(cls, value):
         return value.upper()
 
-    class Config:  # type: ignore
+    class PFOConfig:  # type: ignore
         """Configuration class read by pydantic."""
 
         env_prefix = "zeus_pfo_"
