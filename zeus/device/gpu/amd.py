@@ -9,7 +9,9 @@ from typing import Sequence
 from functools import lru_cache
 
 try:
-    import amdsmi  # type: ignore
+    # `amdsmi` prints to stdout on import when libamd_smi.so is not found.
+    with contextlib.redirect_stdout(None):
+        import amdsmi  # type: ignore
 # must catch all exceptions, since ImportError is not the only exception that can be raised (ex. OSError on version mismatch).
 # Specific exceptions are handled when import and initialization are retested in `amdsmi_is_available`
 except Exception:
