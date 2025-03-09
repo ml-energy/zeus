@@ -119,15 +119,15 @@ class JobInfo(BaseModel):
         self.job_id = "+".join(
             [
                 datetime.now().strftime("%F-%H-%M-%S"),
-                self.framework,
-                self.model_name,
-                self.partition_method,
+                self.framework or "",
+                self.model_name or "",
+                self.partition_method or "",
                 f"dp{self.dp_degree}",
                 f"pp{self.pp_degree}",
                 f"tp{self.tp_degree}",
                 f"mbs{self.microbatch_size!s}",
                 f"nmb{self.num_microbatches!s}",
-                scheduler_name,
+                scheduler_name or "",
             ]
         )
         if self.job_metadata:
