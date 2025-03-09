@@ -93,7 +93,7 @@ class JobInfo(BaseModel):
     world_size: int = Field(ge=1)
     job_metadata: Optional[str] = None
 
-    # New fields needed by InstructionProfiler (and defined in models.py as JobInfoPerseus)
+    # New fields needed by InstructionProfiler
     framework: Optional[str] = ""
     model_name: Optional[str] = ""
     partition_method: Optional[str] = ""
@@ -152,7 +152,7 @@ class RankInfo(BaseModel):
     available_frequencies: list[int]
 
     # New fields for InstructionProfiler:
-    pipe_schedule: List[PipeInstruction] = []  # to be filled with PipeInstruction
+    pipe_schedule: List[PipeInstruction] = []  # to be filled by PipeInstruction
     power_state_range: List[int] = []  # list of power states to try
 
     @validator("power_state_range")
