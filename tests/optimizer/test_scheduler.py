@@ -19,7 +19,6 @@ from zeus.optimizer.pipeline_frequency.server.scheduler import (
     FrequencySchedule,
 )
 
-
 #  Dummy JobInfo using minimal fields required.
 @pytest.fixture
 def dummy_job_info(tmp_path):
@@ -38,6 +37,8 @@ def dummy_job_info(tmp_path):
         num_microbatches=1,
     )
 
+
+RankInfo.update_forward_refs()
 
 #  Dummy RankInfo for two ranks.
 @pytest.fixture
