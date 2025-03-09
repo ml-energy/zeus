@@ -125,8 +125,8 @@ class JobInfo(BaseModel):
                 f"dp{self.dp_degree}",
                 f"pp{self.pp_degree}",
                 f"tp{self.tp_degree}",
-                f"mbs{self.microbatch_size}",
-                f"nmb{self.num_microbatches}",
+                f"mbs{self.microbatch_size!s}",
+                f"nmb{self.num_microbatches!s}",
                 scheduler_name,
             ]
         )

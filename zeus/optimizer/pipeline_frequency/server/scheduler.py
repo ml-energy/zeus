@@ -396,4 +396,6 @@ def get_scheduler(
     if pfo_settings.dump_data:
         return InstructionProfiler(job_info, rank_infos, pfo_settings)
     else:
-        return PointSolution(job_info, rank_infos, pfo_settings)
+        return PointSolution(
+            job_info, rank_infos, pfo_settings, solution_path="frequencies.py"
+        )
