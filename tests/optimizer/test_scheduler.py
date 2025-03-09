@@ -64,12 +64,12 @@ def dummy_rank_infos():
 #  PFOServerSettings with dump_data enabled and dump_dir set to a temporary directory.
 @pytest.fixture
 def dummy_pfosettings(tmp_path):
+    dump_dir = tmp_path / "dump"
+    dump_dir.mkdir(exist_ok=True)  # Create the dump directory
     return PFOServerSettings(
         scheduler="InstructionProfiler",  # use InstructionProfiler for this test
         dump_data=True,
         dump_dir=str(tmp_path / "dump"),
-        # In case scheduler_args are required by the default scheduler,
-        # you can add: scheduler_args={"solution_path": "frequencies.py"}
     )
 
 
