@@ -7,3 +7,8 @@ typically distributed, and we still need one place to coordinate the
 frequency plans. Later, the server will be extended to support complete
 online profiling and optimization.
 """
+
+from zeus.optimizer.pipeline_frequency.server.scheduler import (
+    get_scheduler,
+    FrequencyScheduler,
+)

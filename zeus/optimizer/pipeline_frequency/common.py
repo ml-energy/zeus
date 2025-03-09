@@ -5,12 +5,14 @@ from __future__ import annotations
 import os
 import inspect
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 import aiofiles
 import pandas as pd
 
 from zeus.utils.pydantic_v1 import BaseModel, BaseSettings, Field, validator, PyObject
+
+from enum import Enum
 
 GET_SERVER_INFO_URL = "/info"
 REGISTER_JOB_URL = "/register_job"
@@ -91,6 +93,13 @@ class JobInfo(BaseModel):
     world_size: int = Field(ge=1)
     job_metadata: Optional[str] = None
 
+    # New fields needed by InstructionProfiler (and defined in models.py as JobInfoPerseus)
+    framework: Optional[str] = ""
+    model_name: Optional[str] = ""
+    partition_method: Optional[str] = ""
+    microbatch_size: Optional[int] = None
+    num_microbatches: Optional[int] = None
+
     @validator("job_id")
     def _check_empty_job_id(cls, job_id):
         assert not job_id
@@ -110,9 +119,14 @@ class JobInfo(BaseModel):
         self.job_id = "+".join(
             [
                 datetime.now().strftime("%F-%H-%M-%S"),
+                self.framework,
+                self.model_name,
+                self.partition_method,
                 f"dp{self.dp_degree}",
                 f"pp{self.pp_degree}",
                 f"tp{self.tp_degree}",
+                f"mbs{self.microbatch_size}",
+                f"nmb{self.num_microbatches}",
                 scheduler_name,
             ]
         )
@@ -136,6 +150,45 @@ class RankInfo(BaseModel):
     pp_rank: int = Field(ge=0)
     tp_rank: int = Field(ge=0)
     available_frequencies: list[int]
+
+    # New fields for InstructionProfiler:
+    pipe_schedule: List[PipeInstruction] = []  # to be filled with PipeInstruction
+    power_state_range: List[int] = []  # list of power states to try
+
+    @validator("power_state_range")
+    def _validate_power_state_and_sort(cls, value):
+        if value is not None:
+            if any(ps <= 0 for ps in value):
+                raise ValueError("Power state values must be positive integers.")
+            if len(value) != len(set(value)):
+                raise ValueError("List of power states must be unique.")
+            return sorted(value, reverse=True)
+        else:
+            return value
+
+
+# New for InstructionProfiler
+class PipeInstruction(str, Enum):
+    """Atomic operations in pipeline schedules."""
+
+    LOAD = "load"
+    FORWARD = "forward"
+    BACKWARD = "backward"
+    P2P = "p2p"
+    CC = "cc"
+    STEP = "step"
+    LOW = "low"
+    HIGH = "high"
+    OTHER = "other"
+    PURE_BACKWARD = "pure_backward"
+
+
+# New for InstructionProfiler
+class PowerStateSchedule(BaseModel):
+    """Power state assignment for each PipeInstruction of a rank."""
+
+    rank: int = Field(ge=0)
+    power_states: List[int]
 
 
 class FrequencySchedule(BaseModel):

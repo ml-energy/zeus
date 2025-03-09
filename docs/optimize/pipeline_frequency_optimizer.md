@@ -103,6 +103,47 @@ As another example, in Megatron-LM, users can pass in their custom `forward_step
 1. Wrap the forward pass region with `opt.on_instruction_begin("forward")` and `opt.on_instruction_end("forward")`.
 1. Wrap the backward pass region with `opt.on_instruction_begin("backward")` and `opt.on_instruction_end("backward")`.
 
+
+## Profiler Integration
+
+This module defines schedulers for GPU frequency management in Zeus. Both schedulers inherit from the legacy `FrequencyScheduler` interface, ensuring backward compatibility while adding new profiling capabilities.
+
+## Key Schedulers
+
+### PointSolution
+- **Description:**  
+  Loads a fixed frequency schedule from an external Python file. It yields a list of `FrequencySchedule` objects for each rank based on precomputed solutions.
+
+### InstructionProfiler
+- **Description:**  
+  Iterates over a range of power states to profile instruction-level timing and energy consumption (for forward and backward operations). It aggregates results and writes them to a CSV file when profiling is complete.
+
+## 3D-Parallel Support
+
+### make_3d_parallel
+- **Description:**  
+  Wraps a scheduler to support 3D parallelism by aggregating profiling results from ranks sharing the same pipeline-parallel rank (`pp_rank`) and replicating per-stage schedules to all ranks.
+
+#### Wrappers:
+- **PointSolution3D**
+- **InstructionProfiler3D**
+
+## Scheduler Factory Function
+
+### `get_scheduler(job_info, rank_infos, pfo_settings)`
+- **Description:**  
+  A factory function that returns the appropriate scheduler instance:
+  - If `pfo_settings.dump_data` is enabled, it returns an `InstructionProfiler` instance.
+  - Otherwise, it returns a `PointSolution` instance.
+
+## Migration Notes
+
+### Backward Compatibility
+- Existing code that directly instantiates schedulers (e.g., `PointSolution(...)` or `InstructionProfiler(...)`) will continue to work. However, it is recommended to use the new `get_scheduler` factory function for flexibility.
+
+### Documentation Update
+- Update usage examples and documentation to reference `get_scheduler`, which centralizes scheduler creation based on the `PFOServerSettings` configuration.
+
 ### Profiling Instructions
 
 It's important to optimize on top of accurate measurements of forward and backward instructions.
