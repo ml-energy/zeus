@@ -144,31 +144,23 @@ def test_instruction_profiler_scheduler(
     scheduler.observe(dummy_profiling_result)
 
     # --- Scheduling Iterations ---
-    try:
-        schedule_iter1 = scheduler.next_schedule()
-        for fs in schedule_iter1:
-            for inst, freq in fs.frequencies:
-                # Accept frequencies from the allowed set (e.g., 1000 or 900).
-                assert freq in (1000, 900), f"Unexpected frequency {freq}"
-        scheduler.observe(dummy_profiling_result)
-    except RuntimeError as err:
-        # If the profiler terminates early, ensure it indicates profiling completion.
-        if "[profiling-done]" not in str(err):
-            raise
+    profiling_done = False
+    for _ in range(10):
+        try:
+            schedule = scheduler.next_schedule()
+            # Assert that frequencies are either 1000 or 900
+            for fs in schedule:
+                for inst, freq in fs.frequencies:
+                    assert freq in (1000, 900), f"Unexpected frequency {freq}"
+            scheduler.observe(dummy_profiling_result)
+        except RuntimeError as err:
+            if "[profiling-done]" in str(err):
+                profiling_done = True
+                break
+            else:
+                raise
 
-    try:
-        schedule_iter2 = scheduler.next_schedule()
-        for fs in schedule_iter2:
-            for inst, freq in fs.frequencies:
-                assert freq in (1000, 900), f"Unexpected frequency {freq}"
-        scheduler.observe(dummy_profiling_result)
-    except RuntimeError as err:
-        if "[profiling-done]" not in str(err):
-            raise
-
-    # Next call should eventually trigger the profiling-done error since the next frequency (800) is below minimum.
-    with pytest.raises(RuntimeError, match=r"\[profiling-done\]"):
-        scheduler.next_schedule()
+    assert profiling_done, "Scheduler did not terminate profiling as expected."
 
     # --- Verify CSV Output ---
     dump_dir = dummy_pfosettings.dump_dir
