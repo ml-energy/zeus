@@ -106,43 +106,32 @@ As another example, in Megatron-LM, users can pass in their custom `forward_step
 
 ## Profiler Integration
 
-This module defines schedulers for GPU frequency management in Zeus. Both schedulers inherit from the legacy `FrequencyScheduler` interface, ensuring backward compatibility while adding new profiling capabilities.
-
-## Key Schedulers
-
-### PointSolution
-- **Description:**  
-  Loads a fixed frequency schedule from an external Python file. It yields a list of `FrequencySchedule` objects for each rank based on precomputed solutions.
-
 ### InstructionProfiler
-- **Description:**  
-  Iterates over a range of power states to profile instruction-level timing and energy consumption (for forward and backward operations). It aggregates results and writes them to a CSV file when profiling is complete.
 
-## 3D-Parallel Support
+**Description:**  
+The InstructionProfiler iterates over a range of frequencies to profile the time and energy consumption of forward and backward instructions in each pipeline stage. It aggregates the measurements and writes a CSV file with the average values for each instruction at each frequency. Use this profiler when you want to obtain detailed performance data for optimizing GPU frequency.
 
-### make_3d_parallel
-- **Description:**  
-  Wraps a scheduler to support 3D parallelism by aggregating profiling results from ranks sharing the same pipeline-parallel rank (`pp_rank`) and replicating per-stage schedules to all ranks.
+### 3D-Parallel Support
 
-#### Wrappers:
-- **PointSolution3D**
-- **InstructionProfiler3D**
+#### make_3d_parallel
 
-## Scheduler Factory Function
+**Description:**  
+The make_3d_parallel wrapper enables 3D parallelism support by aggregating profiling results from ranks sharing the same pipeline-parallel rank (`pp_rank`) and replicating per-stage schedules across those ranks.
 
-### `get_scheduler(job_info, rank_infos, pfo_settings)`
-- **Description:**  
-  A factory function that returns the appropriate scheduler instance:
-  - If `pfo_settings.dump_data` is enabled, it returns an `InstructionProfiler` instance.
-  - Otherwise, it returns a `PointSolution` instance.
+**Wrappers:**  
+- PointSolution3D  
+- InstructionProfiler3D
 
-## Migration Notes
+## Scheduler Instantiation
 
-### Backward Compatibility
-- Existing code that directly instantiates schedulers (e.g., `PointSolution(...)` or `InstructionProfiler(...)`) will continue to work. However, it is recommended to use the new `get_scheduler` factory function for flexibility.
+Scheduler instantiation is fully managed by PFOServerSettings. The `scheduler` field (typed as a `PyObject`) in PFOServerSettings is automatically imported based on the environment variable `ZEUS_PFO_SCHEDULER` (or its default value). You can choose the scheduler by setting this environment variable to either `"InstructionProfiler"` for profiling or `"PointSolution"` for fixed scheduling. Additionally, any extra parameters specific to the scheduler can be provided through the `scheduler_args` field.
 
-### Documentation Update
-- Update usage examples and documentation to reference `get_scheduler`, which centralizes scheduler creation based on the `PFOServerSettings` configuration.
+For example, in your job manager you can instantiate the scheduler as follows:
+
+```python
+scheduler = pfo_settings.scheduler(job_info, rank_infos, pfo_settings, **pfo_settings.scheduler_args)
+```
+If you wish to perform profiling to gather detailed performance data, set `ZEUS_PFO_DUMP_DATA=true` and   `ZEUS_PFO_SCHEDULER=InstructionProfiler`. Otherwise, for fixed scheduling, set `ZEUS_PFO_SCHEDULER=PointSolution`.
 
 ### Profiling Instructions
 

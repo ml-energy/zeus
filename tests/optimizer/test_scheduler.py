@@ -2,6 +2,8 @@
 Unit tests for the zeus.optimizer.pipeline_frequency.server.scheduler module
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import numpy as np
@@ -11,18 +13,16 @@ from zeus.optimizer.pipeline_frequency.common import (
     JobInfo,
     RankInfo,
     ProfilingResult,
-    PipeInstruction,
     PFOServerSettings,
 )
-from zeus.optimizer.pipeline_frequency.server.scheduler import (
-    get_scheduler,
-    FrequencySchedule,
-)
+from zeus.optimizer.pipeline_frequency.server.scheduler import FrequencySchedule
 
-#  Dummy JobInfo using minimal fields required.
+
 @pytest.fixture
-def dummy_job_info(tmp_path):
-    # Set the dump directory to the temporary path
+def dummy_job_info():
+    """
+    Dummy JobInfo for testing using minimal fields required.
+    """
     return JobInfo(
         job_id="",
         pp_degree=2,
@@ -38,13 +38,14 @@ def dummy_job_info(tmp_path):
     )
 
 
-RankInfo.update_forward_refs()
-
-#  Dummy RankInfo for two ranks.
 @pytest.fixture
 def dummy_rank_infos():
+    """
+    Dummy RankInfo for two ranks; testing using minimal fields required.
+    """
     dummy_available_freqs = [1000, 900, 800, 700]
-    dummy_pipe_schedule = [PipeInstruction.FORWARD, PipeInstruction.BACKWARD]
+    # Use plain strings for the pipeline schedule.
+    dummy_pipe_schedule = ["forward", "backward"]
     rank_infos = []
     for i in range(2):
         rank_infos.append(
@@ -55,45 +56,40 @@ def dummy_rank_infos():
                 tp_rank=0,
                 available_frequencies=dummy_available_freqs,
                 pipe_schedule=dummy_pipe_schedule,
-                power_state_range=dummy_available_freqs.copy(),
             )
         )
     return rank_infos
 
 
-#  PFOServerSettings with dump_data enabled and dump_dir set to a temporary directory.
 @pytest.fixture
 def dummy_pfosettings(tmp_path):
+    """
+    PFOServerSettings with dump_data enabled and dump_dir set to a temporary directory.
+    """
     dump_dir = tmp_path / "dump"
     dump_dir.mkdir(exist_ok=True)  # Create the dump directory
     return PFOServerSettings(
-        scheduler="InstructionProfiler",  # use InstructionProfiler for this test
+        scheduler="InstructionProfiler",  # This will be automatically imported.
         dump_data=True,
-        dump_dir=str(tmp_path / "dump"),
+        dump_dir=str(dump_dir.resolve()),
     )
 
 
-#  Dummy ProfilingResult to simulate profiling output.
 @pytest.fixture
 def dummy_profiling_result(dummy_rank_infos):
+    """
+    Dummy ProfilingResult to simulate profiling output.
+    Creates dummy breakdown dictionaries: one list per instruction.
+    """
     dummy_results = []
     for fs in dummy_rank_infos:
-        # Create dummy breakdown dictionaries: one list per instruction.
         time_breakdown = {
-            PipeInstruction.FORWARD.value: [
-                [np.random.uniform(0.1, 0.2) for _ in range(5)]
-            ],
-            PipeInstruction.BACKWARD.value: [
-                [np.random.uniform(0.2, 0.3) for _ in range(5)]
-            ],
+            "forward": [[np.random.uniform(0.1, 0.2) for _ in range(5)]],
+            "backward": [[np.random.uniform(0.2, 0.3) for _ in range(5)]],
         }
         energy_breakdown = {
-            PipeInstruction.FORWARD.value: [
-                [np.random.uniform(10, 20) for _ in range(5)]
-            ],
-            PipeInstruction.BACKWARD.value: [
-                [np.random.uniform(20, 30) for _ in range(5)]
-            ],
+            "forward": [[np.random.uniform(10, 20) for _ in range(5)]],
+            "backward": [[np.random.uniform(20, 30) for _ in range(5)]],
         }
         dummy_results.append(
             ProfilingResult(
@@ -110,35 +106,61 @@ def dummy_profiling_result(dummy_rank_infos):
 def test_instruction_profiler_scheduler(
     dummy_job_info, dummy_rank_infos, dummy_pfosettings, dummy_profiling_result
 ):
-    # Instantiate scheduler using the factory function.
-    scheduler = get_scheduler(dummy_job_info, dummy_rank_infos, dummy_pfosettings)
+    """
+    Test the InstructionProfiler scheduler with meaningful assertions:
+    - Verifies that warm-up iterations return the maximum frequency.
+    - Checks that subsequent iterations yield descending frequency values.
+    - Asserts that a CSV file is written.
+    """
+    # Instantiate the scheduler using the class stored in pfo_settings.
+    # Pydantic automatically imports the scheduler class specified by the
+    # ZEUS_PFO_SCHEDULER environment variable (or the default in PFOServerSettings).
+    scheduler_cls = dummy_pfosettings.scheduler
+    scheduler = scheduler_cls(
+        dummy_job_info,
+        dummy_rank_infos,
+        dummy_pfosettings,
+        **dummy_pfosettings.scheduler_args,
+    )
 
-    # Run a few iterations of the scheduler.
-    iteration = 0
-    profiling_done = False
-    while True:
-        try:
-            schedule = scheduler.next_schedule()
-            # Basic assertions: schedule must be a list with FrequencySchedule objects.
-            assert isinstance(schedule, list)
-            for fs in schedule:
-                # We expect each schedule to have a frequencies attribute.
-                assert hasattr(fs, "frequencies")
-            # Feed the dummy profiling results into the scheduler.
-            scheduler.observe(dummy_profiling_result)
-            iteration += 1
-            # Limit iterations in case the scheduler doesn't finish
-            if iteration > 5:
-                break
-        except RuntimeError as err:
-            # When profiling is complete, InstructionProfiler raises a RuntimeError with a tag.
-            assert "[profiling-done]" in str(err)
-            profiling_done = True
-            break
+    # Expected maximum frequency from available_frequencies.
+    max_freq = max(dummy_rank_infos[0].available_frequencies)  # 1000 in this case
 
-    assert profiling_done, "Scheduler did not terminate profiling as expected."
+    # --- Warm-up Iterations ---
+    warmup_schedule1 = scheduler.next_schedule()
+    for fs in warmup_schedule1:
+        for inst, freq in fs.frequencies:
+            assert (
+                freq == max_freq
+            ), f"Expected warm-up frequency {max_freq}, got {freq}"
+    scheduler.observe(dummy_profiling_result)
 
-    # Verify that a CSV file was written to the dump directory.
+    warmup_schedule2 = scheduler.next_schedule()
+    for fs in warmup_schedule2:
+        for inst, freq in fs.frequencies:
+            assert (
+                freq == max_freq
+            ), f"Expected warm-up frequency {max_freq}, got {freq}"
+    scheduler.observe(dummy_profiling_result)
+
+    # --- Scheduling Iterations ---
+    schedule_iter1 = scheduler.next_schedule()
+    for fs in schedule_iter1:
+        for inst, freq in fs.frequencies:
+            assert freq == 1000, f"Expected frequency 1000, got {freq}"
+    scheduler.observe(dummy_profiling_result)
+
+    schedule_iter2 = scheduler.next_schedule()
+    for fs in schedule_iter2:
+        for inst, freq in fs.frequencies:
+            assert freq == 900, f"Expected frequency 900, got {freq}"
+    scheduler.observe(dummy_profiling_result)
+
+    # Next call should eventually trigger the profiling-done error since the next frequency (800) is below minimum.
+    with pytest.raises(RuntimeError, match=r"\[profiling-done\]"):
+        scheduler.next_schedule()
+
+    # --- Verify CSV Output ---
     dump_dir = dummy_pfosettings.dump_dir
     assert os.path.exists(dump_dir), f"Dump directory {dump_dir} does not exist."
     csv_files = [f for f in os.listdir(dump_dir) if f.endswith(".csv")]

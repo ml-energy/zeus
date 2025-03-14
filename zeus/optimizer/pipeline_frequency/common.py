@@ -5,14 +5,12 @@ from __future__ import annotations
 import os
 import inspect
 from datetime import datetime
-from typing import Any, Optional, List
+from typing import Any, Optional
 
 import aiofiles
 import pandas as pd
 
 from zeus.utils.pydantic_v1 import BaseModel, BaseSettings, Field, validator, PyObject
-
-from enum import Enum
 
 GET_SERVER_INFO_URL = "/info"
 REGISTER_JOB_URL = "/register_job"
@@ -84,6 +82,11 @@ class JobInfo(BaseModel):
         world_size: World size of the training job.
         job_metadata: An optional arbitrary string that describes the job. This will
             be appended to the job ID if given. Typically for logging purposes.
+        framework: Framework used for training.
+        model_name: Name of the model being trained.
+        partition_method: Pipeline partition method used.
+        microbatch_size: Microbatch size used in training.
+        num_microbatches: Number of microbatches in training.
     """
 
     job_id: str = ""
@@ -92,8 +95,6 @@ class JobInfo(BaseModel):
     tp_degree: int = Field(ge=1)
     world_size: int = Field(ge=1)
     job_metadata: Optional[str] = None
-
-    # New fields needed by InstructionProfiler
     framework: Optional[str] = ""
     model_name: Optional[str] = ""
     partition_method: Optional[str] = ""
@@ -142,7 +143,9 @@ class RankInfo(BaseModel):
         dp_rank: Data parallel rank of the reporting procees.
         pp_rank: Pipeline parallel rank of the reporting procees.
         tp_rank: Tensor parallel rank of the reporting procees.
-        available_frequencies: List of available frequencies for the rank's GPU.
+        available_frequencies: list of available frequencies for the rank's GPU.
+        pipe_schedule: Pipeline schedule (list of strings) for the rank.
+            For example, ["forward", "backward"].
     """
 
     rank: int = Field(ge=0)
@@ -150,45 +153,7 @@ class RankInfo(BaseModel):
     pp_rank: int = Field(ge=0)
     tp_rank: int = Field(ge=0)
     available_frequencies: list[int]
-
-    # New fields for InstructionProfiler:
-    pipe_schedule: List[PipeInstruction] = []  # to be filled by PipeInstruction
-    power_state_range: List[int] = []  # list of power states to try
-
-    @validator("power_state_range")
-    def _validate_power_state_and_sort(cls, value):
-        if value is not None:
-            if any(ps <= 0 for ps in value):
-                raise ValueError("Power state values must be positive integers.")
-            if len(value) != len(set(value)):
-                raise ValueError("List of power states must be unique.")
-            return sorted(value, reverse=True)
-        else:
-            return value
-
-
-# New for InstructionProfiler
-class PipeInstruction(str, Enum):
-    """Atomic operations in pipeline schedules."""
-
-    LOAD = "load"
-    FORWARD = "forward"
-    BACKWARD = "backward"
-    P2P = "p2p"
-    CC = "cc"
-    STEP = "step"
-    LOW = "low"
-    HIGH = "high"
-    OTHER = "other"
-    PURE_BACKWARD = "pure_backward"
-
-
-# New for InstructionProfiler
-class PowerStateSchedule(BaseModel):
-    """Power state assignment for each PipeInstruction of a rank."""
-
-    rank: int = Field(ge=0)
-    power_states: List[int]
+    pipe_schedule: list[str] = []
 
 
 class FrequencySchedule(BaseModel):
@@ -207,8 +172,8 @@ class ProfilingResult(BaseModel):
 
     Attributes:
         rank: Global rank of the reporting client.
-        iter_time: List of latency of all iterations within the profiling window in seconds.
-        iter_energy: List of energy consumption of all iterations within the profiling window in Joules.
+        iter_time: list of latency of all iterations within the profiling window in seconds.
+        iter_energy: list of energy consumption of all iterations within the profiling window in Joules.
         time_breakdown: Duration of each operation across multiple iterations.
             e.g. `time_breakdown["forward"][i]` is the list of latencies of all forward computations
             in the `i`th iteration.
