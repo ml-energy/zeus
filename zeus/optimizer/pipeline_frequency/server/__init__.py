@@ -8,7 +8,4 @@ frequency plans. Later, the server will be extended to support complete
 online profiling and optimization.
 """
 
-from zeus.optimizer.pipeline_frequency.server.scheduler import (
-    get_scheduler,
-    FrequencyScheduler,
-)
+from zeus.optimizer.pipeline_frequency.server.scheduler import FrequencyScheduler
