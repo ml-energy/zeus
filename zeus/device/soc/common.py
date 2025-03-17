@@ -38,7 +38,7 @@ class SoCMeasurement(abc.ABC):
 
     @abc.abstractmethod
     def __sub__(self, other) -> SoCMeasurement:
-        """Produce a single measurement object containing the difference across all fields."""
+        """Produce a single measurement object containing differences across all fields."""
         pass
 
 
@@ -66,7 +66,7 @@ class SoC(abc.ABC):
     def isPresent(self) -> bool:
         """Return if an SoC is present on the current device.
 
-        This should be true for all derived classes of the SoC manager except `EmptySoC`.
+        This should be true for all derived classes of the `SoC` manager except `EmptySoC`.
         """
         pass
 
@@ -74,8 +74,9 @@ class SoC(abc.ABC):
     def getTotalEnergyConsumption(self) -> SoCMeasurement:
         """Returns the total energy consumption of the SoC.
 
-        The measurement should be cumulative, with different calls to this function all
-        counting from a fixed arbitrary point in time.
+        The measurement should be cumulative; different calls to this function throughout
+        the lifetime of a single `SoC` manager object should count from a fixed arbitrary
+        point in time.
 
         Units: mJ.
         """
@@ -92,12 +93,12 @@ class SoC(abc.ABC):
         """End a measurement window and return the energy consumption. Units: mJ."""
         # Retrieve the measurement taken at the start of the window.
         try:
-            start_measurement: SoCMeasurement = self.measurement_states.pop(key)
+            start_cumulative: SoCMeasurement = self.measurement_states.pop(key)
         except KeyError:
             raise KeyError(f"Measurement window '{key}' does not exist") from None
 
-        end_measurement: SoCMeasurement = self.getTotalEnergyConsumption()
-        return end_measurement - start_measurement
+        end_cumulative: SoCMeasurement = self.getTotalEnergyConsumption()
+        return end_cumulative - start_cumulative
 
 
 class EmptySoC(SoC):
@@ -108,7 +109,7 @@ class EmptySoC(SoC):
         pass
 
     def getAvailableMetrics(self) -> set[str]:
-        """Return an empty set, as no metrics are observable if no SoC is detected."""
+        """Return a set of all observable metrics on the current processor."""
         return set()
 
     def isPresent(self) -> bool:

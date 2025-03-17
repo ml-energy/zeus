@@ -17,9 +17,9 @@ def get_soc() -> SoC:
     The function returns a SoC management object that aims to abstract underlying SoC monitoring
     functionalities.
 
-    Currently, no SoC management object has been implemented for any SoC architecture, and calling
-    this function will raise a `ZeusSoCInitError` error if called; implementations for SoC devices
-    are expected to be added in the near future.
+    Currently, no management object has been implemented for any SoC architecture, so calling this
+    function will raise a `ZeusSoCInitError` error; implementations for SoC devices are expected
+    to be added in the near future.
     """
     global _soc
     if _soc is not None:
