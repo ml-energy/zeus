@@ -61,9 +61,9 @@ class SoC(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def supportsEnergyMonitoring(self) -> bool:
-        """Return if energy monitoring is supported. This should be true for all derived class
-        implementations of SoC except `EmptySoC`.
+    def isPresent(self) -> bool:
+        """Return if an SoC is present on the current device. This should be true for all derived
+        class implementations of the SoC manager except `EmptySoC`.
         """
         pass
 
@@ -106,9 +106,9 @@ class EmptySoC(SoC):
         """Return an empty set, as no metrics are observable if no SoC is detected."""
         return set()
 
-    def supportsEnergyMonitoring(self) -> bool:
-        """Return if energy monitoring is supported. This should be true for all derived class
-        implementations of SoC except `EmptySoC`.
+    def isPresent(self) -> bool:
+        """Return if an SoC is present on the current device. This should be true for all derived
+        class implementations of the SoC manager except `EmptySoC`.
         """
         return False
 

@@ -13,9 +13,10 @@ from functools import cached_property
 from zeus.monitor.power import PowerMonitor
 from zeus.utils.logging import get_logger
 from zeus.utils.framework import sync_execution as sync_execution_fn
-from zeus.device import get_gpus, get_cpus
+from zeus.device import get_gpus, get_cpus, get_soc
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
 from zeus.device.cpu.common import ZeusCPUInitError, ZeusCPUNoPermissionError, EmptyCPUs
+from zeus.device.soc.common import ZeusSoCInitError, SoCMeasurement, EmptySoC
 
 logger = get_logger(__name__)
 
@@ -42,6 +43,8 @@ class Measurement:
     gpu_energy: dict[int, float]
     cpu_energy: dict[int, float] | None = None
     dram_energy: dict[int, float] | None = None
+
+    soc_energy: SoCMeasurement | None = None
 
     @cached_property
     def total_energy(self) -> float:
@@ -196,6 +199,13 @@ class ZeusMonitor:
                 ) from err
             self.cpus = EmptyCPUs()
 
+        # Get an SoC instance, if an SoC is present on the host device.
+        try:
+            self.soc = get_soc()
+        except ZeusSoCInitError:
+            # No SoC was found.
+            self.soc = EmptySoC()
+
         # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
         self.gpu_indices = (
             gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
@@ -295,6 +305,9 @@ class ZeusMonitor:
             if cpu_measurement.dram_mj is not None:
                 dram_energy_state[cpu_index] = cpu_measurement.dram_mj
 
+        if self.soc.isPresent():
+            self.soc.beginWindow()
+
         # Add measurement state to dictionary.
         self.measurement_states[key] = MeasurementState(
             time=timestamp,
@@ -348,6 +361,7 @@ class ZeusMonitor:
                 time=0.0,
                 gpu_energy={gpu: 0.0 for gpu in self.gpu_indices},
                 cpu_energy={cpu: 0.0 for cpu in self.cpu_indices},
+                soc_energy=None,
             )
 
         end_time: float = time()
@@ -378,6 +392,10 @@ class ZeusMonitor:
                 dram_energy_consumption[cpu_index] = (
                     cpu_measurement.dram_mj - dram_start_energy[cpu_index]
                 )
+
+        soc_energy_consumption: SoCMeasurement | None = None
+        if self.soc.isPresent():
+            soc_energy_consumption = self.soc.endWindow()
 
         # If there are older GPU architectures, the PowerMonitor will take care of those.
         if self.power_monitor is not None:
@@ -421,4 +439,5 @@ class ZeusMonitor:
             gpu_energy=gpu_energy_consumption,
             cpu_energy=cpu_energy_consumption or None,
             dram_energy=dram_energy_consumption or None,
+            soc_energy=soc_energy_consumption,
         )
