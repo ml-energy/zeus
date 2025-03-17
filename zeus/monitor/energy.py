@@ -306,7 +306,7 @@ class ZeusMonitor:
                 dram_energy_state[cpu_index] = cpu_measurement.dram_mj
 
         if self.soc.isPresent():
-            self.soc.beginWindow()
+            self.soc.beginWindow(key)
 
         # Add measurement state to dictionary.
         self.measurement_states[key] = MeasurementState(
@@ -395,7 +395,7 @@ class ZeusMonitor:
 
         soc_energy_consumption: SoCMeasurement | None = None
         if self.soc.isPresent():
-            soc_energy_consumption = self.soc.endWindow()
+            soc_energy_consumption = self.soc.endWindow(key)
 
         # If there are older GPU architectures, the PowerMonitor will take care of those.
         if self.power_monitor is not None:

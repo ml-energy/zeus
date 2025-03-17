@@ -32,12 +32,12 @@ class SoCMeasurement(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __str__(self):
+    def __str__(self) -> str:
         """Show all fields and their observed values in the measurement object."""
         pass
 
     @abc.abstractmethod
-    def __sub__(self, other):
+    def __sub__(self, other) -> SoCMeasurement:
         """Produce a single measurement object containing the difference across all fields."""
         pass
 
