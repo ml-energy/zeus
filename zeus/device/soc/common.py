@@ -61,6 +61,13 @@ class SoC(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def supportsEnergyMonitoring(self) -> bool:
+        """Return if energy monitoring is supported. This should be true for all derived class
+        implementations of SoC except `EmptySoC`.
+        """
+        pass
+
+    @abc.abstractmethod
     def getTotalEnergyConsumption(self) -> SoCMeasurement:
         """Returns the total energy consumption of the SoC, cumulative from a fixed arbitrary
         point in time. Units: mJ.
@@ -74,7 +81,6 @@ class SoC(abc.ABC):
 
         self.measurement_states[key] = self.getTotalEnergyConsumption()
 
-
     def endWindow(self, key) -> SoCMeasurement:
         """End the measurement interval labeled with `key` and return the energy
         consumed by processor subsystems during the interval. Units: mJ."""
@@ -87,3 +93,36 @@ class SoC(abc.ABC):
         
         end_measurement: SoCMeasurement = self.getTotalEnergyConsumption()
         return end_measurement - start_measurement
+
+
+class EmptySoC(SoC):
+    """Empty SoC management object to be used when SoC management object is unavailable."""
+
+    def __init__(self) -> None:
+        """Initialize an empty SoC class."""
+        pass
+
+    def getAvailableMetrics(self) -> Set[str]:
+        """Return an empty set, as no metrics are observable if no SoC is detected."""
+        return set()
+
+    def supportsEnergyMonitoring(self) -> bool:
+        """Return if energy monitoring is supported. This should be true for all derived class
+        implementations of SoC except `EmptySoC`.
+        """
+        return False
+
+    def getTotalEnergyConsumption(self) -> SoCMeasurement:
+        """Returns the total energy consumption of the SoC, cumulative from a fixed arbitrary
+        point in time. Units: mJ.
+        """
+        raise ValueError("No SoC is available.")
+
+    def beginWindow(self, key) -> None:
+        """Begin a measurement interval labeled with `key`."""
+        raise ValueError("No SoC is available.")
+
+    def endWindow(self, key) -> SoCMeasurement:
+        """End the measurement interval labeled with `key` and return the energy
+        consumed by processor subsystems during the interval. Units: mJ."""
+        raise ValueError("No SoC is available.")
