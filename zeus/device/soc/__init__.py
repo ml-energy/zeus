@@ -10,13 +10,14 @@ from zeus.device.soc.common import SoC, ZeusSoCInitError
 
 _soc: SoC | None = None
 
+
 def get_soc() -> SoC:
     """Initialize and return a singleton monolithic SoC monitoring object.
 
     The function returns a SoC management object that aims to abstract underlying SoC monitoring
     functionalities.
 
-    Currently, no SoC management object has been implemented for any SoC architecture, and calling 
+    Currently, no SoC management object has been implemented for any SoC architecture, and calling
     this function will raise a `ZeusSoCInitError` error if called; implementations for SoC devices
     are expected to be added in the near future.
     """
@@ -26,6 +27,7 @@ def get_soc() -> SoC:
 
     # SoCs in the future can be incorporated via `elif` blocks.
     else:
-        raise ZeusSoCInitError(
-            "No observable SoC was found on the current machine."
-        )
+        # Placeholder to avoid linting error (remove once _soc can be assigned a real value).
+        _soc = None
+
+        raise ZeusSoCInitError("No observable SoC was found on the current machine.")

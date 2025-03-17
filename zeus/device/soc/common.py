@@ -27,28 +27,30 @@ class SoCMeasurement(abc.ABC):
     found by referring to the SoCMeasurement derived class corresponding to that
     particular architecture (e.g., `AppleSiliconMeasurement` for Apple silicon),
     or by simply printing an instance of that derived class.
+
+    Units: mJ
     """
-    
+
     @abc.abstractmethod
     def __str__(self):
         """Show all fields and their observed values in the measurement object."""
         pass
 
     @abc.abstractmethod
-    def __sub__(self):
+    def __sub__(self, other):
         """Produce a single measurement object containing the difference across all fields."""
         pass
 
 
 class SoC(abc.ABC):
     """An abstract base class for monitoring the energy consumption of a monolithic SoC processor.
-    
+
     This class will be utilized by ZeusMonitor.
     """
 
     def __init__(self) -> None:
         """Initialize the SoC class.
-        
+
         If a derived class implementation intends to rely on this base class's implementation of
         `beginWindow` and `endWindow`, it must invoke this constructor in its own. Otherwise, if
         it will override both of those methods, it can skip invoking this.
@@ -56,21 +58,26 @@ class SoC(abc.ABC):
         self.measurement_states: dict[str, SoCMeasurement] = {}
 
     @abc.abstractmethod
-    def getAvailableMetrics(self) -> Set[str]:
+    def getAvailableMetrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""
         pass
 
     @abc.abstractmethod
     def isPresent(self) -> bool:
-        """Return if an SoC is present on the current device. This should be true for all derived
-        class implementations of the SoC manager except `EmptySoC`.
+        """Return if an SoC is present on the current device.
+
+        This should be true for all derived classes of the SoC manager except `EmptySoC`.
         """
         pass
 
     @abc.abstractmethod
     def getTotalEnergyConsumption(self) -> SoCMeasurement:
-        """Returns the total energy consumption of the SoC, cumulative from a fixed arbitrary
-        point in time. Units: mJ.
+        """Returns the total energy consumption of the SoC.
+
+        The measurement should be cumulative, with different calls to this function all
+        counting from a fixed arbitrary point in time.
+
+        Units: mJ.
         """
         pass
 
@@ -82,15 +89,13 @@ class SoC(abc.ABC):
         self.measurement_states[key] = self.getTotalEnergyConsumption()
 
     def endWindow(self, key) -> SoCMeasurement:
-        """End the measurement interval labeled with `key` and return the energy
-        consumed by processor subsystems during the interval. Units: mJ."""
-
+        """End a measurement window and return the energy consumption. Units: mJ."""
         # Retrieve the measurement taken at the start of the window.
         try:
             start_measurement: SoCMeasurement = self.measurement_states.pop(key)
         except KeyError:
             raise KeyError(f"Measurement window '{key}' does not exist") from None
-        
+
         end_measurement: SoCMeasurement = self.getTotalEnergyConsumption()
         return end_measurement - start_measurement
 
@@ -102,19 +107,24 @@ class EmptySoC(SoC):
         """Initialize an empty SoC class."""
         pass
 
-    def getAvailableMetrics(self) -> Set[str]:
+    def getAvailableMetrics(self) -> set[str]:
         """Return an empty set, as no metrics are observable if no SoC is detected."""
         return set()
 
     def isPresent(self) -> bool:
-        """Return if an SoC is present on the current device. This should be true for all derived
-        class implementations of the SoC manager except `EmptySoC`.
+        """Return if an SoC is present on the current device.
+
+        This should be true for all derived classes of the SoC manager except `EmptySoC`.
         """
         return False
 
     def getTotalEnergyConsumption(self) -> SoCMeasurement:
-        """Returns the total energy consumption of the SoC, cumulative from a fixed arbitrary
-        point in time. Units: mJ.
+        """Returns the total energy consumption of the SoC.
+
+        The measurement should be cumulative, with different calls to this function all
+        counting from a fixed arbitrary point in time.
+
+        Units: mJ.
         """
         raise ValueError("No SoC is available.")
 
@@ -123,6 +133,5 @@ class EmptySoC(SoC):
         raise ValueError("No SoC is available.")
 
     def endWindow(self, key) -> SoCMeasurement:
-        """End the measurement interval labeled with `key` and return the energy
-        consumed by processor subsystems during the interval. Units: mJ."""
+        """End a measurement window and return the energy consumption. Units: mJ."""
         raise ValueError("No SoC is available.")
