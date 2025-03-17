@@ -34,6 +34,11 @@ class SoCMeasurement(abc.ABC):
         """Show all fields and their observed values in the measurement object."""
         pass
 
+    @abc.abstractmethod
+    def __sub__(self):
+        """Produce a single measurement object containing the difference across all fields."""
+        pass
+
 
 class SoC(abc.ABC):
     """An abstract base class for monitoring the energy consumption of a monolithic SoC processor.
@@ -41,9 +46,14 @@ class SoC(abc.ABC):
     This class will be utilized by ZeusMonitor.
     """
 
-    @abc.abstractmethod
     def __init__(self) -> None:
-        pass
+        """Initialize the SoC class.
+        
+        If a derived class implementation intends to rely on this base class's implementation of
+        `beginWindow` and `endWindow`, it must invoke this constructor in its own. Otherwise, if
+        it will override both of those methods, it can skip invoking this.
+        """
+        self.measurement_states: dict[str, SoCMeasurement] = {}
 
     @abc.abstractmethod
     def getAvailableMetrics(self) -> Set[str]:
@@ -51,14 +61,29 @@ class SoC(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def getTotalEnergyConsumption(self, index: int) -> SoCMeasurement:
-        """Returns the total energy consumption of the SoC. Units: mJ."""
-    
+    def getTotalEnergyConsumption(self) -> SoCMeasurement:
+        """Returns the total energy consumption of the SoC, cumulative from a fixed arbitrary
+        point in time. Units: mJ.
+        """
+        pass
+
     def beginWindow(self, key) -> None:
         """Begin a measurement interval labeled with `key`."""
-        pass
-    
+        if key in self.measurement_states:
+            raise KeyError(f"Measurement window '{key}' already exists")
+
+        self.measurement_states[key] = self.getTotalEnergyConsumption()
+
+
     def endWindow(self, key) -> SoCMeasurement:
         """End the measurement interval labeled with `key` and return the energy
         consumed by processor subsystems during the interval. Units: mJ."""
-        pass
+
+        # Retrieve the measurement taken at the start of the window.
+        try:
+            start_measurement: SoCMeasurement = self.measurement_states.pop(key)
+        except KeyError:
+            raise KeyError(f"Measurement window '{key}' does not exist") from None
+        
+        end_measurement: SoCMeasurement = self.getTotalEnergyConsumption()
+        return end_measurement - start_measurement
