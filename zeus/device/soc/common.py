@@ -41,6 +41,11 @@ class SoCMeasurement(abc.ABC):
         """Produce a single measurement object containing differences across all fields."""
         pass
 
+    @abc.abstractmethod
+    def zeroAllFields(self) -> None:
+        """Set the value of all fields in the measurement object to zero."""
+        pass
+
 
 class SoC(abc.ABC):
     """An abstract base class for monitoring the energy consumption of a monolithic SoC processor.
