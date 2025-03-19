@@ -364,7 +364,7 @@ class ZeusMonitor:
         if cancel:
             logger.debug("Measurement window '%s' cancelled.", key)
 
-            # If we had a non-None SoC measurement object to report, empty its fields. 
+            # If we had a non-None SoC measurement object to report, empty its fields.
             if soc_energy_consumption is not None:
                 soc_energy_consumption.zeroAllFields()
 
