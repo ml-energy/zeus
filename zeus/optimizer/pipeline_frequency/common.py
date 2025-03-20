@@ -159,6 +159,7 @@ class RankInfo(BaseModel):
 
     @validator("pipe_schedule", pre=True, always=True)
     def validate_pipe_schedule(cls, value):
+        """Check that the pipeline schedule is not empty."""
         if not value or len(value) == 0:
             raise ValueError("pipe_schedule must not be empty")
         return value
