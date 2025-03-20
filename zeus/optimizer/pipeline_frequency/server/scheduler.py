@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import copy
-import numpy as np
-import pandas as pd
 from pathlib import Path
 from contextlib import suppress
 from abc import ABC, abstractmethod
 from typing import Callable, Generator, Sequence, Type
+
+import numpy as np
+import pandas as pd
 
 from zeus.optimizer.pipeline_frequency.common import (
     PFOServerSettings,

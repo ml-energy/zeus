@@ -95,9 +95,9 @@ class JobInfo(BaseModel):
     tp_degree: int = Field(ge=1)
     world_size: int = Field(ge=1)
     job_metadata: Optional[str] = None
-    framework: Optional[str] = ""
-    model_name: Optional[str] = ""
-    partition_method: Optional[str] = ""
+    framework: Optional[str] = None
+    model_name: Optional[str] = None
+    partition_method: Optional[str] = None
     microbatch_size: Optional[int] = None
     num_microbatches: Optional[int] = None
 
@@ -117,22 +117,24 @@ class JobInfo(BaseModel):
 
     def set_job_id(self, scheduler_name: str):
         """Generate and set the job ID."""
-        self.job_id = "+".join(
-            [
-                datetime.now().strftime("%F-%H-%M-%S"),
-                self.framework or "",
-                self.model_name or "",
-                self.partition_method or "",
-                f"dp{self.dp_degree}",
-                f"pp{self.pp_degree}",
-                f"tp{self.tp_degree}",
-                f"mbs{self.microbatch_size!s}",
-                f"nmb{self.num_microbatches!s}",
-                scheduler_name or "",
-            ]
-        )
+        parts = [
+            datetime.now().strftime("%F-%H-%M-%S"),
+            self.framework,
+            self.model_name,
+            self.partition_method,
+            f"dp{self.dp_degree}",
+            f"pp{self.pp_degree}",
+            f"tp{self.tp_degree}",
+            f"mbs{self.microbatch_size}",
+            f"nmb{self.num_microbatches}",
+            scheduler_name,
+        ]
+
+        parts = [part for part in parts if part]
         if self.job_metadata:
-            self.job_id += f"+{self.job_metadata}"
+            parts.append(self.job_metadata)
+
+        self.job_id = "+".join(parts)
 
 
 class RankInfo(BaseModel):
@@ -143,7 +145,7 @@ class RankInfo(BaseModel):
         dp_rank: Data parallel rank of the reporting procees.
         pp_rank: Pipeline parallel rank of the reporting procees.
         tp_rank: Tensor parallel rank of the reporting procees.
-        available_frequencies: list of available frequencies for the rank's GPU.
+        available_frequencies: List of available frequencies for the rank's GPU.
         pipe_schedule: Pipeline schedule (list of strings) for the rank.
             For example, ["forward", "backward"].
     """
@@ -154,6 +156,12 @@ class RankInfo(BaseModel):
     tp_rank: int = Field(ge=0)
     available_frequencies: list[int]
     pipe_schedule: list[str] = []
+
+    @validator("pipe_schedule", pre=True, always=True)
+    def validate_pipe_schedule(cls, value):
+        if not value or len(value) == 0:
+            raise ValueError("pipe_schedule must not be empty")
+        return value
 
 
 class FrequencySchedule(BaseModel):
@@ -172,8 +180,8 @@ class ProfilingResult(BaseModel):
 
     Attributes:
         rank: Global rank of the reporting client.
-        iter_time: list of latency of all iterations within the profiling window in seconds.
-        iter_energy: list of energy consumption of all iterations within the profiling window in Joules.
+        iter_time: List of latency of all iterations within the profiling window in seconds.
+        iter_energy: List of energy consumption of all iterations within the profiling window in Joules.
         time_breakdown: Duration of each operation across multiple iterations.
             e.g. `time_breakdown["forward"][i]` is the list of latencies of all forward computations
             in the `i`th iteration.

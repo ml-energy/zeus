@@ -106,32 +106,30 @@ As another example, in Megatron-LM, users can pass in their custom `forward_step
 
 ## Profiler Integration
 
-### InstructionProfiler
+### Running the Server in Profiling Mode
 
-**Description:**  
-The InstructionProfiler iterates over a range of frequencies to profile the time and energy consumption of forward and backward instructions in each pipeline stage. It aggregates the measurements and writes a CSV file with the average values for each instruction at each frequency. Use this profiler when you want to obtain detailed performance data for optimizing GPU frequency.
+1. **Configure Environment Variables and Start the Server:**
 
-### 3D-Parallel Support
+   - Set `ZEUS_PFO_DUMP_DATA=true` to enable data dumping.
+   - Set `ZEUS_PFO_SCHEDULER=InstructionProfiler` to use the InstructionProfiler scheduler.
+   - Optionally, configure any extra scheduler arguments via `ZEUS_PFO_SCHEDULER_ARGS` (in JSON format).
+   - You can also override the dump directory using `ZEUS_PFO_DUMP_DIR` if needed.
 
-#### make_3d_parallel
+   To run the server inside a Docker container, you can execute:
 
-**Description:**  
-The make_3d_parallel wrapper enables 3D parallelism support by aggregating profiling results from ranks sharing the same pipeline-parallel rank (`pp_rank`) and replicating per-stage schedules across those ranks.
+   ```bash
+   $ docker exec -it zeus bash
+   # pip install '.[pfo-server]'
+   # ZEUS_PFO_DUMP_DATA=true \
+     ZEUS_PFO_SCHEDULER=InstructionProfiler \
+     ZEUS_PFO_SCHEDULER_ARGS='{"ZEUS_PFO_DUMP_DIR": "path/to/dump_dir"}' \
+     uvicorn zeus.optimizer.pipeline_frequency.server.router:app --port 7787
+    ```
 
-**Wrappers:**  
-- PointSolution3D  
-- InstructionProfiler3D
+    The server will run in profiling mode, collecting detailed performance data and generating CSV reports in the configured dump directory.
 
-## Scheduler Instantiation
+   #### Note: Client Integration for Timing and Energy Breakdown Endpoints is work under progress.
 
-Scheduler instantiation is fully managed by PFOServerSettings. The `scheduler` field (typed as a `PyObject`) in PFOServerSettings is automatically imported based on the environment variable `ZEUS_PFO_SCHEDULER` (or its default value). You can choose the scheduler by setting this environment variable to either `"InstructionProfiler"` for profiling or `"PointSolution"` for fixed scheduling. Additionally, any extra parameters specific to the scheduler can be provided through the `scheduler_args` field.
-
-For example, in your job manager you can instantiate the scheduler as follows:
-
-```python
-scheduler = pfo_settings.scheduler(job_info, rank_infos, pfo_settings, **pfo_settings.scheduler_args)
-```
-If you wish to perform profiling to gather detailed performance data, set `ZEUS_PFO_DUMP_DATA=true` and   `ZEUS_PFO_SCHEDULER=InstructionProfiler`. Otherwise, for fixed scheduling, set `ZEUS_PFO_SCHEDULER=PointSolution`.
 
 ### Profiling Instructions
 

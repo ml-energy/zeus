@@ -1,6 +1,4 @@
-"""
-Unit tests for the zeus.optimizer.pipeline_frequency.server.scheduler module
-"""
+"""Unit tests for the zeus.optimizer.pipeline_frequency.server.scheduler module."""
 
 from __future__ import annotations
 
@@ -20,9 +18,7 @@ from zeus.optimizer.pipeline_frequency.server.scheduler import FrequencySchedule
 
 @pytest.fixture
 def dummy_job_info():
-    """
-    Dummy JobInfo for testing using minimal fields required.
-    """
+    """Dummy JobInfo for testing using minimal fields required."""
     return JobInfo(
         job_id="",
         pp_degree=2,
@@ -40,9 +36,7 @@ def dummy_job_info():
 
 @pytest.fixture
 def dummy_rank_infos():
-    """
-    Dummy RankInfo for two ranks; testing using minimal fields required.
-    """
+    """Dummy RankInfo for two ranks; testing using minimal fields required."""
     dummy_available_freqs = [1000, 900, 800, 700]
     # Use plain strings for the pipeline schedule.
     dummy_pipe_schedule = ["forward", "backward"]
@@ -63,9 +57,7 @@ def dummy_rank_infos():
 
 @pytest.fixture
 def dummy_pfosettings(tmp_path):
-    """
-    PFOServerSettings with dump_data enabled and dump_dir set to a temporary directory.
-    """
+    """PFOServerSettings with dump_data enabled and dump_dir set to a temporary directory."""
     dump_dir = tmp_path / "dump"
     dump_dir.mkdir(exist_ok=True)  # Create the dump directory
     return PFOServerSettings(
