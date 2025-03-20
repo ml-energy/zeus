@@ -8,6 +8,9 @@ from contextlib import suppress
 from abc import ABC, abstractmethod
 from typing import Callable, Generator, Sequence, Type
 
+import numpy as np
+import pandas as pd
+
 from zeus.optimizer.pipeline_frequency.common import (
     PFOServerSettings,
     JobInfo,
@@ -275,4 +278,101 @@ class PointSolution(FrequencyScheduler):
         yield self.schedule
 
 
+class InstructionProfiler(FrequencyScheduler):
+    """Profiles the time and energy of each instruction.
+
+    For each frequency in a given range, this scheduler issues a schedule
+    where all instructions in a rank’s pipe_schedule are set to that frequency. It then
+    receives profiling results, aggregates per-instruction timing and energy data, and
+    dumps the results into a CSV file.
+    """
+
+    def __init__(
+        self,
+        job_info: JobInfo,
+        rank_infos: list[RankInfo],
+        pfo_settings: PFOServerSettings,
+        warmup_step_ratio: float = 0.1,
+        minimum_frequency: int = 850,
+    ) -> None:
+        """Initialize the scheduler.
+
+        Args:
+            job_info: Info about the training job.
+            rank_infos: Info about all ranks. May not be sorted in rank order.
+            pfo_settings: PFOServerSettings object.
+            warmup_step_ratio: Fraction of total iterations to warm up.
+            minimum_frequency: Minimum frequency to use.
+        """
+        super().__init__(job_info, rank_infos, pfo_settings)
+        # Ensure profiling mode is enabled.
+        assert (
+            self.pfo_settings.dump_data
+        ), "InstructionProfiler requires dump_data to be enabled."
+        self.warmup_step_ratio = warmup_step_ratio
+        self.minimum_frequency = minimum_frequency
+        # Mode is used only for labeling the output CSV.
+        self.mode = getattr(self.pfo_settings, "mode", "frequency")
+        self._header = ["stage", "instruction", self.mode, "time", "energy"]
+        self._records: list[tuple[int, str, int, float, float]] = []
+
+    def _run(self) -> Generator[list[FrequencySchedule], list[ProfilingResult], None]:
+        # Warm up iterations: run two iterations at maximum frequency.
+        max_frequency = max(self.rank_infos[0].available_frequencies)
+        for _ in range(2):
+            yield [
+                FrequencySchedule(
+                    rank=ri.rank,
+                    frequencies=[(inst, max_frequency) for inst in ri.pipe_schedule],
+                )
+                for ri in self.rank_infos
+            ]
+        # For each frequency (from high to low) above the minimum.
+        for frequency in sorted(self.rank_infos[0].available_frequencies, reverse=True):
+            if frequency < self.minimum_frequency:
+                break
+            profiling_results = yield [
+                FrequencySchedule(
+                    rank=ri.rank,
+                    frequencies=[(inst, frequency) for inst in ri.pipe_schedule],
+                )
+                for ri in self.rank_infos
+            ]
+            # Process the profiling results.
+            for stage, prof in enumerate(profiling_results):
+                for inst in ["forward", "backward"]:
+                    inst_time = prof.time_breakdown.get(inst, [])
+                    inst_energy = prof.energy_breakdown.get(inst, [])
+                    if len(inst_time) != len(inst_energy):
+                        raise ValueError(
+                            "Mismatched lengths in time and energy measurements"
+                        )
+                    warmup_steps = max(int(len(inst_time) * self.warmup_step_ratio), 1)
+                    time_arr = np.array(inst_time[warmup_steps:]).flatten()
+                    energy_arr = np.array(inst_energy[warmup_steps:]).flatten()
+                    self._records.append(
+                        (
+                            stage,
+                            inst,
+                            frequency,
+                            time_arr.mean().item(),
+                            energy_arr.mean().item(),
+                        )
+                    )
+            # Dump the collected records to CSV.
+            df = pd.DataFrame.from_records(data=self._records, columns=self._header)
+            info = self.job_info
+            filepath = (
+                f"{self.pfo_settings.dump_dir}/{info.job_id}/"
+                f"{info.framework}+{info.model_name}+{info.partition_method}"
+                f"+dp{info.dp_degree}+tp{info.tp_degree}+pp{info.pp_degree}"
+                f"+mbs{info.microbatch_size}+nmb{info.num_microbatches}.csv"
+            )
+            df.to_csv(filepath, index=False)
+            logger.info("Saved profiling result to %s", filepath)
+        raise RuntimeError("[profiling-done] Profiling is done, so stop training!")
+
+
+# 3D-Parallel Versions
 PointSolution3D = make_3d_parallel(PointSolution)
+InstructionProfiler3D = make_3d_parallel(InstructionProfiler)
