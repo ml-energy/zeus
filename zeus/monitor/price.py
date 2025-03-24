@@ -11,7 +11,6 @@ import multiprocessing as mp
 
 from typing import Literal
 from datetime import datetime, timezone, timedelta
-from dateutil import parser
 from collections import defaultdict
 
 from zeus.exception import ZeusBaseError
@@ -139,7 +138,7 @@ class OpenEIClient(ElectricityPriceProvider):
         """Fetches current carbon intensity of the location of the class."""
         try:
             url = (
-                f"https://api.openei.org/utility_rates?version=latest&format=json"
+                "https://api.openei.org/utility_rates?version=latest&format=json"
                 + f"&api_key=tJASWWgPhBRpiZCwfhtKV2A3gyNxbDfvQvdI5Wa7&lat={self.lat}"
                 + f"&lon={self.lon}&radius={self.radius}"
                 + f"&detail=minimal&sector={self.sector}"
@@ -155,13 +154,13 @@ class OpenEIClient(ElectricityPriceProvider):
 
         try:
             energy_rate_structure = self.search_json(
-                "label", self.label, "energyratestructure"
+                data, "label", self.label, "energyratestructure"
             )
             energy_weekday_schedule = self.search_json(
-                "label", self.label, "energyweekdayschedule"
+                data, "label", self.label, "energyweekdayschedule"
             )
             energy_weekend_schedule = self.search_json(
-                "label", self.label, "energyweekendschedule"
+                data, "label", self.label, "energyweekendschedule"
             )
 
             if (
@@ -179,10 +178,10 @@ class OpenEIClient(ElectricityPriceProvider):
             return rate_data
 
         except KeyError as e:
-            logger.error(f"KeyError occurred: {e}.")
+            logger.error("KeyError occurred: %s.", e)
 
         except ValueError as e:
-            logger.error(f"ValueError occurred: {e}.")
+            logger.error("ValueError occurred: %s.", e)
 
 
 @dataclass
@@ -363,7 +362,6 @@ def _polling_process(
     cpu_indices: list[int],
     electricity_price_provider: ElectricityPriceProvider,
 ):
-    last_index = 0
     index = 0
     zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices)
     gpu_energy_cost = defaultdict(lambda: defaultdict(float))
@@ -381,7 +379,7 @@ def _polling_process(
         energy_weekday_schedule = electricity_price_data["energy_weekday_schedule"]
         energy_weekend_schedule = electricity_price_data["energy_weekend_schedule"]
     except Exception as e:
-        logger.error(f"Failed to retrieve electricity price: {e}")
+        logger.error("Failed to retrieve electricity price: %s.", e)
         return
 
     # record energy measurement
@@ -413,10 +411,11 @@ def _polling_process(
                 hour = dt.hour
                 day_of_week = dt.weekday()
 
-                if day_of_week < 5:
-                    tier = energy_weekday_schedule[month][hour]
-                else:
-                    tier = energy_weekend_schedule[month][hour]
+                tier = (
+                    energy_weekday_schedule[month][hour]
+                    if day_of_week < 5
+                    else energy_weekend_schedule[month][hour]
+                )
 
                 try:
                     flat_rate = energy_rate_structure[tier][0]["rate"]
