@@ -36,17 +36,19 @@ def get_ip_lat_long() -> tuple[float, float]:
         )
         raise
 
+
 def get_time_info():
     """Retrieve the month, day_type (weekend or weekday), and hour."""
     now = datetime.now()
-    
-    month = now.strftime("%B")  
-    
+
+    month = now.strftime("%B")
+
     day_type = "Weekend" if now.weekday() >= 5 else "Weekday"
-    
+
     hour = now.hour
-    
+
     return month, day_type, hour
+
 
 class ZeusElectricityPriceHTTPError(ZeusBaseError):
     """Exception when HTTP request to electricity price provider fails."""
@@ -63,6 +65,7 @@ class ZeusElectricityPriceNotFoundError(ZeusBaseError):
         """Initialize carbon not found exception."""
         super().__init__(message)
 
+
 class ElectricityPriceProvider(abc.ABC):
     """Abstract class for implementing ways to fetch electricity price."""
 
@@ -71,9 +74,10 @@ class ElectricityPriceProvider(abc.ABC):
         """Abstract method for fetching the current electricity price of the set location of the class."""
         pass
 
+
 class OpenEIClient(ElectricityPriceProvider):
     """Electricity Price Provider with OpenEI API.
-    
+
     Reference:
 
     1. [OpenEI](https://openei.org/wiki/Main_Page)
@@ -84,11 +88,13 @@ class OpenEIClient(ElectricityPriceProvider):
         self,
         location: tuple[float, float],
         label: str,
-        sector: Literal["Residential", "Commercial", "Industrial", "Lighting"] = "Residential",
+        sector: Literal[
+            "Residential", "Commercial", "Industrial", "Lighting"
+        ] = "Residential",
         radius: int = 0,
     ) -> None:
         """Initializes OpenEI Utility Rates Provider.
-        
+
         Args:
             location: tuple of latitude and longitude (latitude, longitude)
             label: unique identifier of a particular variant of a utility company's rate
@@ -99,11 +105,11 @@ class OpenEIClient(ElectricityPriceProvider):
         self.label = label
         self.sector = sector
         self.radius = radius
-    
+
     def search_json(self, data, key_name, target_value, return_value):
         """Recursively search for a key in a nested JSON and return the 'weekdays schedule' if found."""
         results = []
-        
+
         if isinstance(data, dict):
             for key, val in data.items():
                 # Check if the current dictionary contains the matching key-value pair
@@ -112,20 +118,25 @@ class OpenEIClient(ElectricityPriceProvider):
                     if return_value in data:
                         results.append(data[return_value])
                     else:
-                        results.append(None)  # Store None if no "energyratestructure" exists
-                
+                        results.append(
+                            None
+                        )  # Store None if no "energyratestructure" exists
+
                 # Recursively search deeper in nested dictionaries
-                results.extend(self.search_json(val, key_name, target_value, return_value))  
-        
+                results.extend(
+                    self.search_json(val, key_name, target_value, return_value)
+                )
+
         elif isinstance(data, list):
             for item in data:
-                results.extend(self.search_json(item, key_name, target_value, return_value))  
-        
+                results.extend(
+                    self.search_json(item, key_name, target_value, return_value)
+                )
+
         return results
 
     def get_current_electricity_price(self) -> dict:
-        """Fetches current carbon intensity of the location of the class.
-        """
+        """Fetches current carbon intensity of the location of the class."""
         try:
             url = (
                 f"https://api.openei.org/utility_rates?version=latest&format=json"
@@ -141,23 +152,38 @@ class OpenEIClient(ElectricityPriceProvider):
             raise ZeusElectricityPriceHTTPError(
                 f"Failed to retrieve current electricity price measurement: {e}"
             ) from e
-        
+
         try:
-            energy_rate_structure = self.search_json("label", self.label, "energyratestructure")
-            energy_weekday_schedule = self.search_json("label", self.label, "energyweekdayschedule")
-            energy_weekend_schedule = self.search_json("label", self.label, "energyweekendschedule")
-            
-            if not energy_rate_structure or energy_weekday_schedule or energy_weekend_schedule:
+            energy_rate_structure = self.search_json(
+                "label", self.label, "energyratestructure"
+            )
+            energy_weekday_schedule = self.search_json(
+                "label", self.label, "energyweekdayschedule"
+            )
+            energy_weekend_schedule = self.search_json(
+                "label", self.label, "energyweekendschedule"
+            )
+
+            if (
+                not energy_rate_structure
+                or energy_weekday_schedule
+                or energy_weekend_schedule
+            ):
                 raise ValueError(f"No rates found for the label: {self.label}.")
 
-            rate_data = {"energy_rate_structure": energy_rate_structure, "energy_weekday_schedule": energy_weekday_schedule, "energy_weekend_schedule": energy_weekend_schedule}
+            rate_data = {
+                "energy_rate_structure": energy_rate_structure,
+                "energy_weekday_schedule": energy_weekday_schedule,
+                "energy_weekend_schedule": energy_weekend_schedule,
+            }
             return rate_data
 
         except KeyError as e:
             logger.error(f"KeyError occurred: {e}.")
-        
+
         except ValueError as e:
             logger.error(f"ValueError occurred: {e}.")
+
 
 @dataclass
 class EnergyCostMeasurement:
@@ -194,13 +220,15 @@ class EnergyCostMeasurement:
     dram_energy: dict[int, float] | None = None
     dram_energy_cost: dict[int, float] | None = None
 
+
 class Op(Enum):
     """Enum used to communicate between EnergyCostMonitor and _polling_process."""
 
     BEGIN = 0
     END = 1
-    NEXTITER = 2      
-            
+    NEXTITER = 2
+
+
 class EnergyCostMonitor:
     """Measure the energy cost, GPU energy, and time consumption of a block of code.
 
@@ -208,8 +236,8 @@ class EnergyCostMonitor:
     For instance, if `CUDA_VISIBLE_DEVICES=2,3`, GPU index `1` passed into `gpu_indices`
     will be interpreted as CUDA device `3`.
 
-    You can mark the beginning and end of a measurement window, during which the energy cost, 
-    GPU energy, and time consumed will be recorded. Multiple concurrent measurement windows 
+    You can mark the beginning and end of a measurement window, during which the energy cost,
+    GPU energy, and time consumed will be recorded. Multiple concurrent measurement windows
     are supported.
     """
 
@@ -248,7 +276,7 @@ class EnergyCostMonitor:
         self.context = mp.get_context("spawn")
         self.command_q = self.context.Queue()
         self.finished_q = self.context.Queue()
-    
+
     def begin_window(self, key: str, sync_execution: bool = True) -> None:
         """Begin a new measurement window.
 
@@ -326,7 +354,8 @@ class EnergyCostMonitor:
         )
 
         return measurement
-    
+
+
 def _polling_process(
     command_q: mp.Queue,
     finished_q: mp.Queue,
@@ -337,21 +366,17 @@ def _polling_process(
     last_index = 0
     index = 0
     zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices)
-    gpu_energy_cost = defaultdict(
-        lambda: defaultdict(float)
-    )
-    cpu_energy_cost = defaultdict(
-        lambda: defaultdict(float)
-    )
-    dram_energy_cost = defaultdict(
-        lambda: defaultdict(float)
-    )
+    gpu_energy_cost = defaultdict(lambda: defaultdict(float))
+    cpu_energy_cost = defaultdict(lambda: defaultdict(float))
+    dram_energy_cost = defaultdict(lambda: defaultdict(float))
     energy_measurements = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
     keys = set()
 
     # Fetch electricity price data
     try:
-        electricity_price_data = electricity_price_provider.get_current_electricity_price()
+        electricity_price_data = (
+            electricity_price_provider.get_current_electricity_price()
+        )
         energy_rate_structure = electricity_price_data["energy_rate_structure"]
         energy_weekday_schedule = electricity_price_data["energy_weekday_schedule"]
         energy_weekend_schedule = electricity_price_data["energy_weekend_schedule"]
@@ -399,7 +424,9 @@ def _polling_process(
                     logger.error("Failed to parse electricity rate structure.")
                     return
 
-                cost = (energy / 1e3) * flat_rate  # Convert Wh to kWh and multiply by rate
+                cost = (
+                    energy / 1e3
+                ) * flat_rate  # Convert Wh to kWh and multiply by rate
 
                 if hardware_type == "gpu":
                     gpu_energy_cost[key][int(num_index)] += cost
