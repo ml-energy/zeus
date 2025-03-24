@@ -50,10 +50,7 @@ class TestPruningExploreManager:
             metric=0.55 if exploration[2] else 0.4,
             current_epoch=100,
         )
-        assert isclose(
-            zeus_cost(res.energy, res.time, 0.5, max_power),
-            exploration[1],
-        )
+        assert isclose(zeus_cost(res.energy, res.time, 0.5, max_power), exploration[1],)
         return res
 
     def register_job_with_default_bs(
@@ -84,10 +81,7 @@ class TestPruningExploreManager:
         caplog.set_level(logging.INFO)
 
         for exp in exploration:
-            response = client.get(
-                GET_NEXT_BATCH_SIZE_URL,
-                params={"job_id": job_id},
-            )
+            response = client.get(GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_id},)
             assert response.status_code == 200
             parsed_res = TrialId.parse_obj(response.json())
             assert (
@@ -97,20 +91,14 @@ class TestPruningExploreManager:
             training_result = self.exploration_to_training_result(
                 exp, job_id, parsed_res.trial_number, max_power
             )
-            response = client.post(
-                REPORT_RESULT_URL,
-                content=training_result.json(),
-            )
+            response = client.post(REPORT_RESULT_URL, content=training_result.json(),)
             assert response.status_code == 200, response.text
             assert response.json()["converged"] == exp[2]
             print(response.json()["message"])
         # Now good_bs should be equal to result!
 
         # this will construct mab
-        response = client.get(
-            GET_NEXT_BATCH_SIZE_URL,
-            params={"job_id": job_id},
-        )
+        response = client.get(GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_id},)
         assert response.status_code == 200
 
         # Capture list of arms from stdout

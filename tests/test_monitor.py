@@ -158,9 +158,9 @@ def mock_gpus(
         pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = (
             lambda index: f"handle{index}"
         )  # GPU Monitoring object grabs all handles visible to system on initialization.
-        pynvml_mock.nvmlDeviceGetArchitecture.side_effect = (
-            lambda handle: handle_to_arch[handle]
-        )
+        pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[
+            handle
+        ]
 
     if cuda_visible_devices is None:  # All GPUs are visible to PyTorch.
         # When `CUDA_VISIBLE_DEVICES` is not given, NVML indices and PyTorch indices conincide.

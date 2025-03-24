@@ -69,8 +69,7 @@ def test_predict(client, helpers):
 
     cur_default_bs = job_config["default_batch_size"]
     response = client.get(
-        GET_NEXT_BATCH_SIZE_URL,
-        params={"job_id": job_config["job_id"]},
+        GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
     )
     print(response.text)
     assert response.status_code == 200
@@ -79,8 +78,7 @@ def test_predict(client, helpers):
 
     # concurrent job submission
     response = client.get(
-        GET_NEXT_BATCH_SIZE_URL,
-        params={"job_id": job_config["job_id"]},
+        GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
     )
     print(response.text)
     assert response.status_code == 200
@@ -94,8 +92,7 @@ def test_report(client, helpers):
     assert response.status_code == 201
 
     response = client.get(
-        GET_NEXT_BATCH_SIZE_URL,
-        params={"job_id": job_config["job_id"]},
+        GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
     )
     # Converged within max epoch => successful training
     response = client.post(
@@ -117,8 +114,7 @@ def test_report(client, helpers):
     )
 
     response = client.get(
-        GET_NEXT_BATCH_SIZE_URL,
-        params={"job_id": job_config["job_id"]},
+        GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
     )
     # Early stop
     response = client.post(
@@ -159,8 +155,7 @@ def test_exploration_stage(client, helpers):
             for bs in bs_list:
                 # Predict
                 response = client.get(
-                    GET_NEXT_BATCH_SIZE_URL,
-                    params={"job_id": job_config["job_id"]},
+                    GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
                 )
                 assert response.status_code == 200
                 assert response.json()["batch_size"] == bs
@@ -169,8 +164,7 @@ def test_exploration_stage(client, helpers):
 
                 # Concurrent job
                 response = client.get(
-                    GET_NEXT_BATCH_SIZE_URL,
-                    params={"job_id": job_config["job_id"]},
+                    GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
                 )
                 assert response.status_code == 200
                 assert (
@@ -228,8 +222,7 @@ def test_mab_stage(client, helpers):
     for _ in range(50):
         # Predict
         response = client.get(
-            GET_NEXT_BATCH_SIZE_URL,
-            params={"job_id": job_config["job_id"]},
+            GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
         )
         assert response.status_code == 200
         bs = response.json()["batch_size"]
@@ -237,8 +230,7 @@ def test_mab_stage(client, helpers):
         bs_seq.append(response.json()["batch_size"])
         # Concurrent job
         response = client.get(
-            GET_NEXT_BATCH_SIZE_URL,
-            params={"job_id": job_config["job_id"]},
+            GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
         )
         assert response.status_code == 200
         bs_seq.append(response.json()["batch_size"])
@@ -272,8 +264,7 @@ def test_end_trial(client, helpers):
 
     # Start trial
     response = client.get(
-        GET_NEXT_BATCH_SIZE_URL,
-        params={"job_id": job_config["job_id"]},
+        GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
     )
     assert response.status_code == 200
     trial_number = response.json()["trial_number"]
@@ -292,8 +283,7 @@ def test_end_trial(client, helpers):
 
     # Start trial
     response = client.get(
-        GET_NEXT_BATCH_SIZE_URL,
-        params={"job_id": job_config["job_id"]},
+        GET_NEXT_BATCH_SIZE_URL, params={"job_id": job_config["job_id"]},
     )
     assert response.status_code == 200
     trial_number = response.json()["trial_number"]
@@ -332,10 +322,7 @@ def test_delete_job(client, helpers):
     response = client.post(REGISTER_JOB_URL, json=job_config)
     assert response.status_code == 201
 
-    response = client.delete(
-        DELETE_JOB_URL,
-        params={"job_id": job_config["job_id"]},
-    )
+    response = client.delete(DELETE_JOB_URL, params={"job_id": job_config["job_id"]},)
     print(response.text)
     assert response.status_code == 200
 
@@ -343,17 +330,11 @@ def test_delete_job(client, helpers):
     print(response.text)
     assert response.status_code == 201
 
-    response = client.delete(
-        DELETE_JOB_URL,
-        params={"job_id": job_config["job_id"]},
-    )
+    response = client.delete(DELETE_JOB_URL, params={"job_id": job_config["job_id"]},)
     print(response.text)
     assert response.status_code == 200
 
     # Job doesn't exists
-    response = client.delete(
-        DELETE_JOB_URL,
-        params={"job_id": "UNKNOWN"},
-    )
+    response = client.delete(DELETE_JOB_URL, params={"job_id": "UNKNOWN"},)
     print(response.text)
     assert response.status_code == 404
