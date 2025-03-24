@@ -260,8 +260,7 @@ class GlobalPowerLimitOptimizer(Callback):
 
         self.monitor = monitor
         self.optimum_selector = optimum_selector or ZeusCost(
-            eta_knob=0.5,
-            world_size=len(monitor.gpu_indices),
+            eta_knob=0.5, world_size=len(monitor.gpu_indices),
         )
         self.warmup_steps = warmup_steps
         self.profile_steps = profile_steps
@@ -447,8 +446,7 @@ class GlobalPowerLimitOptimizer(Callback):
                     )
                     self._set_power_limit(next_power_limit)
                     self.state = Warmup(
-                        current_power_limit=next_power_limit,
-                        steps=self.warmup_steps,
+                        current_power_limit=next_power_limit, steps=self.warmup_steps,
                     )
 
         elif isinstance(self.state, Done):

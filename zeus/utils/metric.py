@@ -33,9 +33,7 @@ def zeus_cost(
 
 # ruff: noqa: PLR2004
 def energy(
-    logfile: Path | str,
-    start: float | None = None,
-    end: float | None = None,
+    logfile: Path | str, start: float | None = None, end: float | None = None,
 ) -> float:
     """Compute the energy consumption from the Zeus monitor power log file.
 
@@ -67,9 +65,7 @@ def energy(
 
 
 def avg_power(
-    logfile: Path | str,
-    start: float | None = None,
-    end: float | None = None,
+    logfile: Path | str, start: float | None = None, end: float | None = None,
 ) -> float:
     """Compute the average power consumption from the Zeus monitor power log file.
 

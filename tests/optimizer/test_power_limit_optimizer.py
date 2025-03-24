@@ -150,8 +150,7 @@ def test_power_limit_optimizer(
     plo = GlobalPowerLimitOptimizer(
         monitor,
         optimum_selector=ZeusCost(
-            eta_knob=eta_knob,
-            world_size=len(monitor.gpu_indices),
+            eta_knob=eta_knob, world_size=len(monitor.gpu_indices),
         ),
         wait_steps=1,
         warmup_steps=10,
@@ -270,8 +269,7 @@ def test_power_limit_optimizer(
     plo = GlobalPowerLimitOptimizer(
         monitor,
         optimum_selector=ZeusCost(
-            eta_knob=eta_knob,
-            world_size=len(monitor.gpu_indices),
+            eta_knob=eta_knob, world_size=len(monitor.gpu_indices),
         ),
         warmup_steps=10,
         profile_steps=40,
