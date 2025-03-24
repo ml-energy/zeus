@@ -9,7 +9,7 @@ import queue
 import requests
 import multiprocessing as mp
 
-from typing import Literal
+from typing import Any, Literal
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
@@ -134,7 +134,7 @@ class OpenEIClient(ElectricityPriceProvider):
 
         return results
 
-    def get_current_electricity_price(self) -> dict:
+    def get_current_electricity_price(self) -> dict[str, Any]:
         """Fetches current carbon intensity of the location of the class."""
         try:
             url = (
