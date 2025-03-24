@@ -9,7 +9,7 @@ import queue
 import requests
 import multiprocessing as mp
 
-from typing import Any, Literal
+from typing import Literal
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
@@ -134,7 +134,7 @@ class OpenEIClient(ElectricityPriceProvider):
 
         return results
 
-    def get_current_electricity_price(self) -> dict[str, Any]:
+    def get_current_electricity_price(self) -> dict:
         """Fetches current carbon intensity of the location of the class."""
         try:
             url = (
@@ -177,11 +177,11 @@ class OpenEIClient(ElectricityPriceProvider):
             }
             return rate_data
 
-        except KeyError as e:
-            logger.error("KeyError occurred: %s.", e)
-
-        except ValueError as e:
-            logger.error("ValueError occurred: %s.", e)
+        except (KeyError, ValueError) as e:
+            logger.error(
+                "Error occurred while processing electricity price data: %s", e
+            )
+            raise RuntimeError("Failed to process electricity price data.") from e
 
 
 @dataclass
@@ -331,11 +331,7 @@ class EnergyCostMonitor:
 
         # end window
         self.command_q.put((Op.END, key))
-        (
-            gpu_energy_cost,
-            cpu_energy_cost,
-            dram_energy_cost,
-        ) = self.finished_q.get()
+        (gpu_energy_cost, cpu_energy_cost, dram_energy_cost,) = self.finished_q.get()
         self.current_keys.remove(key)
 
         overall_measurement = self.zeus_monitor.end_window(
