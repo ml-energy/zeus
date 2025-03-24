@@ -69,7 +69,7 @@ class ElectricityPriceProvider(abc.ABC):
     """Abstract class for implementing ways to fetch electricity price."""
 
     @abc.abstractmethod
-    def get_current_electricity_price(self) -> float:
+    def get_current_electricity_price(self) -> dict:
         """Abstract method for fetching the current electricity price of the set location of the class."""
         pass
 
@@ -140,7 +140,7 @@ class OpenEIClient(ElectricityPriceProvider):
             url = (
                 "https://api.openei.org/utility_rates?version=latest&format=json"
                 + f"&api_key=tJASWWgPhBRpiZCwfhtKV2A3gyNxbDfvQvdI5Wa7&lat={self.lat}"
-                + f"&lon={self.lon}&radius={self.radius}"
+                + f"&lon={self.long}&radius={self.radius}"
                 + f"&detail=minimal&sector={self.sector}"
             )
             resp = requests.get(url)
