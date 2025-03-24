@@ -65,11 +65,7 @@ class RaplWraparoundTracker:
             determine the sleep period between polls
     """
 
-    def __init__(
-        self,
-        rapl_file_path: str,
-        max_energy_uj: float,
-    ) -> None:
+    def __init__(self, rapl_file_path: str, max_energy_uj: float,) -> None:
         """Initialize the rapl monitor.
 
         Args:
@@ -277,9 +273,7 @@ class ZeusdRAPLCPU(RAPLCPU):
     """
 
     def __init__(
-        self,
-        cpu_index: int,
-        zeusd_sock_path: str = "/var/run/zeusd.sock",
+        self, cpu_index: int, zeusd_sock_path: str = "/var/run/zeusd.sock",
     ) -> None:
         """Initialize the Intel CPU with a specified index."""
         self.cpu_index = cpu_index
@@ -291,9 +285,7 @@ class ZeusdRAPLCPU(RAPLCPU):
 
     def _supportsGetDramEnergyConsumption(self) -> bool:
         """Calls zeusd to return if the specified CPU supports DRAM energy monitoring."""
-        resp = self._client.get(
-            self._url_prefix + "/supports_dram_energy",
-        )
+        resp = self._client.get(self._url_prefix + "/supports_dram_energy",)
         if resp.status_code != 200:
             raise ZeusdError(
                 f"Failed to get whether DRAM energy is supported: {resp.text}"
@@ -307,11 +299,7 @@ class ZeusdRAPLCPU(RAPLCPU):
     def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         resp = self._client.post(
-            self._url_prefix + "/get_index_energy",
-            json={
-                "cpu": True,
-                "dram": True,
-            },
+            self._url_prefix + "/get_index_energy", json={"cpu": True, "dram": True,},
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")

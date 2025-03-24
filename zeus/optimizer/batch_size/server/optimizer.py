@@ -186,10 +186,7 @@ class ZeusBatchSizeOptimizer:
             cost_ub = job.beta_knob * job.min_cost
 
         reported_cost = zeus_cost(
-            result.energy,
-            result.time,
-            job.eta_knob,
-            job.max_power,
+            result.energy, result.time, job.eta_knob, job.max_power,
         )
 
         within_cost_range = cost_ub >= reported_cost

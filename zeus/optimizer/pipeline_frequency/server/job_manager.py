@@ -45,8 +45,7 @@ class JobManager:
         # for a long time.
         create_task(
             self._cleanup_task(
-                cleanup_period=60,
-                max_idle_time=pfo_settings.max_job_idle_time,
+                cleanup_period=60, max_idle_time=pfo_settings.max_job_idle_time,
             ),
             logger=logger,
         )
@@ -66,8 +65,7 @@ class JobManager:
             asyncio.Queue(maxsize=1) for _ in range(world_size)
         ]
         self._job_tasks[job_id] = create_task(
-            self._job_task(job_id, self.pfo_settings.dump_data),
-            logger=logger,
+            self._job_task(job_id, self.pfo_settings.dump_data), logger=logger,
         )
         self._job_last_active_time[job_id] = time.monotonic()
 
@@ -110,11 +108,7 @@ class JobManager:
         self._job_result_channels[job_id].put_nowait(result)
         self._job_last_active_time[job_id] = time.monotonic()
 
-    async def _cleanup_task(
-        self,
-        cleanup_period: int,
-        max_idle_time: int,
-    ) -> None:
+    async def _cleanup_task(self, cleanup_period: int, max_idle_time: int,) -> None:
         """Periodically evict job states.
 
         Args:

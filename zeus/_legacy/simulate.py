@@ -88,11 +88,7 @@ class Simulator:
         self.verbose = verbose
 
     def simulate_one_job(
-        self,
-        job: Job,
-        num_recurrence: int,
-        beta_knob: float,
-        eta_knob: float,
+        self, job: Job, num_recurrence: int, beta_knob: float, eta_knob: float,
     ) -> list[HistoryEntry]:
         r"""Simulate a sequentially recurring job. Explore with early stopping.
 
@@ -221,11 +217,7 @@ class Simulator:
         return history
 
     def simulate_one_alibaba_group(
-        self,
-        job: Job,
-        group_df: pd.DataFrame,
-        beta_knob: float,
-        eta_knob: float,
+        self, job: Job, group_df: pd.DataFrame, beta_knob: float, eta_knob: float,
     ) -> list[HistoryEntry]:
         r"""Run simulation on one group in the Alibaba trace.
 
