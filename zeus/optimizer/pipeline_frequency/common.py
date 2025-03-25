@@ -17,7 +17,8 @@ REGISTER_JOB_URL = "/register_job"
 REGISTER_RANK_URL = "/register_rank/{job_id}"
 GET_FREQUENCY_SCHEDULE_URL = "/schedule/{job_id}"
 REPORT_PROFILING_RESULT_URL = "/result/{job_id}"
-
+REPORT_TIMING_URL = "/report_timing"
+REPORT_ENERGY_URL = "/report_energy"
 
 class PFOServerSettings(BaseSettings):
     """PFO server settings, configurable via environment variables.
