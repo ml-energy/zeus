@@ -18,6 +18,8 @@ from zeus.optimizer.pipeline_frequency.common import (
     save_sched,
     save_ranks,
 )
+from zeus.optimizer.pipeline_frequency.server.generate_profile_csv import generate_profile_csv
+
 from zeus.utils.logging import get_logger
 from zeus.utils.async_utils import create_task
 
@@ -40,6 +42,8 @@ class JobManager:
         self._job_sched_request_channels: dict[str, asyncio.Queue] = {}
         self._job_sched_response_channels: dict[str, list[asyncio.Queue]] = {}
         self._job_last_active_time: dict[str, float] = {}
+        self._job_timing_data: dict[str, dict[int, dict[str, list[float]]]] = {}
+        self._job_energy_data: dict[str, dict[int, list[float]]] = {}
 
         # Spawn cleanup task that evicts the state of jobs that have not been active
         # for a long time.
@@ -70,6 +74,8 @@ class JobManager:
             logger=logger,
         )
         self._job_last_active_time[job_id] = time.monotonic()
+        self._job_timing_data[job_id] = {}
+        self._job_energy_data[job_id] = {}
 
     def register_rank(self, job_id: str, rank_info: RankInfo) -> None:
         """Register rank-specific information for an already registered job.
@@ -110,6 +116,29 @@ class JobManager:
         self._job_result_channels[job_id].put_nowait(result)
         self._job_last_active_time[job_id] = time.monotonic()
 
+    def report_timing(self, data) -> None:
+        """
+        Receive timing breakdown data from the client.
+        `data` should contain fields: job_id, rank, timing_breakdown.
+        """
+        job_id = data.job_id
+        rank = data.rank
+        self._job_timing_data.setdefault(job_id, {})[rank] = data.timing_breakdown
+        self._job_last_active_time[job_id] = time.monotonic()
+        logger.info("Timing breakdown reported for job %s, rank %d", job_id, rank)
+
+    def report_energy(self, data) -> None:
+        """
+        Receive energy measurement data from the client.
+        `data` should contain fields: job_id, rank, energy_measurements.
+        """
+        job_id = data.job_id
+        rank = data.rank
+        self._job_energy_data.setdefault(job_id, {})[rank] = data.energy_measurements
+        self._job_last_active_time[job_id] = time.monotonic()
+        logger.info("Energy data reported for job %s, rank %d", job_id, rank)
+
+
     async def _cleanup_task(
         self,
         cleanup_period: int,
@@ -136,6 +165,8 @@ class JobManager:
                     del self._job_sched_response_channels[job_id]
                     del self._job_tasks[job_id]
                     del self._job_last_active_time[job_id]
+                    self._job_timing_data.pop(job_id, None)
+                    self._job_energy_data.pop(job_id, None)
 
     async def _job_task(self, job_id: str, dump_data: bool) -> None:
         """Coalese requests and responses of each rank and interface with the scheduler."""
@@ -201,6 +232,28 @@ class JobManager:
 
                 # Increment schedule number.
                 schedule_num += 1
+
+                if job_id in self._job_timing_data and job_id in self._job_energy_data:
+                    try:
+                        # Example: retrieve profiling parameters from PFOServerSettings, or use defaults.
+                        num_microbatches = getattr(self.pfo_settings, "num_microbatches", 1)
+                        num_prof_steps = getattr(self.pfo_settings, "num_prof_steps", 1)
+                        warmup_iters = getattr(self.pfo_settings, "warmup_iters", 0)
+                        
+                        csv_path = generate_profile_csv(
+                            job_id,
+                            self._job_timing_data[job_id],
+                            self._job_energy_data[job_id],
+                            dump_dir,
+                            num_microbatches,
+                            num_prof_steps,
+                            warmup_iters,
+                            frequency_schedule=None,  # Pass frequency schedule if available.
+                        )
+                        logger.info("CSV profile generated at: %s", csv_path)
+                    except Exception as e:
+                        logger.error("Failed to generate CSV profile for job %s: %s", job_id, e)
+
 
         except asyncio.CancelledError:
             # This task gets cancelled when it's idle for too long and evicted.

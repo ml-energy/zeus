@@ -19,6 +19,8 @@ from zeus.optimizer.pipeline_frequency.common import (
     GET_FREQUENCY_SCHEDULE_URL,
     REGISTER_JOB_URL,
     REGISTER_RANK_URL,
+    REPORT_TIMING_URL,
+    REPORT_ENERGY_URL,
     JobInfo,
     RankInfo,
     FrequencySchedule,
@@ -143,6 +145,15 @@ class PipelineFrequencyOptimizer(Callback):
         self.freq_schedule = self._get_frequency_schedule()
         self.freq_schedule_iter = iter(self.freq_schedule)
 
+         # Containers for timing and energy data.
+        self.timing_data = {"forward": [], "backward": []}
+        self.energy_data = []
+
+        # Spawn energy polling process.
+        self.energy_polling_process = mp.Process(target=self._energy_polling_loop)
+        self.energy_polling_process.daemon = True
+        self.energy_polling_process.start()
+
     def _get_frequency_schedule(self) -> list[tuple[str, int]]:
         """Get the frequency schedule from the PFO server."""
         response = httpx.get(
@@ -162,16 +173,11 @@ class PipelineFrequencyOptimizer(Callback):
         return schedule.frequencies
 
     def on_step_begin(self) -> None:
-        """Mark the beginning of a step.
-
-        TODO(jaywonchung): InstructionProfiler iteration start mark.
-        """
+        """Mark the beginning of a step."""
         pass
 
     def on_step_end(self) -> None:
         """Mark the end of a step.
-
-        TODO(jaywonchung): InstructionProfiler iteration end mark.
         Also report the profiling result to the PFO server after N iterations.
         """
         # Frequency schedule holds one iteration-worth of frequencies, so at
@@ -192,7 +198,8 @@ class PipelineFrequencyOptimizer(Callback):
         frequency accordingly.
         """
         sync_execution([self.device_id], sync_with="torch")
-
+        # Record the start time for latency measurement.
+        self._instr_start_time = time.time()
         # Retrieve the next frequency from the schedule.
         item = next(self.freq_schedule_iter, None)
         if item is None:
@@ -208,4 +215,60 @@ class PipelineFrequencyOptimizer(Callback):
         self.frequency_controller.set_frequency(frequency)
 
     def on_instruction_end(self, name: str) -> None:
-        """Mark the end of an instruction, like forward and backward."""
+        """Mark the end of an instruction, like forward and backward and report its latency."""
+        end_time  = time.time()
+        self.timing_data.setdefault(name, []).append((self._instr_start_time, end_time))
+        # Report timing data to the server.
+        payload = {
+            "job_id": self.job_id,
+            "rank": self.rank,
+            "timing_breakdown": self.timing_data,
+            
+        }
+        try:
+            httpx.post(f"{self.server_url}/{REPORT_TIMING_URL}", json=payload, timeout=5)
+        except Exception as e:
+            pass
+
+    def _energy_polling_loop(self):
+        """Continuously measure energy and report measurements to the server."""
+
+        # we are aggregating in the generate_profile_csv function, hence not appending or collecting here.
+        # Please let me know if that should be changed
+        polling_interval = 1.0
+        gpus = get_gpus()
+        while True:
+            # Measure energy consumption over the polling interval.
+            measurement = self.measure_energy(polling_interval, gpus)
+            self.energy_data.append(measurement)
+            payload = {
+                "job_id": self.job_id,
+                "rank": self.rank,
+                "energy_measurements": [measurement],
+            }
+            try:
+                httpx.post(f"{self.server_url}/{REPORT_ENERGY_URL}", json=payload, timeout=5)
+            except Exception as e:
+                pass
+
+    def measure_energy(self, polling_interval: float, gpus) -> tuple[float, float]:
+        """
+        Measure GPU energy consumption over a polling interval.
+        
+        Args:
+            polling_interval: Duration (in seconds) over which to measure energy.
+            gpus: The GPU interface obtained from get_gpus().
+        
+        Returns:
+            A tuple (timestamp, energy_delta) where:
+              - timestamp: The time at the end of the measurement window.
+              - energy_delta: The difference in energy consumption (in Joules) over the interval.
+        """
+        start_time = time.time()
+        start_energy = gpus.getTotalEnergyConsumption(self.device_id) / 1000.0
+        time.sleep(polling_interval)
+        end_time = time.time()
+        end_energy = gpus.getTotalEnergyConsumption(self.device_id) / 1000.0
+        energy_delta = end_energy - start_energy
+        return (end_time, energy_delta)
+
