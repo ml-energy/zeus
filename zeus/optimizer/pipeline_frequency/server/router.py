@@ -9,11 +9,14 @@ from fastapi import Depends, FastAPI, Response, Request
 from fastapi.routing import APIRoute
 
 from zeus.utils.logging import get_logger
+from zeus.utils.pydantic_v1 import BaseModel,
 from zeus.optimizer.pipeline_frequency.common import (
     REGISTER_JOB_URL,
     REGISTER_RANK_URL,
     GET_FREQUENCY_SCHEDULE_URL,
     REPORT_PROFILING_RESULT_URL,
+    REPORT_TIMING_URL,
+    REPORT_ENERGY_URL,
     JobInfo,
     RankInfo,
     PFOServerSettings,
@@ -102,3 +105,41 @@ async def report_profiling_result(
 ) -> None:
     """Report the profiling result for the most recent frequency schedule."""
     job_manager.report_profiling_result(job_id, profiling_result)
+
+
+class TimingBreakdownData(BaseModel):
+    """Router that handles timing breakdown for a job."""
+    job_id: str
+    rank: int
+    timing_breakdown: dict[str, list[float]]
+
+@app.post(REPORT_TIMING_URL)
+async def report_timing(
+    data: TimingBreakdownData,
+    job_manager: JobManager = Depends(get_global_job_manager),
+) -> dict:
+    """
+    Report timing breakdown data for a job.
+    """
+    logger.info("Received timing breakdown for job %s, rank %d", data.job_id, data.rank)
+    job_manager.report_timing(data)
+    return {"status": "success", "message": "Timing breakdown data received."}
+
+
+class EnergyMeasurementData(BaseModel):
+    """Router that handles energy measurements for a job."""
+    job_id: str
+    rank: int
+    energy_measurements: list[float]
+
+@app.post(REPORT_ENERGY_URL)
+async def report_energy(
+    data: EnergyMeasurementData,
+    job_manager: JobManager = Depends(get_global_job_manager),
+) -> dict:
+    """
+    Report energy measurement data for a job.
+    """
+    logger.info("Received energy measurements for job %s, rank %d", data.job_id, data.rank)
+    job_manager.report_energy(data)
+    return {"status": "success", "message": "Energy measurement data received."}
