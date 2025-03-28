@@ -123,7 +123,8 @@ class ReplayZeusMonitor(ZeusMonitor):
         if cancel:
             self.logger.info("Measurement window '%s' cancelled.", key)
             return Measurement(
-                time=0.0, gpu_energy={gpu_index: 0.0 for gpu_index in self.gpu_indices},
+                time=0.0,
+                gpu_energy={gpu_index: 0.0 for gpu_index in self.gpu_indices},
             )
 
         # Read the next line from the log file.

@@ -29,7 +29,9 @@ class PruningExploreManager:
         self.service = service
 
     async def next_batch_size(
-        self, job: JobState, exploration_history: ExplorationsPerJob,
+        self,
+        job: JobState,
+        exploration_history: ExplorationsPerJob,
     ) -> ReadTrial | list[int]:
         """Find the next batch size to explore.
 
@@ -106,7 +108,10 @@ class PruningExploreManager:
                     else:
                         # Did not explore this round. Should explore!
                         return await self.service.create_trial(
-                            CreateExplorationTrial(job_id=job.job_id, batch_size=bs,)
+                            CreateExplorationTrial(
+                                job_id=job.job_id,
+                                batch_size=bs,
+                            )
                         )
 
             # We should go to next round. Update exp_default_bs and batch sizes!

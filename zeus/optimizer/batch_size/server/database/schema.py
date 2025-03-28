@@ -85,7 +85,11 @@ class BatchSizeTable(Base):
     __tablename__ = "BatchSize"
 
     job_id: Mapped[str] = mapped_column(
-        ForeignKey("Job.job_id", ondelete="CASCADE",), primary_key=True,
+        ForeignKey(
+            "Job.job_id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
     )
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
 

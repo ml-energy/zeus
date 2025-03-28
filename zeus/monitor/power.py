@@ -40,7 +40,9 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
             gpu_models_covered.add(model)
             detected_period = _infer_counter_update_period_single(index)
             logger.info(
-                "Counter update period for %s is %.2f s", model, detected_period,
+                "Counter update period for %s is %.2f s",
+                model,
+                detected_period,
             )
             update_period = min(update_period, detected_period)
 
@@ -185,7 +187,10 @@ class PowerMonitor:
             self.power_df = additional_df
         else:
             self.power_df = pd.concat(
-                [self.power_df, additional_df], axis=0, ignore_index=True, copy=False,
+                [self.power_df, additional_df],
+                axis=0,
+                ignore_index=True,
+                copy=False,
             )
 
     def get_energy(self, start_time: float, end_time: float) -> dict[int, float] | None:
@@ -249,7 +254,9 @@ class PowerMonitor:
 
 
 def _polling_process(
-    gpu_indices: list[int], power_csv_path: str, update_period: float,
+    gpu_indices: list[int],
+    power_csv_path: str,
+    update_period: float,
 ) -> None:
     """Run the power monitor."""
     try:

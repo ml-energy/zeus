@@ -256,7 +256,9 @@ class InstructionProfilingResult(BaseModel):
 
 
 async def save_prof(
-    data: list[ProfilingResult], directory: str, schedule_num: int,
+    data: list[ProfilingResult],
+    directory: str,
+    schedule_num: int,
 ) -> None:
     """Save a list of `ProfilingResult`s in the designated directory."""
     os.makedirs(directory, exist_ok=True)
@@ -272,7 +274,9 @@ def load_prof(directory: str, schedule_num: int) -> list[ProfilingResult]:
 
 
 async def save_sched(
-    data: list[FrequencySchedule], directory: str, schedule_num: int,
+    data: list[FrequencySchedule],
+    directory: str,
+    schedule_num: int,
 ) -> None:
     """Save a list of `FrequencySchedule`s in the designated directory."""
     os.makedirs(directory, exist_ok=True)

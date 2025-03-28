@@ -86,7 +86,9 @@ async def register_rank(
 
 @app.get(GET_FREQUENCY_SCHEDULE_URL, response_model=FrequencySchedule)
 async def get_frequency_schedule(
-    job_id: str, rank: int, job_manager: JobManager = Depends(get_global_job_manager),
+    job_id: str,
+    rank: int,
+    job_manager: JobManager = Depends(get_global_job_manager),
 ) -> FrequencySchedule:
     """Return the next frequency schedule for the rank."""
     return await job_manager.get_frequency_schedule(job_id, rank)

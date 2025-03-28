@@ -33,7 +33,10 @@ def energy(gpu_indices: list[int] | None = None) -> None:
             rich.print("Total energy (J):", energy)
 
 
-def power(gpu_indices: list[int] | None = None, update_period: float = 1.0,) -> None:
+def power(
+    gpu_indices: list[int] | None = None,
+    update_period: float = 1.0,
+) -> None:
     """Monitor the power consumption of GPUs during the duration of the CLI program.
 
     Args:
@@ -64,7 +67,8 @@ def power(gpu_indices: list[int] | None = None, update_period: float = 1.0,) -> 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="python -m zeus.monitor", description="Zeus Monitor CLI",
+        prog="python -m zeus.monitor",
+        description="Zeus Monitor CLI",
     )
 
     # Subcommands for energy and power

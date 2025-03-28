@@ -138,7 +138,10 @@ class ZeusService:
                     )
                 )
 
-    def update_arm_state(self, arm: UpdateArm,) -> None:
+    def update_arm_state(
+        self,
+        arm: UpdateArm,
+    ) -> None:
         """Update arm state.
 
         Args:
@@ -297,7 +300,8 @@ class ZeusService:
         """
         job = self._get_job(bs.job_id)
         return await self.bs_repo.get_trial_results_of_bs(
-            BatchSizeBase(job_id=bs.job_id, batch_size=bs.batch_size), job.window_size,
+            BatchSizeBase(job_id=bs.job_id, batch_size=bs.batch_size),
+            job.window_size,
         )
 
     def create_arms(self, new_arms: list[GaussianTsArmState]) -> None:

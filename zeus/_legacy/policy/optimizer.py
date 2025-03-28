@@ -140,7 +140,10 @@ class PruningExploreManager:
     """Helper class that generates batch sizes to explore and prune."""
 
     def __init__(
-        self, batch_sizes: list[int], default: int, num_pruning_rounds: int = 2,
+        self,
+        batch_sizes: list[int],
+        default: int,
+        num_pruning_rounds: int = 2,
     ) -> None:
         """Initialze the object.
 

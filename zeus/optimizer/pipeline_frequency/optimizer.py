@@ -114,7 +114,8 @@ class PipelineFrequencyOptimizer(Callback):
         # Query the list of available frequencies of the GPU.
         max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))
         freqs = sorted(
-            gpus.getSupportedGraphicsClocks(device_id, max_mem_freq), reverse=True,
+            gpus.getSupportedGraphicsClocks(device_id, max_mem_freq),
+            reverse=True,
         )
 
         # Each rank reports itself to the PFO server with the job ID.

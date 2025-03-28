@@ -419,7 +419,11 @@ class PowerGauge(Metric):
     """
 
     def __init__(
-        self, gpu_indices: list, update_period: int, pushgateway_url: str, job: str,
+        self,
+        gpu_indices: list,
+        update_period: int,
+        pushgateway_url: str,
+        job: str,
     ) -> None:
         """Initialize the PowerGauge metric.
 

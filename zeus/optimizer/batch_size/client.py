@@ -143,7 +143,10 @@ class BatchSizeOptimizer(Callback):
         self.training_finished = False
         self.monitor.begin_window("BatciSizeOptimizerClient")
 
-    def on_evaluate(self, metric: float,) -> None:
+    def on_evaluate(
+        self,
+        metric: float,
+    ) -> None:
         """Determine whether or not to stop training after evaluation.
 
         Training stops when

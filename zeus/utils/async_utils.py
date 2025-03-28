@@ -14,7 +14,8 @@ default_logger = get_logger(__name__)
 
 
 def create_task(
-    coroutine: Coroutine[Any, Any, T], logger: logging.Logger | None = None,
+    coroutine: Coroutine[Any, Any, T],
+    logger: logging.Logger | None = None,
 ) -> asyncio.Task[T]:
     """Create an `asyncio.Task` but ensure that exceptions are logged.
 

@@ -60,7 +60,11 @@ class Job:
         ]
 
     def gen_command(
-        self, batch_size: int, learning_rate: float, seed: int, rec_i: int,
+        self,
+        batch_size: int,
+        learning_rate: float,
+        seed: int,
+        rec_i: int,
     ) -> list[str]:
         """Format the job command with given arguments.
 

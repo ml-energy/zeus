@@ -127,7 +127,8 @@ class NVIDIAGPU(gpu_common.GPU):
     def resetPowerManagementLimit(self, _block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
         pynvml.nvmlDeviceSetPowerManagementLimit(
-            self.handle, pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
+            self.handle,
+            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
         )
 
     @_handle_nvml_errors
@@ -263,7 +264,9 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     """
 
     def __init__(
-        self, gpu_index: int, zeusd_sock_path: str = "/var/run/zeusd.sock",
+        self,
+        gpu_index: int,
+        zeusd_sock_path: str = "/var/run/zeusd.sock",
     ) -> None:
         """Initialize NVML and sets up the GPUs.
 
@@ -296,7 +299,8 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     def resetPowerManagementLimit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
         self.setPowerManagementLimit(
-            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle), block,
+            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
+            block,
         )
 
     def setPersistenceMode(self, enabled: bool, block: bool = False) -> None:

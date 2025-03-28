@@ -79,12 +79,16 @@ async def register_job(
         except ZeusBSOServerBaseError as err:
             await db_session.rollback()
             return JSONResponse(
-                status_code=err.status_code, content={"message": err.message},
+                status_code=err.status_code,
+                content={"message": err.message},
             )
         except Exception as err:
             await db_session.rollback()
             logger.error("Commit Failed: %s", str(err))
-            return JSONResponse(status_code=500, content={"message": str(err)},)
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )
 
 
 @app.delete(DELETE_JOB_URL)
@@ -102,12 +106,16 @@ async def delete_job(
         except ZeusBSOServerBaseError as err:
             await db_session.rollback()
             return JSONResponse(
-                status_code=err.status_code, content={"message": err.message},
+                status_code=err.status_code,
+                content={"message": err.message},
             )
         except Exception as err:
             await db_session.rollback()
             logger.error("Commit Failed: %s", str(err))
-            return JSONResponse(status_code=500, content={"message": str(err)},)
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )
         finally:
             job_locks.pop(job_id)
 
@@ -127,12 +135,16 @@ async def end_trial(
         except ZeusBSOServerBaseError as err:
             await db_session.rollback()
             return JSONResponse(
-                status_code=err.status_code, content={"message": err.message},
+                status_code=err.status_code,
+                content={"message": err.message},
             )
         except Exception as err:
             await db_session.rollback()
             logger.error("Commit Failed: %s", str(err))
-            return JSONResponse(status_code=500, content={"message": str(err)},)
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )
 
 
 @app.get(GET_NEXT_BATCH_SIZE_URL, response_model=TrialId)
@@ -151,12 +163,16 @@ async def predict(
         except ZeusBSOServerBaseError as err:
             await db_session.rollback()
             return JSONResponse(
-                status_code=err.status_code, content={"message": err.message},
+                status_code=err.status_code,
+                content={"message": err.message},
             )
         except Exception as err:
             await db_session.rollback()
             logger.error("Commit Failed: %s", str(err))
-            return JSONResponse(status_code=500, content={"message": str(err)},)
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )
 
 
 @app.post(REPORT_RESULT_URL, response_model=ReportResponse)
@@ -176,9 +192,13 @@ async def report(
         except ZeusBSOServerBaseError as err:
             await db_session.rollback()
             return JSONResponse(
-                status_code=err.status_code, content={"message": err.message},
+                status_code=err.status_code,
+                content={"message": err.message},
             )
         except Exception as err:
             await db_session.rollback()
             logger.error("Commit Failed: %s", str(err))
-            return JSONResponse(status_code=500, content={"message": str(err)},)
+            return JSONResponse(
+                status_code=500,
+                content={"message": str(err)},
+            )

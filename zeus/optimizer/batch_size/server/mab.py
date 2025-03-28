@@ -186,7 +186,9 @@ class GaussianTS:
             raise ZeusBSOValueError("While creating arms, no batch size is selected")
 
         logger.info(
-            "Construct MAB for %s with arms %s", job.job_id, str(good_bs),
+            "Construct MAB for %s with arms %s",
+            job.job_id,
+            str(good_bs),
         )
 
         new_arms: list[GaussianTsArmState] = []

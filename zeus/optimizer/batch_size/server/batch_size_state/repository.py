@@ -44,7 +44,9 @@ class BatchSizeStateRepository(DatabaseRepository):
     async def get_next_trial_number(self, job_id: str) -> int:
         """Get next trial number of a given job. Trial number starts from 1 and increase by 1 at a time."""
         stmt = select(func.max(TrialTable.trial_number)).where(
-            and_(TrialTable.job_id == job_id,)
+            and_(
+                TrialTable.job_id == job_id,
+            )
         )
         res = await self.session.scalar(stmt)
         if res is None:

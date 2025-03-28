@@ -28,7 +28,9 @@ class FileAndConsole:
 
 
 def get_logger(
-    name: str, level: int = logging.INFO, propagate: bool = False,
+    name: str,
+    level: int = logging.INFO,
+    propagate: bool = False,
 ) -> logging.Logger:
     """Get a logger with the given name with some formatting configs."""
     if name in logging.Logger.manager.loggerDict:

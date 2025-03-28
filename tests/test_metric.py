@@ -62,7 +62,9 @@ def mock_histogram():
 
 
 def test_energy_histogram(
-    mock_get_cpus: MagicMock, mock_zeus_monitor: MagicMock, mock_histogram: MagicMock,
+    mock_get_cpus: MagicMock,
+    mock_zeus_monitor: MagicMock,
+    mock_histogram: MagicMock,
 ) -> None:
     """Test EnergyHistogram class."""
     cpu_indices = [0, 1]
@@ -145,7 +147,8 @@ def test_energy_histogram(
 @patch("zeus.metric.energy_monitoring_loop", autospec=True)
 @patch("zeus.metric.mp.get_context", autospec=True)
 def test_energy_cumulative_counter(
-    mock_mp_context: MagicMock, mock_energy_monitoring_loop: MagicMock,
+    mock_mp_context: MagicMock,
+    mock_energy_monitoring_loop: MagicMock,
 ):
     """Test EnergyCumulativeCounter with mocked subprocess behavior."""
     cpu_indices = [0, 1]
@@ -208,7 +211,8 @@ def test_energy_cumulative_counter(
 @patch("zeus.metric.power_monitoring_loop", autospec=True)
 @patch("zeus.metric.mp.get_context", autospec=True)
 def test_power_gauge(
-    mock_mp_context: MagicMock, mock_power_monitoring_loop: MagicMock,
+    mock_mp_context: MagicMock,
+    mock_power_monitoring_loop: MagicMock,
 ):
     """Test PowerGauge with mocked subprocess behavior."""
     gpu_indices = [0, 1, 2]
