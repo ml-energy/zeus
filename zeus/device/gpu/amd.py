@@ -58,6 +58,13 @@ def amdsmi_is_available() -> bool:
             "Ensure amdsmi's version is at least as high as the current ROCm version."
         )
         return False
+    except KeyError as e:
+        logger.warning(
+            "Failed to import amdsmi due to a key error on: [%s]. "
+            "Ensure that amdsmi is installed on your system.",
+            e,
+        )
+        return False
     try:
         amdsmi.amdsmi_init()
         logger.info("amdsmi is available and initialized")
