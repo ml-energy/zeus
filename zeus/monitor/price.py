@@ -331,7 +331,11 @@ class EnergyCostMonitor:
 
         # end window
         self.command_q.put((Op.END, key))
-        (gpu_energy_cost, cpu_energy_cost, dram_energy_cost,) = self.finished_q.get()
+        (
+            gpu_energy_cost,
+            cpu_energy_cost,
+            dram_energy_cost,
+        ) = self.finished_q.get()
         self.current_keys.remove(key)
 
         overall_measurement = self.zeus_monitor.end_window(
