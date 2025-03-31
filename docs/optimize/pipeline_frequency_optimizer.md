@@ -110,25 +110,25 @@ As another example, in Megatron-LM, users can pass in their custom `forward_step
 
 1. **Configure Environment Variables and Start the Server:**
 
-   - Set `ZEUS_PFO_DUMP_DATA=true` to enable data dumping.
-   - Set `ZEUS_PFO_SCHEDULER=InstructionProfiler` to use the InstructionProfiler scheduler.
-   - Optionally, configure any extra scheduler arguments via `ZEUS_PFO_SCHEDULER_ARGS` (in JSON format).
-   - You can also override the dump directory using `ZEUS_PFO_DUMP_DIR` if needed.
+  - Set `ZEUS_PFO_DUMP_DATA=true` to enable data dumping.
+  - Set `ZEUS_PFO_SCHEDULER=InstructionProfiler` to use the InstructionProfiler scheduler.
+  - Optionally, configure any extra scheduler arguments via `ZEUS_PFO_SCHEDULER_ARGS` (in JSON format).
+  - You can also override the dump directory using `ZEUS_PFO_DUMP_DIR` if needed.
 
-   To run the server inside a Docker container, you can execute:
+To run the server inside a Docker container, you can execute:
 
-   ```console
-   $ docker exec -it zeus bash
-   # pip install '.[pfo-server]'
-   # ZEUS_PFO_DUMP_DATA=true
-   # ZEUS_PFO_SCHEDULER=InstructionProfiler
-   # ZEUS_PFO_SCHEDULER_ARGS='{"ZEUS_PFO_DUMP_DIR": "path/to/dump_dir"}'
-   # uvicorn zeus.optimizer.pipeline_frequency.server.router:app --port 7787
-    ```
-    
-    The server will run in profiling mode, collecting detailed performance data and generating CSV reports in the configured dump directory.
+```console
+$ docker exec -it zeus bash
+# pip install '.[pfo-server]'
+# ZEUS_PFO_DUMP_DATA = true
+# ZEUS_PFO_SCHEDULER = InstructionProfiler
+# ZEUS_PFO_SCHEDULER_ARGS = '{"ZEUS_PFO_DUMP_DIR": "path/to/dump_dir"}'
+# uvicorn zeus.optimizer.pipeline_frequency.server.router:app --port 7787
+```
 
-   #### Note: Client Integration for Timing and Energy Breakdown Endpoints is work under progress.
+The server will run in profiling mode, collecting detailed performance data and generating CSV reports in the configured dump directory.
+
+#### Note: Client Integration for Timing and Energy Breakdown Endpoints is work under progress.
 
 
 ### Profiling Instructions
