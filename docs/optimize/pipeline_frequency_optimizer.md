@@ -117,15 +117,15 @@ As another example, in Megatron-LM, users can pass in their custom `forward_step
 
    To run the server inside a Docker container, you can execute:
 
-   ```bash
+   ```console
    $ docker exec -it zeus bash
    # pip install '.[pfo-server]'
-   # ZEUS_PFO_DUMP_DATA=true \
-     ZEUS_PFO_SCHEDULER=InstructionProfiler \
-     ZEUS_PFO_SCHEDULER_ARGS='{"ZEUS_PFO_DUMP_DIR": "path/to/dump_dir"}' \
-     uvicorn zeus.optimizer.pipeline_frequency.server.router:app --port 7787
+   # ZEUS_PFO_DUMP_DATA=true
+   # ZEUS_PFO_SCHEDULER=InstructionProfiler
+   # ZEUS_PFO_SCHEDULER_ARGS='{"ZEUS_PFO_DUMP_DIR": "path/to/dump_dir"}'
+   # uvicorn zeus.optimizer.pipeline_frequency.server.router:app --port 7787
     ```
-
+    
     The server will run in profiling mode, collecting detailed performance data and generating CSV reports in the configured dump directory.
 
    #### Note: Client Integration for Timing and Energy Breakdown Endpoints is work under progress.
