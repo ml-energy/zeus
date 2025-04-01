@@ -128,7 +128,8 @@ $ docker exec -it zeus bash
 
 The server will run in profiling mode, collecting detailed performance data and generating CSV reports in the configured dump directory.
 
-#### Note: Client Integration for Timing and Energy Breakdown Endpoints is work under progress.
+!!! Note
+    Client Integration for Timing and Energy Breakdown Endpoints is work under progress.
 
 
 ### Profiling Instructions
