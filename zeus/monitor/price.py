@@ -229,7 +229,7 @@ class Op(Enum):
 
 
 class EnergyCostMonitor:
-    """Measure the energy cost, GPU energy, and time consumption of a block of code.
+    """Measure the energy, energy cost, and time consumption of a block of code.
 
     Works for multi-GPU and heterogeneous GPU types. Aware of `CUDA_VISIBLE_DEVICES`.
     For instance, if `CUDA_VISIBLE_DEVICES=2,3`, GPU index `1` passed into `gpu_indices`
