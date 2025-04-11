@@ -17,7 +17,6 @@ from collections import defaultdict
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
 from zeus.utils.logging import get_logger
-from zeus.utils.lat_lon import get_ip_lat_long
 
 logger = get_logger(__name__)
 
