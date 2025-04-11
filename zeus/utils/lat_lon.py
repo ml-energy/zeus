@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
 def get_ip_lat_long() -> tuple[float, float]:
     """Retrieve the latitude and longitude of the current IP position."""
     try:

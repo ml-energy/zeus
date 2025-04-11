@@ -469,4 +469,3 @@ def _polling_process(
         index += 1
         for key in keys:
             _update_energy_measurements(key, hour_floor)
-
