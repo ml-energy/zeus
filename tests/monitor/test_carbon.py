@@ -11,11 +11,12 @@ from unittest.mock import MagicMock, patch
 
 from zeus.monitor.carbon import (
     ElectrictyMapsClient,
-    get_ip_lat_long,
     Op,
     ZeusCarbonIntensityNotFoundError,
     _polling_process,
 )
+
+from zeus.utils.lat_lon import get_ip_lat_long
 
 
 class MockHttpResponse:

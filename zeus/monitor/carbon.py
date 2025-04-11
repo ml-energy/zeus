@@ -17,24 +17,9 @@ from collections import defaultdict
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
 from zeus.utils.logging import get_logger
+from zeus.utils.lat_lon import get_ip_lat_long
 
 logger = get_logger(__name__)
-
-
-def get_ip_lat_long() -> tuple[float, float]:
-    """Retrieve the latitude and longitude of the current IP position."""
-    try:
-        ip_url = "http://ipinfo.io/json"
-        resp = requests.get(ip_url)
-        loc = resp.json()["loc"]
-        lat, long = map(float, loc.split(","))
-        logger.info("Retrieved latitude and longitude: %s, %s", lat, long)
-        return lat, long
-    except requests.exceptions.RequestException as e:
-        logger.exception(
-            "Failed to retrieve current latitude and longitude of IP: %s", e
-        )
-        raise
 
 
 class ZeusCarbonIntensityHTTPError(ZeusBaseError):

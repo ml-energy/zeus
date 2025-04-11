@@ -16,27 +16,12 @@ from collections import defaultdict
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
 from zeus.utils.logging import get_logger
+from zeus.utils.lat_lon import get_ip_lat_long
 
 logger = get_logger(__name__)
 
 
-def get_ip_lat_long() -> tuple[float, float]:
-    """Retrieve the latitude and longitude of the current IP position."""
-    try:
-        ip_url = "http://ipinfo.io/json"
-        resp = requests.get(ip_url)
-        loc = resp.json()["loc"]
-        lat, long = map(float, loc.split(","))
-        logger.info("Retrieved latitude and longitude: %s, %s", lat, long)
-        return lat, long
-    except requests.exceptions.RequestException as e:
-        logger.exception(
-            "Failed to retrieve current latitude and longitude of IP: %s", e
-        )
-        raise
-
-
-def get_time_info():
+def get_time_info() -> tuple[str, str, int]:
     """Retrieve the month, day_type (weekend or weekday), and hour."""
     now = datetime.now()
 
@@ -69,7 +54,7 @@ class ElectricityPriceProvider(abc.ABC):
     """Abstract class for implementing ways to fetch electricity price."""
 
     @abc.abstractmethod
-    def get_current_electricity_price(self) -> dict:
+    def get_current_electricity_price(self) -> dict[str, list]:
         """Abstract method for fetching the current electricity price of the set location of the class."""
         pass
 
@@ -134,7 +119,7 @@ class OpenEIClient(ElectricityPriceProvider):
 
         return results
 
-    def get_current_electricity_price(self) -> dict:
+    def get_current_electricity_price(self) -> dict[str, list]:
         """Fetches current carbon intensity of the location of the class."""
         try:
             url = (
@@ -165,8 +150,8 @@ class OpenEIClient(ElectricityPriceProvider):
 
             if (
                 not energy_rate_structure
-                or energy_weekday_schedule
-                or energy_weekend_schedule
+                or not energy_weekday_schedule
+                or not energy_weekend_schedule
             ):
                 raise ValueError(f"No rates found for the label: {self.label}.")
 
@@ -229,7 +214,7 @@ class Op(Enum):
 
 
 class EnergyCostMonitor:
-    """Measure the energy cost, GPU energy, and time consumption of a block of code.
+    """Measure the energy, energy cost, and time consumption of a block of code.
 
     Works for multi-GPU and heterogeneous GPU types. Aware of `CUDA_VISIBLE_DEVICES`.
     For instance, if `CUDA_VISIBLE_DEVICES=2,3`, GPU index `1` passed into `gpu_indices`
@@ -484,3 +469,94 @@ def _polling_process(
         index += 1
         for key in keys:
             _update_energy_measurements(key, hour_floor)
+
+def main():
+    try:
+        location = get_ip_lat_long()
+        print(f"Location fetched successfully: Latitude = {location[0]}, Longitude = {location[1]}")
+    except Exception as e:
+        print(f"Could not get location: {e}")
+        return
+
+    label = "Pacific Gas & Electric Co: E-1 Residential"  
+    
+    try:
+        client = OpenEIClient(location=location, label=label)
+        print("OpenEIClient initialized successfully.")
+    except Exception as e:
+        print(f"Error initializing OpenEIClient: {e}")
+        return
+
+    try:
+        price_data = client.get_current_electricity_price()
+        print("Electricity price data retrieved successfully!")
+        print("Energy Rate Structure:", price_data["energy_rate_structure"])
+        print("Weekday Schedule:", price_data["energy_weekday_schedule"])
+        print("Weekend Schedule:", price_data["energy_weekend_schedule"])
+    except Exception as e:
+        print(f"Failed to fetch electricity price data: {e}")
+    
+    try:
+        month, day_type, hour = get_time_info()
+        print(f"Current time info - Month: {month}, Day Type: {day_type}, Hour: {hour}")
+    except Exception as e:
+        print(f"Error fetching time info: {e}")
+
+    invalid_location = (999.0, 999.0)  # Invalid location
+    try:
+        client_invalid = OpenEIClient(location=invalid_location, label=label)
+        price_data_invalid = client_invalid.get_current_electricity_price()
+    except Exception as e:
+        print(f"Failed to fetch electricity price with invalid location: {e}")
+
+    try:
+        raise ZeusElectricityPriceHTTPError("Test HTTP Error")
+    except ZeusElectricityPriceHTTPError as e:
+        print(f"Handled ZeusElectricityPriceHTTPError: {e}")
+    
+    try:
+        raise ZeusElectricityPriceNotFoundError("Test Not Found Error")
+    except ZeusElectricityPriceNotFoundError as e:
+        print(f"Handled ZeusElectricityPriceNotFoundError: {e}")
+    
+    try:
+        energy_monitor = EnergyCostMonitor(electricity_price_provider=client)
+        print("EnergyCostMonitor initialized successfully.")
+        
+        key = "test_window"
+        energy_monitor.begin_window(key)
+        print(f"Started energy measurement window with key: {key}")
+        
+        measurement = energy_monitor.end_window(key)
+        print(f"Energy measurement result for window {key}:")
+        print(f"Time: {measurement.time} seconds")
+        print(f"GPU Energy: {measurement.gpu_energy}")
+        print(f"GPU Energy Cost: {measurement.gpu_energy_cost}")
+        print(f"CPU Energy: {measurement.cpu_energy}")
+        print(f"CPU Energy Cost: {measurement.cpu_energy_cost}")
+        print(f"DRAM Energy: {measurement.dram_energy}")
+        print(f"DRAM Energy Cost: {measurement.dram_energy_cost}")
+    except Exception as e:
+        print(f"Error during energy cost measurement: {e}")
+
+    try:
+        sample_json = {
+            "label": "Pacific Gas & Electric Co: E-1 Residential",
+            "energyratestructure": "sample_rate_structure",
+            "energyweekdayschedule": "sample_weekday_schedule",
+            "energyweekendschedule": "sample_weekend_schedule"
+        }
+        search_results = client.search_json(sample_json, "label", label, "energyratestructure")
+        print(f"Search JSON results: {search_results}")
+    except Exception as e:
+        print(f"Error while searching JSON: {e}")
+
+    try:
+        print(f"Op Enum Testing:")
+        for op in Op:
+            print(f"Op.{op.name}: {op.value}")
+    except Exception as e:
+        print(f"Error while testing Op Enum: {e}")
+
+if __name__ == "__main__":
+    main()
