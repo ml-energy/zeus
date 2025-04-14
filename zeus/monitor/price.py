@@ -101,9 +101,7 @@ class OpenEIClient(ElectricityPriceProvider):
                     if return_value in data:
                         results.append(data[return_value])
                     else:
-                        results.append(
-                            None
-                        ) 
+                        results.append(None)
 
                 # Recursively search deeper in nested dictionaries
                 results.extend(
@@ -316,11 +314,7 @@ class EnergyCostMonitor:
 
         # end window
         self.command_q.put((Op.END, key))
-        (
-            gpu_energy_cost,
-            cpu_energy_cost,
-            dram_energy_cost,
-        ) = self.finished_q.get()
+        (gpu_energy_cost, cpu_energy_cost, dram_energy_cost,) = self.finished_q.get()
         self.current_keys.remove(key)
 
         overall_measurement = self.zeus_monitor.end_window(
@@ -348,7 +342,13 @@ def _polling_process(
     electricity_price_provider: ElectricityPriceProvider,
 ):
     index = 0
-    zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices, zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices, approx_instant_energy=True))
+    zeus_monitor = ZeusMonitor(
+        gpu_indices=gpu_indices,
+        cpu_indices=cpu_indices,
+        zeus_monitor=ZeusMonitor(
+            gpu_indices=gpu_indices, cpu_indices=cpu_indices, approx_instant_energy=True
+        ),
+    )
     gpu_energy_cost = defaultdict(lambda: defaultdict(float))
     cpu_energy_cost = defaultdict(lambda: defaultdict(float))
     dram_energy_cost = defaultdict(lambda: defaultdict(float))
