@@ -17,3 +17,4 @@ env/
 /envs
 .nvim
 gpg
+venv/
