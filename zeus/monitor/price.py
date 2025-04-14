@@ -90,7 +90,7 @@ class OpenEIClient(ElectricityPriceProvider):
         self.radius = radius
 
     def search_json(self, data, key_name, target_value, return_value):
-        """Recursively search for a key in a nested JSON and return the 'weekdays schedule' if found."""
+        """Recursively search for a key in a nested JSON and return the return_value field if found."""
         results = []
 
         if isinstance(data, dict):
@@ -103,7 +103,7 @@ class OpenEIClient(ElectricityPriceProvider):
                     else:
                         results.append(
                             None
-                        )  # Store None if no "energyratestructure" exists
+                        ) 
 
                 # Recursively search deeper in nested dictionaries
                 results.extend(
@@ -125,7 +125,7 @@ class OpenEIClient(ElectricityPriceProvider):
                 "https://api.openei.org/utility_rates?version=latest&format=json"
                 + f"&api_key=tJASWWgPhBRpiZCwfhtKV2A3gyNxbDfvQvdI5Wa7&lat={self.lat}"
                 + f"&lon={self.long}&radius={self.radius}"
-                + f"&detail=minimal&sector={self.sector}"
+                + f"&detail=full&sector={self.sector}"
             )
             resp = requests.get(url)
             resp.raise_for_status()
@@ -155,9 +155,9 @@ class OpenEIClient(ElectricityPriceProvider):
                 raise ValueError(f"No rates found for the label: {self.label}.")
 
             rate_data = {
-                "energy_rate_structure": energy_rate_structure,
-                "energy_weekday_schedule": energy_weekday_schedule,
-                "energy_weekend_schedule": energy_weekend_schedule,
+                "energy_rate_structure": energy_rate_structure[0],
+                "energy_weekday_schedule": energy_weekday_schedule[0],
+                "energy_weekend_schedule": energy_weekend_schedule[0],
             }
             return rate_data
 
@@ -251,6 +251,7 @@ class EnergyCostMonitor:
             gpu_indices=gpu_indices,
             cpu_indices=cpu_indices,
             sync_execution_with=sync_execution_with,
+            approx_instant_energy=True,
         )
         self.electricity_price_provider = electricity_price_provider
         self.current_keys = set()
@@ -347,7 +348,7 @@ def _polling_process(
     electricity_price_provider: ElectricityPriceProvider,
 ):
     index = 0
-    zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices)
+    zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices, zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices, approx_instant_energy=True))
     gpu_energy_cost = defaultdict(lambda: defaultdict(float))
     cpu_energy_cost = defaultdict(lambda: defaultdict(float))
     dram_energy_cost = defaultdict(lambda: defaultdict(float))
@@ -408,7 +409,7 @@ def _polling_process(
                     return
 
                 cost = (
-                    energy / 1e3
+                    energy / 3.6e6
                 ) * flat_rate  # Convert Wh to kWh and multiply by rate
 
                 if hardware_type == "gpu":
