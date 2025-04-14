@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from typing import List, Tuple, Set
-from .common import cat, check_file
+# from .common import cat, check_file
 import os
 import logging
 
 import zeus.device.soc.common as soc_common
 
 logger = logging.getLogger(__name__)
+
+def cat(path):
+    with open(path, 'r') as f:
+        return f.readline().rstrip('\x00')
 
 def check_file(path):
     return os.path.isfile(path) and os.access(path, os.R_OK)
