@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 import queue
 import requests
+import json
 import multiprocessing as mp
 
 from typing import Literal
@@ -45,7 +46,7 @@ class ZeusElectricityPriceNotFoundError(ZeusBaseError):
     """Exception when electricity price measurement could not be retrieved."""
 
     def __init__(self, message: str) -> None:
-        """Initialize carbon not found exception."""
+        """Initialize price not found exception."""
         super().__init__(message)
 
 
@@ -53,7 +54,7 @@ class ElectricityPriceProvider(abc.ABC):
     """Abstract class for implementing ways to fetch electricity price."""
 
     @abc.abstractmethod
-    def get_current_electricity_price(self) -> dict[str, list]:
+    def get_current_electricity_prices(self) -> dict[str, list]:
         """Abstract method for fetching the current electricity price of the set location of the class."""
         pass
 
@@ -116,7 +117,7 @@ class OpenEIClient(ElectricityPriceProvider):
 
         return results
 
-    def get_current_electricity_price(self) -> dict[str, list]:
+    def get_current_electricity_prices(self) -> dict[str, list]:
         """Fetches current carbon intensity of the location of the class."""
         try:
             url = (
@@ -126,7 +127,6 @@ class OpenEIClient(ElectricityPriceProvider):
                 + f"&detail=full&sector={self.sector}"
             )
             resp = requests.get(url)
-            resp.raise_for_status()
             data = resp.json()
 
         except requests.exceptions.RequestException as e:
@@ -135,6 +135,11 @@ class OpenEIClient(ElectricityPriceProvider):
             ) from e
 
         try:
+            if "label" not in json.dumps(data):
+                raise ZeusElectricityPriceNotFoundError(
+                    f"No rates found for lat, lon: [{self.lat}, {self.long}]."
+                )
+
             energy_rate_structure = self.search_json(
                 data, "label", self.label, "energyratestructure"
             )
@@ -150,7 +155,9 @@ class OpenEIClient(ElectricityPriceProvider):
                 or not energy_weekday_schedule
                 or not energy_weekend_schedule
             ):
-                raise ValueError(f"No rates found for the label: {self.label}.")
+                raise ZeusElectricityPriceNotFoundError(
+                    f"No rates found for the label: {self.label}."
+                )
 
             rate_data = {
                 "energy_rate_structure": energy_rate_structure[0],
@@ -163,7 +170,9 @@ class OpenEIClient(ElectricityPriceProvider):
             logger.error(
                 "Error occurred while processing electricity price data: %s", e
             )
-            raise RuntimeError("Failed to process electricity price data.") from e
+            raise ZeusElectricityPriceNotFoundError(
+                "Failed to process electricity price data."
+            ) from e
 
 
 @dataclass
@@ -362,7 +371,7 @@ def _polling_process(
     # Fetch electricity price data
     try:
         electricity_price_data = (
-            electricity_price_provider.get_current_electricity_price()
+            electricity_price_provider.get_current_electricity_prices()
         )
         energy_rate_structure = electricity_price_data["energy_rate_structure"]
         energy_weekday_schedule = electricity_price_data["energy_weekday_schedule"]
