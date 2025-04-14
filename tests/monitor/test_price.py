@@ -241,34 +241,48 @@ def get_expected_cpu_gpu_energy_costs(datetimes, label):
     cpu_energy = [20, 25]
     dram_energy = [15, 20]
 
-    with open("price_output_files/ann_arbor.json", "r") as file1:
+    # CAUTION: change the file name based on what label ID you use
+    with open("price_output_files/virginia.json", "r") as file1:
         data = json.loads(file1.read())
 
         def search_json(data, key_name, target_value, return_value):
+            """Recursively search for a key in a nested JSON and return the 'weekdays schedule' if found."""
             results = []
+
             if isinstance(data, dict):
                 for key, val in data.items():
+                    # Check if the current dictionary contains the matching key-value pair
                     if key == key_name and val == target_value:
-                        results.append(data.get(return_value))
+                        # If "weekdays schedule" exists at the same level, add it to results
+                        if return_value in data:
+                            results.append(data[return_value])
+                        else:
+                            results.append(
+                                None
+                            )  # Store None if no "weekdays schedule" exists
+
+                    # Recursively search deeper in nested dictionaries
                     results.extend(
                         search_json(val, key_name, target_value, return_value)
                     )
+
             elif isinstance(data, list):
                 for item in data:
                     results.extend(
                         search_json(item, key_name, target_value, return_value)
                     )
+
             return results
 
-        def safe_search(label, key):
-            result = search_json(data, "label", label, key)
-            if not result or result[0] is None:
-                raise ValueError(f"Missing '{key}' for label '{label}'")
-            return result[0]
-
-        energy_rate_structure = safe_search(label, "energyratestructure")
-        energy_weekday_schedule = safe_search(label, "energyweekdayschedule")
-        energy_weekend_schedule = safe_search(label, "energyweekendschedule")
+        energy_rate_structure = search_json(
+            data, "label", label, "energyratestructure"
+        )[0]
+        energy_weekday_schedule = search_json(
+            data, "label", label, "energyweekdayschedule"
+        )[0]
+        energy_weekend_schedule = search_json(
+            data, "label", label, "energyweekendschedule"
+        )[0]
 
         for time_str, time_obj in unique_datetimes.items():
             month = time_obj.month - 1
@@ -299,8 +313,8 @@ def test_single_window_one_hour(mock_zeus_monitor, mock_requests, mock_datetime)
     finished_q = mp.Queue()
     gpu_indices = [0, 1, 2]
     cpu_indices = [0, 1]
-    label = "539f6d3bec4f024411ecb311"
-    client = OpenEIClient((42.2776, -83.7409), label)
+    label = "539f6e1dec4f024411ecbeaf"
+    client = OpenEIClient([38, -78], label)
 
     MockDateTime.times = [
         MockDateTime(2025, 4, 1, 5, 30, tzinfo=timezone.utc),  # test_window start
@@ -330,3 +344,233 @@ def test_single_window_one_hour(mock_zeus_monitor, mock_requests, mock_datetime)
     assert dram_carbon_emission is not None
     assert dram_carbon_emission[0] == pytest.approx(expected_dram_values[0])
     assert dram_carbon_emission[1] == pytest.approx(expected_dram_values[1])
+
+
+# test single window active for a window length of at least 24 hours
+def test_single_window_one_day(mock_zeus_monitor, mock_requests, mock_datetime):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    gpu_indices = [0, 1, 2]
+    cpu_indices = [0, 1]
+    label = "539f6e1dec4f024411ecbeaf"
+    client = OpenEIClient((38, -78), label)
+
+    # times so that exactly 25 iterations inside the polling loop executes
+    MockDateTime.times = [
+        MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window start
+        MockDateTime(
+            2024, 11, 30, 8, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 11, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 12, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 13, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 14, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 15, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 16, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 17, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 18, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 19, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 20, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 21, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 22, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 23, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 0, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 1, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 2, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 3, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 4, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 6, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 7, 0, tzinfo=timezone.utc),  # test_window end
+    ]
+    MockDateTime.i = 0
+
+    command_q.put((Op.BEGIN, "test_window"))
+    # polling process always calls get for each iteration
+    # add nextiter ops to fast forward the polling process
+    for i in range(23):
+        command_q.put((Op.NEXTITER, None))
+    command_q.put((Op.END, "test_window"))
+
+    _polling_process(command_q, finished_q, gpu_indices, cpu_indices, client)
+
+    gpu_carbon_emission, cpu_carbon_emission, dram_carbon_emission = finished_q.get()
+
+    (
+        expected_gpu_values,
+        expected_cpu_values,
+        expected_dram_values,
+    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times, label)
+
+    assert gpu_carbon_emission[0] == pytest.approx(expected_gpu_values[0])
+    assert gpu_carbon_emission[1] == pytest.approx(expected_gpu_values[1])
+    assert gpu_carbon_emission[2] == pytest.approx(expected_gpu_values[2])
+    assert cpu_carbon_emission is not None
+    assert cpu_carbon_emission[0] == pytest.approx(expected_cpu_values[0])
+    assert cpu_carbon_emission[1] == pytest.approx(expected_cpu_values[1])
+    assert dram_carbon_emission is not None
+    assert dram_carbon_emission[0] == pytest.approx(expected_dram_values[0])
+    assert dram_carbon_emission[1] == pytest.approx(expected_dram_values[1])
+
+
+# test multiple windows active for a window length of less than an one hour
+def test_multiple_windows_one_hour(mock_zeus_monitor, mock_requests, mock_datetime):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    gpu_indices = [0, 1, 2]
+    cpu_indices = [0, 1]
+    label = "539f6e1dec4f024411ecbeaf"
+    client = OpenEIClient((38, -78), label)
+
+    MockDateTime.times = [
+        MockDateTime(2024, 12, 1, 4, 30, tzinfo=timezone.utc),  # test_window1 start
+        MockDateTime(
+            2024, 12, 1, 5, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),  # test_window2 start
+        MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window1 end
+        MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window2 end
+    ]
+    MockDateTime.i = 0
+    command_q.put((Op.BEGIN, "test_window1"))  # (op, key)
+    command_q.put((Op.BEGIN, "test_window2"))  # (op, key)
+    command_q.put((Op.END, "test_window1"))
+    command_q.put((Op.END, "test_window2"))
+
+    _polling_process(command_q, finished_q, gpu_indices, cpu_indices, client)
+
+    # retrieve values
+    gpu_carbon_emission1, cpu_carbon_emission1, dram_carbon_emission1 = finished_q.get()
+    gpu_carbon_emission2, cpu_carbon_emission2, dram_carbon_emission2 = finished_q.get()
+
+    # expected_values
+    (
+        expected_gpu_values1,
+        expected_cpu_values1,
+        expected_dram_values1,
+    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[:4], label)
+    (
+        expected_gpu_values2,
+        expected_cpu_values2,
+        expected_dram_values2,
+    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[2:], label)
+
+    # assert statements for test_window1
+    assert gpu_carbon_emission1[0] == pytest.approx(expected_gpu_values1[0])
+    assert gpu_carbon_emission1[1] == pytest.approx(expected_gpu_values1[1])
+    assert gpu_carbon_emission1[2] == pytest.approx(expected_gpu_values1[2])
+    assert cpu_carbon_emission1 is not None
+    assert cpu_carbon_emission1[0] == pytest.approx(expected_cpu_values1[0])
+    assert cpu_carbon_emission1[1] == pytest.approx(expected_cpu_values1[1])
+    assert dram_carbon_emission1 is not None
+    assert dram_carbon_emission1[0] == pytest.approx(expected_dram_values1[0])
+    assert dram_carbon_emission1[1] == pytest.approx(expected_dram_values1[1])
+
+    # assert statements for test_window2
+    assert gpu_carbon_emission2[0] == pytest.approx(expected_gpu_values2[0])
+    assert gpu_carbon_emission2[1] == pytest.approx(expected_gpu_values2[1])
+    assert gpu_carbon_emission2[2] == pytest.approx(expected_gpu_values2[2])
+    assert cpu_carbon_emission2 is not None
+    assert cpu_carbon_emission2[0] == pytest.approx(expected_cpu_values2[0])
+    assert cpu_carbon_emission2[1] == pytest.approx(expected_cpu_values2[1])
+    assert dram_carbon_emission2 is not None
+    assert dram_carbon_emission2[0] == pytest.approx(expected_dram_values2[0])
+    assert dram_carbon_emission2[1] == pytest.approx(expected_dram_values2[1])
+
+
+# test multiple windows active for a window length of at least a day
+def test_multiple_windows_one_day(mock_zeus_monitor, mock_requests, mock_datetime):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    gpu_indices = [0, 1, 2]
+    cpu_indices = [0, 1]
+    label = "539f6e1dec4f024411ecbeaf"
+    client = OpenEIClient((38, -78), label)
+
+    MockDateTime.times = [
+        MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window1 start
+        MockDateTime(
+            2024, 11, 30, 8, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # test_window2 start
+        MockDateTime(
+            2024, 11, 30, 9, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 11, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 12, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 13, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 14, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 15, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 16, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 17, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 18, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 19, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 20, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 21, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 22, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 11, 30, 23, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 0, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 1, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 2, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 3, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 4, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 6, 0, tzinfo=timezone.utc),
+        MockDateTime(2024, 12, 1, 7, 0, tzinfo=timezone.utc),  # test_window1 end
+        MockDateTime(
+            2024, 12, 1, 8, 0, tzinfo=timezone.utc
+        ),  # extra datetime called after "end" is called
+        MockDateTime(2024, 12, 1, 8, 0, tzinfo=timezone.utc),  # test_window2 end
+    ]
+    MockDateTime.i = 0
+    command_q.put((Op.BEGIN, "test_window1"))
+    command_q.put((Op.BEGIN, "test_window2"))
+    for i in range(22):
+        command_q.put((Op.NEXTITER, None))
+    command_q.put((Op.END, "test_window1"))
+    command_q.put((Op.END, "test_window2"))
+
+    _polling_process(command_q, finished_q, gpu_indices, cpu_indices, client)
+
+    # retrieve values
+    gpu_carbon_emission1, cpu_carbon_emission1, dram_carbon_emission1 = finished_q.get()
+    gpu_carbon_emission2, cpu_carbon_emission2, dram_carbon_emission2 = finished_q.get()
+
+    # expected_values
+    (
+        expected_gpu_values1,
+        expected_cpu_values1,
+        expected_dram_values1,
+    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[:27])
+    (
+        expected_gpu_values2,
+        expected_cpu_values2,
+        expected_dram_values2,
+    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[2:])
+
+    # assert statements for test_window1
+    assert gpu_carbon_emission1[0] == pytest.approx(expected_gpu_values1[0])
+    assert gpu_carbon_emission1[1] == pytest.approx(expected_gpu_values1[1])
+    assert gpu_carbon_emission1[2] == pytest.approx(expected_gpu_values1[2])
+    assert cpu_carbon_emission1 is not None
+    assert cpu_carbon_emission1[0] == pytest.approx(expected_cpu_values1[0])
+    assert cpu_carbon_emission1[1] == pytest.approx(expected_cpu_values1[1])
+    assert dram_carbon_emission1 is not None
+    assert dram_carbon_emission1[0] == pytest.approx(expected_dram_values1[0])
+    assert dram_carbon_emission1[1] == pytest.approx(expected_dram_values1[1])
+
+    # assert statements for test_window2
+    assert gpu_carbon_emission2[0] == pytest.approx(expected_gpu_values2[0])
+    assert gpu_carbon_emission2[1] == pytest.approx(expected_gpu_values2[1])
+    assert gpu_carbon_emission2[2] == pytest.approx(expected_gpu_values2[2])
+    assert cpu_carbon_emission2 is not None
+    assert cpu_carbon_emission2[0] == pytest.approx(expected_cpu_values2[0])
+    assert cpu_carbon_emission2[1] == pytest.approx(expected_cpu_values2[1])
+    assert dram_carbon_emission2 is not None
+    assert dram_carbon_emission2[0] == pytest.approx(expected_dram_values2[0])
+    assert dram_carbon_emission2[1] == pytest.approx(expected_dram_values2[1])
