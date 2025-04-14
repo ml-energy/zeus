@@ -546,12 +546,12 @@ def test_multiple_windows_one_day(mock_zeus_monitor, mock_requests, mock_datetim
         expected_gpu_values1,
         expected_cpu_values1,
         expected_dram_values1,
-    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[:27])
+    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[:27], label)
     (
         expected_gpu_values2,
         expected_cpu_values2,
         expected_dram_values2,
-    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[2:])
+    ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[2:], label)
 
     # assert statements for test_window1
     assert gpu_carbon_emission1[0] == pytest.approx(expected_gpu_values1[0])
