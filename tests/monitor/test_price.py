@@ -157,6 +157,7 @@ def test_get_prices_invalid_label_no_response(mock_requests):
     with pytest.raises(ZeusElectricityPriceNotFoundError):
         client.get_current_electricity_prices()
 
+
 @pytest.fixture
 def mock_zeus_monitor():
     patch_zeus_monitor = patch("zeus.monitor.price.ZeusMonitor", autospec=True)
@@ -192,7 +193,8 @@ class MockDateTime(datetime):
         return cls.times[
             cls.i - 1
         ]  # minus one to handle off by one error: want to get previous hour
-    
+
+
 @pytest.fixture
 def mock_datetime():
     patch_datetime_now = patch("zeus.monitor.carbon.datetime", new=MockDateTime)
@@ -222,11 +224,12 @@ def mock_datetime():
     patch_datetime_now.stop()
     patch_dateutil_parser.stop()
 
+
 def get_expected_cpu_gpu_energy_costs(datetimes, label):
     expected_gpu_values = [0, 0, 0]
     expected_cpu_values = [0, 0]
     expected_dram_values = [0, 0]
-    
+
     # Store mapping from stringified time to original floored datetime
     unique_datetimes = {}
     for dt in datetimes:
@@ -247,10 +250,14 @@ def get_expected_cpu_gpu_energy_costs(datetimes, label):
                 for key, val in data.items():
                     if key == key_name and val == target_value:
                         results.append(data.get(return_value))
-                    results.extend(search_json(val, key_name, target_value, return_value))
+                    results.extend(
+                        search_json(val, key_name, target_value, return_value)
+                    )
             elif isinstance(data, list):
                 for item in data:
-                    results.extend(search_json(item, key_name, target_value, return_value))
+                    results.extend(
+                        search_json(item, key_name, target_value, return_value)
+                    )
             return results
 
         def safe_search(label, key):
@@ -286,7 +293,6 @@ def get_expected_cpu_gpu_energy_costs(datetimes, label):
     return expected_gpu_values, expected_cpu_values, expected_dram_values
 
 
-
 # test single window active for a window length of less than an one hour
 def test_single_window_one_hour(mock_zeus_monitor, mock_requests, mock_datetime):
     command_q = mp.Queue()
@@ -294,9 +300,7 @@ def test_single_window_one_hour(mock_zeus_monitor, mock_requests, mock_datetime)
     gpu_indices = [0, 1, 2]
     cpu_indices = [0, 1]
     label = "539f6d3bec4f024411ecb311"
-    client = OpenEIClient(
-        (42.2776, -83.7409), label
-    )
+    client = OpenEIClient((42.2776, -83.7409), label)
 
     MockDateTime.times = [
         MockDateTime(2025, 4, 1, 5, 30, tzinfo=timezone.utc),  # test_window start
