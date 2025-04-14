@@ -136,7 +136,9 @@ class OpenEIClient(ElectricityPriceProvider):
 
         try:
             if "label" not in json.dumps(data):
-                raise ZeusElectricityPriceNotFoundError(f"No rates found for lat, lon: [{self.lat}, {self.long}].")
+                raise ZeusElectricityPriceNotFoundError(
+                    f"No rates found for lat, lon: [{self.lat}, {self.long}]."
+                )
 
             energy_rate_structure = self.search_json(
                 data, "label", self.label, "energyratestructure"
@@ -153,7 +155,9 @@ class OpenEIClient(ElectricityPriceProvider):
                 or not energy_weekday_schedule
                 or not energy_weekend_schedule
             ):
-                raise ZeusElectricityPriceNotFoundError(f"No rates found for the label: {self.label}.")
+                raise ZeusElectricityPriceNotFoundError(
+                    f"No rates found for the label: {self.label}."
+                )
 
             rate_data = {
                 "energy_rate_structure": energy_rate_structure[0],
@@ -166,7 +170,9 @@ class OpenEIClient(ElectricityPriceProvider):
             logger.error(
                 "Error occurred while processing electricity price data: %s", e
             )
-            raise ZeusElectricityPriceNotFoundError("Failed to process electricity price data.") from e
+            raise ZeusElectricityPriceNotFoundError(
+                "Failed to process electricity price data."
+            ) from e
 
 
 @dataclass
