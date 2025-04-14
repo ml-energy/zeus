@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import multiprocessing as mp
-import dateutil
 import pytest
 import requests
 import os
@@ -11,11 +10,9 @@ import os
 from unittest.mock import MagicMock, patch
 
 from zeus.monitor.price import (
-    ElectricityPriceProvider,
     OpenEIClient,
     Op,
     ZeusElectricityPriceNotFoundError,
-    EnergyCostMonitor,
     _polling_process,
 )
 
@@ -197,38 +194,21 @@ class MockDateTime(datetime):
 
 @pytest.fixture
 def mock_datetime():
-    patch_datetime_now = patch("zeus.monitor.carbon.datetime", new=MockDateTime)
+    patch_datetime_now = patch("zeus.monitor.price.datetime", new=MockDateTime)
 
-    real_parse = dateutil.parser.parse
-
-    def mock_parse(str_dt):
-        dt = real_parse(str_dt)
-        return MockDateTime(
-            dt.year,
-            dt.month,
-            dt.day,
-            dt.hour,
-            dt.minute,
-            dt.second,
-            tzinfo=timezone.utc,
-        )
-
-    patch_dateutil_parser = patch(
-        "zeus.monitor.carbon.parser.parse", side_effect=mock_parse
-    )
     patch_datetime_now.start()
-    patch_dateutil_parser.start()
 
     yield
 
     patch_datetime_now.stop()
-    patch_dateutil_parser.stop()
 
 
-def get_expected_cpu_gpu_energy_costs(datetimes, label):
-    expected_gpu_values = [0, 0, 0]
-    expected_cpu_values = [0, 0]
-    expected_dram_values = [0, 0]
+def get_expected_cpu_gpu_energy_costs(
+    datetimes: list[datetime], label: str
+) -> tuple[list[float], list[float], list[float]]:
+    expected_gpu_values: list[float] = [0, 0, 0]
+    expected_cpu_values: list[float] = [0, 0]
+    expected_dram_values: list[float] = [0, 0]
 
     # Store mapping from stringified time to original floored datetime
     unique_datetimes = {}
@@ -245,23 +225,16 @@ def get_expected_cpu_gpu_energy_costs(datetimes, label):
     with open("price_output_files/virginia.json", "r") as file1:
         data = json.loads(file1.read())
 
-        def search_json(data, key_name, target_value, return_value):
-            """Recursively search for a key in a nested JSON and return the 'weekdays schedule' if found."""
+        def search_json(
+            data: dict[str, str], key_name: str, target_value: str, return_value: str
+        ) -> list[str]:
+            """Recursively search for a key in a nested JSON and return the matching values."""
             results = []
 
             if isinstance(data, dict):
                 for key, val in data.items():
-                    # Check if the current dictionary contains the matching key-value pair
                     if key == key_name and val == target_value:
-                        # If "weekdays schedule" exists at the same level, add it to results
-                        if return_value in data:
-                            results.append(data[return_value])
-                        else:
-                            results.append(
-                                None
-                            )  # Store None if no "weekdays schedule" exists
-
-                    # Recursively search deeper in nested dictionaries
+                        results.append(data.get(return_value, None))
                     results.extend(
                         search_json(val, key_name, target_value, return_value)
                     )
@@ -326,7 +299,7 @@ def test_single_window_one_hour(mock_zeus_monitor, mock_requests, mock_datetime)
 
     _polling_process(command_q, finished_q, gpu_indices, cpu_indices, client)
 
-    gpu_carbon_emission, cpu_carbon_emission, dram_carbon_emission = finished_q.get()
+    gpu_energy_cost, cpu_energy_cost, dram_energy_cost = finished_q.get()
 
     # expected_values
     (
@@ -335,15 +308,15 @@ def test_single_window_one_hour(mock_zeus_monitor, mock_requests, mock_datetime)
         expected_dram_values,
     ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times, label)
 
-    assert gpu_carbon_emission[0] == pytest.approx(expected_gpu_values[0])
-    assert gpu_carbon_emission[1] == pytest.approx(expected_gpu_values[1])
-    assert gpu_carbon_emission[2] == pytest.approx(expected_gpu_values[2])
-    assert cpu_carbon_emission is not None
-    assert cpu_carbon_emission[0] == pytest.approx(expected_cpu_values[0])
-    assert cpu_carbon_emission[1] == pytest.approx(expected_cpu_values[1])
-    assert dram_carbon_emission is not None
-    assert dram_carbon_emission[0] == pytest.approx(expected_dram_values[0])
-    assert dram_carbon_emission[1] == pytest.approx(expected_dram_values[1])
+    assert gpu_energy_cost[0] == pytest.approx(expected_gpu_values[0])
+    assert gpu_energy_cost[1] == pytest.approx(expected_gpu_values[1])
+    assert gpu_energy_cost[2] == pytest.approx(expected_gpu_values[2])
+    assert cpu_energy_cost is not None
+    assert cpu_energy_cost[0] == pytest.approx(expected_cpu_values[0])
+    assert cpu_energy_cost[1] == pytest.approx(expected_cpu_values[1])
+    assert dram_energy_cost is not None
+    assert dram_energy_cost[0] == pytest.approx(expected_dram_values[0])
+    assert dram_energy_cost[1] == pytest.approx(expected_dram_values[1])
 
 
 # test single window active for a window length of at least 24 hours
@@ -397,7 +370,7 @@ def test_single_window_one_day(mock_zeus_monitor, mock_requests, mock_datetime):
 
     _polling_process(command_q, finished_q, gpu_indices, cpu_indices, client)
 
-    gpu_carbon_emission, cpu_carbon_emission, dram_carbon_emission = finished_q.get()
+    gpu_energy_cost, cpu_energy_cost, dram_energy_cost = finished_q.get()
 
     (
         expected_gpu_values,
@@ -405,15 +378,15 @@ def test_single_window_one_day(mock_zeus_monitor, mock_requests, mock_datetime):
         expected_dram_values,
     ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times, label)
 
-    assert gpu_carbon_emission[0] == pytest.approx(expected_gpu_values[0])
-    assert gpu_carbon_emission[1] == pytest.approx(expected_gpu_values[1])
-    assert gpu_carbon_emission[2] == pytest.approx(expected_gpu_values[2])
-    assert cpu_carbon_emission is not None
-    assert cpu_carbon_emission[0] == pytest.approx(expected_cpu_values[0])
-    assert cpu_carbon_emission[1] == pytest.approx(expected_cpu_values[1])
-    assert dram_carbon_emission is not None
-    assert dram_carbon_emission[0] == pytest.approx(expected_dram_values[0])
-    assert dram_carbon_emission[1] == pytest.approx(expected_dram_values[1])
+    assert gpu_energy_cost[0] == pytest.approx(expected_gpu_values[0])
+    assert gpu_energy_cost[1] == pytest.approx(expected_gpu_values[1])
+    assert gpu_energy_cost[2] == pytest.approx(expected_gpu_values[2])
+    assert cpu_energy_cost is not None
+    assert cpu_energy_cost[0] == pytest.approx(expected_cpu_values[0])
+    assert cpu_energy_cost[1] == pytest.approx(expected_cpu_values[1])
+    assert dram_energy_cost is not None
+    assert dram_energy_cost[0] == pytest.approx(expected_dram_values[0])
+    assert dram_energy_cost[1] == pytest.approx(expected_dram_values[1])
 
 
 # test multiple windows active for a window length of less than an one hour
@@ -443,8 +416,8 @@ def test_multiple_windows_one_hour(mock_zeus_monitor, mock_requests, mock_dateti
     _polling_process(command_q, finished_q, gpu_indices, cpu_indices, client)
 
     # retrieve values
-    gpu_carbon_emission1, cpu_carbon_emission1, dram_carbon_emission1 = finished_q.get()
-    gpu_carbon_emission2, cpu_carbon_emission2, dram_carbon_emission2 = finished_q.get()
+    gpu_energy_cost1, cpu_energy_cost1, dram_energy_cost1 = finished_q.get()
+    gpu_energy_cost2, cpu_energy_cost2, dram_energy_cost2 = finished_q.get()
 
     # expected_values
     (
@@ -459,26 +432,26 @@ def test_multiple_windows_one_hour(mock_zeus_monitor, mock_requests, mock_dateti
     ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[2:], label)
 
     # assert statements for test_window1
-    assert gpu_carbon_emission1[0] == pytest.approx(expected_gpu_values1[0])
-    assert gpu_carbon_emission1[1] == pytest.approx(expected_gpu_values1[1])
-    assert gpu_carbon_emission1[2] == pytest.approx(expected_gpu_values1[2])
-    assert cpu_carbon_emission1 is not None
-    assert cpu_carbon_emission1[0] == pytest.approx(expected_cpu_values1[0])
-    assert cpu_carbon_emission1[1] == pytest.approx(expected_cpu_values1[1])
-    assert dram_carbon_emission1 is not None
-    assert dram_carbon_emission1[0] == pytest.approx(expected_dram_values1[0])
-    assert dram_carbon_emission1[1] == pytest.approx(expected_dram_values1[1])
+    assert gpu_energy_cost1[0] == pytest.approx(expected_gpu_values1[0])
+    assert gpu_energy_cost1[1] == pytest.approx(expected_gpu_values1[1])
+    assert gpu_energy_cost1[2] == pytest.approx(expected_gpu_values1[2])
+    assert cpu_energy_cost1 is not None
+    assert cpu_energy_cost1[0] == pytest.approx(expected_cpu_values1[0])
+    assert cpu_energy_cost1[1] == pytest.approx(expected_cpu_values1[1])
+    assert dram_energy_cost1 is not None
+    assert dram_energy_cost1[0] == pytest.approx(expected_dram_values1[0])
+    assert dram_energy_cost1[1] == pytest.approx(expected_dram_values1[1])
 
     # assert statements for test_window2
-    assert gpu_carbon_emission2[0] == pytest.approx(expected_gpu_values2[0])
-    assert gpu_carbon_emission2[1] == pytest.approx(expected_gpu_values2[1])
-    assert gpu_carbon_emission2[2] == pytest.approx(expected_gpu_values2[2])
-    assert cpu_carbon_emission2 is not None
-    assert cpu_carbon_emission2[0] == pytest.approx(expected_cpu_values2[0])
-    assert cpu_carbon_emission2[1] == pytest.approx(expected_cpu_values2[1])
-    assert dram_carbon_emission2 is not None
-    assert dram_carbon_emission2[0] == pytest.approx(expected_dram_values2[0])
-    assert dram_carbon_emission2[1] == pytest.approx(expected_dram_values2[1])
+    assert gpu_energy_cost2[0] == pytest.approx(expected_gpu_values2[0])
+    assert gpu_energy_cost2[1] == pytest.approx(expected_gpu_values2[1])
+    assert gpu_energy_cost2[2] == pytest.approx(expected_gpu_values2[2])
+    assert cpu_energy_cost2 is not None
+    assert cpu_energy_cost2[0] == pytest.approx(expected_cpu_values2[0])
+    assert cpu_energy_cost2[1] == pytest.approx(expected_cpu_values2[1])
+    assert dram_energy_cost2 is not None
+    assert dram_energy_cost2[0] == pytest.approx(expected_dram_values2[0])
+    assert dram_energy_cost2[1] == pytest.approx(expected_dram_values2[1])
 
 
 # test multiple windows active for a window length of at least a day
@@ -538,8 +511,8 @@ def test_multiple_windows_one_day(mock_zeus_monitor, mock_requests, mock_datetim
     _polling_process(command_q, finished_q, gpu_indices, cpu_indices, client)
 
     # retrieve values
-    gpu_carbon_emission1, cpu_carbon_emission1, dram_carbon_emission1 = finished_q.get()
-    gpu_carbon_emission2, cpu_carbon_emission2, dram_carbon_emission2 = finished_q.get()
+    gpu_energy_cost1, cpu_energy_cost1, dram_energy_cost1 = finished_q.get()
+    gpu_energy_cost2, cpu_energy_cost2, dram_energy_cost2 = finished_q.get()
 
     # expected_values
     (
@@ -554,23 +527,23 @@ def test_multiple_windows_one_day(mock_zeus_monitor, mock_requests, mock_datetim
     ) = get_expected_cpu_gpu_energy_costs(MockDateTime.times[2:], label)
 
     # assert statements for test_window1
-    assert gpu_carbon_emission1[0] == pytest.approx(expected_gpu_values1[0])
-    assert gpu_carbon_emission1[1] == pytest.approx(expected_gpu_values1[1])
-    assert gpu_carbon_emission1[2] == pytest.approx(expected_gpu_values1[2])
-    assert cpu_carbon_emission1 is not None
-    assert cpu_carbon_emission1[0] == pytest.approx(expected_cpu_values1[0])
-    assert cpu_carbon_emission1[1] == pytest.approx(expected_cpu_values1[1])
-    assert dram_carbon_emission1 is not None
-    assert dram_carbon_emission1[0] == pytest.approx(expected_dram_values1[0])
-    assert dram_carbon_emission1[1] == pytest.approx(expected_dram_values1[1])
+    assert gpu_energy_cost1[0] == pytest.approx(expected_gpu_values1[0])
+    assert gpu_energy_cost1[1] == pytest.approx(expected_gpu_values1[1])
+    assert gpu_energy_cost1[2] == pytest.approx(expected_gpu_values1[2])
+    assert cpu_energy_cost1 is not None
+    assert cpu_energy_cost1[0] == pytest.approx(expected_cpu_values1[0])
+    assert cpu_energy_cost1[1] == pytest.approx(expected_cpu_values1[1])
+    assert dram_energy_cost1 is not None
+    assert dram_energy_cost1[0] == pytest.approx(expected_dram_values1[0])
+    assert dram_energy_cost1[1] == pytest.approx(expected_dram_values1[1])
 
     # assert statements for test_window2
-    assert gpu_carbon_emission2[0] == pytest.approx(expected_gpu_values2[0])
-    assert gpu_carbon_emission2[1] == pytest.approx(expected_gpu_values2[1])
-    assert gpu_carbon_emission2[2] == pytest.approx(expected_gpu_values2[2])
-    assert cpu_carbon_emission2 is not None
-    assert cpu_carbon_emission2[0] == pytest.approx(expected_cpu_values2[0])
-    assert cpu_carbon_emission2[1] == pytest.approx(expected_cpu_values2[1])
-    assert dram_carbon_emission2 is not None
-    assert dram_carbon_emission2[0] == pytest.approx(expected_dram_values2[0])
-    assert dram_carbon_emission2[1] == pytest.approx(expected_dram_values2[1])
+    assert gpu_energy_cost2[0] == pytest.approx(expected_gpu_values2[0])
+    assert gpu_energy_cost2[1] == pytest.approx(expected_gpu_values2[1])
+    assert gpu_energy_cost2[2] == pytest.approx(expected_gpu_values2[2])
+    assert cpu_energy_cost2 is not None
+    assert cpu_energy_cost2[0] == pytest.approx(expected_cpu_values2[0])
+    assert cpu_energy_cost2[1] == pytest.approx(expected_cpu_values2[1])
+    assert dram_energy_cost2 is not None
+    assert dram_energy_cost2[0] == pytest.approx(expected_dram_values2[0])
+    assert dram_energy_cost2[1] == pytest.approx(expected_dram_values2[1])
