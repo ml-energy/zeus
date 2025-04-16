@@ -29,7 +29,7 @@ def get_soc() -> SoC:
     try:
         _soc = Jetson()
     except Exception as e:
-        raise ZeusSoCInitError(f"Failed to initialize Jetson SoC: {str(e)}")
+        raise ZeusSoCInitError(f"Failed to initialize Jetson SoC: {e}") from e
 
     # SoCs in the future can be incorporated via `elif` blocks.
     else:
