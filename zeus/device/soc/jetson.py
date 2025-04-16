@@ -38,10 +38,9 @@ class Jetson(soc_common.SoC):
 
     def _discover_metrics_and_paths(self):
         metrics = {}
-        devices = Path("/sys/bus/i2c/drivers/ina3221x")
-        subdevices = devices.glob("*")
-        print(f"Devices found: {list(devices.glob('*'))}")  # Debugging line
-
+        path = Path("/sys/bus/i2c/drivers/ina3221x")
+        # subdevices = devices.glob("*")
+        
         def extract_directories(path, rail_name, rail_index, type):
             if type == "label":
                 power_path = path / f"power{rail_index}_input"
@@ -65,19 +64,20 @@ class Jetson(soc_common.SoC):
                 if sub:
                     metrics[rail_name] = sub
 
-        for subdevice in subdevices:
-            label_files = subdevice.glob("in*_label")
-            rail_files = subdevice.glob("rail_name_*")
+        for device in path.glob("*"):
+            for subdevice in device.glob("*"):
+                label_files = subdevice.glob("in*_label")
+                rail_files = subdevice.glob("rail_name_*")
 
-            for label_file in label_files:
-                rail_name = label_file.read_text().strip() # e.g., VDD_CPU
-                rail_index = label_file.name.split("_")[0].lstrip("in")
-                extract_directories(subdevice, rail_name, rail_index, "label")
+                for label_file in label_files:
+                    rail_name = label_file.read_text().strip() # e.g., VDD_CPU
+                    rail_index = label_file.name.split("_")[0].lstrip("in")
+                    extract_directories(subdevice, rail_name, rail_index, "label")
 
-            for rail_file in rail_files:
-                rail_name = rail_file.read_text().strip()
-                rail_index = rail_file.name.lstrip("rail_name_")
-                extract_directories(subdevice, rail_name, rail_index, "rail_name")
+                for rail_file in rail_files:
+                    rail_name = rail_file.read_text().strip()
+                    rail_index = rail_file.name.lstrip("rail_name_")
+                    extract_directories(subdevice, rail_name, rail_index, "rail_name")
 
         return metrics
 
