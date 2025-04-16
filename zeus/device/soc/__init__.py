@@ -25,12 +25,10 @@ def get_soc() -> SoC:
     global _soc
     if _soc is not None:
         return _soc
-    
+
     try:
-        # Instantiate the Jetson SoC if this is a Jetson device
         _soc = Jetson()
     except Exception as e:
-        # If there's an error initializing the Jetson device, log or handle the error
         raise ZeusSoCInitError(f"Failed to initialize Jetson SoC: {str(e)}")
 
     # SoCs in the future can be incorporated via `elif` blocks.
