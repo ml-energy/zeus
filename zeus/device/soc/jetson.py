@@ -40,6 +40,7 @@ class Jetson(soc_common.SoC):
         metrics = {}
         devices = Path("/sys/bus/i2c/drivers/ina3221x")
         subdevices = devices.glob("*")
+        print(f"Devices found: {list(devices.glob('*'))}")  # Debugging line
 
         def extract_directories(path, rail_name, rail_index, type):
             if type == "label":
