@@ -7,6 +7,9 @@ import abc
 from typing import Set
 from pathlib import Path
 
+import multiprocessing as mp
+import time
+
 import zeus.device.soc.common as soc_common
 
 
@@ -114,7 +117,7 @@ class Jetson(soc_common.SoC):
                     extract_directories(subdevice, rail_name, rail_index, "label")
                 for rail_file in rail_files:
                     rail_name = rail_file.read_text().strip()
-                    rail_index = rail_file.name.removeprefix("rail_name_")
+                    rail_index = rail_file.name.split("rail_name_", 1)[-1]
                     extract_directories(subdevice, rail_name, rail_index, "rail_name")
 
         return metrics
