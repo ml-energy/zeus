@@ -1,0 +1,14 @@
+# PyTorch with CUDA 12.1 support
+torch==2.2.2+cu121
+torchvision==0.17.2+cu121
+torchaudio==2.2.2+cu121
+
+# ML & Transformers stack
+transformers==4.38.2
+evaluate==0.4.1
+datasets==2.17.1
+sentencepiece!=0.1.92
+scikit-learn==1.4.2
+protobuf==4.25.3
+accelerate==0.29.3
+zeus
