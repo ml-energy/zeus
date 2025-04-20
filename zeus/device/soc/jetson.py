@@ -237,4 +237,5 @@ async def _polling_process_async(
                 cumulative_measurement.cpu_energy_mj += cpu_energy_mj
                 cumulative_measurement.gpu_energy_mj += gpu_energy_mj
                 prev_ts = current_ts
+                print("Sending cumulative measurement to result_queue")
                 await result_queue.put(cumulative_measurement)
