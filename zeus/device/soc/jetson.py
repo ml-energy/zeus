@@ -160,6 +160,10 @@ class Jetson(soc_common.SoC):
         """Return whether we are running on a Jetson device processor."""
         pass
 
+    def _stop_process(self) -> None:
+        self.command_queue.put_nowait(Command.STOP)
+        self.process.join()
+
     def getTotalEnergyConsumption(self) -> JetsonMeasurement:
         """Returns the total energy consumption of the Jetson device.
 
@@ -207,8 +211,8 @@ async def _polling_process_async(
 
     while True:
         # TODO: the pom_in_volt naming. create a map
-        cpu_power_mj = power_measurement["cpu"].measure_power()
-        gpu_power_mj = power_measurement["gpu"].measure_power()
+        cpu_power_mj = power_measurement["pom_5v_cpu"].measure_power()
+        gpu_power_mj = power_measurement["pom_5v_gpu"].measure_power()
 
         current_ts = time.monotonic()
 
