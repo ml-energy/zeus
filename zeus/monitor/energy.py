@@ -199,13 +199,14 @@ class ZeusMonitor:
                 ) from err
             self.cpus = EmptyCPUs()
 
+        self.soc_is_present = False
+
         # Get an SoC instance, if an SoC is present on the host device.
         try:
             self.soc = get_soc()
+            self.soc_is_present = True
         except ZeusSoCInitError:
             self.soc = EmptySoC()
-
-        self.soc_is_present = self.soc.isPresent()
 
         # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
         self.gpu_indices = (
