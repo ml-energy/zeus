@@ -199,9 +199,8 @@ class ZeusMonitor:
                 ) from err
             self.cpus = EmptyCPUs()
 
-        self.soc_is_present = False
-
         # Get an SoC instance, if an SoC is present on the host device.
+        self.soc_is_present = False
         try:
             self.soc = get_soc()
             self.soc_is_present = True
