@@ -209,11 +209,13 @@ async def _polling_process_async(
     power_measurement: dict[str, PowerMeasurementStrategy],
     poll_interval: float = 0.1,
 ) -> None:
+    print("Polling process started 2")
     cumulative_measurement = CumulativeMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
     prev_ts = time.monotonic()
 
     while True:
         # TODO: the pom_in_volt naming. create a map
+        print("Polling for command")
         cpu_power_mj = power_measurement["POM_5V_CPU"].measure_power()
         gpu_power_mj = power_measurement["POM_5V_GPU"].measure_power()
 
