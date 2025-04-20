@@ -13,6 +13,7 @@ import multiprocessing as mp
 import time
 import atexit
 import asyncio
+import queue
 
 import zeus.device.soc.common as soc_common
 
@@ -165,15 +166,26 @@ class Jetson(soc_common.SoC):
         self.command_queue.put_nowait(Command.STOP)
         self.process.join()
 
-    def getTotalEnergyConsumption(self) -> JetsonMeasurement:
-        """Returns the total energy consumption of the Jetson device.
+    # def getTotalEnergyConsumption(self) -> JetsonMeasurement:
+    #     """Returns the total energy consumption of the Jetson device.
 
-        This measurement is cumulative. Units: mJ.
-        """        
-        print("Sending command to command_queue")
-        self.command_queue.put_nowait(Command.READ)
-        print("Command sent to command_queue")
-        return self.result_queue.get_nowait()
+    #     This measurement is cumulative. Units: mJ.
+    #     """        
+    #     print("Sending command to command_queue")
+    #     self.command_queue.put_nowait(Command.READ)
+    #     print("Command sent to command_queue")
+    #     return self.result_queue.get_nowait()
+
+    def getTotalEnergyConsumption(self, timeout=5):
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < timeout:
+            try:
+                return self.result_queue.get_nowait()
+            except queue.Empty:
+                time.sleep(0.1)
+        print("Timeout reached: No result received.")
+        return None
+
 
 
 class Command(enum.Enum):
