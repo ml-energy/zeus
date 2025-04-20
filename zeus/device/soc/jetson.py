@@ -102,6 +102,7 @@ class Jetson(soc_common.SoC):
         self.result_queue = mp.Queue()
         self.process = context.Process(target=_polling_process_async_wrapper, args=(self.command_queue, self.result_queue, self.power_measurement))
         self.process.start()
+        print("Polling process started")
 
         atexit.register(self._stop_process)
 
@@ -169,7 +170,9 @@ class Jetson(soc_common.SoC):
 
         This measurement is cumulative. Units: mJ.
         """        
+        print("Sending command to command_queue")
         self.command_queue.put_nowait(Command.READ)
+        print("Command sent to command_queue")
         return self.result_queue.get_nowait()
 
 
