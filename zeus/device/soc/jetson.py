@@ -120,11 +120,11 @@ class Jetson(soc_common.SoC):
                 curr_path = path / f"in_current{rail_index}_input"
 
             if check_file(power_path):
-                metrics[rail_name] = {"power": str(power_path)}
+                metrics[rail_name] = {"power": Path(power_path)}
             elif check_file(volt_path) and check_file(curr_path):
                 sub = {}
-                sub["volt"] = str(volt_path)
-                sub["curr"] = str(curr_path)
+                sub["volt"] = Path(volt_path)
+                sub["curr"] = Path(curr_path)
                 metrics[rail_name] = sub
             else:
                 raise ValueError(
