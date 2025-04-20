@@ -188,31 +188,15 @@ class CumulativeMeasurement:
     # total_energy_mj: float
 
 
-def _polling_process_async_wrapper(
-        command_queue: mp.Queue,
-        result_queue: mp.Queue,
-        power_measurement: dict[str, PowerMeasurementStrategy],
-        poll_interval: float = 0.1,
-) -> None: 
-    asyncio.run(
-        _polling_process_async(
-            command_queue,
-            result_queue,
-            power_measurement,
-            poll_interval,
-        )
-    )
-
-async def _polling_process_async(
-    command_queue: mp.Queue,
-    result_queue: mp.Queue,
+def _polling_process(
+    command_queue: mp.Queue[Command],
+    result_queue: mp.Queue[CumulativeMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
     poll_interval: float = 0.1,
 ) -> None:
     print("Polling process started 2")
     cumulative_measurement = CumulativeMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
     prev_ts = time.monotonic()
-
     while True:
         # TODO: the pom_in_volt naming. create a map
         print("Polling for command")
@@ -221,27 +205,16 @@ async def _polling_process_async(
 
         current_ts = time.monotonic()
 
-        # coros = [asyncio.to_thread(command_queue.get()), asyncio.sleep(poll_interval)]
-        cmd_task = asyncio.create_task(asyncio.to_thread(command_queue.get))
-        sleep_task = asyncio.create_task(asyncio.sleep(poll_interval))
-        done, pending = await asyncio.wait([cmd_task, sleep_task], return_when=asyncio.FIRST_COMPLETED)
-        for task in pending: 
-            task.cancel()
-            try:
-                await task  # Properly await cancellation
-            except asyncio.CancelledError:
-                pass
+        cpu_energy_mj = cpu_power_mj * (current_ts - prev_ts)
+        gpu_energy_mj = gpu_power_mj * (current_ts - prev_ts)
+        cumulative_measurement.cpu_energy_mj += cpu_energy_mj
+        cumulative_measurement.gpu_energy_mj += gpu_energy_mj
+        prev_ts = current_ts
 
-        for task in done:
-            result = task.result()
-            print(f"Received command: {result}")
-            if result == Command.STOP:
+        if not command_queue.empty():
+            command = command_queue.get()
+            if command == Command.STOP:
                 break
-            elif result == Command.READ:
-                cpu_energy_mj = cpu_power_mj * (current_ts - prev_ts)
-                gpu_energy_mj = gpu_power_mj * (current_ts - prev_ts)
-                cumulative_measurement.cpu_energy_mj += cpu_energy_mj
-                cumulative_measurement.gpu_energy_mj += gpu_energy_mj
-                prev_ts = current_ts
-                print("Sending cumulative measurement to result_queue")
-                await result_queue.put(cumulative_measurement)
+            elif command == Command.READ:
+                result_queue.put(cumulative_measurement)
+        time.sleep(poll_interval)
