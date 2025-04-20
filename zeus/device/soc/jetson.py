@@ -229,6 +229,7 @@ async def _polling_process_async(
 
         for task in done:
             result = task.result()
+            print(f"Received command: {result}")
             if result == Command.STOP:
                 break
             elif result == Command.READ:
