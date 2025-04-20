@@ -6,9 +6,13 @@ import abc
 
 from typing import Set
 from pathlib import Path
+import enum
+from dataclasses import dataclass
 
 import multiprocessing as mp
 import time
+import atexit
+import asyncio
 
 import zeus.device.soc.common as soc_common
 
@@ -32,7 +36,7 @@ class DirectPower(PowerMeasurementStrategy):
     """Reads power directly from a sysfs path."""
 
     def __init__(self, power_path: Path):
-        """Initialize DirectPower with the sysfs path of power."""
+        """Initialize DirectPower paths."""
         self.power_path = power_path
 
     def measure_power(self) -> float:
@@ -45,7 +49,7 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
     """Computes power as product of voltage and current, read from two sysfs paths."""
 
     def __init__(self, voltage_path: Path, current_path: Path):
-        """Initialize VoltageCurrentProduct with the sysfs paths to voltage and current."""
+        """Initialize VoltageCurrentProduct paths."""
         self.voltage_path = voltage_path
         self.current_path = current_path
 
@@ -75,6 +79,31 @@ class Jetson(soc_common.SoC):
         """Initialize Jetson monitoring object."""
         super().__init__()
         self.metric_paths = self._discover_metrics_and_paths()
+        self.power_measurement = {} # maps rail to PowerMeasurementStrategy object
+
+        # initialize queue stuff pass into polling process, spawn polling process for first time
+        # 2 commands: READ, STOP
+        # send STOP command to communicate w/loop
+
+        # Instantiate PowerMeasurementStrategy objects based on available metrics
+        for rail, metrics in self.metric_paths.items():
+            if "power" in metrics:
+                self.power_measurement[rail] = DirectPower(metrics["power"])
+            elif "volt" in metrics and "curr" in metrics:
+                self.power_measurement[rail] = VoltageCurrentProduct(metrics["volt"], metrics["curr"])
+            else:
+                raise ValueError(
+                    "Not enough measurement data to obtain power readings." # implement for which rail
+                )
+
+        # spawn polling process
+        context = mp.get_context("spawn")
+        self.command_queue = mp.Queue()
+        self.result_queue = mp.Queue()
+        self.process = context.Process(target=_polling_process_async_wrapper, args=(self.command_queue, self.result_queue, self.power_measurement))
+        self.process.start()
+
+        atexit.register(self._stop_process)
 
     def _discover_metrics_and_paths(self):
         metrics = {}
@@ -92,18 +121,15 @@ class Jetson(soc_common.SoC):
 
             if check_file(power_path):
                 metrics[rail_name] = {"power": str(power_path)}
-            else:
+            elif check_file(volt_path) and check_file(curr_path):
                 sub = {}
-                if check_file(volt_path):
-                    sub["volt"] = str(volt_path)
-                if check_file(curr_path):
-                    sub["curr"] = str(curr_path)
-                if sub:
-                    metrics[rail_name] = sub
-                else:
-                    raise ValueError(
-                        "Not enough measurement data to obtain power readings."
-                    )
+                sub["volt"] = str(volt_path)
+                sub["curr"] = str(curr_path)
+                metrics[rail_name] = sub
+            else:
+                raise ValueError(
+                    "Not enough measurement data to obtain power readings." # implement for which rail
+                )
 
         for device in path.glob("*"):
             for subdevice in device.glob("*"):
@@ -122,6 +148,7 @@ class Jetson(soc_common.SoC):
 
         return metrics
 
+    
     def getAvailableMetrics(self) -> Set[str]:
         """Return a set of all observable metrics on the Jetson device."""
         available_metrics = set()
@@ -131,11 +158,79 @@ class Jetson(soc_common.SoC):
 
     def isPresent(self) -> bool:
         """Return whether we are running on a Jetson device processor."""
-        return False
+        pass
 
     def getTotalEnergyConsumption(self) -> JetsonMeasurement:
         """Returns the total energy consumption of the Jetson device.
 
         This measurement is cumulative. Units: mJ.
-        """
-        pass
+        """        
+        self.command_queue.put_nowait(Command.READ)
+        return self.result_queue.get_nowait()
+
+
+class Command(enum.Enum):
+    READ = "read"
+    STOP = "stop"
+
+
+@dataclass
+class CumulativeMeasurement:
+    cpu_energy_mj: float
+    gpu_energy_mj: float
+    # total_energy_mj: float
+
+
+def _polling_process_async_wrapper(
+        command_queue: mp.Queue,
+        result_queue: mp.Queue,
+        power_measurement: dict[str, PowerMeasurementStrategy],
+        poll_interval: float = 0.1,
+) -> None: 
+    asyncio.run(
+        _polling_process_async(
+            command_queue,
+            result_queue,
+            power_measurement,
+            poll_interval,
+        )
+    )
+
+async def _polling_process_async(
+    command_queue: mp.Queue,
+    result_queue: mp.Queue,
+    power_measurement: dict[str, PowerMeasurementStrategy],
+    poll_interval: float = 0.1,
+) -> None:
+    cumulative_measurement = CumulativeMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
+    prev_ts = time.monotonic()
+
+    while True:
+        # TODO: the pom_in_volt naming. create a map
+        cpu_power_mj = power_measurement["cpu"].measure_power()
+        gpu_power_mj = power_measurement["gpu"].measure_power()
+
+        current_ts = time.monotonic()
+
+        # coros = [asyncio.to_thread(command_queue.get()), asyncio.sleep(poll_interval)]
+        cmd_task = asyncio.create_task(asyncio.to_thread(command_queue.get))
+        sleep_task = asyncio.create_task(asyncio.sleep(poll_interval))
+        done, pending = await asyncio.wait([cmd_task, sleep_task], return_when=asyncio.FIRST_COMPLETED)
+        for task in pending: 
+            task.cancel()
+            try:
+                await task  # Properly await cancellation
+            except asyncio.CancelledError:
+                pass
+
+        for task in done:
+            result = task.result()
+            if result == Command.STOP:
+                break
+            elif result == Command.READ:
+                cpu_energy_mj = cpu_power_mj * (current_ts - prev_ts)
+                gpu_energy_mj = gpu_power_mj * (current_ts - prev_ts)
+                cumulative_measurement.cpu_energy_mj += cpu_energy_mj
+                cumulative_measurement.gpu_energy_mj += gpu_energy_mj
+                prev_ts = current_ts
+                await result_queue.put(cumulative_measurement)
