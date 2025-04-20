@@ -100,7 +100,7 @@ class Jetson(soc_common.SoC):
         context = mp.get_context("spawn")
         self.command_queue = context.Queue()
         self.result_queue = context.Queue()
-        self.process = context.Process(target=_polling_process_async_wrapper, args=(self.command_queue, self.result_queue, self.power_measurement))
+        self.process = context.Process(target=_polling_process, args=(self.command_queue, self.result_queue, self.power_measurement))
         self.process.start()
         print("Polling process started")
 
