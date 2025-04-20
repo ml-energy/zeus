@@ -97,13 +97,13 @@ class Jetson(soc_common.SoC):
                 )
 
         # spawn polling process
-        # context = mp.get_context("spawn")
-        # self.command_queue = mp.Queue()
-        # self.result_queue = mp.Queue()
-        # self.process = context.Process(target=_polling_process_async_wrapper, args=(self.command_queue, self.result_queue, self.power_measurement))
-        # self.process.start()
+        context = mp.get_context("spawn")
+        self.command_queue = mp.Queue()
+        self.result_queue = mp.Queue()
+        self.process = context.Process(target=_polling_process_async_wrapper, args=(self.command_queue, self.result_queue, self.power_measurement))
+        self.process.start()
 
-        # atexit.register(self._stop_process)
+        atexit.register(self._stop_process)
 
     def _discover_metrics_and_paths(self):
         metrics = {}
@@ -211,8 +211,8 @@ async def _polling_process_async(
 
     while True:
         # TODO: the pom_in_volt naming. create a map
-        cpu_power_mj = power_measurement["pom_5v_cpu"].measure_power()
-        gpu_power_mj = power_measurement["pom_5v_gpu"].measure_power()
+        cpu_power_mj = power_measurement["POM_5V_CPU"].measure_power()
+        gpu_power_mj = power_measurement["POM_5V_GPU"].measure_power()
 
         current_ts = time.monotonic()
 
