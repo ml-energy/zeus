@@ -236,3 +236,5 @@ async def _polling_process_async(
                 prev_ts = current_ts
                 print("Sending cumulative measurement to result_queue")
                 result_queue.put(cumulative_measurement)
+            else:
+                print("No result.")
