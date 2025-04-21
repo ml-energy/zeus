@@ -178,7 +178,6 @@ class Command(enum.Enum):
 class CumulativeMeasurement:
     cpu_energy_mj: float
     gpu_energy_mj: float
-    # total_energy_mj: float
 
 
 def _polling_process_async_wrapper(
@@ -220,10 +219,6 @@ async def _polling_process_async(
         done, pending = await asyncio.wait([cmd_task, sleep_task], return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
-            try:
-                await task  # Properly await cancellation
-            except asyncio.CancelledError:
-                pass
         for task in done:
             result = task.result()
             print(f"Received command: {result}")
@@ -236,4 +231,4 @@ async def _polling_process_async(
                 cumulative_measurement.gpu_energy_mj += gpu_energy_mj
                 prev_ts = current_ts
                 print("Sending cumulative measurement to result_queue")
-                await result_queue.put(cumulative_measurement)
+                result_queue.put(cumulative_measurement)
