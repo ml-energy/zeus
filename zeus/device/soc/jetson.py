@@ -63,6 +63,8 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
 
 class JetsonMeasurement(soc_common.SoCMeasurement):
     """Represents energy measurements for Jetson Nano subsystems."""
+    cpu_energy_mj: float = 0.0
+    gpu_energy_mj: float = 0.0
 
     def __sub__(self, other: JetsonMeasurement) -> JetsonMeasurement:
         """Return a new JetsonMeasurement with subtracted field values."""
@@ -70,7 +72,8 @@ class JetsonMeasurement(soc_common.SoCMeasurement):
 
     def zeroAllFields(self) -> None:
         """Set all internal measurement values to zero."""
-        pass
+        self.cpu_energy_mj = 0.0
+        self.gpu_energy_mj = 0.0
 
 
 class Jetson(soc_common.SoC):
@@ -82,16 +85,12 @@ class Jetson(soc_common.SoC):
         self.metric_paths = self._discover_metrics_and_paths()
         self.power_measurement = {} # maps rail to PowerMeasurementStrategy object
 
-        # initialize queue stuff pass into polling process, spawn polling process for first time
-        # 2 commands: READ, STOP
-        # send STOP command to communicate w/loop
-
         # Instantiate PowerMeasurementStrategy objects based on available metrics
         for rail, metrics in self.metric_paths.items():
             if "power" in metrics:
-                self.power_measurement[rail] = DirectPower(metrics["power"])
+                self.power_measurement[rail] = DirectPower(Path(metrics["power"]))
             elif "volt" in metrics and "curr" in metrics:
-                self.power_measurement[rail] = VoltageCurrentProduct(metrics["volt"], metrics["curr"])
+                self.power_measurement[rail] = VoltageCurrentProduct(Path(metrics["volt"]), Path(metrics["curr"]))
             else:
                 raise ValueError(
                     "Not enough measurement data to obtain power readings." # implement for which rail
@@ -112,6 +111,16 @@ class Jetson(soc_common.SoC):
         path = Path("/sys/bus/i2c/drivers/ina3221x")
 
         def extract_directories(path, rail_name, rail_index, type):
+            rail_name_lower = rail_name.lower()
+            print("Lower:", rail_name_lower) #debugging
+
+            if "cpu" in rail_name_lower:
+                rail_name_simplified = "cpu"
+            elif "gpu" in rail_name_lower:
+                rail_name_simplified = "gpu"
+            elif "system" in rail_name_lower or "vdd_in" in rail_name_lower or "total" in rail_name_lower:
+                rail_name_simplified = "total"
+
             if type == "label":
                 power_path = path / f"power{rail_index}_input"
                 volt_path = path / f"in{rail_index}_input"
@@ -122,12 +131,12 @@ class Jetson(soc_common.SoC):
                 curr_path = path / f"in_current{rail_index}_input"
 
             if check_file(power_path):
-                metrics[rail_name] = {"power": Path(power_path)}
+                metrics[rail_name_simplified] = {"power": power_path}
             elif check_file(volt_path) and check_file(curr_path):
                 sub = {}
-                sub["volt"] = Path(volt_path)
-                sub["curr"] = Path(curr_path)
-                metrics[rail_name] = sub
+                sub["volt"] = volt_path
+                sub["curr"] = curr_path
+                metrics[rail_name_simplified] = sub
             else:
                 raise ValueError(
                     "Not enough measurement data to obtain power readings." # implement for which rail
@@ -180,26 +189,26 @@ class Command(enum.Enum):
     STOP = "stop"
 
 
-@dataclass
-class CumulativeMeasurement:
-    cpu_energy_mj: float
-    gpu_energy_mj: float
-    # total_energy_mj: float
+# @dataclass
+# class CumulativeMeasurement:
+#     cpu_energy_mj: float
+#     gpu_energy_mj: float
+#     # total_energy_mj: float
 
 
 def _polling_process(
     command_queue: mp.Queue[Command],
-    result_queue: mp.Queue[CumulativeMeasurement],
+    result_queue: mp.Queue[JetsonMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
     poll_interval: float = 0.1,
 ) -> None:
     print("Polling process started 2")
-    cumulative_measurement = CumulativeMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
+    cumulative_measurement = JetsonMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
     prev_ts = time.monotonic()
     while True:
         # TODO: the pom_in_volt naming. create a map
-        cpu_power_mj = power_measurement["POM_5V_CPU"].measure_power()
-        gpu_power_mj = power_measurement["POM_5V_GPU"].measure_power()
+        cpu_power_mj = power_measurement["cpu"].measure_power()
+        gpu_power_mj = power_measurement["gpu"].measure_power()
 
         current_ts = time.monotonic()
 
