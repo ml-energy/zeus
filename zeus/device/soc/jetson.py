@@ -112,7 +112,6 @@ class Jetson(soc_common.SoC):
 
         def extract_directories(path, rail_name, rail_index, type):
             rail_name_lower = rail_name.lower()
-            print("Lower:", rail_name_lower) #debugging
 
             if "cpu" in rail_name_lower:
                 rail_name_simplified = "cpu"
@@ -120,6 +119,8 @@ class Jetson(soc_common.SoC):
                 rail_name_simplified = "gpu"
             elif "system" in rail_name_lower or "vdd_in" in rail_name_lower or "total" in rail_name_lower:
                 rail_name_simplified = "total"
+            else:
+                raise ValueError(f"Unsupported rail type: {rail_name}")
 
             if type == "label":
                 power_path = path / f"power{rail_index}_input"
@@ -189,13 +190,6 @@ class Command(enum.Enum):
     STOP = "stop"
 
 
-# @dataclass
-# class CumulativeMeasurement:
-#     cpu_energy_mj: float
-#     gpu_energy_mj: float
-#     # total_energy_mj: float
-
-
 def _polling_process(
     command_queue: mp.Queue[Command],
     result_queue: mp.Queue[JetsonMeasurement],
@@ -206,7 +200,6 @@ def _polling_process(
     cumulative_measurement = JetsonMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
     prev_ts = time.monotonic()
     while True:
-        # TODO: the pom_in_volt naming. create a map
         cpu_power_mj = power_measurement["cpu"].measure_power()
         gpu_power_mj = power_measurement["gpu"].measure_power()
 
