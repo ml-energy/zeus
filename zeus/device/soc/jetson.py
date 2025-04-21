@@ -217,10 +217,10 @@ async def _polling_process_async(
 
         current_ts = time.monotonic()
 
-        coros = [asyncio.to_thread(command_queue.get), asyncio.sleep(poll_interval)]
-        # cmd_task = asyncio.create_task(asyncio.to_thread(command_queue.get))
-        # sleep_task = asyncio.create_task(asyncio.sleep(poll_interval))
-        done, pending = await asyncio.wait(coros, return_when=asyncio.FIRST_COMPLETED)
+        # coros = [asyncio.to_thread(command_queue.get), asyncio.sleep(poll_interval)]
+        cmd_task = asyncio.create_task(asyncio.to_thread(command_queue.get))
+        sleep_task = asyncio.create_task(asyncio.sleep(poll_interval))
+        done, pending = await asyncio.wait([cmd_task, sleep_task], return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
         for task in done:
