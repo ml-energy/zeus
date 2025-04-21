@@ -93,7 +93,7 @@ class Jetson(soc_common.SoC):
                 self.power_measurement[rail] = VoltageCurrentProduct(Path(metrics["volt"]), Path(metrics["curr"]))
             else:
                 raise ValueError(
-                    "Not enough measurement data to obtain power readings." # implement for which rail
+                    f"Not enough measurement data to obtain power readings for '{rail}'."
                 )
 
         # spawn polling process
@@ -117,11 +117,11 @@ class Jetson(soc_common.SoC):
                 rail_name_simplified = "cpu"
             elif "gpu" in rail_name_lower:
                 rail_name_simplified = "gpu"
-            elif "system" in rail_name_lower or "vdd_in" in rail_name_lower or "total" in rail_name_lower:
+            elif "system" in rail_name_lower or "_in" in rail_name_lower or "total" in rail_name_lower:
                 rail_name_simplified = "total"
             else:
-                raise ValueError(f"Unsupported rail type: {rail_name}")
-
+                return # skip unsupported rail types
+            
             if type == "label":
                 power_path = path / f"power{rail_index}_input"
                 volt_path = path / f"in{rail_index}_input"
@@ -140,7 +140,7 @@ class Jetson(soc_common.SoC):
                 metrics[rail_name_simplified] = sub
             else:
                 raise ValueError(
-                    "Not enough measurement data to obtain power readings." # implement for which rail
+                    f"Not enough measurement data to obtain power readings for '{rail_name_simplified}'."
                 )
 
         for device in path.glob("*"):
