@@ -164,7 +164,7 @@ class Jetson(soc_common.SoC):
         """        
         self.command_queue.put_nowait(Command.READ)
         print("Command sent to command_queue")
-        return self.result_queue.get(timeout=5)
+        return self.result_queue.get(timeout=15)
 
 
 class Command(enum.Enum):
