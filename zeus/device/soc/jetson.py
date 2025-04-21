@@ -97,7 +97,6 @@ class Jetson(soc_common.SoC):
         self.result_queue = mp.Queue()
         self.process = context.Process(target=_polling_process_async_wrapper, args=(self.command_queue, self.result_queue, self.power_measurement))
         self.process.start()
-        print("Polling process started")
 
         atexit.register(self._stop_process)
 
@@ -163,10 +162,9 @@ class Jetson(soc_common.SoC):
 
         This measurement is cumulative. Units: mJ.
         """        
-        print("Sending command to command_queue")
         self.command_queue.put_nowait(Command.READ)
         print("Command sent to command_queue")
-        return self.result_queue.get()
+        return self.result_queue.get(timeout=5)
 
 
 class Command(enum.Enum):
@@ -202,7 +200,7 @@ async def _polling_process_async(
     power_measurement: dict[str, PowerMeasurementStrategy],
     poll_interval: float = 0.1,
 ) -> None:
-    print("Polling process started 2")
+    print("Polling process started")
     cumulative_measurement = CumulativeMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
     prev_ts = time.monotonic()
 
@@ -221,7 +219,7 @@ async def _polling_process_async(
             task.cancel()
         for task in done:
             result = task.result()
-            print(f"Received command: {result}")
+            print(f"Received command")
             if result == Command.STOP:
                 break
             elif result == Command.READ:
