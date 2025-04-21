@@ -12,8 +12,6 @@ from dataclasses import dataclass
 import multiprocessing as mp
 import time
 import atexit
-import asyncio
-import queue
 
 import zeus.device.soc.common as soc_common
 
@@ -61,8 +59,10 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
         return (voltage * current) / 1000
 
 
+@dataclass
 class JetsonMeasurement(soc_common.SoCMeasurement):
     """Represents energy measurements for Jetson Nano subsystems."""
+
     cpu_energy_mj: float = 0.0
     gpu_energy_mj: float = 0.0
 
@@ -83,14 +83,16 @@ class Jetson(soc_common.SoC):
         """Initialize Jetson monitoring object."""
         super().__init__()
         self.metric_paths = self._discover_metrics_and_paths()
-        self.power_measurement = {} # maps rail to PowerMeasurementStrategy object
+        self.power_measurement = {}  # maps rail to PowerMeasurementStrategy object
 
         # Instantiate PowerMeasurementStrategy objects based on available metrics
         for rail, metrics in self.metric_paths.items():
             if "power" in metrics:
                 self.power_measurement[rail] = DirectPower(Path(metrics["power"]))
             elif "volt" in metrics and "curr" in metrics:
-                self.power_measurement[rail] = VoltageCurrentProduct(Path(metrics["volt"]), Path(metrics["curr"]))
+                self.power_measurement[rail] = VoltageCurrentProduct(
+                    Path(metrics["volt"]), Path(metrics["curr"])
+                )
             else:
                 raise ValueError(
                     f"Not enough measurement data to obtain power readings for '{rail}'."
@@ -100,7 +102,10 @@ class Jetson(soc_common.SoC):
         context = mp.get_context("spawn")
         self.command_queue = context.Queue()
         self.result_queue = context.Queue()
-        self.process = context.Process(target=_polling_process, args=(self.command_queue, self.result_queue, self.power_measurement))
+        self.process = context.Process(
+            target=_polling_process,
+            args=(self.command_queue, self.result_queue, self.power_measurement),
+        )
         self.process.start()
         print("Polling process started")
 
@@ -117,11 +122,15 @@ class Jetson(soc_common.SoC):
                 rail_name_simplified = "cpu"
             elif "gpu" in rail_name_lower:
                 rail_name_simplified = "gpu"
-            elif "system" in rail_name_lower or "_in" in rail_name_lower or "total" in rail_name_lower:
+            elif (
+                "system" in rail_name_lower
+                or "_in" in rail_name_lower
+                or "total" in rail_name_lower
+            ):
                 rail_name_simplified = "total"
             else:
-                return # skip unsupported rail types
-            
+                return  # skip unsupported rail types
+
             if type == "label":
                 power_path = path / f"power{rail_index}_input"
                 volt_path = path / f"in{rail_index}_input"
@@ -160,7 +169,6 @@ class Jetson(soc_common.SoC):
 
         return metrics
 
-    
     def getAvailableMetrics(self) -> Set[str]:
         """Return a set of all observable metrics on the Jetson device."""
         available_metrics = set()
@@ -175,17 +183,19 @@ class Jetson(soc_common.SoC):
     def _stop_process(self) -> None:
         self.command_queue.put_nowait(Command.STOP)
         self.process.join()
-    
+
     def getTotalEnergyConsumption(self) -> JetsonMeasurement:
-        """Returns the total energy consumption of the Jetson device.
+        """Return the total energy consumption of the Jetson device.
 
         This measurement is cumulative. Units: mJ.
-        """        
+        """
         self.command_queue.put_nowait(Command.READ)
         return self.result_queue.get()
 
 
 class Command(enum.Enum):
+    """Provide commands for the polling process."""
+
     READ = "read"
     STOP = "stop"
 
