@@ -175,7 +175,6 @@ class Jetson(soc_common.SoC):
         return self.result_queue.get()
 
 
-
 class Command(enum.Enum):
     READ = "read"
     STOP = "stop"
@@ -199,7 +198,6 @@ def _polling_process(
     prev_ts = time.monotonic()
     while True:
         # TODO: the pom_in_volt naming. create a map
-        print("Polling for command")
         cpu_power_mj = power_measurement["POM_5V_CPU"].measure_power()
         gpu_power_mj = power_measurement["POM_5V_GPU"].measure_power()
 
