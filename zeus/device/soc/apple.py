@@ -8,7 +8,10 @@ from dataclasses import dataclass, asdict, fields
 
 from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
 
-from zeus_apple_silicon import AppleEnergyMonitor, AppleEnergyMetrics
+# The following are optional dependencies. If a host machine does not have them
+# installed, the Zeus code importing this module will gracefully handle the
+# import error.
+from zeus_apple_silicon import AppleEnergyMonitor, AppleEnergyMetrics  # type: ignore
 
 
 class ZeusAppleInitError(ZeusSoCInitError):

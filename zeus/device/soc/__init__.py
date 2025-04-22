@@ -29,7 +29,7 @@ def get_soc() -> SoC:
     # --- Apple Silicon ---
     try:
         # The below import is done here instead of at top of file because the
-        # Apple Silicon module contains *optional* dependencies that will cause
+        # Apple Silicon module contains optional dependencies that will cause
         # import failures if not installed on the host device.
         from zeus.device.soc.apple import AppleSilicon, ZeusAppleInitError
 
