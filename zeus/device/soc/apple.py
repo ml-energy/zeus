@@ -117,8 +117,6 @@ class AppleSilicon(SoC):
                 f"Failed to initialize `AppleEnergyMonitor`: {e}"
             ) from None
 
-        super().__init__()
-
     def getAvailableMetrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""
         if self.available_metrics is None:
@@ -144,3 +142,12 @@ class AppleSilicon(SoC):
         """
         result: AppleEnergyMetrics = self._monitor.get_cumulative_energy()
         return measurementFromMetrics(result)
+
+    def beginWindow(self, key) -> None:
+        """Begin a measurement interval labeled with `key`."""
+        self._monitor.begin_window(key)
+
+    def endWindow(self, key) -> SoCMeasurement:
+        """End a measurement window and return the energy consumption. Units: mJ."""
+        res = self._monitor.end_window(key)
+        return measurementFromMetrics(res)
