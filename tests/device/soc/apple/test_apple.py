@@ -4,10 +4,11 @@ from unittest.mock import patch, MagicMock
 from dataclasses import asdict
 
 
-@pytest.fixture(autouse=True, scope="function")
-def mock_optional_dep():
+@pytest.fixture(scope="function")
+def mock_monitor():
     mocked_import = MagicMock()
-    mocked_import.AppleEnergyMonitor = MagicMock()
+    monitor = MagicMock()
+    mocked_import.AppleEnergyMonitor.return_value = monitor
     mocked_import.AppleEnergyMetrics = MagicMock()
 
     with (
@@ -15,21 +16,16 @@ def mock_optional_dep():
         patch("sys.platform", "darwin"),
         patch("platform.processor", return_value="arm"),
     ):
-        yield
+        yield monitor
 
 
-@patch("zeus.device.soc.apple.AppleEnergyMonitor")
-def test_total_energy(mocked_energy_monitor):
+def test_total_energy(mock_monitor):
 
     # These imports must happen at each test (i.e., function) instead of at
     # the top of the file because they have an optional dependency that must
     # be mocked. The `mock_optional_dep` fixture mocks the optional dependency
     # (zeus_apple_silicon) for all test functions.
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
-
-    # Mocking `AppleEnergyMonitor`, not `AppleSilicon`
-    mock_monitor = MagicMock()
-    mocked_energy_monitor.return_value = mock_monitor
 
     # Mocking `AppleEnergyMetrics`, not `AppleSiliconMeasurement`
     mock_metrics = MagicMock(
@@ -66,13 +62,8 @@ def test_total_energy(mocked_energy_monitor):
     assert res_dict == expected
 
 
-@patch("zeus.device.soc.apple.AppleEnergyMonitor")
-def test_interval_energy(mocked_energy_monitor):
+def test_interval_energy(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
-
-    # Mocking `AppleEnergyMonitor`, not `AppleSilicon`
-    mock_monitor = MagicMock()
-    mocked_energy_monitor.return_value = mock_monitor
 
     # For `end_window`
     mock_metrics = MagicMock(
@@ -108,13 +99,8 @@ def test_interval_energy(mocked_energy_monitor):
     assert res_dict == expected
 
 
-@patch("zeus.device.soc.apple.AppleEnergyMonitor")
-def test_overlapping_interval_energy(mocked_energy_monitor):
+def test_overlapping_interval_energy(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
-
-    # Mocking `AppleEnergyMonitor`, not `AppleSilicon`
-    mock_monitor = MagicMock()
-    mocked_energy_monitor.return_value = mock_monitor
 
     # For first `end_window`
     mock_metrics = MagicMock(
@@ -179,13 +165,8 @@ def test_overlapping_interval_energy(mocked_energy_monitor):
     assert res_dict == expected
 
 
-@patch("zeus.device.soc.apple.AppleEnergyMonitor")
-def test_available_metrics(mocked_energy_monitor):
+def test_available_metrics(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
-
-    # Mocking `AppleEnergyMonitor`, not `AppleSilicon`
-    mock_monitor = MagicMock()
-    mocked_energy_monitor.return_value = mock_monitor
 
     # `AppleSilicon::getAvailableMetrics` relies on `AppleEnergyMonitor::get_cumulative_energy`.
     mock_metrics = MagicMock(
@@ -213,7 +194,7 @@ def test_available_metrics(mocked_energy_monitor):
     assert available == expected
 
 
-def test_metrics_subtraction():
+def test_metrics_subtraction(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
     metrics1 = AppleSiliconMeasurement(
@@ -235,7 +216,7 @@ def test_metrics_subtraction():
     assert diff.ane_mj == 5
 
 
-def test_metrics_zero_out():
+def test_metrics_zero_out(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
     metrics = AppleSiliconMeasurement(10, [10, 10, 10], None, 30, 30, 5, None, None, 5)
