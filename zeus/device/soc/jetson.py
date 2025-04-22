@@ -16,6 +16,7 @@ import asyncio
 
 import zeus.device.soc.common as soc_common
 
+
 def check_file(path):
     """Check if the given path exists and is a file."""
     path = Path(path)
@@ -57,7 +58,7 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
 
     def measure_power(self) -> float:
         """Measure power by reading from sysfs paths.
-        
+
         Units: mW.
         """
         voltage = float(self.voltage_path.read_text().strip())
@@ -65,16 +66,27 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
         return (voltage * current) / 1000
 
 
+@dataclass
 class JetsonMeasurement(soc_common.SoCMeasurement):
     """Represents energy measurements for Jetson Nano subsystems."""
 
+    cpu_energy_mj: float = 0.0
+    gpu_energy_mj: float = 0.0
+    total_energy_mj: float = 0.0
+
     def __sub__(self, other: JetsonMeasurement) -> JetsonMeasurement:
         """Return a new JetsonMeasurement with subtracted field values."""
-        pass
+        return JetsonMeasurement(
+            cpu_energy_mj=self.cpu_energy_mj - other.cpu_energy_mj,
+            gpu_energy_mj=self.gpu_energy_mj - other.gpu_energy_mj,
+            total_energy_mj=self.total_energy_mj - other.total_energy_mj,
+        )
 
     def zeroAllFields(self) -> None:
         """Set all internal measurement values to zero."""
-        pass
+        self.cpu_energy_mj = 0.0
+        self.gpu_energy_mj = 0.0
+        self.total_energy_mj = 0.0
 
 
 class Jetson(soc_common.SoC):
@@ -84,33 +96,54 @@ class Jetson(soc_common.SoC):
         """Initialize Jetson monitoring object."""
         super().__init__()
         self.metric_paths = self._discover_metrics_and_paths()
-        self.power_measurement = {} # maps rail to PowerMeasurementStrategy object
+        self.power_measurement = {}  # maps rail to PowerMeasurementStrategy object
 
         # Instantiate PowerMeasurementStrategy objects based on available metrics
         for rail, metrics in self.metric_paths.items():
             if "power" in metrics:
                 self.power_measurement[rail] = DirectPower(metrics["power"])
             elif "volt" in metrics and "curr" in metrics:
-                self.power_measurement[rail] = VoltageCurrentProduct(metrics["volt"], metrics["curr"])
+                self.power_measurement[rail] = VoltageCurrentProduct(
+                    metrics["volt"], metrics["curr"]
+                )
             else:
                 raise ValueError(
-                    "Not enough measurement data to obtain power readings."
+                    f"Not enough measurement data to obtain power readings for '{rail}'."
                 )
 
         # spawn polling process
         context = mp.get_context("spawn")
         self.command_queue = context.Queue()
         self.result_queue = context.Queue()
-        self.process = context.Process(target=_polling_process_async_wrapper, args=(self.command_queue, self.result_queue, self.power_measurement))
+        self.process = context.Process(
+            target=_polling_process_async_wrapper,
+            args=(self.command_queue, self.result_queue, self.power_measurement),
+        )
         self.process.start()
 
         atexit.register(self._stop_process)
 
     def _discover_metrics_and_paths(self):
         metrics = {}
+        # todo: cite documentation for ina3221
         path = Path("/sys/bus/i2c/drivers/ina3221x")
 
         def extract_directories(path, rail_name, rail_index, type):
+            rail_name_lower = rail_name.lower()
+
+            if "cpu" in rail_name_lower:
+                rail_name_simplified = "cpu"
+            elif "gpu" in rail_name_lower:
+                rail_name_simplified = "gpu"
+            elif (
+                "system" in rail_name_lower
+                or "_in" in rail_name_lower
+                or "total" in rail_name_lower
+            ):
+                rail_name_simplified = "total"
+            else:
+                return  # skip unsupported rail types
+
             if type == "label":
                 power_path = path / f"power{rail_index}_input"
                 volt_path = path / f"in{rail_index}_input"
@@ -121,12 +154,12 @@ class Jetson(soc_common.SoC):
                 curr_path = path / f"in_current{rail_index}_input"
 
             if check_file(power_path):
-                metrics[rail_name] = {"power": Path(power_path)}
+                metrics[rail_name_simplified] = {"power": Path(power_path)}
             elif check_file(volt_path) and check_file(curr_path):
                 sub = {}
                 sub["volt"] = Path(volt_path)
                 sub["curr"] = Path(curr_path)
-                metrics[rail_name] = sub
+                metrics[rail_name_simplified] = sub
             else:
                 raise ValueError(
                     "Not enough measurement data to obtain power readings."
@@ -150,45 +183,35 @@ class Jetson(soc_common.SoC):
 
     def getAvailableMetrics(self) -> Set[str]:
         """Return a set of all observable metrics on the Jetson device."""
-        available_metrics = set()
-        for metric in self.metric_paths:
-            available_metrics.add(metric)
-        return available_metrics
-
-    def isPresent(self) -> bool:
-        """Return whether we are running on a Jetson device processor."""
-        pass
+        return set(self.metric_paths.keys())
 
     def _stop_process(self) -> None:
+        """Kill the polling process."""
         self.command_queue.put_nowait(Command.STOP)
         self.process.join()
 
     def getTotalEnergyConsumption(self) -> JetsonMeasurement:
-        """Returns the total energy consumption of the Jetson device. This measurement is cumulative. 
-        
+        """Returns the total energy consumption of the Jetson device. This measurement is cumulative.
+
         Units: mJ.
-        """        
+        """
         self.command_queue.put_nowait(Command.READ)
         print("Command sent to command_queue")
         return self.result_queue.get(timeout=15)
 
 
 class Command(enum.Enum):
+    """Provide commands for the polling process."""
+
     READ = "read"
     STOP = "stop"
 
 
-@dataclass
-class CumulativeMeasurement:
-    cpu_energy_mj: float
-    gpu_energy_mj: float
-
-
 def _polling_process_async_wrapper(
-        command_queue: mp.Queue,
-        result_queue: mp.Queue,
-        power_measurement: dict[str, PowerMeasurementStrategy],
-        poll_interval: float = 0.1,
+    command_queue: mp.Queue[Command],
+    result_queue: mp.Queue[JetsonMeasurement],
+    power_measurement: dict[str, PowerMeasurementStrategy],
+    poll_interval: float = 0.1,
 ) -> None:
     asyncio.run(
         _polling_process_async(
@@ -201,39 +224,48 @@ def _polling_process_async_wrapper(
 
 
 async def _polling_process_async(
-    command_queue: mp.Queue,
-    result_queue: mp.Queue,
+    command_queue: mp.Queue[Command],
+    result_queue: mp.Queue[JetsonMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
     poll_interval: float = 0.1,
 ) -> None:
     print("Polling process started")
-    cumulative_measurement = CumulativeMeasurement(cpu_energy_mj=0.0, gpu_energy_mj=0.0)
+    cumulative_measurement = JetsonMeasurement(
+        cpu_energy_mj=0.0, gpu_energy_mj=0.0, total_energy_mj=0.0
+    )
     prev_ts = time.monotonic()
 
     while True:
         print("Polling for command")
-        cpu_power_mw = power_measurement["POM_5V_CPU"].measure_power()
-        gpu_power_mw = power_measurement["POM_5V_GPU"].measure_power()
+        cpu_power_mw = power_measurement["cpu"].measure_power()
+        gpu_power_mw = power_measurement["gpu"].measure_power()
+        total_power_mw = power_measurement["total"].measure_power()
 
         current_ts = time.monotonic()
+
+        cpu_energy_mj = cpu_power_mw * (current_ts - prev_ts)
+        gpu_energy_mj = gpu_power_mw * (current_ts - prev_ts)
+        total_energy_mj = total_power_mw * (current_ts - prev_ts)
+
+        cumulative_measurement.cpu_energy_mj += cpu_energy_mj
+        cumulative_measurement.gpu_energy_mj += gpu_energy_mj
+        cumulative_measurement.total_energy_mj += total_energy_mj
+        prev_ts = current_ts
 
         # coros = [asyncio.to_thread(command_queue.get), asyncio.sleep(poll_interval)]
         cmd_task = asyncio.create_task(asyncio.to_thread(command_queue.get))
         sleep_task = asyncio.create_task(asyncio.sleep(poll_interval))
-        done, pending = await asyncio.wait([cmd_task, sleep_task], return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(
+            [cmd_task, sleep_task], return_when=asyncio.FIRST_COMPLETED
+        )
         for task in pending:
             task.cancel()
         for task in done:
             result = task.result()
-            print(f"Received command")
+            print("Received command")
             if result == Command.STOP:
                 break
             elif result == Command.READ:
-                cpu_energy_mj = cpu_power_mw * (current_ts - prev_ts)
-                gpu_energy_mj = gpu_power_mw * (current_ts - prev_ts)
-                cumulative_measurement.cpu_energy_mj += cpu_energy_mj
-                cumulative_measurement.gpu_energy_mj += gpu_energy_mj
-                prev_ts = current_ts
                 print("Sending cumulative measurement to result_queue")
                 result_queue.put(cumulative_measurement)
             else:
