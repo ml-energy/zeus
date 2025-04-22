@@ -75,11 +75,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
         # Handle fields that are meant to be lists specially.
         list_fields = ["efficiency_cores_mj", "performance_cores_mj"]
         for f_name in list_fields:
-            f_value = getattr(self, f_name, None)
-            if isinstance(f_value, list):
-                setattr(self, f_name, [0] * len(f_value))
-            else:
-                setattr(self, f_name, [])
+            setattr(self, f_name, [])
 
 
 def measurementFromMetrics(metrics: AppleEnergyMetrics) -> AppleSiliconMeasurement:
@@ -149,5 +145,5 @@ class AppleSilicon(SoC):
 
     def endWindow(self, key) -> SoCMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
-        res = self._monitor.end_window(key)
-        return measurementFromMetrics(res)
+        result: AppleEnergyMetrics = self._monitor.end_window(key)
+        return measurementFromMetrics(result)
