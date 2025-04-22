@@ -1,5 +1,7 @@
 """Apple Silicon SoC's."""
 
+from __future__ import annotations
+
 import sys
 import platform
 from dataclasses import dataclass, asdict, fields
