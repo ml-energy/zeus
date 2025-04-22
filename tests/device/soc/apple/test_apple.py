@@ -9,7 +9,12 @@ def mock_optional_dep():
     mocked_import = MagicMock()
     mocked_import.AppleEnergyMonitor = MagicMock()
     mocked_import.AppleEnergyMetrics = MagicMock()
-    with patch.dict(sys.modules, {"zeus_apple_silicon": mocked_import}):
+
+    with (
+        patch.dict(sys.modules, {"zeus_apple_silicon": mocked_import}),
+        patch("sys.platform", "darwin"),
+        patch("platform.processor", return_value="arm"),
+    ):
         yield
 
 
