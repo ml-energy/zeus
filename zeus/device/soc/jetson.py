@@ -107,7 +107,7 @@ class Jetson(soc_common.SoC):
         )
         self.process.start()
 
-        self.command_queue.put("read")
+        self.command_queue.put(Command.READ)
         response = self.result_queue.get()
         print(response)
 
@@ -193,7 +193,7 @@ class Jetson(soc_common.SoC):
 
     def _stop_process(self) -> None:
         """Kill the polling process."""
-        self.command_queue.put_nowait("read")
+        self.command_queue.put_nowait(Command.READ)
         self.process.join()
 
     def getTotalEnergyConsumption(self) -> JetsonMeasurement:
@@ -201,10 +201,8 @@ class Jetson(soc_common.SoC):
 
         Units: mJ.
         """
-        self.command_queue.put("read")
+        self.command_queue.put(Command.READ)
         print("Command sent to command_queue")
-        # response = self.result_queue.get()
-        # print(response)
         return self.result_queue.get(timeout=15)
 
 class Command(enum.Enum):
@@ -265,7 +263,7 @@ async def _polling_process_async(
         try:
             command = await asyncio.wait_for(
                 asyncio.to_thread(command_queue.get),
-                timeout=10,
+                timeout=2,
             )
             print(f"Command received: {command}")
         except asyncio.TimeoutError:
@@ -273,10 +271,10 @@ async def _polling_process_async(
             print("Timeout while waiting for command. Continuing to poll.")
             continue
 
-        if command == "stop":
+        if command == Command.STOP:
             print("Bye!")
             break
-        if command == "read":
+        if command == Command.READ:
             # Update energy
             print("Sending cumulative measurement to result_queue")
             result_queue.put(cumulative_measurement)
