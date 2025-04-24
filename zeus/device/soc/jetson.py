@@ -261,10 +261,11 @@ async def _polling_process_async(
         prev_ts = current_ts
 
         try:
-            command = await asyncio.wait_for(
-                asyncio.to_thread(command_queue.get),
-                timeout=4,
-            )
+            # command = await asyncio.wait_for(
+            #     asyncio.to_thread(command_queue.get),
+            #     timeout=4,
+            # )
+            command = await asyncio.to_thread(command_queue.get, timeout=0.1)
             print(f"Command received: {command}")
         except asyncio.TimeoutError:
             # Update energy and do nothing
