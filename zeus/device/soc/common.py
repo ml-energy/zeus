@@ -32,11 +32,6 @@ class SoCMeasurement(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __str__(self) -> str:
-        """Show all fields and their observed values in the measurement object."""
-        pass
-
-    @abc.abstractmethod
     def __sub__(self, other) -> SoCMeasurement:
         """Produce a single measurement object containing differences across all fields."""
         pass
@@ -65,14 +60,6 @@ class SoC(abc.ABC):
     @abc.abstractmethod
     def getAvailableMetrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""
-        pass
-
-    @abc.abstractmethod
-    def isPresent(self) -> bool:
-        """Return if an SoC is present on the current device.
-
-        This should be true for all derived classes of the `SoC` manager except `EmptySoC`.
-        """
         pass
 
     @abc.abstractmethod
@@ -116,13 +103,6 @@ class EmptySoC(SoC):
     def getAvailableMetrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""
         return set()
-
-    def isPresent(self) -> bool:
-        """Return if an SoC is present on the current device.
-
-        This should be true for all derived classes of the SoC manager except `EmptySoC`.
-        """
-        return False
 
     def getTotalEnergyConsumption(self) -> SoCMeasurement:
         """Returns the total energy consumption of the SoC.

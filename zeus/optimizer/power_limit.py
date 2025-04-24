@@ -491,15 +491,12 @@ class GlobalPowerLimitOptimizer(Callback):
 
 # Only import HuggingFace Classes when type checking, to avoid hard dependency on HuggingFace Transformers
 if TYPE_CHECKING:
-    from transformers import (
-        TrainingArguments,
-        TrainerState,
-        TrainerControl,
-        PreTrainedModel,
-    )
+    from transformers.training_args import TrainingArguments
+    from transformers.trainer_callback import TrainerState, TrainerControl
+    from transformers.modeling_utils import PreTrainedModel
 
 try:
-    from transformers import TrainerCallback
+    from transformers.trainer_callback import TrainerCallback
 
     transformers_available = True
 except ModuleNotFoundError:
