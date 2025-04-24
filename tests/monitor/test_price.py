@@ -46,8 +46,6 @@ def mock_requests():
     current_dir = os.path.dirname(__file__)
     with open(os.path.join(current_dir, "price_output_files", "invalid.json")) as f:
         INVALID_LAT_LON_RESPONSE = f.read()
-    with open(os.path.join(current_dir, "price_output_files", "no_lat_lon.json")) as f:
-        NO_LAT_LON_RESPONSE = f.read()
     with open(os.path.join(current_dir, "price_output_files", "ann_arbor.json")) as f:
         OPEN_EI_RESPONSE_ANN_ARBOR = f.read()
     with open(os.path.join(current_dir, "price_output_files", "virginia.json")) as f:
@@ -65,13 +63,6 @@ def mock_requests():
             + "&detail=full&sector=Residential"
         ):
             return MockHttpResponse(INVALID_LAT_LON_RESPONSE)
-        elif url == (
-            "https://api.openei.org/utility_rates?version=latest&format=json"
-            + "&api_key=tJASWWgPhBRpiZCwfhtKV2A3gyNxbDfvQvdI5Wa7"
-            + "&radius=0"
-            + "&detail=full&sector=Residential"
-        ):
-            return MockHttpResponse(NO_LAT_LON_RESPONSE)
         elif url == (
             "https://api.openei.org/utility_rates?version=latest&format=json"
             + "&api_key=tJASWWgPhBRpiZCwfhtKV2A3gyNxbDfvQvdI5Wa7&lat=42.2776"
