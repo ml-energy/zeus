@@ -262,8 +262,8 @@ async def _polling_process_async(
 
         try:
             command = await asyncio.wait_for(
-                asyncio.to_thread(command_queue.get_nowait),
-                timeout=2,
+                asyncio.to_thread(command_queue.get),
+                timeout=4,
             )
             print(f"Command received: {command}")
         except asyncio.TimeoutError:
