@@ -189,7 +189,7 @@ class Jetson(soc_common.SoC):
 
     def _stop_process(self) -> None:
         """Kill the polling process."""
-        self.command_queue.put_nowait(Command.STOP)
+        self.command_queue.put_nowait("read")
         self.process.join()
 
     def getTotalEnergyConsumption(self) -> JetsonMeasurement:
@@ -266,10 +266,10 @@ async def _polling_process_async(
             # Update energy and do nothing
             continue
 
-        if command == Command.STOP:
+        if command == "stop":
             print("Bye!")
             break
-        if command == Command.READ:
+        if command == "read":
             # Update energy
             print("Sending cumulative measurement to result_queue")
             result_queue.put(cumulative_measurement)
