@@ -201,7 +201,7 @@ class Jetson(soc_common.SoC):
 
         Units: mJ.
         """
-        self.command_queue.put_nowait(Command.READ)
+        self.command_queue.put_nowait("read")
         print("Command sent to command_queue")
         return self.result_queue.get(timeout=15)
 
