@@ -214,7 +214,9 @@ def get_expected_cpu_gpu_energy_costs(
 
     current_dir = os.path.dirname(__file__)
     # CAUTION: change the file name based on what label ID you use
-    with open(os.path.join(current_dir, "price_output_files", "virginia.json"), "r") as file1:
+    with open(
+        os.path.join(current_dir, "price_output_files", "virginia.json"), "r"
+    ) as file1:
         data = json.loads(file1.read())
 
         def search_json(
