@@ -111,7 +111,7 @@ class Jetson(soc_common.SoC):
         response = self.result_queue.get()
         print(response)
 
-        atexit.register(self._stop_process)
+        # atexit.register(self._stop_process)
 
     def _discover_available_metrics(self) -> dict[str, PowerMeasurementStrategy]:
         metric_paths = {}
@@ -269,8 +269,10 @@ async def _polling_process_async(
                 asyncio.to_thread(command_queue.get),
                 timeout=0.1,
             )
+            print(f"Command received: {command}")
         except asyncio.TimeoutError:
             # Update energy and do nothing
+            print("Timeout while waiting for command. Continuing to poll.")
             continue
 
         if command == "stop":
