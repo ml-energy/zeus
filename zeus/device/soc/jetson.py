@@ -107,6 +107,10 @@ class Jetson(soc_common.SoC):
         )
         self.process.start()
 
+        self.command_queue.put("read")
+        response = self.result_queue.get()
+        print(response)
+
         atexit.register(self._stop_process)
 
     def _discover_available_metrics(self) -> dict[str, PowerMeasurementStrategy]:
