@@ -46,7 +46,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
     # ANE (Apple Neural Engine)
     ane_mj: int | None = None
 
-    def __sub__(self, other: "AppleSiliconMeasurement") -> "AppleSiliconMeasurement":
+    def __sub__(self, other: AppleSiliconMeasurement) -> AppleSiliconMeasurement:
         """Produce a single measurement object containing differences across all fields."""
         if not isinstance(other, type(self)):
             raise TypeError(
@@ -57,16 +57,23 @@ class AppleSiliconMeasurement(SoCMeasurement):
 
         for field in fields(self):
             f_name = field.name
-            value1 = getattr(self, f_name, None)
-            value2 = getattr(other, f_name, None)
-            if value1 is None or value2 is None or type(value1) is not type(value2):
+            value1 = getattr(self, f_name)
+            value2 = getattr(other, f_name)
+            if value1 is None and value2 is None:
                 continue
+
+            if type(value1) is not type(value2):
+                raise ValueError(
+                    f"Inconsistent field between two AppleSiliconMeasurement objects: {f_name}"
+                )
 
             if isinstance(value1, int):
                 setattr(result, f_name, value1 - value2)
             elif isinstance(value1, list):
                 if len(value1) != len(value2):
-                    continue
+                    raise ValueError(
+                        f"Inconsistent field between two AppleSiliconMeasurement objects: {f_name}"
+                    )
                 setattr(result, f_name, [x - y for x, y in zip(value1, value2)])
 
         return result
@@ -82,20 +89,22 @@ class AppleSiliconMeasurement(SoCMeasurement):
         for f_name in list_fields:
             setattr(self, f_name, [])
 
-
-def measurementFromMetrics(metrics: AppleEnergyMetrics) -> AppleSiliconMeasurement:
-    """Return an AppleSiliconMeasurement object based on an AppleEnergyMetrics object."""
-    return AppleSiliconMeasurement(
-        cpu_total_mj=metrics.cpu_total_mj,
-        efficiency_cores_mj=metrics.efficiency_cores_mj,
-        performance_cores_mj=metrics.performance_cores_mj,
-        efficiency_core_manager_mj=metrics.efficiency_core_manager_mj,
-        performance_core_manager_mj=metrics.performance_core_manager_mj,
-        dram_mj=metrics.dram_mj,
-        gpu_mj=metrics.gpu_mj,
-        gpu_sram_mj=metrics.gpu_sram_mj,
-        ane_mj=metrics.ane_mj,
-    )
+    @classmethod
+    def measurementFromMetrics(
+        cls, metrics: AppleEnergyMetrics
+    ) -> AppleSiliconMeasurement:
+        """Return an AppleSiliconMeasurement object based on an AppleEnergyMetrics object."""
+        return cls(
+            cpu_total_mj=metrics.cpu_total_mj,
+            efficiency_cores_mj=metrics.efficiency_cores_mj,
+            performance_cores_mj=metrics.performance_cores_mj,
+            efficiency_core_manager_mj=metrics.efficiency_core_manager_mj,
+            performance_core_manager_mj=metrics.performance_core_manager_mj,
+            dram_mj=metrics.dram_mj,
+            gpu_mj=metrics.gpu_mj,
+            gpu_sram_mj=metrics.gpu_sram_mj,
+            ane_mj=metrics.ane_mj,
+        )
 
 
 class AppleSilicon(SoC):
@@ -127,7 +136,7 @@ class AppleSilicon(SoC):
             metrics_dict = asdict(result)
             for f_name, f_value in metrics_dict.items():
                 if f_value is not None:
-                    available_metrics.add(f"soc.{f_name}")
+                    available_metrics.add(f_name)
 
             self.available_metrics = available_metrics
         return self.available_metrics
@@ -142,7 +151,7 @@ class AppleSilicon(SoC):
         Units: mJ.
         """
         result: AppleEnergyMetrics = self._monitor.get_cumulative_energy()
-        return measurementFromMetrics(result)
+        return AppleSiliconMeasurement.measurementFromMetrics(result)
 
     def beginWindow(self, key) -> None:
         """Begin a measurement interval labeled with `key`."""
@@ -151,4 +160,4 @@ class AppleSilicon(SoC):
     def endWindow(self, key) -> SoCMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
         result: AppleEnergyMetrics = self._monitor.end_window(key)
-        return measurementFromMetrics(result)
+        return AppleSiliconMeasurement.measurementFromMetrics(result)
