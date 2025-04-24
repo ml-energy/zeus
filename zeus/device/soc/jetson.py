@@ -203,7 +203,10 @@ class Jetson(soc_common.SoC):
         """
         self.command_queue.put("read")
         print("Command sent to command_queue")
-        return self.result_queue.get(timeout=15)
+        response = self.result_queue.get()
+        print(response)
+        # return self.result_queue.get(timeout=15)
+        return response
 
 
 class Command(enum.Enum):
