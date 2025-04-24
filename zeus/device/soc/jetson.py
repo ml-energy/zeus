@@ -203,11 +203,9 @@ class Jetson(soc_common.SoC):
         """
         self.command_queue.put("read")
         print("Command sent to command_queue")
-        response = self.result_queue.get()
-        print(response)
-        # return self.result_queue.get(timeout=15)
-        return response
-
+        # response = self.result_queue.get()
+        # print(response)
+        return self.result_queue.get(timeout=15)
 
 class Command(enum.Enum):
     """Provide commands for the polling process."""
@@ -267,7 +265,7 @@ async def _polling_process_async(
         try:
             command = await asyncio.wait_for(
                 asyncio.to_thread(command_queue.get),
-                timeout=15,
+                timeout=10,
             )
             print(f"Command received: {command}")
         except asyncio.TimeoutError:
