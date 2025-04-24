@@ -98,7 +98,7 @@ class Jetson(soc_common.SoC):
         self.power_measurement = self._discover_available_metrics()
 
         # spawn polling process
-        context = mp.get_context("spawn")
+        context = mp.get_context("fork")
         self.command_queue = context.Queue()
         self.result_queue = context.Queue()
         self.process = context.Process(
