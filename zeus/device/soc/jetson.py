@@ -196,14 +196,14 @@ class Jetson(soc_common.SoC):
         self.command_queue.put_nowait(Command.READ)
         self.process.join()
 
-    def getTotalEnergyConsumption(self) -> JetsonMeasurement:
+    def getTotalEnergyConsumption(self, timeout: float = 15.0) -> JetsonMeasurement:
         """Returns the total energy consumption of the Jetson device. This measurement is cumulative.
 
         Units: mJ.
         """
         self.command_queue.put(Command.READ)
         print("Command sent to command_queue")
-        return self.result_queue.get(timeout=15)
+        return self.result_queue.get(timeout=timeout)
 
 class Command(enum.Enum):
     """Provide commands for the polling process."""
@@ -262,8 +262,8 @@ async def _polling_process_async(
 
         try:
             command = await asyncio.wait_for(
-                asyncio.to_thread(command_queue.get),
-                timeout=4,
+                asyncio.to_thread(command_queue.get_nowait),
+                timeout=2,
             )
             print(f"Command received: {command}")
         except asyncio.TimeoutError:
