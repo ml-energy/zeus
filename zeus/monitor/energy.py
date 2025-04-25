@@ -37,6 +37,9 @@ class Measurement:
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d)  and DRAM
             measurements are taken from sub-packages within each powerzone. This can be 'None' if
             CPU measurement is not available or DRAM measurement is not available.
+        soc_energy: If your machine contains an SoC (e.g., Apple silicon), metrics for various
+            subsystems of the SoC (e.g., the on-chip CPU, the on-chip GPU) will all be included
+            within this field.
     """
 
     time: float
