@@ -6,13 +6,23 @@ import abc
 import asyncio
 import atexit
 import enum
+import os
+import platform
+import sys
 import time
 import multiprocessing as mp
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty
+from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
 
-import zeus.device.soc.common as soc_common
+
+class ZeusJetsonInitError(ZeusSoCInitError):
+    """Import error for Jetson initialization failures."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
 
 
 def check_file(path: Path) -> bool:
@@ -60,11 +70,11 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
         """
         voltage: float = float(self.voltage_path.read_text().strip())
         current: float = float(self.current_path.read_text().strip())
-        return voltage * current
+        return (voltage * current) / 1000
 
 
 @dataclass
-class JetsonMeasurement(soc_common.SoCMeasurement):
+class JetsonMeasurement(SoCMeasurement):
     """Represents energy measurements for Jetson Nano subsystems."""
 
     cpu_energy_mj: float = 0.0
@@ -89,11 +99,16 @@ class JetsonMeasurement(soc_common.SoCMeasurement):
         self.total_energy_mj = 0.0
 
 
-class Jetson(soc_common.SoC):
+class Jetson(SoC):
     """An interface for obtaining the energy metrics of a Jetson Nano processor."""
 
     def __init__(self) -> None:
         """Initialize Jetson monitoring object."""
+        if not jetson_is_available():
+            raise ZeusJetsonInitError(
+                "No Jetson processor was detected on the current device."
+            )
+
         super().__init__()
 
         # Maps each power rail ('cpu', 'gpu', and 'total') to a power measurement strategy
@@ -117,7 +132,7 @@ class Jetson(soc_common.SoC):
         """Return available power measurement metrics per rail from the INA3221 sensor on Jetson devices.
 
         All official NVIDIA Jetson devices have at least 1 INA3221 power monitor that measures per-rail power usage via 3 channels.
-        Referenced official documentation:
+        Referenced documentation:
             https://docs.nvidia.com/jetson/archives/l4t-archived/l4t-3276/index.html#page/Tegra%20Linux%20Driver%20Package%20Development%20Guide/clock_power_setup.html#
             https://docs.nvidia.com/jetson/archives/r35.6.1/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html#software-based-power-consumption-modeling
             https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html#
@@ -130,6 +145,7 @@ class Jetson(soc_common.SoC):
         def extract_directories(
             path: Path, rail_name: str, rail_index: str, type: str
         ) -> None:
+            """Extract file paths for power, voltage, and current measurements based on the rail naming type."""
             rail_name_lower = rail_name.lower()
 
             if "cpu" in rail_name_lower:
@@ -226,6 +242,7 @@ def _polling_process_async_wrapper(
     result_queue: mp.Queue[JetsonMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
 ) -> None:
+    """Function wrapper for the asynchronous energy polling process."""
     asyncio.run(
         _polling_process_async(
             command_queue,
@@ -240,6 +257,7 @@ async def _polling_process_async(
     result_queue: mp.Queue[JetsonMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
 ) -> None:
+    """Continuously polls for accumulated energy measurements for CPU, GPU, and total power, listening for commands to stop or return the measurement."""
     cumulative_measurement = JetsonMeasurement(
         cpu_energy_mj=0.0, gpu_energy_mj=0.0, total_energy_mj=0.0
     )
@@ -278,3 +296,13 @@ async def _polling_process_async(
         if command == Command.READ:
             # Update and return energy measurement
             result_queue.put(cumulative_measurement)
+
+
+def jetson_is_available() -> bool:
+    """Return if the current processor is a Jetson device."""
+    if sys.platform != "linux" or platform.processor() != "aarch64":
+        return False
+
+    return os.path.exists("/usr/lib/aarch64-linux-gnu/tegra") or os.path.exists(
+        "/etc/nv_tegra_release"
+    )

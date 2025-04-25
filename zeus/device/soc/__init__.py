@@ -7,7 +7,7 @@ which returns a SoC Manager object specific to the platform.
 from __future__ import annotations
 
 from zeus.device.soc.common import SoC, ZeusSoCInitError
-from zeus.device.soc.jetson import Jetson
+from zeus.device.soc.jetson import jetson_is_available, Jetson
 
 _soc: SoC | None = None
 
@@ -26,10 +26,9 @@ def get_soc() -> SoC:
     if _soc is not None:
         return _soc
 
-    try:
+    if jetson_is_available():
         _soc = Jetson()
-    except Exception as e:
-        raise ZeusSoCInitError(f"Failed to initialize Jetson SoC: {e}") from e
+        return _soc
 
     # SoCs in the future can be incorporated via `elif` blocks.
     else:
