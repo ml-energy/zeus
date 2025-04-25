@@ -60,7 +60,7 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
         """
         voltage: float = float(self.voltage_path.read_text().strip())
         current: float = float(self.current_path.read_text().strip())
-        return (voltage * current)
+        return voltage * current
 
 
 @dataclass
@@ -211,7 +211,6 @@ class Jetson(soc_common.SoC):
         Units: mJ.
         """
         self.command_queue.put(Command.READ)
-        print("Command sent to command_queue")
         return self.result_queue.get(timeout=timeout)
 
 
@@ -241,7 +240,6 @@ async def _polling_process_async(
     result_queue: mp.Queue[JetsonMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
 ) -> None:
-    print("Polling process started")
     cumulative_measurement = JetsonMeasurement(
         cpu_energy_mj=0.0, gpu_energy_mj=0.0, total_energy_mj=0.0
     )
@@ -271,16 +269,12 @@ async def _polling_process_async(
                 command_queue.get,
                 timeout=0.1,
             )
-            print(f"Command received: {command}")
         except Empty:
             # Update energy and do nothing
-            print("Timeout while waiting for command. Continuing to poll.")
             continue
 
         if command == Command.STOP:
-            print("Bye!")
             break
         if command == Command.READ:
             # Update and return energy measurement
-            print("Sending cumulative measurement to result_queue")
             result_queue.put(cumulative_measurement)
