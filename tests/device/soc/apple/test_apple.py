@@ -278,12 +278,12 @@ def test_metrics_zero_out(mock_monitor):
 
     assert metrics.cpu_total_mj == 0
     assert metrics.efficiency_cores_mj == []
-    assert metrics.performance_cores_mj == []
+    assert metrics.performance_cores_mj == None
     assert metrics.efficiency_core_manager_mj == 0
     assert metrics.performance_core_manager_mj == 0
     assert metrics.dram_mj == 0
-    assert metrics.gpu_mj == 0
-    assert metrics.gpu_sram_mj == 0
+    assert metrics.gpu_mj == None
+    assert metrics.gpu_sram_mj == None
     assert metrics.ane_mj == 0
 
 

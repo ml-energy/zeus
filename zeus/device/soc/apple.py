@@ -112,12 +112,13 @@ class AppleSiliconMeasurement(SoCMeasurement):
         """Set the value of all fields in the measurement object to zero."""
         for field in fields(self):
             f_name = field.name
-            setattr(self, f_name, 0)
-
-        # Handle fields that are meant to be lists specially.
-        list_fields = ["efficiency_cores_mj", "performance_cores_mj"]
-        for f_name in list_fields:
-            setattr(self, f_name, [])
+            f_value = getattr(self, f_name)
+            if isinstance(f_value, int):
+                setattr(self, f_name, 0)
+            elif isinstance(f_value, list):
+                setattr(self, f_name, [])
+            else:
+                setattr(self, f_name, None)
 
     @classmethod
     def measurementFromMetrics(
