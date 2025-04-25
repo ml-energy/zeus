@@ -89,7 +89,7 @@ DRAM energy measurement are available on some CPUs as well.
 
 To check CPU/GPU/DRAM measurement support, refer to [Verifying installation](../getting_started/index.md#verifying-installation).
 
-Energy measurement for Apple silicon is supported as well. For more information, refer to [Apple Silicon](#apple-silicon).
+Energy measurement for Apple Silicon is supported as well. For more information, refer to [Apple Silicon](#apple-silicon).
 
 ### [`get_gpus`][zeus.device.get_gpus] and [`get_cpus`][zeus.device.get_cpus]
 
@@ -118,31 +118,32 @@ To only measure the energy consumption of the CPU used by the current Python pro
 
 ### Apple Silicon
 
-To enable Apple silicon energy monitoring, you must have the optional `zeus-apple-silicon` dependency installed.
+To enable Apple Silicon energy monitoring, you must have the optional `zeus-apple-silicon` dependency installed.
 
 If you're installing Zeus for the first time, you can have this dependency installed automatically with
 `pip install 'zeus[apple]'`. You can also install this dependency manually by running `pip install zeus-apple-silicon`. This dependency is maintained in a separate codebase, and you can find more information about it [here](https://github.com/ml-energy/zeus-apple-silicon).
 
-**Note**: if you do not have an Apple silicon processor, are not running macOS, or do not have the above dependency installed, the Zeus monitor will skip measuring energy for Apple silicon.
+**Note**: if you do not have an Apple Silicon processor, are not running macOS, or do not have the above dependency installed, the Zeus monitor will skip measuring energy for Apple Silicon.
 
-Once the dependency is installed, you can conduct measurement as normal with the Zeus monitor ([Programmatic measurement](#programmatic-measurement)), and metrics for Apple silicon will be included in a field called `soc_energy` within the [`Measurement`][zeus.monitor.energy.Measurement] object reported by [`end_window`][zeus.monitor.ZeusMonitor.end_window]. For example:
+Once the dependency is installed, you can conduct measurement as normal with the Zeus monitor ([Programmatic measurement](#programmatic-measurement)), and metrics for Apple Silicon will be included in a field called `soc_energy` within the [`Measurement`][zeus.monitor.energy.Measurement] object reported by [`end_window`][zeus.monitor.ZeusMonitor.end_window]. For example:
 
-```python hl_lines="5 12-14"
+```python
 # ...
 mes = monitor.end_window("epoch")
-apple_results = mes.soc_energy
+apple_energy_metrics = mes.soc_energy
 ```
 
-For Apple silicon, the `soc_energy` field will include metrics for:
-- The on-chip CPU (`soc_energy.cpu_total_mj`)
-- Every efficiency core (`soc_energy.efficiency_cores_mj`)
-- Every performance core (`soc_energy.performance_cores_mj`)
-- Efficiency core manager (`soc_energy.efficiency_core_manager_mj`)
-- Performance core manager (`soc_energy.performance_core_manager_mj`)
-- DRAM (`soc_energy.dram_mj`)
-- The on-chip GPU (`soc_energy.gpu_mj`)
-- GPU SRAM (`soc_energy.gpu_sram_mj`)
-- ANE (`soc_energy.ane_mj`)
+For Apple Silicon, the `soc_energy` field will include metrics for:
+
+- On-chip CPU (`cpu_total_mj`)
+- Every efficiency core (`efficiency_cores_mj`)
+- Every performance core (`performance_cores_mj`)
+- Efficiency core manager (`efficiency_core_manager_mj`)
+- Performance core manager (`performance_core_manager_mj`)
+- DRAM (`dram_mj`)
+- On-chip GPU (`gpu_mj`)
+- GPU SRAM (`gpu_sram_mj`)
+- Apple Neural Engine (ANE) (`ane_mj`)
 
 Note that units are in mJ.
 
