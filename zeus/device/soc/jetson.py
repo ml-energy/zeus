@@ -42,7 +42,7 @@ class DirectPower(PowerMeasurementStrategy):
         Units: mW.
         """
         power: float = float(self.power_path.read_text().strip())
-        return power / 1000
+        return power
 
 
 class VoltageCurrentProduct(PowerMeasurementStrategy):
@@ -60,7 +60,7 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
         """
         voltage: float = float(self.voltage_path.read_text().strip())
         current: float = float(self.current_path.read_text().strip())
-        return (voltage * current) / 1000
+        return (voltage * current)
 
 
 @dataclass
