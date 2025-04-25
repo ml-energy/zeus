@@ -42,13 +42,13 @@ Documentation = "https://ml.energy/zeus"
 
 [project.optional-dependencies]
 # One day FastAPI will drop support for Pydantic V1. Then fastapi has to be pinned as well.
-apple = ["zeus-apple-silicon"]
 pfo = ["pydantic<2"]
 pfo-server = ["fastapi[standard]", "pydantic<2", "lowtime", "aiofiles", "torch"]
 bso = ["pydantic<2"]
 bso-server = ["fastapi[standard]", "sqlalchemy", "pydantic<2", "python-dotenv"]
 migration = ["alembic", "sqlalchemy", "pydantic<2", "python-dotenv"]
 prometheus = ["prometheus-client"]
+apple = ["zeus-apple-silicon"]
 lint = ["ruff", "black==22.6.0", "pyright!=1.1.395", "pandas-stubs", "transformers"]
 test = ["fastapi[standard]", "sqlalchemy", "pydantic<2", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0", "numpy<2"]
 docs = ["mkdocs-material[imaging]==9.5.19", "mkdocstrings[python]==0.25.0", "mkdocs-gen-files==0.5.0", "mkdocs-literate-nav==0.6.1", "mkdocs-section-index==0.3.9", "mkdocs-redirects==1.2.1", "urllib3<2", "black"]
