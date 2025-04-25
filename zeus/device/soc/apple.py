@@ -143,7 +143,7 @@ class AppleSilicon(SoC):
 
     def __init__(self) -> None:
         """Initialize an instance of an Apple Silicon energy monitor."""
-        self._monitor: zeus_apple_silicon.AppleEnergyMonitor = None  # type: ignore
+        self._monitor: zeus_apple_silicon.AppleEnergyMonitor  # type: ignore
         self.available_metrics: set[str] | None = None
 
         try:
