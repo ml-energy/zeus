@@ -89,6 +89,8 @@ DRAM energy measurement are available on some CPUs as well.
 
 To check CPU/GPU/DRAM measurement support, refer to [Verifying installation](../getting_started/index.md#verifying-installation).
 
+Energy measurement for Apple Silicon is supported as well. For more information, refer to [Apple Silicon](#apple-silicon).
+
 ### [`get_gpus`][zeus.device.get_gpus] and [`get_cpus`][zeus.device.get_cpus]
 
 The [`get_gpus`][zeus.device.get_gpus] function returns a [`GPUs`][zeus.device.gpu.GPUs] object, which can be either an [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object depending on the availability of `nvml` or `amdsmi`. Each [`GPUs`][zeus.device.gpu.GPUs] object contains one or more [`GPU`][zeus.device.gpu.common.GPU] instances, which are specifically [`NVIDIAGPU`][zeus.device.gpu.nvidia.NVIDIAGPU] or [`AMDGPU`][zeus.device.gpu.amd.AMDGPU] objects.
@@ -113,6 +115,39 @@ Only ROCm >= 6.1 is supported, as the AMDSMI APIs for power and energy return wr
 
 If you have more than one CPU sockets, for instance, running our [environment validation script](../getting_started/index.md#verifying-installation) will show two RAPL devices.
 To only measure the energy consumption of the CPU used by the current Python process, you can use the [`get_current_cpu_index`][zeus.device.cpu.get_current_cpu_index] helper function to retrieve the CPU index where the specified process ID is running and pass in only that index to the `cpu_indices` argument.
+
+### Apple Silicon
+
+To enable Apple Silicon energy monitoring, you must have the optional `zeus-apple-silicon` dependency installed.
+
+If you're installing Zeus for the first time, you can have this dependency installed automatically with
+`pip install 'zeus[apple]'`. You can also install this dependency manually by running `pip install zeus-apple-silicon`. This dependency is maintained in a separate codebase, and you can find more information about it [here](https://github.com/ml-energy/zeus-apple-silicon).
+
+**Note**: if you do not have an Apple Silicon processor, are not running macOS, or do not have the above dependency installed, the Zeus monitor will skip measuring energy for Apple Silicon.
+
+Once the dependency is installed, you can conduct measurement as normal with the Zeus monitor ([Programmatic measurement](#programmatic-measurement)), and metrics for Apple Silicon will be included in a field called `soc_energy` within the [`Measurement`][zeus.monitor.energy.Measurement] object reported by [`end_window`][zeus.monitor.ZeusMonitor.end_window]. For example:
+
+```python
+# ...
+mes = monitor.end_window("epoch")
+apple_energy_metrics = mes.soc_energy
+```
+
+For Apple Silicon, the `soc_energy` field will include metrics for:
+
+- On-chip CPU (`cpu_total_mj`)
+- Every efficiency core (`efficiency_cores_mj`)
+- Every performance core (`performance_cores_mj`)
+- Efficiency core manager (`efficiency_core_manager_mj`)
+- Performance core manager (`performance_core_manager_mj`)
+- DRAM (`dram_mj`)
+- On-chip GPU (`gpu_mj`)
+- GPU SRAM (`gpu_sram_mj`)
+- Apple Neural Engine (ANE) (`ane_mj`)
+
+Note that units are in mJ.
+
+Some metrics may be unavailable for monitoring depending on the specific processor (e.g., DRAM is sometimes unavailable on M1 macs). If a certain subsystem's energy could not be measured, its entry in the result object will simply hold `None`.
 
 ## Metric Monitoring
 
