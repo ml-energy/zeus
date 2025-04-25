@@ -121,7 +121,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
                 setattr(self, f_name, None)
 
     @classmethod
-    def measurementFromMetrics(
+    def from_metrics(
         cls, metrics: zeus_apple_silicon.AppleEnergyMetrics  # type: ignore
     ) -> AppleSiliconMeasurement:
         """Return an AppleSiliconMeasurement object based on an AppleEnergyMetrics object."""
@@ -170,7 +170,7 @@ class AppleSilicon(SoC):
             self.available_metrics = available_metrics
         return self.available_metrics
 
-    def getTotalEnergyConsumption(self) -> SoCMeasurement:
+    def getTotalEnergyConsumption(self) -> AppleSiliconMeasurement:
         """Returns the total energy consumption of the SoC.
 
         The measurement should be cumulative; different calls to this function throughout
@@ -180,13 +180,13 @@ class AppleSilicon(SoC):
         Units: mJ.
         """
         result = self._monitor.get_cumulative_energy()
-        return AppleSiliconMeasurement.measurementFromMetrics(result)
+        return AppleSiliconMeasurement.from_metrics(result)
 
     def beginWindow(self, key) -> None:
         """Begin a measurement interval labeled with `key`."""
         self._monitor.begin_window(key)
 
-    def endWindow(self, key) -> SoCMeasurement:
+    def endWindow(self, key) -> AppleSiliconMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
         result = self._monitor.end_window(key)
-        return AppleSiliconMeasurement.measurementFromMetrics(result)
+        return AppleSiliconMeasurement.from_metrics(result)
