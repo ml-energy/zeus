@@ -5,6 +5,7 @@ which returns a SoC Manager object specific to the platform.
 """
 
 from __future__ import annotations
+
 from contextlib import suppress
 
 from zeus.device.soc.common import SoC, ZeusSoCInitError
@@ -34,7 +35,6 @@ def get_soc() -> SoC:
 
     # --- Apple Silicon ---
     if apple_silicon_is_available():
-        # Equivalent to `try: _, except: pass`
         with suppress(ZeusAppleInitError):
             _soc = AppleSilicon()
 
