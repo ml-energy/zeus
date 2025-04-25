@@ -5,8 +5,14 @@ which returns a SoC Manager object specific to the platform.
 """
 
 from __future__ import annotations
+from contextlib import suppress
 
 from zeus.device.soc.common import SoC, ZeusSoCInitError
+from zeus.device.soc.apple import (
+    AppleSilicon,
+    ZeusAppleInitError,
+    apple_silicon_is_available,
+)
 
 _soc: SoC | None = None
 
@@ -27,15 +33,10 @@ def get_soc() -> SoC:
         return _soc
 
     # --- Apple Silicon ---
-    try:
-        # The below import is done here instead of at top of file because the
-        # Apple Silicon module contains optional dependencies that will cause
-        # import failures if not installed on the host device.
-        from zeus.device.soc.apple import AppleSilicon, ZeusAppleInitError
-
-        _soc = AppleSilicon()
-    except (ImportError, ZeusSoCInitError):
-        pass
+    if apple_silicon_is_available():
+        # Equivalent to `try: _, except: pass`
+        with suppress(ZeusAppleInitError):
+            _soc = AppleSilicon()
 
     # For additional SoC's, add more initialization attempts.
 

@@ -5,13 +5,43 @@ from __future__ import annotations
 import sys
 import platform
 from dataclasses import dataclass, asdict, fields
+from functools import lru_cache
 
 from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
 
-# The following are optional dependencies. If a host machine does not have them
-# installed, the Zeus code importing this module will gracefully handle the
-# import error.
-from zeus_apple_silicon import AppleEnergyMonitor, AppleEnergyMetrics  # type: ignore
+try:
+    import zeus_apple_silicon  # type: ignore
+
+    zeus_apple_available = True
+
+except Exception:
+
+    class MockZeusAppleSilicon:
+        """Mock class for zeus-apple-silicon library."""
+
+        def __getattr__(self, name):
+            """Raise an error if any method is called.
+
+            Since this class is only used when `zeus-apple-silicon` is not
+            available, something has gone wrong if any method is called.
+            """
+            raise RuntimeError(
+                f"zeus-apple-silicon is not available and zeus-apple-silicon.{name} "
+                "shouldn't have been called. This is a bug."
+            )
+
+    zeus_apple_available = False
+    zeus_apple_silicon = MockZeusAppleSilicon()
+
+
+@lru_cache(maxsize=1)
+def apple_silicon_is_available() -> bool:
+    """Check if Apple silicon is available."""
+    if not zeus_apple_available:
+        return False
+    if sys.platform != "darwin" or platform.processor() != "arm":
+        return False
+    return True
 
 
 class ZeusAppleInitError(ZeusSoCInitError):
@@ -91,7 +121,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
 
     @classmethod
     def measurementFromMetrics(
-        cls, metrics: AppleEnergyMetrics
+        cls, metrics: zeus_apple_silicon.AppleEnergyMetrics  # type: ignore
     ) -> AppleSiliconMeasurement:
         """Return an AppleSiliconMeasurement object based on an AppleEnergyMetrics object."""
         return cls(
@@ -112,16 +142,14 @@ class AppleSilicon(SoC):
 
     def __init__(self) -> None:
         """Initialize an instance of an Apple Silicon energy monitor."""
-        self._monitor: AppleEnergyMonitor = None
+        self._monitor: zeus_apple_silicon.AppleEnergyMonitor = None  # type: ignore
         self.available_metrics: set[str] | None = None
 
-        if sys.platform != "darwin" or platform.processor() != "arm":
-            raise ZeusAppleInitError(
-                "AppleSilicon is only supported on Apple silicon devices."
-            )
-
         try:
-            self._monitor = AppleEnergyMonitor()
+            self._monitor = zeus_apple_silicon.AppleEnergyMonitor()
+
+        # This except block exists for failures the AppleEnergyMonitor
+        # object may encounter during its own construction.
         except RuntimeError as e:
             raise ZeusAppleInitError(
                 f"Failed to initialize `AppleEnergyMonitor`: {e}"
@@ -150,7 +178,7 @@ class AppleSilicon(SoC):
 
         Units: mJ.
         """
-        result: AppleEnergyMetrics = self._monitor.get_cumulative_energy()
+        result = self._monitor.get_cumulative_energy()
         return AppleSiliconMeasurement.measurementFromMetrics(result)
 
     def beginWindow(self, key) -> None:
@@ -159,5 +187,5 @@ class AppleSilicon(SoC):
 
     def endWindow(self, key) -> SoCMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
-        result: AppleEnergyMetrics = self._monitor.end_window(key)
+        result = self._monitor.end_window(key)
         return AppleSiliconMeasurement.measurementFromMetrics(result)
