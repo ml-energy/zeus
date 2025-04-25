@@ -11,6 +11,17 @@ def mock_monitor():
     mocked_import.AppleEnergyMonitor.return_value = monitor
     mocked_import.AppleEnergyMetrics = MagicMock()
 
+    # When tests in other files import zeus.device.soc, that will
+    # cause zeus.device.soc.apple to be cached in sys.modules
+    # because zeus.device.soc imports zeus.device.soc.apple.
+    # Once cached, whenever we try to import zeus.device.soc.apple
+    # in *this* test file, the cached version will be used. However,
+    # since we want to *replace* zeus_apple_silicon which is used
+    # inside zeus.device.soc.apple with our own new mocked version,
+    # we must remove zeus.device.soc.apple from the cache and have it
+    # later be reloaded with our mocked version of zeus_apple_silicon.
+    sys.modules.pop("zeus.device.soc.apple", None)
+
     with (
         patch.dict(sys.modules, {"zeus_apple_silicon": mocked_import}),
         patch("sys.platform", "darwin"),
@@ -23,7 +34,7 @@ def test_total_energy(mock_monitor):
 
     # These imports must happen at each test (i.e., function) instead of at
     # the top of the file because they have an optional dependency that must
-    # be mocked. The `mock_optional_dep` fixture mocks the optional dependency
+    # be mocked. The `mock_monitor` fixture mocks the optional dependency
     # (zeus_apple_silicon) for all test functions.
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
@@ -274,3 +285,9 @@ def test_metrics_zero_out(mock_monitor):
     assert metrics.gpu_mj == 0
     assert metrics.gpu_sram_mj == 0
     assert metrics.ane_mj == 0
+
+
+def test_availability(mock_monitor):
+    from zeus.device.soc.apple import apple_silicon_is_available
+
+    assert apple_silicon_is_available()
