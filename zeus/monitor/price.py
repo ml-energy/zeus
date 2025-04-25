@@ -1,4 +1,4 @@
-"""Carbon intensity providers used for carbon-aware optimizers."""
+"""Electricity price providers used for price-aware optimizers."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from enum import Enum
 import queue
 import requests
+import json
 import multiprocessing as mp
 
 from typing import Literal
 from datetime import datetime, timezone, timedelta
-from dateutil import parser
 from collections import defaultdict
 
 from zeus.exception import ZeusBaseError
@@ -21,144 +21,162 @@ from zeus.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-class ZeusCarbonIntensityHTTPError(ZeusBaseError):
-    """Exception when HTTP request to carbon intensity provider fails."""
+def get_time_info() -> tuple[str, str, int]:
+    """Retrieve the month, day_type (weekend or weekday), and hour."""
+    now = datetime.now()
+
+    month = now.strftime("%B")
+
+    day_type = "Weekend" if now.weekday() >= 5 else "Weekday"
+
+    hour = now.hour
+
+    return month, day_type, hour
+
+
+class ZeusElectricityPriceHTTPError(ZeusBaseError):
+    """Exception when HTTP request to electricity price provider fails."""
 
     def __init__(self, message: str) -> None:
         """Initialize HTTP request exception."""
         super().__init__(message)
 
 
-class ZeusCarbonIntensityNotFoundError(ZeusBaseError):
-    """Exception when carbon intensity measurement could not be retrieved."""
+class ZeusElectricityPriceNotFoundError(ZeusBaseError):
+    """Exception when electricity price measurement could not be retrieved."""
 
     def __init__(self, message: str) -> None:
-        """Initialize carbon not found exception."""
+        """Initialize price not found exception."""
         super().__init__(message)
 
 
-class CarbonIntensityProvider(abc.ABC):
-    """Abstract class for implementing ways to fetch carbon intensity."""
+class ElectricityPriceProvider(abc.ABC):
+    """Abstract class for implementing ways to fetch electricity price."""
 
     @abc.abstractmethod
-    def get_current_carbon_intensity(self) -> float:
-        """Abstract method for fetching the current carbon intensity of the set location of the class."""
-        pass
-
-    @abc.abstractmethod
-    def get_recent_carbon_intensity(self) -> dict[datetime, float]:
-        """Abstract method for fetching the current carbon intensity of the set location of the class."""
-        pass
-
-    @property
-    @abc.abstractmethod
-    def update_period(self) -> timedelta:
-        """Abstract method for how long each carbon intensity value in the history dict remains current."""
-        pass
-
-    @property
-    @abc.abstractmethod
-    def history_length(self) -> int:
-        """Abstract method for how many carbon intensity values are in the history dict."""
+    def get_current_electricity_prices(self) -> dict[str, list]:
+        """Abstract method for fetching the current electricity price of the set location of the class."""
         pass
 
 
-class ElectrictyMapsClient(CarbonIntensityProvider):
-    """Carbon Intensity Provider with ElectricityMaps API.
+class OpenEIClient(ElectricityPriceProvider):
+    """Electricity Price Provider with OpenEI API.
 
     Reference:
 
-    1. [ElectricityMaps](https://www.electricitymaps.com/)
-    2. [ElectricityMaps API](https://static.electricitymaps.com/api/docs/index.html)
-    3. [ElectricityMaps GitHub](https://github.com/electricitymaps/electricitymaps-contrib)
+    1. [OpenEI](https://openei.org/wiki/Main_Page)
+    2. [OpenEI Utility Rates API](https://apps.openei.org/services/doc/rest/util_rates/?version=7)
     """
 
     def __init__(
         self,
         location: tuple[float, float],
-        estimate: bool = False,
-        emission_factor_type: Literal["direct", "lifecycle"] = "direct",
+        label: str,
+        sector: Literal[
+            "Residential", "Commercial", "Industrial", "Lighting"
+        ] = "Residential",
+        radius: int = 0,
     ) -> None:
-        """Iniitializes ElectricityMaps Carbon Provider.
+        """Initializes OpenEI Utility Rates Provider.
 
         Args:
             location: tuple of latitude and longitude (latitude, longitude)
-            estimate: bool to toggle whether carbon intensity is estimated or not
-            emission_factor_type: emission factor to be measured (`direct` or `lifestyle`)
+            label: unique identifier of a particular variant of a utility company's rate
+            sector: depends on which sector of electricity is relevant to you
+            radius: search radius for utility rates from the location
         """
         self.lat, self.long = location
-        self.estimate = estimate
-        self.emission_factor_type = emission_factor_type
+        self.label = label
+        self.sector = sector
+        self.radius = radius
 
-    def get_current_carbon_intensity(self) -> float:
-        """Fetches current carbon intensity of the location of the class.
+    def search_json(self, data, key_name, target_value, return_value):
+        """Recursively search for a key in a nested JSON and return the return_value field if found."""
+        results = []
 
-        In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
-        """
+        if isinstance(data, dict):
+            for key, val in data.items():
+                # Check if the current dictionary contains the matching key-value pair
+                if key == key_name and val == target_value:
+                    # If "energyratestructure" exists at the same level, add it to results
+                    if return_value in data:
+                        results.append(data[return_value])
+                    else:
+                        results.append(None)
+
+                # Recursively search deeper in nested dictionaries
+                results.extend(
+                    self.search_json(val, key_name, target_value, return_value)
+                )
+
+        elif isinstance(data, list):
+            for item in data:
+                results.extend(
+                    self.search_json(item, key_name, target_value, return_value)
+                )
+
+        return results
+
+    def get_current_electricity_prices(self) -> dict[str, list]:
+        """Fetches current carbon intensity of the location of the class."""
         try:
             url = (
-                f"https://api.electricitymap.org/v3/carbon-intensity/latest?lat={self.lat}&lon={self.long}"
-                + f"&disableEstimations={not self.estimate}&emissionFactorType={self.emission_factor_type}"
+                "https://api.openei.org/utility_rates?version=latest&format=json"
+                + f"&api_key=tJASWWgPhBRpiZCwfhtKV2A3gyNxbDfvQvdI5Wa7&lat={self.lat}"
+                + f"&lon={self.long}&radius={self.radius}"
+                + f"&detail=full&sector={self.sector}"
             )
             resp = requests.get(url)
+            data = resp.json()
+
         except requests.exceptions.RequestException as e:
-            raise ZeusCarbonIntensityHTTPError(
-                f"Failed to retrieve current carbon intensity measurement: {e}"
+            raise ZeusElectricityPriceHTTPError(
+                f"Failed to retrieve current electricity price measurement: {e}"
             ) from e
 
         try:
-            return resp.json()["carbonIntensity"]
-        except KeyError as e:
-            # Raise exception when carbonIntensity does not exist in response
-            raise ZeusCarbonIntensityNotFoundError(
-                f"Current carbon intensity measurement not found at `({self.lat}, {self.long})` "
-                f"with estimate set to `{self.estimate}` and emission_factor_type set to `{self.emission_factor_type}`\n"
-                f"JSON Response: {resp.text}"
-            ) from e
+            if "label" not in json.dumps(data):
+                raise ZeusElectricityPriceNotFoundError(
+                    f"No rates found for lat, lon: [{self.lat}, {self.long}]."
+                )
 
-    def get_recent_carbon_intensity(self) -> dict[datetime, float]:
-        """Fetches recent (within last 24 hours) carbon intensity of the location of the class.
-
-        In some locations, there is no recent carbon intensity data. `self.estimate` can be used to approximate the carbon intensity in such cases.
-        """
-        try:
-            url = (
-                f"https://api.electricitymap.org/v3/carbon-intensity/history?lat={self.lat}&lon={self.long}"
-                + f"&disableEstimations={not self.estimate}&emissionFactorType={self.emission_factor_type}"
+            energy_rate_structure = self.search_json(
+                data, "label", self.label, "energyratestructure"
             )
-            resp = requests.get(url)
-        except requests.exceptions.RequestException as e:
-            raise ZeusCarbonIntensityHTTPError(
-                f"Failed to retrieve recent carbon intensity measurement: {e}"
-            ) from e
+            energy_weekday_schedule = self.search_json(
+                data, "label", self.label, "energyweekdayschedule"
+            )
+            energy_weekend_schedule = self.search_json(
+                data, "label", self.label, "energyweekendschedule"
+            )
 
-        try:
-            recent_carbon_intensities: dict[datetime, float] = {
-                parser.parse(measurement["datetime"]): measurement["carbonIntensity"]
-                for measurement in resp.json()["history"]
+            if (
+                not energy_rate_structure
+                or not energy_weekday_schedule
+                or not energy_weekend_schedule
+            ):
+                raise ZeusElectricityPriceNotFoundError(
+                    f"No rates found for the label: {self.label}."
+                )
+
+            rate_data = {
+                "energy_rate_structure": energy_rate_structure[0],
+                "energy_weekday_schedule": energy_weekday_schedule[0],
+                "energy_weekend_schedule": energy_weekend_schedule[0],
             }
-            return recent_carbon_intensities
-        except KeyError as e:
-            # Raise exception when carbonIntensity does not exist in response
-            raise ZeusCarbonIntensityNotFoundError(
-                f"Recent carbon intensity measurement not found at `({self.lat}, {self.long})` "
-                f"with estimate set to `{self.estimate}` and emission_factor_type set to `{self.emission_factor_type}`\n"
-                f"JSON Response: {resp.text}"
+            return rate_data
+
+        except (KeyError, ValueError) as e:
+            logger.error(
+                "Error occurred while processing electricity price data: %s", e
+            )
+            raise ZeusElectricityPriceNotFoundError(
+                "Failed to process electricity price data."
             ) from e
-
-    @property
-    def update_period(self) -> timedelta:
-        """Returns timedelta for how long each carbon intensity value in the history dict remains current."""
-        return timedelta(hours=1)
-
-    @property
-    def history_length(self) -> int:
-        """Returns number of carbon intensity values in history dict."""
-        return 24
 
 
 @dataclass
-class CarbonEmissionMeasurement:
+class EnergyCostMeasurement:
     """Measurement result of one window.
 
     Attributes:
@@ -166,69 +184,64 @@ class CarbonEmissionMeasurement:
         gpu_energy: Maps GPU indices to the energy consumed (in Joules) during the
             measurement window. GPU indices are from the DL framework's perspective
             after applying `CUDA_VISIBLE_DEVICES`.
-        gpu_carbon_emission: Maps GPU indices to the carbon emission produced (in gCO2eq) during the
+        gpu_energy_cost: Maps GPU indices to the electricity cost (in $) during the
             measurement window. GPU indices are from the DL framework's perspective
             after applying `CUDA_VISIBLE_DEVICES`.
         cpu_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
             be 'None' if CPU measurement is not available.
-        cpu_carbon_emission: Maps CPU indices to the carbon emission produced (in gCO2eq) during the measurement
+        cpu_energy_cost: Maps CPU indices to the electricity cost (in $) during the measurement
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can
             be 'None' if CPU measurement is not available.
         dram_energy: Maps CPU indices to the energy consumed (in Joules) during the measurement
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d) and DRAM
             measurements are taken from sub-packages within each powerzone. This can be 'None' if
             CPU measurement is not available or DRAM measurement is not available.
-        dram_carbon_emission: Maps CPU indices to the carbon emission produced (in gCO2eq) during the measurement
+        dram_energy_cost: Maps CPU indices to the electricity cost (in $) during the measurement
             window. Each CPU index refers to one powerzone exposed by RAPL (intel-rapl:d). This can be 'None' if
             CPU measurement is not available or DRAM measurement is not available.
     """
 
     time: float
     gpu_energy: dict[int, float]
-    gpu_carbon_emission: dict[int, float]
+    gpu_energy_cost: dict[int, float]
     cpu_energy: dict[int, float] | None = None
-    cpu_carbon_emission: dict[int, float] | None = None
+    cpu_energy_cost: dict[int, float] | None = None
     dram_energy: dict[int, float] | None = None
-    dram_carbon_emission: dict[int, float] | None = None
+    dram_energy_cost: dict[int, float] | None = None
 
 
 class Op(Enum):
-    """Enum used to communicate between CarbonEmissionMonitor and _polling_process."""
+    """Enum used to communicate between EnergyCostMonitor and _polling_process."""
 
     BEGIN = 0
     END = 1
     NEXTITER = 2
 
 
-class CarbonEmissionMonitor:
-    """Measure the carbon emission, GPU energy, and time consumption of a block of code.
+class EnergyCostMonitor:
+    """Measure the energy, energy cost, and time consumption of a block of code.
 
     Works for multi-GPU and heterogeneous GPU types. Aware of `CUDA_VISIBLE_DEVICES`.
     For instance, if `CUDA_VISIBLE_DEVICES=2,3`, GPU index `1` passed into `gpu_indices`
     will be interpreted as CUDA device `3`.
 
-    You can mark the beginning and end of a measurement window, during which the carbon
-    emission, GPU energy, and time consumed will be recorded. Multiple concurrent
-    measurement windows are supported.
-
-    !!! Note
-        `carbon_intensity_provider` must have `estimate` turned on because during some hours,
-        ElectricityMaps does not have carbon intensity values available and has to rely on
-        estimation.
+    You can mark the beginning and end of a measurement window, during which the energy cost,
+    GPU energy, and time consumed will be recorded. Multiple concurrent measurement windows
+    are supported.
     """
 
     def __init__(
         self,
-        carbon_intensity_provider: CarbonIntensityProvider,
+        electricity_price_provider: ElectricityPriceProvider,
         gpu_indices: list[int] | None = None,
         cpu_indices: list[int] | None = None,
         sync_execution_with: Literal["torch", "jax"] = "torch",
     ) -> None:
-        """Iniitializes Carbon Emission Monitor.
+        """Initializes Energy Cost Monitor.
 
         Args:
-            carbon_intensity_provider: provider for which carbon intensity values will be fetched from
+            electricity_price_provider: provider for which electricity price values will be fetched from
             gpu_indices: Indices of all the CUDA devices to monitor. Time/Energy measurements
                 will begin and end at the same time for these GPUs (i.e., synchronized).
                 If None, all the GPUs available will be used. `CUDA_VISIBLE_DEVICES`
@@ -245,8 +258,9 @@ class CarbonEmissionMonitor:
             gpu_indices=gpu_indices,
             cpu_indices=cpu_indices,
             sync_execution_with=sync_execution_with,
+            approx_instant_energy=True,
         )
-        self.carbon_intensity_provider = carbon_intensity_provider
+        self.electricity_price_provider = electricity_price_provider
         self.current_keys = set()
 
         # set up process and shared queues
@@ -282,7 +296,7 @@ class CarbonEmissionMonitor:
                     self.finished_q,
                     self.zeus_monitor.gpu_indices,
                     self.zeus_monitor.cpu_indices,
-                    self.carbon_intensity_provider,
+                    self.electricity_price_provider,
                 ),
             )
             self.polling_process.start()
@@ -292,8 +306,8 @@ class CarbonEmissionMonitor:
 
     def end_window(
         self, key: str, sync_execution: bool = True
-    ) -> CarbonEmissionMeasurement:
-        """End a measurement window and return the time, energy consumption, and carbon emission.
+    ) -> EnergyCostMeasurement:
+        """End a measurement window and return the time, energy consumption, and energy cost.
 
         Args:
             key: Name of an active measurement window.
@@ -310,9 +324,9 @@ class CarbonEmissionMonitor:
         # end window
         self.command_q.put((Op.END, key))
         (
-            gpu_carbon_emissions,
-            cpu_carbon_emissions,
-            dram_carbon_emissions,
+            gpu_energy_cost,
+            cpu_energy_cost,
+            dram_energy_cost,
         ) = self.finished_q.get()
         self.current_keys.remove(key)
 
@@ -320,14 +334,14 @@ class CarbonEmissionMonitor:
             key, sync_execution=sync_execution
         )
 
-        measurement = CarbonEmissionMeasurement(
+        measurement = EnergyCostMeasurement(
             time=overall_measurement.time,
             gpu_energy=overall_measurement.gpu_energy,
             cpu_energy=overall_measurement.cpu_energy,
             dram_energy=overall_measurement.dram_energy,
-            gpu_carbon_emission=gpu_carbon_emissions,
-            cpu_carbon_emission=cpu_carbon_emissions or None,
-            dram_carbon_emission=dram_carbon_emissions or None,
+            gpu_energy_cost=gpu_energy_cost,
+            cpu_energy_cost=cpu_energy_cost or None,
+            dram_energy_cost=dram_energy_cost or None,
         )
 
         return measurement
@@ -338,24 +352,30 @@ def _polling_process(
     finished_q: mp.Queue,
     gpu_indices: list[int],
     cpu_indices: list[int],
-    carbon_intensity_provider: CarbonIntensityProvider,
+    electricity_price_provider: ElectricityPriceProvider,
 ):
-    last_index = 0
     index = 0
-    zeus_monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=cpu_indices)
-    gpu_carbon_emissions = defaultdict(
-        lambda: defaultdict(float)
-    )  # {window_key -> {gpu index -> cumulative carbon emission}}
-    cpu_carbon_emissions = defaultdict(
-        lambda: defaultdict(float)
-    )  # {window_key -> {cpu index -> cumulative carbon emission}}
-    dram_carbon_emissions = defaultdict(
-        lambda: defaultdict(float)
-    )  # {window_key -> {dram cpu index -> cumulative carbon emission}}
-    energy_measurements = defaultdict(
-        lambda: defaultdict(lambda: defaultdict(float))
-    )  # {window_key -> {hour -> {gpu/cpu index -> energy}}}
+    zeus_monitor = ZeusMonitor(
+        gpu_indices=gpu_indices,
+        cpu_indices=cpu_indices,
+    )
+    gpu_energy_cost = defaultdict(lambda: defaultdict(float))
+    cpu_energy_cost = defaultdict(lambda: defaultdict(float))
+    dram_energy_cost = defaultdict(lambda: defaultdict(float))
+    energy_measurements = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
     keys = set()
+
+    # Fetch electricity price data
+    try:
+        electricity_price_data = (
+            electricity_price_provider.get_current_electricity_prices()
+        )
+        energy_rate_structure = electricity_price_data["energy_rate_structure"]
+        energy_weekday_schedule = electricity_price_data["energy_weekday_schedule"]
+        energy_weekend_schedule = electricity_price_data["energy_weekend_schedule"]
+    except Exception as e:
+        logger.error("Failed to retrieve electricity price: %s.", e)
+        return
 
     # record energy measurement
     def _update_energy_measurements(key: str, datetime: datetime):
@@ -376,26 +396,38 @@ def _polling_process(
                     f"dram_{dram_index}"
                 ] = energy_measurement
 
-    # update cumulative carbon emissions
-    def _update_carbon_emissions(key: str):
-        carbon_intensities = carbon_intensity_provider.get_recent_carbon_intensity()
-
+    # update cumulative electricity costs
+    def _update_energy_costs(key: str):
         for dt, measurement_map in energy_measurements[key].items():
             for index, energy in measurement_map.items():
                 hardware_type, num_index = index.split("_")
 
+                month = dt.month - 1
+                hour = dt.hour
+                day_of_week = dt.weekday()
+
+                tier = (
+                    energy_weekday_schedule[month][hour]
+                    if day_of_week < 5
+                    else energy_weekend_schedule[month][hour]
+                )
+
+                try:
+                    flat_rate = energy_rate_structure[tier][0]["rate"]
+                except (IndexError, KeyError, TypeError):
+                    logger.error("Failed to parse electricity rate structure.")
+                    return
+
+                cost = (
+                    energy / 3.6e6
+                ) * flat_rate  # Convert Wh to kWh and multiply by rate
+
                 if hardware_type == "gpu":
-                    gpu_carbon_emissions[key][int(num_index)] += (
-                        energy / 3.6e6 * carbon_intensities[dt]
-                    )
+                    gpu_energy_cost[key][int(num_index)] += cost
                 elif hardware_type == "cpu":
-                    cpu_carbon_emissions[key][int(num_index)] += (
-                        energy / 3.6e6 * carbon_intensities[dt]
-                    )
+                    cpu_energy_cost[key][int(num_index)] += cost
                 elif hardware_type == "dram":
-                    dram_carbon_emissions[key][int(num_index)] += (
-                        energy / 3.6e6 * carbon_intensities[dt]
-                    )
+                    dram_energy_cost[key][int(num_index)] += cost
 
         del energy_measurements[key]
 
@@ -403,7 +435,7 @@ def _polling_process(
         # calculate current time
         now = datetime.now(timezone.utc)
         hour_floor = now.replace(minute=0, second=0, microsecond=0)
-        hour_ceil = hour_floor + carbon_intensity_provider.update_period
+        hour_ceil = hour_floor + timedelta(hours=1)
 
         # start windows
         for key in keys:
@@ -421,12 +453,12 @@ def _polling_process(
                 elif op == Op.END:
                     # update if has not been updated in a while
                     _update_energy_measurements(key, hour_floor)
-                    _update_carbon_emissions(key)
+                    _update_energy_costs(key)
                     finished_q.put(
                         (
-                            dict(gpu_carbon_emissions.pop(key)),
-                            dict(cpu_carbon_emissions.pop(key)),
-                            dict(dram_carbon_emissions.pop(key)),
+                            dict(gpu_energy_cost.pop(key)),
+                            dict(cpu_energy_cost.pop(key)),
+                            dict(dram_energy_cost.pop(key)),
                         )
                     )
                     keys.remove(key)
@@ -447,10 +479,3 @@ def _polling_process(
         index += 1
         for key in keys:
             _update_energy_measurements(key, hour_floor)
-
-        # check if we need to fetch carbon intensity measurements
-        # only need to fetch if oldest energy measurement's datetime is about to be outside the time range covered by fetched carbon intensity values
-        if index - last_index == carbon_intensity_provider.history_length - 1:
-            for key in keys:
-                _update_carbon_emissions(key)
-            last_index = index
