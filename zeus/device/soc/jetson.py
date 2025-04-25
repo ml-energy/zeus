@@ -10,6 +10,7 @@ import time
 import multiprocessing as mp
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty
 
 import zeus.device.soc.common as soc_common
 
@@ -31,34 +32,34 @@ class PowerMeasurementStrategy(abc.ABC):
 class DirectPower(PowerMeasurementStrategy):
     """Reads power directly from a sysfs path."""
 
-    def __init__(self, power_path: Path):  ###
+    def __init__(self, power_path: Path) -> None: 
         """Initialize DirectPower paths."""
-        self.power_path = power_path
+        self.power_path: Path = power_path
 
     def measure_power(self) -> float:
         """Measure power by reading from sysfs paths.
 
         Units: mW.
         """
-        power = float(self.power_path.read_text().strip())
+        power: float = float(self.power_path.read_text().strip())
         return power / 1000
 
 
 class VoltageCurrentProduct(PowerMeasurementStrategy):
     """Computes power as product of voltage and current, read from two sysfs paths."""
 
-    def __init__(self, voltage_path: Path, current_path: Path):  ###
+    def __init__(self, voltage_path: Path, current_path: Path) -> None: 
         """Initialize VoltageCurrentProduct paths."""
-        self.voltage_path = voltage_path
-        self.current_path = current_path
+        self.voltage_path: Path = voltage_path
+        self.current_path: Path = current_path
 
     def measure_power(self) -> float:
         """Measure power by reading from sysfs paths.
 
         Units: mW.
         """
-        voltage = float(self.voltage_path.read_text().strip())
-        current = float(self.current_path.read_text().strip())
+        voltage: float = float(self.voltage_path.read_text().strip())
+        current: float = float(self.current_path.read_text().strip())
         return (voltage * current) / 1000
 
 
@@ -94,8 +95,7 @@ class Jetson(soc_common.SoC):
     def __init__(self) -> None:
         """Initialize Jetson monitoring object."""
         super().__init__()
-        ###
-        self.power_measurement = self._discover_available_metrics()
+        self.power_measurement: dict[str, PowerMeasurementStrategy] = self._discover_available_metrics()
 
         # spawn polling process
         context = mp.get_context("spawn")
@@ -114,11 +114,18 @@ class Jetson(soc_common.SoC):
         # atexit.register(self._stop_process)
 
     def _discover_available_metrics(self) -> dict[str, PowerMeasurementStrategy]:
+        """Return available power measurement metrics per rail from the INA3221 sensor on Jetson devices.
+        
+        All official NVIDIA Jetson devices have at least 1 INA3221 power monitor that measures power usage via 3 channels. 
+        Referenced official documentation: 
+            https://docs.nvidia.com/jetson/archives/l4t-archived/l4t-3276/index.html#page/Tegra%20Linux%20Driver%20Package%20Development%20Guide/clock_power_setup.html#
+            https://docs.nvidia.com/jetson/archives/r35.6.1/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html#software-based-power-consumption-modeling
+            https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html#
+        """
+        path = Path("/sys/bus/i2c/drivers/ina3221x")
+
         metric_paths = {}
         power_measurement = {}
-
-        # todo: cite documentation for ina3221
-        path = Path("/sys/bus/i2c/drivers/ina3221x")
 
         def extract_directories(path, rail_name, rail_index, type):  ###
             rail_name_lower = rail_name.lower()
@@ -265,9 +272,12 @@ async def _polling_process_async(
             #     asyncio.to_thread(command_queue.get),
             #     timeout=4,
             # )
-            command = await asyncio.to_thread(command_queue.get, timeout=0.1)
+            command = await asyncio.to_thread(
+                command_queue.get, 
+                timeout=0.1,
+            )
             print(f"Command received: {command}")
-        except asyncio.TimeoutError:
+        except Empty:
             # Update energy and do nothing
             print("Timeout while waiting for command. Continuing to poll.")
             continue
