@@ -32,7 +32,7 @@ class PowerMeasurementStrategy(abc.ABC):
 class DirectPower(PowerMeasurementStrategy):
     """Reads power directly from a sysfs path."""
 
-    def __init__(self, power_path: Path) -> None: 
+    def __init__(self, power_path: Path) -> None:
         """Initialize DirectPower paths."""
         self.power_path: Path = power_path
 
@@ -48,7 +48,7 @@ class DirectPower(PowerMeasurementStrategy):
 class VoltageCurrentProduct(PowerMeasurementStrategy):
     """Computes power as product of voltage and current, read from two sysfs paths."""
 
-    def __init__(self, voltage_path: Path, current_path: Path) -> None: 
+    def __init__(self, voltage_path: Path, current_path: Path) -> None:
         """Initialize VoltageCurrentProduct paths."""
         self.voltage_path: Path = voltage_path
         self.current_path: Path = current_path
@@ -95,9 +95,13 @@ class Jetson(soc_common.SoC):
     def __init__(self) -> None:
         """Initialize Jetson monitoring object."""
         super().__init__()
-        self.power_measurement: dict[str, PowerMeasurementStrategy] = self._discover_available_metrics()
 
-        # spawn polling process
+        # Maps each power rail ('cpu', 'gpu', and 'total') to a power measurement strategy
+        self.power_measurement: dict[
+            str, PowerMeasurementStrategy
+        ] = self._discover_available_metrics()
+
+        # Spawn polling process
         context = mp.get_context("spawn")
         self.command_queue = context.Queue()
         self.result_queue = context.Queue()
@@ -107,27 +111,25 @@ class Jetson(soc_common.SoC):
         )
         self.process.start()
 
-        # self.command_queue.put(Command.READ)
-        # response = self.result_queue.get()
-        # print(response)
-
         atexit.register(self._stop_process)
 
     def _discover_available_metrics(self) -> dict[str, PowerMeasurementStrategy]:
         """Return available power measurement metrics per rail from the INA3221 sensor on Jetson devices.
-        
-        All official NVIDIA Jetson devices have at least 1 INA3221 power monitor that measures power usage via 3 channels. 
-        Referenced official documentation: 
+
+        All official NVIDIA Jetson devices have at least 1 INA3221 power monitor that measures per-rail power usage via 3 channels.
+        Referenced official documentation:
             https://docs.nvidia.com/jetson/archives/l4t-archived/l4t-3276/index.html#page/Tegra%20Linux%20Driver%20Package%20Development%20Guide/clock_power_setup.html#
             https://docs.nvidia.com/jetson/archives/r35.6.1/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html#software-based-power-consumption-modeling
             https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html#
         """
         path = Path("/sys/bus/i2c/drivers/ina3221x")
 
-        metric_paths = {}
-        power_measurement = {}
+        metric_paths: dict[str, dict[str, Path]] = {}
+        power_measurement: dict[str, PowerMeasurementStrategy] = {}
 
-        def extract_directories(path, rail_name, rail_index, type):  ###
+        def extract_directories(
+            path: Path, rail_name: str, rail_index: str, type: str
+        ) -> None:
             rail_name_lower = rail_name.lower()
 
             if "cpu" in rail_name_lower:
@@ -141,7 +143,7 @@ class Jetson(soc_common.SoC):
             ):
                 rail_name_simplified = "total"
             else:
-                return  # skip unsupported rail types
+                return  # Skip unsupported rail types
 
             if type == "label":
                 power_path = path / f"power{rail_index}_input"
@@ -200,7 +202,7 @@ class Jetson(soc_common.SoC):
 
     def _stop_process(self) -> None:
         """Kill the polling process."""
-        self.command_queue.put_nowait(Command.READ)
+        self.command_queue.put_nowait(Command.STOP)
         self.process.join()
 
     def getTotalEnergyConsumption(self, timeout: float = 15.0) -> JetsonMeasurement:
@@ -211,6 +213,7 @@ class Jetson(soc_common.SoC):
         self.command_queue.put(Command.READ)
         print("Command sent to command_queue")
         return self.result_queue.get(timeout=timeout)
+
 
 class Command(enum.Enum):
     """Provide commands for the polling process."""
@@ -223,14 +226,12 @@ def _polling_process_async_wrapper(
     command_queue: mp.Queue[Command],
     result_queue: mp.Queue[JetsonMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
-    poll_interval: float = 0.1,
 ) -> None:
     asyncio.run(
         _polling_process_async(
             command_queue,
             result_queue,
             power_measurement,
-            poll_interval,
         )
     )
 
@@ -239,7 +240,6 @@ async def _polling_process_async(
     command_queue: mp.Queue[Command],
     result_queue: mp.Queue[JetsonMeasurement],
     power_measurement: dict[str, PowerMeasurementStrategy],
-    poll_interval: float = 0.1,
 ) -> None:
     print("Polling process started")
     cumulative_measurement = JetsonMeasurement(
@@ -249,17 +249,16 @@ async def _polling_process_async(
     prev_ts = time.monotonic()
 
     while True:
-        print("Polling for command")
-        cpu_power_mw = power_measurement["cpu"].measure_power()
-        gpu_power_mw = power_measurement["gpu"].measure_power()
-        total_power_mw = power_measurement["total"].measure_power()
+        cpu_power_mw: float = power_measurement["cpu"].measure_power()
+        gpu_power_mw: float = power_measurement["gpu"].measure_power()
+        total_power_mw: float = power_measurement["total"].measure_power()
 
-        current_ts = time.monotonic()
-        dt = current_ts - prev_ts
+        current_ts: float = time.monotonic()
+        dt: float = current_ts - prev_ts
 
-        cpu_energy_mj = cpu_power_mw * dt
-        gpu_energy_mj = gpu_power_mw * dt
-        total_energy_mj = total_power_mw * dt
+        cpu_energy_mj: float = cpu_power_mw * dt
+        gpu_energy_mj: float = gpu_power_mw * dt
+        total_energy_mj: float = total_power_mw * dt
 
         cumulative_measurement.cpu_energy_mj += cpu_energy_mj
         cumulative_measurement.gpu_energy_mj += gpu_energy_mj
@@ -269,7 +268,7 @@ async def _polling_process_async(
 
         try:
             command = await asyncio.to_thread(
-                command_queue.get, 
+                command_queue.get,
                 timeout=0.1,
             )
             print(f"Command received: {command}")
@@ -282,6 +281,6 @@ async def _polling_process_async(
             print("Bye!")
             break
         if command == Command.READ:
-            # Update energy
+            # Update and return energy measurement
             print("Sending cumulative measurement to result_queue")
             result_queue.put(cumulative_measurement)
