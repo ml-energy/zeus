@@ -107,11 +107,11 @@ class Jetson(soc_common.SoC):
         )
         self.process.start()
 
-        self.command_queue.put(Command.READ)
-        response = self.result_queue.get()
-        print(response)
+        # self.command_queue.put(Command.READ)
+        # response = self.result_queue.get()
+        # print(response)
 
-        # atexit.register(self._stop_process)
+        atexit.register(self._stop_process)
 
     def _discover_available_metrics(self) -> dict[str, PowerMeasurementStrategy]:
         """Return available power measurement metrics per rail from the INA3221 sensor on Jetson devices.
@@ -268,10 +268,6 @@ async def _polling_process_async(
         prev_ts = current_ts
 
         try:
-            # command = await asyncio.wait_for(
-            #     asyncio.to_thread(command_queue.get),
-            #     timeout=4,
-            # )
             command = await asyncio.to_thread(
                 command_queue.get, 
                 timeout=0.1,
