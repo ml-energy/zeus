@@ -11,7 +11,7 @@ import platform
 import sys
 import time
 import multiprocessing as mp
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 from queue import Empty
 from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
@@ -75,35 +75,49 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
 
 @dataclass
 class JetsonMeasurement(SoCMeasurement):
-    """Represents energy measurements for Jetson Nano subsystems."""
+    """Represents energy measurements for Jetson Nano subsystems.
 
-    cpu_energy_mj: float = 0.0
-    gpu_energy_mj: float = 0.0
-    total_energy_mj: float = 0.0
+    All measurements are in mJ.
+    """
+
+    cpu_energy_mj: float | None = None
+    gpu_energy_mj: float | None = None
+    total_energy_mj: float | None = None
 
     def __sub__(self, other: JetsonMeasurement) -> JetsonMeasurement:
-        """Return a new JetsonMeasurement with subtracted field values."""
-        if not isinstance(other, JetsonMeasurement):
-            raise ValueError("Other must be a JetsonMeasurement object.")
+        """Produce a single measurement object containing differences across all fields."""
+        if not isinstance(other, type(self)):
+            raise TypeError("Subtraction is only supported between Jetson instances.")
 
-        return JetsonMeasurement(
-            cpu_energy_mj=self.cpu_energy_mj - other.cpu_energy_mj,
-            gpu_energy_mj=self.gpu_energy_mj - other.gpu_energy_mj,
-            total_energy_mj=self.total_energy_mj - other.total_energy_mj,
-        )
+        result = self.__class__()
+
+        for field in fields(self):
+            f_name = field.name
+            value1 = getattr(self, f_name)
+            value2 = getattr(other, f_name)
+            if value1 is None and value2 is None:
+                continue
+            else:
+                setattr(result, f_name, value1 - value2)
+
+        return result
 
     def zeroAllFields(self) -> None:
         """Set all internal measurement values to zero."""
-        self.cpu_energy_mj = 0.0
-        self.gpu_energy_mj = 0.0
-        self.total_energy_mj = 0.0
+        for field in fields(self):
+            f_name = field.name
+            f_value = getattr(self, f_name)
+            if isinstance(f_value, float):
+                setattr(self, f_name, 0.0)
+            else:
+                setattr(self, f_name, None)
 
 
 class Jetson(SoC):
     """An interface for obtaining the energy metrics of a Jetson Nano processor."""
 
     def __init__(self) -> None:
-        """Initialize Jetson monitoring object."""
+        """Initialize an instance of a Jetson energy monitor."""
         if not jetson_is_available():
             raise ZeusJetsonInitError(
                 "No Jetson processor was detected on the current device."
@@ -114,7 +128,8 @@ class Jetson(SoC):
         # Maps each power rail ('cpu', 'gpu', and 'total') to a power measurement strategy
         self.power_measurement: dict[
             str, PowerMeasurementStrategy
-        ] = self._discover_available_metrics()
+        ] | None = self._discover_available_metrics()
+        self.available_metrics: set[str] | None = None
 
         # Spawn polling process
         context = mp.get_context("spawn")
@@ -125,7 +140,6 @@ class Jetson(SoC):
             args=(self.command_queue, self.result_queue, self.power_measurement),
         )
         self.process.start()
-
         atexit.register(self._stop_process)
 
     def _discover_available_metrics(self) -> dict[str, PowerMeasurementStrategy]:
@@ -149,15 +163,15 @@ class Jetson(SoC):
             rail_name_lower = rail_name.lower()
 
             if "cpu" in rail_name_lower:
-                rail_name_simplified = "cpu"
+                rail_name_simplified = "cpu_power_mw"
             elif "gpu" in rail_name_lower:
-                rail_name_simplified = "gpu"
+                rail_name_simplified = "gpu_power_mw"
             elif (
                 "system" in rail_name_lower
                 or "_in" in rail_name_lower
                 or "total" in rail_name_lower
             ):
-                rail_name_simplified = "total"
+                rail_name_simplified = "total_power_mw"
             else:
                 return  # Skip unsupported rail types
 
@@ -173,14 +187,11 @@ class Jetson(SoC):
             if check_file(power_path):
                 metric_paths[rail_name_simplified] = {"power": Path(power_path)}
             elif check_file(volt_path) and check_file(curr_path):
-                sub = {}
-                sub["volt"] = Path(volt_path)
-                sub["curr"] = Path(curr_path)
-                metric_paths[rail_name_simplified] = sub
-            else:
-                raise ValueError(
-                    "Not enough measurement data to obtain power readings."
-                )
+                metric_paths[rail_name_simplified] = {
+                    "volt": Path(volt_path),
+                    "curr": Path(curr_path),
+                }
+            # Else, skip the rail due to insufficient metrics for power
 
         for device in path.glob("*"):
             for subdevice in device.glob("*"):
@@ -205,16 +216,22 @@ class Jetson(SoC):
                 power_measurement[rail] = VoltageCurrentProduct(
                     metrics["volt"], metrics["curr"]
                 )
-            else:
-                raise ValueError(
-                    f"Not enough measurement data to obtain power readings for '{rail}'."
-                )
-
+            # Else, skip the rail due to insufficient metrics for power
         return power_measurement
 
     def getAvailableMetrics(self) -> set[str]:
         """Return a set of all observable metrics on the Jetson device."""
-        return {rail + "_mj" for rail in self.power_measurement}
+        if self.available_metrics is None:
+            result: JetsonMeasurement = self.getTotalEnergyConsumption()
+            available_metrics = set()
+
+            metrics_dict = asdict(result)
+            for f_name, f_value in metrics_dict.items():
+                if f_value is not None:
+                    available_metrics.add(f_name)
+
+            self.available_metrics = available_metrics
+        return self.available_metrics
 
     def _stop_process(self) -> None:
         """Kill the polling process."""
@@ -259,26 +276,35 @@ async def _polling_process_async(
 ) -> None:
     """Continuously polls for accumulated energy measurements for CPU, GPU, and total power, listening for commands to stop or return the measurement."""
     cumulative_measurement = JetsonMeasurement(
-        cpu_energy_mj=0.0, gpu_energy_mj=0.0, total_energy_mj=0.0
+        cpu_energy_mj=0.0 if "cpu_power_mw" in power_measurement else None,
+        gpu_energy_mj=0.0 if "gpu_power_mw" in power_measurement else None,
+        total_energy_mj=0.0 if "total_power_mw" in power_measurement else None,
     )
 
     prev_ts = time.monotonic()
 
     while True:
-        cpu_power_mw: float = power_measurement["cpu"].measure_power()
-        gpu_power_mw: float = power_measurement["gpu"].measure_power()
-        total_power_mw: float = power_measurement["total"].measure_power()
-
         current_ts: float = time.monotonic()
         dt: float = current_ts - prev_ts
 
-        cpu_energy_mj: float = cpu_power_mw * dt
-        gpu_energy_mj: float = gpu_power_mw * dt
-        total_energy_mj: float = total_power_mw * dt
-
-        cumulative_measurement.cpu_energy_mj += cpu_energy_mj
-        cumulative_measurement.gpu_energy_mj += gpu_energy_mj
-        cumulative_measurement.total_energy_mj += total_energy_mj
+        if "cpu_power_mw" in power_measurement:
+            cpu_power_mw = power_measurement["cpu_power_mw"].measure_power()
+            cpu_energy_mj = cpu_power_mw * dt
+            cumulative_measurement.cpu_energy_mj = (
+                cumulative_measurement.cpu_energy_mj or 0.0
+            ) + cpu_energy_mj
+        if "gpu_power_mw" in power_measurement:
+            gpu_power_mw = power_measurement["gpu_power_mw"].measure_power()
+            gpu_energy_mj = gpu_power_mw * dt
+            cumulative_measurement.gpu_energy_mj = (
+                cumulative_measurement.gpu_energy_mj or 0.0
+            ) + gpu_energy_mj
+        if "total_power_mw" in power_measurement:
+            total_power_mw = power_measurement["total_power_mw"].measure_power()
+            total_energy_mj = total_power_mw * dt
+            cumulative_measurement.total_energy_mj = (
+                cumulative_measurement.total_energy_mj or 0.0
+            ) + total_energy_mj
 
         prev_ts = current_ts
 
