@@ -14,6 +14,8 @@ import multiprocessing as mp
 from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 from queue import Empty
+from typing import TypedDict
+
 from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
 
 
@@ -113,6 +115,14 @@ class JetsonMeasurement(SoCMeasurement):
                 setattr(self, f_name, None)
 
 
+class DeviceMap(TypedDict, total=False):
+    """Map of device names to their corresponding power measurement strategies."""
+
+    cpu_power_mw: PowerMeasurementStrategy
+    gpu_power_mw: PowerMeasurementStrategy
+    total_power_mw: PowerMeasurementStrategy
+
+
 class Jetson(SoC):
     """An interface for obtaining the energy metrics of a Jetson Nano processor."""
 
@@ -125,10 +135,8 @@ class Jetson(SoC):
 
         super().__init__()
 
-        # Maps each power rail ('cpu', 'gpu', and 'total') to a power measurement strategy
-        self.power_measurement: dict[
-            str, PowerMeasurementStrategy
-        ] | None = self._discover_available_metrics()
+        # Maps each power rail (cpu, gpu, and total) to a power measurement strategy
+        self.power_measurement = self._discover_available_metrics()
         self.available_metrics: set[str] | None = None
 
         # Spawn polling process
@@ -142,19 +150,19 @@ class Jetson(SoC):
         self.process.start()
         atexit.register(self._stop_process)
 
-    def _discover_available_metrics(self) -> dict[str, PowerMeasurementStrategy]:
+    def _discover_available_metrics(self) -> DeviceMap:
         """Return available power measurement metrics per rail from the INA3221 sensor on Jetson devices.
 
         All official NVIDIA Jetson devices have at least 1 INA3221 power monitor that measures per-rail power usage via 3 channels.
-        Referenced documentation:
-            https://docs.nvidia.com/jetson/archives/l4t-archived/l4t-3276/index.html#page/Tegra%20Linux%20Driver%20Package%20Development%20Guide/clock_power_setup.html#
-            https://docs.nvidia.com/jetson/archives/r35.6.1/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html#software-based-power-consumption-modeling
-            https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html#
+
+          - https://docs.nvidia.com/jetson/archives/l4t-archived/l4t-3276/index.html#page/Tegra%20Linux%20Driver%20Package%20Development%20Guide/clock_power_setup.html#
+          - https://docs.nvidia.com/jetson/archives/r35.6.1/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html#software-based-power-consumption-modeling
+          - https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html#
         """
         path = Path("/sys/bus/i2c/drivers/ina3221x")
 
         metric_paths: dict[str, dict[str, Path]] = {}
-        power_measurement: dict[str, PowerMeasurementStrategy] = {}
+        power_measurement: DeviceMap = {}
 
         def extract_directories(
             path: Path, rail_name: str, rail_index: str, type: str
@@ -236,7 +244,8 @@ class Jetson(SoC):
     def _stop_process(self) -> None:
         """Kill the polling process."""
         self.command_queue.put_nowait(Command.STOP)
-        self.process.join()
+        self.process.join(timeout=1.0)
+        self.process.kill()
 
     def getTotalEnergyConsumption(self, timeout: float = 15.0) -> JetsonMeasurement:
         """Returns the total energy consumption of the Jetson device. This measurement is cumulative.
@@ -257,7 +266,7 @@ class Command(enum.Enum):
 def _polling_process_async_wrapper(
     command_queue: mp.Queue[Command],
     result_queue: mp.Queue[JetsonMeasurement],
-    power_measurement: dict[str, PowerMeasurementStrategy],
+    power_measurement: DeviceMap,
 ) -> None:
     """Function wrapper for the asynchronous energy polling process."""
     asyncio.run(
@@ -272,7 +281,7 @@ def _polling_process_async_wrapper(
 async def _polling_process_async(
     command_queue: mp.Queue[Command],
     result_queue: mp.Queue[JetsonMeasurement],
-    power_measurement: dict[str, PowerMeasurementStrategy],
+    power_measurement: DeviceMap,
 ) -> None:
     """Continuously polls for accumulated energy measurements for CPU, GPU, and total power, listening for commands to stop or return the measurement."""
     cumulative_measurement = JetsonMeasurement(
