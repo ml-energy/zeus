@@ -10,6 +10,11 @@ from contextlib import suppress
 
 from zeus.device.soc.common import SoC, ZeusSoCInitError
 from zeus.device.soc.jetson import Jetson, ZeusJetsonInitError, jetson_is_available
+from zeus.device.soc.apple import (
+    AppleSilicon,
+    ZeusAppleInitError,
+    apple_silicon_is_available,
+)
 
 _soc: SoC | None = None
 
@@ -20,18 +25,26 @@ def get_soc() -> SoC:
     The function returns a SoC management object that aims to abstract underlying SoC monitoring
     functionalities.
 
-    Currently, no management object has been implemented for any SoC architecture, so calling this
-    function will raise a `ZeusSoCInitError` error; implementations for SoC devices are expected
-    to be added in the near future.
+    Currently supported SoC devices:
+        - Apple Silicon
+
+    If no SoC monitor object can be initialized, a `ZeusSoCInitError` exception will be raised.
     """
     global _soc
     if _soc is not None:
         return _soc
 
-    if jetson_is_available():
+    # --- Apple Silicon ---
+    if apple_silicon_is_available():
+        with suppress(ZeusAppleInitError):
+            _soc = AppleSilicon()
+            
+    # --- Jetson Nano ---
+    elif jetson_is_available():
         with suppress(ZeusJetsonInitError):
             _soc = Jetson()
 
+    # For additional SoC's, add more initialization attempts.
     if _soc is None:
         raise ZeusSoCInitError("No observable SoC was found on the current machine.")
     return _soc
