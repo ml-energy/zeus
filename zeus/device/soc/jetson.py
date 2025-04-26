@@ -1,4 +1,4 @@
-"""NVIDIA Jetson Nano SoC energy measurement module."""
+"""NVIDIA Jetson platform support."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
 
 
 class ZeusJetsonInitError(ZeusSoCInitError):
-    """Import error for Jetson initialization failures."""
+    """Jetson initialization failures."""
 
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
