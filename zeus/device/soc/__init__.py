@@ -38,7 +38,7 @@ def get_soc() -> SoC:
     if apple_silicon_is_available():
         with suppress(ZeusAppleInitError):
             _soc = AppleSilicon()
-            
+
     # --- Jetson Nano ---
     elif jetson_is_available():
         with suppress(ZeusJetsonInitError):
