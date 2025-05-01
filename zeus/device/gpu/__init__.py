@@ -11,11 +11,11 @@ which returns a GPU Manager object specific to the platform.
 
 The main API exported from this module is the `get_gpus` function. It returns either
 [`NVIDIAGPUs`][zeus.device.gpu.nvidia.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.amd.AMDGPUs]
-depending on the platform. 
+depending on the platform.
 
 ```python
 from zeus.device import get_gpus
-gpus = get_gpus()  
+gpus = get_gpus()
 ```
 
 ## Calling GPU management APIs

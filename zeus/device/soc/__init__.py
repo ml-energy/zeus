@@ -9,6 +9,7 @@ from __future__ import annotations
 from contextlib import suppress
 
 from zeus.device.soc.common import SoC, ZeusSoCInitError
+from zeus.device.soc.jetson import Jetson, ZeusJetsonInitError, jetson_is_available
 from zeus.device.soc.apple import (
     AppleSilicon,
     ZeusAppleInitError,
@@ -38,8 +39,12 @@ def get_soc() -> SoC:
         with suppress(ZeusAppleInitError):
             _soc = AppleSilicon()
 
-    # For additional SoC's, add more initialization attempts.
+    # --- Jetson Nano ---
+    elif jetson_is_available():
+        with suppress(ZeusJetsonInitError):
+            _soc = Jetson()
 
+    # For additional SoC's, add more initialization attempts.
     if _soc is None:
         raise ZeusSoCInitError("No observable SoC was found on the current machine.")
     return _soc
