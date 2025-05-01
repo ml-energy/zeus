@@ -51,7 +51,7 @@ def arm_state_parser(output):
 
 
 def read_trace(
-    gpu: Literal["a40", "v100", "p100", "rtx6000"]
+    gpu: Literal["a40", "v100", "p100", "rtx6000"],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read the train and power trace files as Pandas DataFrames."""
     trace_dir = Path(__file__).resolve(strict=True).parents[3]
