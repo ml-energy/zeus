@@ -77,7 +77,7 @@ class VoltageCurrentProduct(PowerMeasurementStrategy):
 
 @dataclass
 class JetsonMeasurement(SoCMeasurement):
-    """Represents energy measurements for Jetson Nano subsystems.
+    """Represents energy measurements for Jetson subsystems.
 
     All measurements are in mJ.
     """
@@ -124,7 +124,7 @@ class DeviceMap(TypedDict, total=False):
 
 
 class Jetson(SoC):
-    """An interface for obtaining the energy metrics of a Jetson Nano processor."""
+    """An interface for obtaining the energy metrics of a Jetson processor."""
 
     def __init__(self) -> None:
         """Initialize an instance of a Jetson energy monitor."""

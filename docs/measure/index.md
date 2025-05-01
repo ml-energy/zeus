@@ -89,7 +89,7 @@ DRAM energy measurement are available on some CPUs as well.
 
 To check CPU/GPU/DRAM measurement support, refer to [Verifying installation](../getting_started/index.md#verifying-installation).
 
-Energy measurement for Apple Silicon and Jetson Nano is supported as well. For more information, refer to [Apple Silicon](#apple-silicon) and [Jetson Nano](#jetson-nano).
+Energy measurement for Apple Silicon and Jetson Platforms is supported as well. For more information, refer to [Apple Silicon](#apple-silicon) and [Jetson Platforms](#jetson-platforms).
 
 ### [`get_gpus`][zeus.device.get_gpus] and [`get_cpus`][zeus.device.get_cpus]
 
@@ -149,9 +149,9 @@ Note that units are in mJ.
 
 Some metrics may be unavailable for monitoring depending on the specific processor (e.g., DRAM is sometimes unavailable on M1 macs). If a certain subsystem's energy could not be measured, its entry in the result object will simply hold `None`.
 
-### Jetson Nano
+### Jetson Platforms
 
-Energy measurement is currently supported for NVIDIA Jetson Nano platforms. Similarly to Apple Silicon, metrics can be retrieved as normal with the Zeus monitor ([Programmatic measurement](#programmatic-measurement)), which collects them in the `soc_energy` field of the returned [`Measurement`][zeus.monitor.energy.Measurement] object. Metrics are reported by [`end_window`][zeus.monitor.ZeusMonitor.end_window]. For example:
+Energy measurement is currently supported for NVIDIA Jetson platforms. Similarly to Apple Silicon, metrics can be retrieved as normal with the Zeus monitor ([Programmatic measurement](#programmatic-measurement)), which collects them in the `soc_energy` field of the returned [`Measurement`][zeus.monitor.energy.Measurement] object. Metrics are reported by [`end_window`][zeus.monitor.ZeusMonitor.end_window]. For example:
 
 ```python
 # ...
@@ -159,9 +159,9 @@ mes = monitor.end_window("epoch")
 jetson_energy_metrics = mes.soc_energy
 ```
 
-**Note**: if you do not have a Jetson processor or are not running Linux, the Zeus monitor will skip measuring energy for Jetson Nano.
+**Note**: if you do not have a Jetson processor or are not running Linux, the Zeus monitor will skip measuring energy for Jetson platforms.
 
-For Jetson Nano, the `soc_energy` field will include energy metrics for:
+For Jetson, the `soc_energy` field will include energy metrics for:
 
 - On-chip CPU (`cpu_energy_mj`)
 - On-chip GPU (`gpu_energy_mj`)
@@ -169,7 +169,7 @@ For Jetson Nano, the `soc_energy` field will include energy metrics for:
 
 Note that units are in mJ.
 
-Some metrics may be unavailable for monitoring depending on the specific Jetson Nano model or configuration (e.g. custom-configured boards), though this is rarely the case. For any unavailable metrics, its entry in the result object will hold `None`.
+Some metrics may be unavailable for monitoring depending on the specific Jetson device model or configuration (e.g. custom-configured boards), though this is rarely the case. For any unavailable metrics, its entry in the result object will hold `None`.
 
 ## Metric Monitoring
 
