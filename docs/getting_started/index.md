@@ -130,6 +130,9 @@ CPU availability:
 
 ## System privileges
 
+!!! Tip
+    If you just want to measure GPU energy, you can skip this section.
+
 ### When are extra system privileges needed?
 
 1. **CPU energy measurement**: `root` privileges are needed when measuring CPU energy through the Intel RAPL interface. This is due to a [security issue](https://www.cve.org/CVERecord?id=CVE-2020-8694). Specifically, this is needed if you want to measure CPU energy via [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] with `cpu_indices`.
