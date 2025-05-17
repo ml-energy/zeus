@@ -9,10 +9,9 @@ readme = "README.md"
 authors = [
     {name = "Zeus Team"},
 ]
-license = {text = "Apache 2.0"}
+license = "Apache-2.0"
 classifiers = [
     "Environment :: GPU :: NVIDIA CUDA",
-    "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
