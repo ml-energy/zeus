@@ -15,11 +15,11 @@
 ---
 **Project News** ⚡ 
 
-- \[2024/08\] Perseus, an optimizer for large model training, was accepted to SOSP'24! [Paper](https://dl.acm.org/doi/10.1145/3694715.3695970) | [Blog](https://ml.energy/zeus/research_overview/perseus) | [Optimizer](https://ml.energy/zeus/optimize/pipeline_frequency_optimizer)
-- \[2024/07\] Added AMD GPU, CPU, and DRAM energy measurement support, and preliminary JAX support!
+- \[2025/05\] We shared our experience and design philosophy for the [ML.ENERGY leaderboard](https://ml.energy/leaderboard) in [this paper](https://arxiv.org/abs/2505.06371).
+- \[2025/05\] Zeus now supports CPU, DRAM, AMD GPU, Apple Silicon, and NVIDIA Jetson platform energy measurement!
+- \[2024/11\] Perseus, an optimizer for large model training, appeared at SOSP'24! [Paper](https://dl.acm.org/doi/10.1145/3694715.3695970) | [Blog](https://ml.energy/zeus/research_overview/perseus) | [Optimizer](https://ml.energy/zeus/optimize/pipeline_frequency_optimizer)
 - \[2024/05\] Zeus is now a PyTorch ecosystem project. Read the PyTorch blog post [here](https://pytorch.org/blog/zeus/)!
 - \[2024/02\] Zeus was selected as a [2024 Mozilla Technology Fund awardee](https://foundation.mozilla.org/en/blog/open-source-AI-for-environmental-justice/)!
-- \[2023/07\] We used the [`ZeusMonitor`](https://ml.energy/zeus/reference/monitor/energy/#zeus.monitor.energy.ZeusMonitor) to profile GPU time and energy consumption for the [ML.ENERGY leaderboard & Colosseum](https://ml.energy/leaderboard).
 ---
 
 Zeus is a library for (1) [**measuring**](https://ml.energy/zeus/measure) the energy consumption of Deep Learning workloads and (2) [**optimizing**](https://ml.energy/zeus/optimize) their energy consumption.
