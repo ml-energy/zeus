@@ -21,7 +21,7 @@ on:
       - 'setup.py'
       - 'scripts/lint.sh'
       - 'pyproject.toml'
-    paths-ignore: # if only a .md file is changed, no testing is needed
+    paths-ignore:
       - '**/*.md'
 
 # Jobs initiated by previous pushes get cancelled by a new push.
