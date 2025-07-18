@@ -19,9 +19,6 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 
 # ZEUS
-from zeus.monitor import ZeusMonitor
-from zeus.monitor import PowerMonitor
-from zeus.utils.env import get_env
 from zeus.metric import EnergyHistogram, EnergyCumulativeCounter, PowerGauge
 
 
