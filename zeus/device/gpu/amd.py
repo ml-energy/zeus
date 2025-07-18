@@ -42,7 +42,9 @@ logger = get_logger(name=__name__)
 def amdsmi_is_available() -> bool:
     """Check if amdsmi is available."""
     try:
-        import amdsmi  # type: ignore
+        # `amdsmi` prints to stdout on import when libamd_smi.so is not found.
+        with contextlib.redirect_stdout(None):
+            import amdsmi  # type: ignore
     except ImportError:
         logger.info("amdsmi is not available.")
         return False

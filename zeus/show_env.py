@@ -10,25 +10,29 @@
 from __future__ import annotations
 
 import platform
+import shutil
 
 import zeus
 from zeus.utils import framework
-from zeus.device import get_gpus, get_cpus
+from zeus.device import get_gpus, get_cpus, get_soc
 from zeus.device.cpu import RAPLCPUs
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
 from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
+from zeus.device.soc.common import ZeusSoCInitError, EmptySoC
+from zeus.device.soc.apple import AppleSilicon
+from zeus.device.soc.jetson import Jetson
 
 
-SECTION_SEPARATOR = "=" * 80 + "\n"
+SECTION_SEPARATOR = "-" * shutil.get_terminal_size().columns
 
 
 def show_env():
     """Collect information about the environment and display it."""
     print(SECTION_SEPARATOR)
-    print(f"Python version: {platform.python_version()}\n")
+    print("## Package availability and versions\n")
+    print("Logging output:")
 
-    print(SECTION_SEPARATOR)
-    package_availability = "\nPackage availability and versions:\n"
+    package_availability = "  Python version: " + platform.python_version() + "\n"
     package_availability += f"  Zeus: {zeus.__version__}\n"
 
     try:
@@ -65,10 +69,13 @@ def show_env():
     else:
         package_availability += "  JAX: not available\n"
 
-    print(package_availability)
+    print("\nDetected:\n" + package_availability)
 
     print(SECTION_SEPARATOR)
-    gpu_availability = "\nGPU availability:\n"
+    print("## Device availability\n")
+    print("Logging output:")
+
+    gpu_availability = ""
     try:
         gpus = get_gpus()
     except ZeusGPUInitError:
@@ -78,14 +85,18 @@ def show_env():
             gpu_availability += f"  GPU {i}: {gpus.getName(i)}\n"
     else:
         gpu_availability += "  No GPUs available.\n"
-    print(gpu_availability)
+    print("\nDetected:\n" + gpu_availability)
 
     print(SECTION_SEPARATOR)
-    cpu_availability = "\nCPU availability:\n"
+    print("## CPU availability\n")
+    print("Logging output:")
+
+    cpu_availability = ""
     try:
         cpus = get_cpus()
     except ZeusCPUInitError:
         cpus = EmptyCPUs()
+
     if len(cpus) > 0:
         assert isinstance(cpus, RAPLCPUs)
         for i in range(len(cpus)):
@@ -98,7 +109,38 @@ def show_env():
                 cpu_availability += "    DRAM measurements unavailable\n"
     else:
         cpu_availability += "  No CPUs available.\n"
-    print(cpu_availability)
+    print("\nDetected:\n" + cpu_availability)
+
+    print(SECTION_SEPARATOR)
+    print("## SoC availability\n")
+    print("Logging output:")
+
+    soc_availability = ""
+    try:
+        soc = get_soc()
+    except ZeusSoCInitError:
+        soc = EmptySoC()
+
+    if isinstance(soc, AppleSilicon):
+        metrics = soc.getAvailableMetrics()
+        soc_availability += "  Apple Silicon SoC available.\n"
+        soc_availability += f"  Available metrics: {', '.join(metrics)}\n"
+    elif isinstance(soc, Jetson):
+        metrics = soc.getAvailableMetrics()
+        soc_availability += "  NVIDIA Jetson SoC available.\n"
+        soc_availability += f"  Available metrics: {', '.join(metrics)}\n"
+    else:
+        soc_availability += "  No SoC available.\n"
+
+        # If this is an Apple Silicon device but AppleSilicon was not detected,
+        # print out a warning.
+        if platform.system() == "Darwin" and platform.machine() in ["arm64", "aarch64"]:
+            soc_availability += (
+                "\nThis appears to be an Apple Silicon device, but it wasn't picked up by Zeus.\n"
+                "Have you installed Zeus with the `apple` extra?\n\n"
+                "    pip install 'zeus[apple]'\n"
+            )
+    print("\nDetected:\n" + soc_availability)
 
     print(SECTION_SEPARATOR)
 
