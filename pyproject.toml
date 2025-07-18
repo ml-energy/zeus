@@ -85,7 +85,6 @@ ignore = [
   "PLR2004",  # Magic values
   "SIM115",   # Context manager for opening files
   "E501",     # Line too long
-  "PLC0415"   # Top-level import
   "PLC0415",  # Top-level import
 ]
 pydocstyle.convention = "google"
