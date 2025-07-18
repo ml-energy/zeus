@@ -75,6 +75,23 @@ class NVIDIAGPU(gpu_common.GPU):
         self._get_handle()
         self._supportsGetTotalEnergyConsumption = None
 
+        # Check if it's a Grace Hopper chip
+        try:
+            pynvml.nvmlDeviceGetC2cModeInfoV(self.handle)
+            self._is_grace_hopper = True
+        except pynvml.NVMLError as e:
+            e_value = e.value  # pyright: ignore[reportAttributeAccessIssue]
+            if e_value != pynvml.NVML_ERROR_NOT_SUPPORTED:
+                logger.warning(
+                    "Attempted to check whether the current chip is a Grace Hopper chip "
+                    "by calling `nvmlDeviceGetC2cModeInfoV`, which we expected to either "
+                    "return a valid response or raise `NVML_ERROR_NOT_SUPPORTED`. "
+                    "Instead, it raised an unexpected error: '%s'. Treating this as "
+                    "not a Grace Hopper chip.",
+                    e,
+                )
+            self._is_grace_hopper = False
+
     _exception_map = {
         pynvml.NVML_ERROR_UNINITIALIZED: gpu_common.ZeusGPUInitError,
         pynvml.NVML_ERROR_INVALID_ARGUMENT: gpu_common.ZeusGPUInvalidArgError,
@@ -192,9 +209,14 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def getAveragePowerUsage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
-        metric = pynvml.nvmlDeviceGetFieldValues(
-            self.handle, [pynvml.NVML_FI_DEV_POWER_AVERAGE]
-        )[0]
+        if self._is_grace_hopper:
+            fields = [
+                (pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_MODULE)
+            ]
+        else:
+            fields = [(pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_GPU)]
+
+        metric = pynvml.nvmlDeviceGetFieldValues(self.handle, fields)[0]
         if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
             raise pynvml.NVMLError(ret)
         return metric.value.uiVal
@@ -202,9 +224,14 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def getInstantPowerUsage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
-        metric = pynvml.nvmlDeviceGetFieldValues(
-            self.handle, [pynvml.NVML_FI_DEV_POWER_INSTANT]
-        )[0]
+        if self._is_grace_hopper:
+            fields = [
+                (pynvml.NVML_FI_DEV_POWER_INSTANT, pynvml.NVML_POWER_SCOPE_MODULE)
+            ]
+        else:
+            fields = [(pynvml.NVML_FI_DEV_POWER_INSTANT, pynvml.NVML_POWER_SCOPE_GPU)]
+
+        metric = pynvml.nvmlDeviceGetFieldValues(self.handle, fields)[0]
         if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
             raise pynvml.NVMLError(ret)
         return metric.value.uiVal
@@ -373,6 +400,9 @@ class NVIDIAGPUs(gpu_common.GPUs):
     environment variable to the path of the Zeus daemon socket. This class will
     automatically use [`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU]
     if `ZEUSD_SOCK_PATH` is set.
+
+    !!! Note
+        For Grace Hopper, the power and energy values are for the entire superchip/module.
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:
