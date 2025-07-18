@@ -52,7 +52,8 @@ lint = ["ruff", "black==22.6.0", "pyright!=1.1.395", "pandas-stubs", "transforme
 test = ["fastapi[standard]", "sqlalchemy", "pydantic<2", "pytest==7.3.2", "pytest-mock==3.10.0", "pytest-xdist==3.3.1", "anyio==3.7.1", "aiosqlite==0.20.0", "numpy<2"]
 docs = ["mkdocs-material[imaging]==9.5.19", "mkdocstrings[python]==0.25.0", "mkdocs-gen-files==0.5.0", "mkdocs-literate-nav==0.6.1", "mkdocs-section-index==0.3.9", "mkdocs-redirects==1.2.1", "urllib3<2", "black"]
 # greenlet is for supporting apple mac silicon for sqlalchemy(https://docs.sqlalchemy.org/en/20/faq/installation.html)
-dev = ["zeus[pfo-server,bso,bso-server,migration,prometheus,lint,test]", "greenlet"]
+# `zeus[apple]` is not included because it can only be installed on MacOS.
+dev = ["zeus[pfo-server,bso,bso-server,migration,prometheus,lint,test,docs]", "greenlet"]
 
 [tool.setuptools.packages.find]
 where = ["."]
