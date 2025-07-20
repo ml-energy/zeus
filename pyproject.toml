@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-keywords = ["deep-learning", "power", "energy", "carbon", "sustainability", "mlsys"]
+keywords = ["deep-learning", "power", "energy", "mlsys"]
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
