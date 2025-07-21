@@ -27,6 +27,13 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.9"
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: .cache
+          restore-keys: |
+            mkdocs-material-
       - name: Install Zeus and dependencies
         run: uv sync --extra docs
       - name: Build homepage
