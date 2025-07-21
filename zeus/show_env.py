@@ -13,6 +13,7 @@ import platform
 import shutil
 
 import zeus
+from zeus.device.exception import ZeusBaseCPUError, ZeusBaseGPUError, ZeusBaseSoCError
 from zeus.utils import framework
 from zeus.device import get_gpus, get_cpus, get_soc
 from zeus.device.cpu import RAPLCPUs
@@ -80,6 +81,9 @@ def show_env():
         gpus = get_gpus()
     except ZeusGPUInitError:
         gpus = EmptyGPUs()
+    except ZeusBaseGPUError as e:
+        gpu_availability += f"  Error initializing GPUs: {e}\n"
+        gpus = EmptyGPUs()
     if len(gpus) > 0:
         for i in range(len(gpus)):
             gpu_availability += f"  GPU {i}: {gpus.getName(i)}\n"
@@ -95,6 +99,9 @@ def show_env():
     try:
         cpus = get_cpus()
     except ZeusCPUInitError:
+        cpus = EmptyCPUs()
+    except ZeusBaseCPUError as e:
+        cpu_availability += f"  Error initializing CPUs: {e}\n"
         cpus = EmptyCPUs()
 
     if len(cpus) > 0:
@@ -119,6 +126,9 @@ def show_env():
     try:
         soc = get_soc()
     except ZeusSoCInitError:
+        soc = EmptySoC()
+    except ZeusBaseSoCError as e:
+        soc_availability += f"  Error initializing SoC: {e}\n"
         soc = EmptySoC()
 
     if isinstance(soc, AppleSilicon):
