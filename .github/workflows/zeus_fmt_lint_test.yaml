@@ -39,6 +39,7 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.9"
+          version: "latest"
       - name: Install Zeus and dependencies
         run: uv sync --extra dev
       - name: Check format and lint
