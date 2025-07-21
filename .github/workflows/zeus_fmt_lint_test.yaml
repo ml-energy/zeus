@@ -34,14 +34,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: 3.9
-          cache: 'pip'
-      - name: Install Zeus and lint tools
-        run: pip install -U pip && pip install ".[dev]"
+          enable-cache: true
+          python-version: "3.9"
+      - name: Install Zeus and dependencies
+        run: uv sync --extra dev
       - name: Check format and lint
-        run: bash scripts/lint.sh
+        run: uv run bash scripts/lint.sh
       - name: Run tests
-        run: python -m pytest
+        run: uv run pytest

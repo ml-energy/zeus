@@ -21,11 +21,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: 3.9
-          cache: 'pip'
+          enable-cache: true
+          python-version: "3.9"
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
       - uses: actions/cache@v4
         with:
@@ -33,9 +33,9 @@ jobs:
           path: .cache
           restore-keys: |
             mkdocs-material-
-      - name: Install homepage build dependencies
-        run: pip install '.[docs]'
+      - name: Install Zeus and dependencies
+        run: uv sync --extra docs
       - name: Build homepage
-        run: mkdocs gh-deploy --force
+        run: uv run mkdocs gh-deploy --force
         env:
           BUILD_SOCIAL_CARD: true
