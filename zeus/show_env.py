@@ -116,8 +116,8 @@ def show_env():
                     cpu_availability += "    DRAM measurements unavailable\n"
             elif isinstance(cpu, RAPLCPU):
                 cpu_availability += f"  CPU {i}:\n    CPU measurements available ({cpu.rapl_file.path})\n"
-                if cpus.supportsGetDramEnergyConsumption(i):
-                    dram = cpus.cpus[i].dram
+                if cpu.supportsGetDramEnergyConsumption():
+                    dram = cpu.dram
                     assert dram is not None
                     cpu_availability += (
                         f"    DRAM measurements available ({dram.path})\n"
