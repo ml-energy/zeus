@@ -94,7 +94,7 @@ impl CpuManager for RaplCpu {
     fn get_available_fields(
         index: usize,
     ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError> {
-        let base_path = PathBuf::from(format!("{}/intel-rapl:{}", RAPL_DIR, index));
+        let base_path = PathBuf::from(format!("{RAPL_DIR}/intel-rapl:{index}"));
         let cpu_info = PackageInfo::new(&base_path, index)?;
 
         match fs::read_dir(&base_path) {

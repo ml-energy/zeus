@@ -17,14 +17,16 @@ pub struct NvmlGpu<'n> {
 
 fn init_nvml() -> Result<Nvml, NvmlError> {
     // Initialize NVML and return the instance.
-    if let Ok(nvml) = Nvml::init() {
-        return Ok(nvml);
+    match Nvml::init() {
+        Ok(nvml) => Ok(nvml),
+        Err(NvmlError::LibloadingError(_)) => {
+            tracing::warn!("NVML library not found, trying with `libnvidia-ml.so.1`");
+            Nvml::builder()
+                .lib_path(OsStr::new("libnvidia-ml.so.1"))
+                .init()
+        }
+        Err(e) => Err(e),
     }
-
-    // If initialization fails, try with `libnvidia-ml.so.1`.
-    Nvml::builder()
-        .lib_path(OsStr::new("libnvidia-ml.so.1"))
-        .init()
 }
 
 impl NvmlGpu<'static> {

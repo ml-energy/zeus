@@ -171,5 +171,5 @@ async fn test_supports_dram_energy() {
 
     let dram_response: DramAvailabilityResponse = serde_json::from_str(&resp.text().await.unwrap())
         .expect("Failed to deserialize response body");
-    assert_eq!(dram_response.dram_available, true);
+    assert!(dram_response.dram_available);
 }
