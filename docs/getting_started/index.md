@@ -178,7 +178,7 @@ $ ZEUSD_SOCK_PATH=/var/run/zeusd.sock python -m zeus.show_env
 ## CPU availability
 
 Logging output:
-[2025-07-25 16:40:40,396] [zeus.device.cpu.rapl](rapl.py:139) RAPL directory (/sys/class/powercap/intel-rapl) is available.
+[2025-07-25 16:40:40,396] [zeus.device.cpu.rapl](rapl.py:137) RAPL directory (/sys/class/powercap/intel-rapl) is available.
 
 Detected:
   CPU 0:
