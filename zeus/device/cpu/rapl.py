@@ -133,11 +133,17 @@ def _polling_process(
 @lru_cache(maxsize=1)
 def rapl_is_available() -> bool:
     """Check if RAPL is available."""
-    if not os.path.exists(RAPL_DIR) and not os.path.exists(CONTAINER_RAPL_DIR):
-        logger.info("RAPL is not supported on this CPU.")
-        return False
-    logger.info("RAPL is available.")
-    return True
+    if os.path.exists(RAPL_DIR):
+        logger.info("RAPL directory (%s) is available.", RAPL_DIR)
+        return True
+    if os.path.exists(CONTAINER_RAPL_DIR):
+        logger.info(
+            "You are likely in a container, and RAPL directory (%s) is available.",
+            CONTAINER_RAPL_DIR,
+        )
+        return True
+    logger.info("RAPL is not supported on this CPU.")
+    return False
 
 
 class ZeusRAPLNotSupportedError(ZeusBaseCPUError):
@@ -187,7 +193,8 @@ class RAPLFile:
             raise ZeusRAPLFileInitError("Error reading package energy") from err
         except PermissionError as err:
             raise cpu_common.ZeusCPUNoPermissionError(
-                "Can't read file due to permission error"
+                "Can't read file due to permission error; RAPL requires root privileges. "
+                "Refer to https://ml.energy/zeus/getting_started/#system-privileges for more details."
             ) from err
         try:
             with open(
@@ -283,6 +290,7 @@ class ZeusdRAPLCPU(RAPLCPU):
     ) -> None:
         """Initialize the Intel CPU with a specified index."""
         self.cpu_index = cpu_index
+        self.zeusd_sock_path = zeusd_sock_path
 
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
         self._url_prefix = f"http://zeusd/cpu/{cpu_index}"
@@ -296,7 +304,7 @@ class ZeusdRAPLCPU(RAPLCPU):
         )
         if resp.status_code != 200:
             raise ZeusdError(
-                f"Failed to get whether DRAM energy is supported: {resp.text}"
+                f"Failed to query Zeusd whether DRAM energy is supported: {resp.text}"
             )
         data = resp.json()
         dram_available = data.get("dram_available")
