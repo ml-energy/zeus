@@ -133,11 +133,17 @@ def _polling_process(
 @lru_cache(maxsize=1)
 def rapl_is_available() -> bool:
     """Check if RAPL is available."""
-    if not os.path.exists(RAPL_DIR) and not os.path.exists(CONTAINER_RAPL_DIR):
-        logger.info("RAPL is not supported on this CPU.")
-        return False
-    logger.info("RAPL directory (%s) is available.", RAPL_DIR)
-    return True
+    if os.path.exists(RAPL_DIR):
+        logger.info("RAPL directory (%s) is available.", RAPL_DIR)
+        return True
+    if os.path.exists(CONTAINER_RAPL_DIR):
+        logger.info(
+            "You are likely in a container, and RAPL directory (%s) is available.",
+            CONTAINER_RAPL_DIR,
+        )
+        return True
+    logger.info("RAPL is not supported on this CPU.")
+    return False
 
 
 class ZeusRAPLNotSupportedError(ZeusBaseCPUError):
