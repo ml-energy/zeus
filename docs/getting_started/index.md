@@ -167,8 +167,31 @@ sudo zeusd \
 1. Unix domain socket path that `zeusd` listens to.
 2. Applications need *write* access to the socket to be able to talk to `zeusd`. This string is interpreted as [UNIX file permissions](https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation).
 
-We're currently working on adding Intel RAPL support to the Zeus daemon ([tracking issue](https://github.com/ml-energy/zeus/issues/110)).
-We plan to land this feature at the end of 2024.
+After deploying `zeusd`, set the `ZEUSD_SOCK_PATH` environment variable to the socket path (e.g., `/var/run/zeusd.sock`) to allow Zeus imported in your application find and talk to the running Zeus daemon.
+You can test out whether it worked with:
+
+```console
+$ ZEUSD_SOCK_PATH=/var/run/zeusd.sock python -m zeus.show_env
+--------------------------------------------------------------------------------
+...other fields
+--------------------------------------------------------------------------------
+## CPU availability
+
+Logging output:
+[2025-07-25 16:40:40,396] [zeus.device.cpu.rapl](rapl.py:139) RAPL directory (/sys/class/powercap/intel-rapl) is available.
+
+Detected:
+  CPU 0:
+    CPU measurements available (Zeusd at /var/run/zeusd.sock)
+    DRAM measurements available (Zeusd at /var/run/zeusd.sock)
+  CPU 1:
+    CPU measurements available (Zeusd at /var/run/zeusd.sock)
+    DRAM measurements available (Zeusd at /var/run/zeusd.sock)
+
+--------------------------------------------------------------------------------
+```
+
+The Zeus daemon supports setting the GPU's power limit and frequency, as well as reading CPU/DRAM power measurements via Intel RAPL.
 
 ### Option 3: Running applications with `sudo`
 

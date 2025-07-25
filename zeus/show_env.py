@@ -13,6 +13,7 @@ import platform
 import shutil
 
 import zeus
+from zeus.device.cpu.rapl import RAPLCPU, ZeusdRAPLCPU
 from zeus.device.exception import ZeusBaseCPUError, ZeusBaseGPUError, ZeusBaseSoCError
 from zeus.utils import framework
 from zeus.device import get_gpus, get_cpus, get_soc
@@ -106,14 +107,25 @@ def show_env():
 
     if len(cpus) > 0:
         assert isinstance(cpus, RAPLCPUs)
-        for i in range(len(cpus)):
-            cpu_availability += f"  CPU {i}:\n    CPU measurements available ({cpus.cpus[i].rapl_file.path})\n"
-            if cpus.supportsGetDramEnergyConsumption(i):
-                dram = cpus.cpus[i].dram
-                assert dram is not None
-                cpu_availability += f"    DRAM measurements available ({dram.path})\n"
+        for i, cpu in enumerate(cpus.cpus):
+            if isinstance(cpu, ZeusdRAPLCPU):
+                cpu_availability += f"  CPU {i}:\n    CPU measurements available (Zeusd at {cpu.zeusd_sock_path})\n"
+                if cpu.supportsGetDramEnergyConsumption():
+                    cpu_availability += f"    DRAM measurements available (Zeusd at {cpu.zeusd_sock_path})\n"
+                else:
+                    cpu_availability += "    DRAM measurements unavailable\n"
+            elif isinstance(cpu, RAPLCPU):
+                cpu_availability += f"  CPU {i}:\n    CPU measurements available ({cpu.rapl_file.path})\n"
+                if cpus.supportsGetDramEnergyConsumption(i):
+                    dram = cpus.cpus[i].dram
+                    assert dram is not None
+                    cpu_availability += (
+                        f"    DRAM measurements available ({dram.path})\n"
+                    )
+                else:
+                    cpu_availability += "    DRAM measurements unavailable\n"
             else:
-                cpu_availability += "    DRAM measurements unavailable\n"
+                raise TypeError("Unexpected CPU type: " + str(type(cpus.cpus[i])))
     else:
         cpu_availability += "  No CPUs available.\n"
     print("\nDetected:\n" + cpu_availability)
