@@ -2,6 +2,8 @@
 //!
 //! Note that NVML is only available on Linux.
 
+use std::ffi::OsStr;
+
 use nvml_wrapper::enums::device::GpuLockedClocksSetting;
 use nvml_wrapper::{error::NvmlError, Device, Nvml};
 
@@ -13,12 +15,24 @@ pub struct NvmlGpu<'n> {
     device: Device<'n>,
 }
 
+fn init_nvml() -> Result<Nvml, NvmlError> {
+    // Initialize NVML and return the instance.
+    if let Ok(nvml) = Nvml::init() {
+        return Ok(nvml);
+    }
+
+    // If initialization fails, try with `libnvidia-ml.so.1`.
+    Nvml::builder()
+        .lib_path(OsStr::new("libnvidia-ml.so.1"))
+        .init()
+}
+
 impl NvmlGpu<'static> {
     pub fn init(index: u32) -> Result<Self, ZeusdError> {
         // `Device` needs to hold a reference to `Nvml`, meaning that `Nvml` must outlive `Device`.
         // We can achieve this by leaking a `Box` containing `Nvml` and holding a reference to it.
         // `Nvml` will actually live until the server terminates inside the GPU management task.
-        let _nvml = Box::leak(Box::new(Nvml::init()?));
+        let _nvml = Box::leak(Box::new(init_nvml()?));
         let device = _nvml.device_by_index(index)?;
         Ok(Self { _nvml, device })
     }
@@ -26,7 +40,7 @@ impl NvmlGpu<'static> {
 
 impl GpuManager for NvmlGpu<'static> {
     fn device_count() -> Result<u32, ZeusdError> {
-        match Nvml::init() {
+        match init_nvml() {
             Ok(nvml) => match nvml.device_count() {
                 Ok(count) => Ok(count),
                 Err(e) => Err(ZeusdError::NvmlError(e)),
