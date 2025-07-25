@@ -285,7 +285,7 @@ impl TestApp {
         let port = listener.local_addr().unwrap().port();
         let server = start_server_tcp(listener, gpu_test_tasks, cpu_test_tasks, 2)
             .expect("Failed to start server");
-        let _ = tokio::spawn(async move { server.await });
+        let _ = tokio::spawn(server);
 
         TestApp {
             port,

@@ -27,7 +27,7 @@ async fn test_set_persistence_mode_single() {
     assert_eq!(resp.status(), 200);
     let history = app.persistence_mode_history_for_gpu(0);
     assert_eq!(history.len(), 1);
-    assert_eq!(history[0], true);
+    assert!(history[0]);
 }
 
 #[tokio::test]
