@@ -151,6 +151,7 @@ This is also possible for Kubernetes Pods with `securityContext.capabilities.add
 Granting `SYS_ADMIN` to the entire application just to be able to change the GPU's configuration is [granting too much](https://en.wikipedia.org/wiki/Principle_of_least_privilege){.external}.
 Instead, Zeus provides the [**Zeus daemon** or `zeusd`](https://github.com/ml-energy/zeus/tree/master/zeusd){.external}, which is a simple server/daemon process that is designed to run with admin privileges and exposes the minimal set of APIs wrapping NVML methods for changing the GPU's configuration.
 Then, an unprivileged (i.e., run normally by any user) application can ask `zeusd` via a Unix Domain Socket to change the local node's GPU configuration on its behalf.
+The Zeus daemon also supports CPU/DRAM power measurement via Intel RAPL, which normally requires `root` privileges.
 
 To deploy `zeusd`:
 
@@ -190,8 +191,6 @@ Detected:
 
 --------------------------------------------------------------------------------
 ```
-
-The Zeus daemon supports setting the GPU's power limit and frequency, as well as reading CPU/DRAM power measurements via Intel RAPL.
 
 ### Option 3: Running applications with `sudo`
 
