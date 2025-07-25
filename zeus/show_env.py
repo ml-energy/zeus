@@ -125,7 +125,7 @@ def show_env():
                 else:
                     cpu_availability += "    DRAM measurements unavailable\n"
             else:
-                raise TypeError("Unexpected CPU type: " + str(type(cpus.cpus[i])))
+                raise TypeError("Unexpected CPU type: " + str(type(cpu)))
     else:
         cpu_availability += "  No CPUs available.\n"
     print("\nDetected:\n" + cpu_availability)
