@@ -77,8 +77,8 @@ class NVIDIAGPU(gpu_common.GPU):
 
         # Check if it's a Grace Hopper chip
         try:
-            pynvml.nvmlDeviceGetC2cModeInfoV(self.handle)
-            self._is_grace_hopper = True
+            c2c_mode_info = pynvml.nvmlDeviceGetC2cModeInfoV(self.handle)
+            self._is_grace_hopper = c2c_mode_info.isC2cEnabled
         except pynvml.NVMLError as e:
             e_value = e.value  # pyright: ignore[reportAttributeAccessIssue]
             if e_value != pynvml.NVML_ERROR_NOT_SUPPORTED:
