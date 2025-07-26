@@ -253,6 +253,10 @@ class GPUs(abc.ABC):
         self._warn_sys_admin()
         self.gpus[gpu_index].resetGpuLockedClocks(_block)
 
+    def getAveragePowerUsage(self, gpu_index: int) -> int:
+        """Return the average power usage of the GPU. Units: mW."""
+        return self.gpus[gpu_index].getAveragePowerUsage()
+
     def getInstantPowerUsage(self, gpu_index: int) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         return self.gpus[gpu_index].getInstantPowerUsage()
