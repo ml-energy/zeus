@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from sklearn.metrics import auc
 
+from zeus.device.gpu.common import ZeusGPUNotSupportedError
 from zeus.utils.logging import get_logger
 from zeus.device import get_gpus
 
@@ -110,7 +111,7 @@ class PowerSample:
 
     timestamp: float
     gpu_index: int
-    power_mw: float  # Power in milliwatts
+    power_mw: float
 
 
 class PowerMonitor:
@@ -280,7 +281,7 @@ class PowerMonitor:
             return
 
         processed_count = 0
-        while processed_count < 10000:  # Prevent infinite loop
+        while True:
             try:
                 sample = self.data_queues[domain].get_nowait()
                 if sample == "STOP":
@@ -487,7 +488,9 @@ def _domain_polling_process(
 
         # Signal that this process is ready to start monitoring
         ready_event.set()
-        print(f"[{time()}] Let's fucking go! Monitoring {power_domain.value} power...")
+
+        # Start polling loop
+        num_not_supported_encounter = 0
         while not stop_event.is_set():
             timestamp = time()
 
@@ -513,13 +516,29 @@ def _domain_polling_process(
                     )
 
                     data_queue.put(sample)
-
+                except ZeusGPUNotSupportedError as e:
+                    # When polling at a high frequency, NVML sometimes raises
+                    # a NotSupported error. We can safely ignore this.
+                    num_not_supported_encounter += 1
+                    if num_not_supported_encounter > 10:
+                        num_not_supported_encounter = 0
+                        logger.warning(
+                            "GPU %d domain %s encountered 10 NotSupported errors. "
+                            "This may indicate a polling frequency that is too high. "
+                            "Consider increasing the update period."
+                            "Exception: '%s'",
+                            gpu_index,
+                            power_domain.value,
+                            e,
+                        )
                 except Exception as e:
-                    # Log error but continue monitoring other GPUs
-                    print(
-                        f"Error monitoring GPU {gpu_index} for domain {power_domain.value}: {e}"
+                    logger.exception(
+                        "Error polling power for GPU %d in domain %s: %s",
+                        gpu_index,
+                        power_domain.value,
+                        e,
                     )
-                    continue
+                    raise e
 
             # Sleep for the remaining time
             elapsed = time() - timestamp
