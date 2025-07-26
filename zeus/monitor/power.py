@@ -449,7 +449,7 @@ class PowerMonitor:
                         if time - before.timestamp <= after.timestamp - time
                         else after
                     )
-                result[gpu_idx] = closest_sample.power_mw / 1000  # To Watts
+                result[gpu_idx] = closest_sample.power_mw / 1000.0  # To Watts
 
         return result
 
@@ -468,14 +468,15 @@ def _domain_polling_process(
         gpus = get_gpus(ensure_homogeneous=True)
 
         # Determine the GPU method to call based on domain
-        if power_domain == PowerDomain.DEVICE_INSTANT:
-            power_method = gpus.getInstantPowerUsage
-        elif power_domain == PowerDomain.DEVICE_AVERAGE:
-            power_method = gpus.getAveragePowerUsage
-        elif power_domain == PowerDomain.MEMORY_AVERAGE:
-            power_method = gpus.getAverageMemoryPowerUsage
-        else:
-            raise ValueError(f"Unknown power domain: {power_domain}")
+        power_methods = {
+            PowerDomain.DEVICE_INSTANT: gpus.getInstantPowerUsage,
+            PowerDomain.DEVICE_AVERAGE: gpus.getAveragePowerUsage,
+            PowerDomain.MEMORY_AVERAGE: gpus.getAverageMemoryPowerUsage,
+        }
+        try:
+            power_method = power_methods[power_domain]
+        except KeyError:
+            raise ValueError(f"Unknown power domain: {power_domain}") from None
 
         # Track previous power values for deduplication
         prev_power: dict[int, float] = {}
