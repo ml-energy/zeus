@@ -239,8 +239,9 @@ class PowerMonitor:
             try:
                 _ = method(0)
                 supported.append(domain)
+                logger.info("Power domain %s is supported", domain.value)
             except ZeusGPUNotSupportedError:
-                pass
+                logger.info("Power domain %s is not supported", domain.value)
             except Exception as e:
                 logger.warning(
                     "Unexpected error while checking for %s support on GPU %d: %s",

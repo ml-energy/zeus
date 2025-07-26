@@ -11,6 +11,8 @@ Measuring power and energy is also very low overhead, typically taking less than
 
 ## Programmatic measurement
 
+### Time and energy consumption of a chunk of code
+
 [`ZeusMonitor`][zeus.monitor.ZeusMonitor] makes it very simple to measure the GPU time and energy consumption of arbitrary Python code blocks.
 
 A *measurement window* is defined by a code block wrapped with [`begin_window`][zeus.monitor.ZeusMonitor.begin_window] and [`end_window`][zeus.monitor.ZeusMonitor.end_window].
@@ -60,6 +62,20 @@ if __name__ == "__main__":
     In general, energy optimizers measure the energy of the GPU through a [`ZeusMonitor`][zeus.monitor.ZeusMonitor] instance that is passed to their constructor.
     Thus, only the GPUs specified by `gpu_indices` will be the target of optimization.
 
+### Power consumption over time
+
+Apart from energy, you can also measure the power consumption of GPUs over time by directly using the [`PowerMonitor`][zeus.monitor.power.PowerMonitor].
+It measures power in three *power domains*:  
+- **GPU average power**: Windowed average power consumption of the GPU over a one-second interval.
+- **GPU instantaneous power**: Instantaneous power consumption of the GPU at the time of the query.
+- **GPU memory average power** (Hopper or newer): Windowed average power consumption of the GPU's memory.
+
+!!! Important
+    Not all GPUs support all power domains, and this is not really documented well. You'll have to check on your GPU by instantiating [`PowerMonitor`][zeus.monitor.power.PowerMonitor], which will automatically detect supported power domains.
+
+When `PowerMonitor` is instantiated, it spawns separate processes that poll the device's power consumption API and collects deduplicated power samples in-memory.
+Then, you can call [`get_all_power_timelines`][zeus.monitor.power.PowerMonitor.get_all_power_timelines] or [`get_power_timeline`][zeus.monitor.power.PowerMonitor.get_power_timeline] for a specific power domain to retrieve the power samples collected either for the whole lifetime of the monitor, or for a specific time window.
+
 ### Synchronizing CPU and GPU computations
 
 Deep learning frameworks typically run actual computation on GPUs in an asynchronous fashion.
@@ -67,8 +83,8 @@ That is, the CPU (Python interpreter) asynchronously dispatches computations to 
 This helps GPUs achieve higher utilization with less idle time.
 
 Due to this asynchronous nature of Deep Learning frameworks, we need to be careful when we want to take time and energy measurements of GPU execution.
-We want *only and all of* the computations dispatched between `begin_window` and `end_window` to be captured by our time and energy measurement.
-That's what the `sync_execution_with` paramter in [`ZeusMonitor`][zeus.monitor.ZeusMonitor] and `sync_execution` paramter in [`begin_window`][zeus.monitor.ZeusMonitor.begin_window] and [`end_window`][zeus.monitor.ZeusMonitor.end_window] are for.
+We want *only and all* the computations dispatched between `begin_window` and `end_window` to be captured by our time and energy measurement.
+That's what the `sync_execution_with` parameter in [`ZeusMonitor`][zeus.monitor.ZeusMonitor] and `sync_execution` paramter in [`begin_window`][zeus.monitor.ZeusMonitor.begin_window] and [`end_window`][zeus.monitor.ZeusMonitor.end_window] are for.
 Depending on the Deep Learning framework you're using (currently PyTorch and JAX are supported), [`ZeusMonitor`][zeus.monitor.ZeusMonitor] will automatically synchronize CPU and GPU execution to make sure all and only the computations dispatched between the window are captured.
 
 !!! Tip
