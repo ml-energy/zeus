@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import bisect
 import collections
 import multiprocessing as mp
 from enum import Enum
@@ -160,6 +161,8 @@ class PowerMonitor:
         self.gpu_indices = (
             gpu_indices if gpu_indices is not None else list(range(len(gpus)))
         )
+        if not self.gpu_indices:
+            raise ValueError("At least one GPU index must be specified")
         logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
 
         # Infer update period from GPU instant power, if necessary
@@ -225,36 +228,26 @@ class PowerMonitor:
         """Determine which power domains are supported by the current GPUs."""
         supported = []
         gpus = get_gpus(ensure_homogeneous=True)
+        methods = {
+            PowerDomain.DEVICE_INSTANT: gpus.getInstantPowerUsage,
+            PowerDomain.DEVICE_AVERAGE: gpus.getAveragePowerUsage,
+            PowerDomain.MEMORY_AVERAGE: gpus.getAverageMemoryPowerUsage,
+        }
 
-        # Test device instant power
-        try:
-            for gpu_idx in self.gpu_indices:
-                power = gpus.getInstantPowerUsage(gpu_idx)
-                if power > 0:
-                    supported.append(PowerDomain.DEVICE_INSTANT)
-                    break
-        except Exception:
-            pass
-
-        # Test device average power
-        try:
-            for gpu_idx in self.gpu_indices:
-                power = gpus.getAveragePowerUsage(gpu_idx)
-                if power > 0:
-                    supported.append(PowerDomain.DEVICE_AVERAGE)
-                    break
-        except Exception:
-            pass
-
-        # Test memory average power
-        try:
-            for gpu_idx in self.gpu_indices:
-                power = gpus.getAverageMemoryPowerUsage(gpu_idx)
-                if power > 0:
-                    supported.append(PowerDomain.MEMORY_AVERAGE)
-                    break
-        except Exception:
-            pass
+        # Just check the first GPU for support, since all GPUs are homogeneous.
+        for domain, method in methods.items():
+            try:
+                _ = method(0)
+                supported.append(domain)
+            except ZeusGPUNotSupportedError:
+                pass
+            except Exception as e:
+                logger.warning(
+                    "Unexpected error while checking for %s support on GPU %d: %s",
+                    domain.value,
+                    self.gpu_indices[0],
+                    e,
+                )
 
         return supported
 
@@ -280,17 +273,13 @@ class PowerMonitor:
         if domain not in self.data_queues:
             return
 
-        processed_count = 0
         while True:
             try:
                 sample = self.data_queues[domain].get_nowait()
                 if sample == "STOP":
                     break
-                if isinstance(sample, PowerSample):
-                    self.samples[domain][sample.gpu_index].append(sample)
-                    processed_count += 1
-                else:
-                    break
+                assert isinstance(sample, PowerSample)
+                self.samples[domain][sample.gpu_index].append(sample)
             except Empty:
                 break
 
@@ -412,7 +401,7 @@ class PowerMonitor:
         return energy_result
 
     def get_power(self, time: float | None = None) -> dict[int, float] | None:
-        """Get the power usage of the GPUs at a specific time point (backward compatibility).
+        """Get the instant power usage of the GPUs at a specific time point.
 
         Uses device instant power for compatibility.
 
@@ -424,40 +413,45 @@ class PowerMonitor:
             A dictionary mapping GPU indices to the power usage of the GPU at the
             specified time point. If there are no power readings, return None.
         """
+        if PowerDomain.DEVICE_INSTANT not in self.supported_domains:
+            raise ValueError(
+                "PowerDomain.DEVICE_INSTANT is not supported by the current GPUs."
+            )
+
         # Process any pending queue data
         self._process_all_queue_data()
 
-        if PowerDomain.DEVICE_INSTANT not in self.samples or not any(
-            self.samples[PowerDomain.DEVICE_INSTANT].values()
-        ):
-            return None
-
         result = {}
         for gpu_idx in self.gpu_indices:
-            if not self.samples[PowerDomain.DEVICE_INSTANT][gpu_idx]:
-                continue
+            samples = self.samples[PowerDomain.DEVICE_INSTANT][gpu_idx]
+            if not samples:
+                return None
 
             if time is None:
                 # Get the most recent sample
-                latest_sample = self.samples[PowerDomain.DEVICE_INSTANT][gpu_idx][-1]
+                latest_sample = samples[-1]
                 result[gpu_idx] = latest_sample.power_mw / 1000.0  # Convert to watts
             else:
-                # Find the closest sample to the requested time
-                closest_sample = None
-                min_time_diff = float("inf")
+                # Find the closest sample to the requested time using bisect
+                timestamps = [sample.timestamp for sample in samples]
+                pos = bisect.bisect_left(timestamps, time)
 
-                for sample in self.samples[PowerDomain.DEVICE_INSTANT][gpu_idx]:
-                    time_diff = abs(sample.timestamp - time)
-                    if time_diff < min_time_diff:
-                        min_time_diff = time_diff
-                        closest_sample = sample
+                if pos == 0:
+                    closest_sample = samples[0]
+                elif pos == len(samples):
+                    closest_sample = samples[-1]
+                else:
+                    # Check the closest sample before and after the requested time
+                    before = samples[pos - 1]
+                    after = samples[pos]
+                    closest_sample = (
+                        before
+                        if time - before.timestamp <= after.timestamp - time
+                        else after
+                    )
+                result[gpu_idx] = closest_sample.power_mw / 1000  # To Watts
 
-                if closest_sample:
-                    result[gpu_idx] = (
-                        closest_sample.power_mw / 1000.0
-                    )  # Convert to watts
-
-        return result if result else None
+        return result
 
 
 def _domain_polling_process(
@@ -549,7 +543,12 @@ def _domain_polling_process(
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(f"Error in polling process for domain {power_domain.value}: {e}")
+        logger.exception(
+            "Exiting polling process for domain %s due to error: %s",
+            power_domain.value,
+            e,
+        )
+        raise e
     finally:
         # Send stop signal
         data_queue.put("STOP")
