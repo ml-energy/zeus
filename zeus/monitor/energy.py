@@ -413,7 +413,11 @@ class ZeusMonitor:
             # Fallback to the instant power measurement if the PowerMonitor does not
             # have the power samples.
             if energy is None:
-                energy = {gpu: 0.0 for gpu in self.power_monitor.gpu_indices}
+                energy = {}
+                for gpu_index in self.power_monitor.gpu_indices:
+                    energy[gpu_index] = power[gpu_index] * (
+                        time_consumption - power_measurement_time
+                    )
             gpu_energy_consumption |= energy
 
         # Approximate energy consumption if the measurement window is too short.

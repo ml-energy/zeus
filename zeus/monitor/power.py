@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import atexit
 import collections
+import multiprocessing as mp
 from enum import Enum
 from time import time, sleep
 from dataclasses import dataclass
-import multiprocessing as mp
 from queue import Empty
 from typing import TYPE_CHECKING
 
@@ -34,7 +34,6 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     """
     logger = get_logger(__name__)
 
-    # get gpus
     gpus = get_gpus()
 
     # For each unique GPU model, infer the update period.
@@ -69,8 +68,8 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
 
 def _infer_counter_update_period_single(gpu_index: int) -> float:
     """Infer the update period of the NVML power counter for a single GPU."""
-    # get gpus
     gpus = get_gpus()
+
     # Collect 1000 samples of the power counter with timestamps.
     time_power_samples: list[tuple[float, int]] = [(0.0, 0) for _ in range(1000)]
     for i in range(len(time_power_samples)):
@@ -123,11 +122,9 @@ class PowerMonitor:
     3. Separate processes for each power domain (2-3 processes depending on GPU support)
     4. Backward compatibility with existing PowerMonitor interface
 
-    Architecture:
-    - Separate collector processes for each power domain
-    - Each domain has its own queue and deduplication logic
-    - Main process maintains all samples in memory using collections.deque
-    - Deduplication happens in child processes to reduce IPC overhead
+    !!! Note
+        The current implementation only supports cases where all GPUs are homegeneous
+        (i.e., the same model).
 
     !!! Warning
         Since the monitor spawns child processes, **it should not be instantiated as a global variable**.
@@ -149,14 +146,14 @@ class PowerMonitor:
             update_period: Update period of the power monitor in seconds. If None,
                 infer the update period by max speed polling the power counter for
                 each GPU model.
-            max_samples_per_gpu: Maximum number of samples to keep per GPU per domain in memory.
-                If None (default), unlimited samples are kept.
+            max_samples_per_gpu: Maximum number of power samples to keep per GPU per domain
+                in memory. If None (default), unlimited samples are kept.
         """
         if gpu_indices is not None and not gpu_indices:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
 
         # Get GPUs
-        gpus = get_gpus()
+        gpus = get_gpus(ensure_homogeneous=True)
 
         # Configure GPU indices
         self.gpu_indices = (
@@ -164,25 +161,14 @@ class PowerMonitor:
         )
         logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
 
-        # Infer update period if necessary
+        # Infer update period from GPU instant power, if necessary
         if update_period is None:
             update_period = infer_counter_update_period(self.gpu_indices)
         self.update_period = update_period
 
-        # Initialize data structures - separate deques per GPU per domain
-        self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
-        for domain in PowerDomain:
-            self.samples[domain] = {}
-            for gpu_idx in self.gpu_indices:
-                if max_samples_per_gpu is None:
-                    self.samples[domain][gpu_idx] = collections.deque()
-                else:
-                    self.samples[domain][gpu_idx] = collections.deque(
-                        maxlen=max_samples_per_gpu
-                    )
-
         # Inter-process communication - separate unbounded queue per domain
         self.data_queues: dict[PowerDomain, mp.Queue] = {}
+        self.ready_events: dict[PowerDomain, EventClass] = {}
         self.stop_events: dict[PowerDomain, EventClass] = {}
         self.processes: dict[PowerDomain, SpawnProcess] = {}
 
@@ -192,27 +178,52 @@ class PowerMonitor:
             "Supported power domains: %s", [d.value for d in self.supported_domains]
         )
 
+        # Power samples are collected for each power domain and device index.
+        self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
+        for domain in self.supported_domains:
+            self.samples[domain] = {}
+            for gpu_idx in self.gpu_indices:
+                self.samples[domain][gpu_idx] = collections.deque(
+                    maxlen=max_samples_per_gpu
+                )
+
         # Spawn collector processes for each supported domain
         atexit.register(self._stop)
+        ctx = mp.get_context("spawn")
         for domain in self.supported_domains:
-            self.data_queues[domain] = mp.Queue()  # Unbounded by default
-            self.stop_events[domain] = mp.Event()
-            self.processes[domain] = mp.get_context("spawn").Process(
+            self.data_queues[domain] = ctx.Queue()
+            self.ready_events[domain] = ctx.Event()
+            self.stop_events[domain] = ctx.Event()
+            self.processes[domain] = ctx.Process(
                 target=_domain_polling_process,
-                args=(
-                    domain,
-                    self.gpu_indices,
-                    self.data_queues[domain],
-                    self.stop_events[domain],
-                    update_period,
+                kwargs=dict(
+                    power_domain=domain,
+                    gpu_indices=self.gpu_indices,
+                    data_queue=self.data_queues[domain],
+                    ready_event=self.ready_events[domain],
+                    stop_event=self.stop_events[domain],
+                    update_period=update_period,
                 ),
+                daemon=True,
+                name=f"zeus-power-monitor-{domain.value}",
             )
-            self.processes[domain].start()
+        for process in self.processes.values():
+            process.start()
+
+        # Wait for all subprocesses to signal they're ready
+        logger.info("Waiting for all power monitoring subprocesses to be ready...")
+        for domain in self.supported_domains:
+            if not self.ready_events[domain].wait(timeout=10.0):
+                logger.warning(
+                    "Power monitor subprocess for %s did not signal ready within timeout",
+                    domain.value,
+                )
+        logger.info("All power monitoring subprocesses are ready")
 
     def _determine_supported_domains(self) -> list[PowerDomain]:
         """Determine which power domains are supported by the current GPUs."""
         supported = []
-        gpus = get_gpus()
+        gpus = get_gpus(ensure_homogeneous=True)
 
         # Test device instant power
         try:
@@ -363,7 +374,6 @@ class PowerMonitor:
             )
         return result
 
-    # Backward compatibility methods
     def get_energy(self, start_time: float, end_time: float) -> dict[int, float] | None:
         """Get the energy used by the GPUs between two times (backward compatibility).
 
@@ -453,13 +463,14 @@ def _domain_polling_process(
     power_domain: PowerDomain,
     gpu_indices: list[int],
     data_queue: mp.Queue,
+    ready_event: EventClass,
     stop_event: EventClass,
     update_period: float,
 ) -> None:
     """Polling process for a specific power domain with deduplication."""
     try:
         # Get GPUs
-        gpus = get_gpus()
+        gpus = get_gpus(ensure_homogeneous=True)
 
         # Determine the GPU method to call based on domain
         if power_domain == PowerDomain.DEVICE_INSTANT:
@@ -474,12 +485,19 @@ def _domain_polling_process(
         # Track previous power values for deduplication
         prev_power: dict[int, float] = {}
 
+        # Signal that this process is ready to start monitoring
+        ready_event.set()
+        print(f"[{time()}] Let's fucking go! Monitoring {power_domain.value} power...")
         while not stop_event.is_set():
             timestamp = time()
 
             for gpu_index in gpu_indices:
                 try:
                     power_mw = power_method(gpu_index)
+
+                    # Sometimes, if we poll too fast, power can return 0. Skip.
+                    if power_mw <= 0:
+                        continue
 
                     # Deduplication: only send if power changed
                     if gpu_index in prev_power and prev_power[gpu_index] == power_mw:
