@@ -11,4 +11,4 @@
 - [`_legacy`][zeus._legacy.policy]: Legacy code mostly to keep our papers reproducible
 """
 
-__version__ = "0.12.1"
+__version__ = "0.12.1.post1"
