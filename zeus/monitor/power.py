@@ -170,7 +170,7 @@ class PowerMonitor:
             update_period = infer_counter_update_period(self.gpu_indices)
         elif update_period < 0.05:
             logger.warning(
-                "An update period of %f might be too fast, which may lead to unexpected "
+                "An update period of %g might be too fast, which may lead to unexpected "
                 "NVML errors (e.g., NotSupported) and/or zero values being returned. "
                 "If you see these, consider increasing to >= 0.05.",
                 update_period,
@@ -504,7 +504,7 @@ def _domain_polling_process(
                     # Sometimes, if we poll too fast, power can return 0. Skip.
                     if power_mw <= 0:
                         logger.warning(
-                            "GPU %d power domain %s encountered %f MW measurement. "
+                            "GPU %d power domain %s encountered %g mW measurement. "
                             "Skipping. Polling frequency may be too high.",
                             gpu_index,
                             power_domain.value,
