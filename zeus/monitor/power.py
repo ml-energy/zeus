@@ -168,6 +168,13 @@ class PowerMonitor:
         # Infer update period from GPU instant power, if necessary
         if update_period is None:
             update_period = infer_counter_update_period(self.gpu_indices)
+        elif update_period < 0.05:
+            logger.warning(
+                "An update period of %g might be too fast, which may lead to unexpected "
+                "NVML errors (e.g., NotSupported) and/or zero values being returned. "
+                "If you see these, consider increasing to >= 0.05.",
+                update_period,
+            )
         self.update_period = update_period
 
         # Inter-process communication - separate unbounded queue per domain
@@ -496,6 +503,13 @@ def _domain_polling_process(
 
                     # Sometimes, if we poll too fast, power can return 0. Skip.
                     if power_mw <= 0:
+                        logger.warning(
+                            "GPU %d power domain %s encountered %g mW measurement. "
+                            "Skipping. Polling frequency may be too high.",
+                            gpu_index,
+                            power_domain.value,
+                            power_mw,
+                        )
                         continue
 
                     # Deduplication: only send if power changed
@@ -514,14 +528,14 @@ def _domain_polling_process(
                     data_queue.put(sample)
                 except ZeusGPUNotSupportedError as e:
                     # When polling at a high frequency, NVML sometimes raises
-                    # a NotSupported error. We can safely ignore this.
+                    # a NotSupported error.
                     num_not_supported_encounter += 1
                     if num_not_supported_encounter > 10:
                         num_not_supported_encounter = 0
                         logger.warning(
                             "GPU %d domain %s encountered 10 NotSupported errors. "
                             "This may indicate a polling frequency that is too high. "
-                            "Consider increasing the update period."
+                            "Consider increasing the update period. "
                             "Exception: '%s'",
                             gpu_index,
                             power_domain.value,
