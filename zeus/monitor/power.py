@@ -168,6 +168,13 @@ class PowerMonitor:
         # Infer update period from GPU instant power, if necessary
         if update_period is None:
             update_period = infer_counter_update_period(self.gpu_indices)
+        elif update_period < 0.05:
+            logger.warning(
+                "An update period of %f might be too fast, which may lead to unexpected "
+                "NVML errors (e.g., NotSupported) and/or zero values being returned. "
+                "If you see these, consider increasing to >= 0.05.",
+                update_period,
+            )
         self.update_period = update_period
 
         # Inter-process communication - separate unbounded queue per domain
