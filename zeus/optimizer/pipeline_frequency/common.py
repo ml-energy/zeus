@@ -82,11 +82,6 @@ class JobInfo(BaseModel):
         world_size: World size of the training job.
         job_metadata: An optional arbitrary string that describes the job. This will
             be appended to the job ID if given. Typically for logging purposes.
-        framework: Framework used for training.
-        model_name: Name of the model being trained.
-        partition_method: Pipeline partition method used.
-        microbatch_size: Microbatch size used in training.
-        num_microbatches: Number of microbatches in training.
     """
 
     job_id: str = ""
@@ -95,11 +90,6 @@ class JobInfo(BaseModel):
     tp_degree: int = Field(ge=1)
     world_size: int = Field(ge=1)
     job_metadata: Optional[str] = None
-    framework: Optional[str] = None
-    model_name: Optional[str] = None
-    partition_method: Optional[str] = None
-    microbatch_size: Optional[int] = None
-    num_microbatches: Optional[int] = None
 
     @validator("job_id")
     def _check_empty_job_id(cls, job_id):
@@ -117,24 +107,17 @@ class JobInfo(BaseModel):
 
     def set_job_id(self, scheduler_name: str):
         """Generate and set the job ID."""
-        parts = [
-            datetime.now().strftime("%F-%H-%M-%S"),
-            self.framework,
-            self.model_name,
-            self.partition_method,
-            f"dp{self.dp_degree}",
-            f"pp{self.pp_degree}",
-            f"tp{self.tp_degree}",
-            f"mbs{self.microbatch_size}",
-            f"nmb{self.num_microbatches}",
-            scheduler_name,
-        ]
-
-        parts = [part for part in parts if part]
+        self.job_id = "+".join(
+            [
+                datetime.now().strftime("%F-%H-%M-%S"),
+                f"dp{self.dp_degree}",
+                f"pp{self.pp_degree}",
+                f"tp{self.tp_degree}",
+                scheduler_name,
+            ]
+        )
         if self.job_metadata:
-            parts.append(self.job_metadata)
-
-        self.job_id = "+".join(parts)
+            self.job_id += f"+{self.job_metadata}"
 
 
 class RankInfo(BaseModel):
@@ -146,8 +129,6 @@ class RankInfo(BaseModel):
         pp_rank: Pipeline parallel rank of the reporting procees.
         tp_rank: Tensor parallel rank of the reporting procees.
         available_frequencies: List of available frequencies for the rank's GPU.
-        pipe_schedule: Pipeline schedule (list of strings) for the rank.
-            For example, ["forward", "backward"].
     """
 
     rank: int = Field(ge=0)
@@ -155,14 +136,6 @@ class RankInfo(BaseModel):
     pp_rank: int = Field(ge=0)
     tp_rank: int = Field(ge=0)
     available_frequencies: list[int]
-    pipe_schedule: list[str] = []
-
-    @validator("pipe_schedule", pre=True, always=True)
-    def validate_pipe_schedule(cls, value):
-        """Check that the pipeline schedule is not empty."""
-        if not value or len(value) == 0:
-            raise ValueError("pipe_schedule must not be empty")
-        return value
 
 
 class FrequencySchedule(BaseModel):
