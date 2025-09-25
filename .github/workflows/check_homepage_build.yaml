@@ -1,6 +1,7 @@
 name: Check homepage build
 permissions:
   contents: read
+  actions: write
 
 on:
   pull_request:
