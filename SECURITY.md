@@ -11,9 +11,12 @@ If you discover a security vulnerability in Zeus, please report it responsibly:
 
 ### For Security Issues
 
-**Do NOT open a public GitHub issue.** Instead, please email us at:
+**Do NOT open a public GitHub issue.**
+Instead, please email us at:
 
-jwnchung@umich.edu (Jae-Won Chung, Project Lead)
+security@ml.energy
+
+This will route your report to maintainers privately.
 
 ### What to Include
 
@@ -52,9 +55,12 @@ To avoid running applications as root, Zeus provides a privileged daemon.
 - **Security model**: Unprivileged applications request privileged operations through the daemon
 
 **Daemon Security Considerations**
+
 - Runs as root by design
 - No authentication mechanism on its own
-- Socket permissions configurable (default 666 allows any user access), so Linux file permissions should be used to restrict access
+- Socket permission is configurable, so Linux file permissions should be used to restrict access
+  - 666 to allow all users
+  - Create a dedicated user group, change the socket group to that, and set permissions to 660
 - Exposes GPU configuration changes to any process with socket access
 
 ## Additional Resources
