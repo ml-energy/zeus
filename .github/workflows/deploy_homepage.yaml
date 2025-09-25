@@ -1,4 +1,7 @@
 name: Deploy homepage
+permissions:
+  contents: write
+
 on:
   push:
     branches:
