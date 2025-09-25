@@ -1,4 +1,6 @@
 name: (Zeusd) Check format, lint, and test
+permissions:
+  contents: read
 
 on:
   pull_request:
