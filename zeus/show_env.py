@@ -1,8 +1,8 @@
 """Collect information about the environment and display it.
 
 - Python version
-- Package availablility and versions: Zeus, PyTorch, JAX, CuPy.
-- NVIDIA GPU availability: Number of GPUs and moels.
+- Package availability and versions: Zeus, PyTorch, JAX, CuPy.
+- NVIDIA GPU availability: Number of GPUs and models.
 - AMD GPU availability: Number of GPUs and models.
 - Intel RAPL availability: Number of CPUs and whether DRAM measurements are available.
 """

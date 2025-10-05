@@ -225,7 +225,7 @@ class CarbonEmissionMonitor:
         cpu_indices: list[int] | None = None,
         sync_execution_with: Literal["torch", "jax", "cupy"] = "torch",
     ) -> None:
-        """Iniitializes Carbon Emission Monitor.
+        """Initializes Carbon Emission Monitor.
 
         Args:
             carbon_intensity_provider: provider for which carbon intensity values will be fetched from
