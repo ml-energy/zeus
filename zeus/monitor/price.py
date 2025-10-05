@@ -236,7 +236,7 @@ class EnergyCostMonitor:
         electricity_price_provider: ElectricityPriceProvider,
         gpu_indices: list[int] | None = None,
         cpu_indices: list[int] | None = None,
-        sync_execution_with: Literal["torch", "jax"] = "torch",
+        sync_execution_with: Literal["torch", "jax", "cupy"] = "torch",
     ) -> None:
         """Initializes Energy Cost Monitor.
 

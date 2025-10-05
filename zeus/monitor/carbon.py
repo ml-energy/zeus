@@ -223,7 +223,7 @@ class CarbonEmissionMonitor:
         carbon_intensity_provider: CarbonIntensityProvider,
         gpu_indices: list[int] | None = None,
         cpu_indices: list[int] | None = None,
-        sync_execution_with: Literal["torch", "jax"] = "torch",
+        sync_execution_with: Literal["torch", "jax", "cupy"] = "torch",
     ) -> None:
         """Iniitializes Carbon Emission Monitor.
 
