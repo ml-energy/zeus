@@ -153,7 +153,7 @@ class ZeusMonitor:
         cpu_indices: list[int] | None = None,
         approx_instant_energy: bool = False,
         log_file: str | Path | None = None,
-        sync_execution_with: Literal["torch", "jax"] = "torch",
+        sync_execution_with: Literal["torch", "jax", "cupy"] = "torch",
     ) -> None:
         """Instantiate the monitor.
 
@@ -179,7 +179,7 @@ class ZeusMonitor:
         """
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy
-        self.sync_with: Literal["torch", "jax"] = sync_execution_with
+        self.sync_with: Literal["torch", "jax", "cupy"] = sync_execution_with
 
         # Get GPU instances.
         try:
