@@ -1,7 +1,7 @@
 """Collect information about the environment and display it.
 
 - Python version
-- Package availablility and versions: Zeus, PyTorch, JAX.
+- Package availablility and versions: Zeus, PyTorch, JAX, CuPy.
 - NVIDIA GPU availability: Number of GPUs and moels.
 - AMD GPU availability: Number of GPUs and models.
 - Intel RAPL availability: Number of CPUs and whether DRAM measurements are available.
@@ -70,6 +70,13 @@ def show_env():
         package_availability += f"  JAX: {jax.__version__} (without CUDA support)\n"
     else:
         package_availability += "  JAX: not available\n"
+
+    cupy_available = framework.cupy_is_available()
+    if cupy_available:
+        cupy = framework.MODULE_CACHE["cupy"]
+        package_availability += f"  CuPy: {cupy.__version__}\n"
+    else:
+        package_availability += "  CuPy: not available\n"
 
     print("\nDetected:\n" + package_availability)
 

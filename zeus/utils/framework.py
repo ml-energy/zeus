@@ -13,7 +13,9 @@ MODULE_CACHE: dict[str, types.ModuleType] = {}
 
 
 @lru_cache(maxsize=1)
-def torch_is_available(ensure_available: bool = False, ensure_cuda: bool = True):
+def torch_is_available(
+    ensure_available: bool = False, ensure_cuda: bool = True
+) -> bool:
     """Check if PyTorch is available."""
     try:
         import torch
@@ -35,7 +37,7 @@ def torch_is_available(ensure_available: bool = False, ensure_cuda: bool = True)
 
 
 @lru_cache(maxsize=1)
-def jax_is_available(ensure_available: bool = False, ensure_cuda: bool = True):
+def jax_is_available(ensure_available: bool = False, ensure_cuda: bool = True) -> bool:
     """Check if JAX is available."""
     try:
         import jax  # type: ignore
@@ -55,8 +57,24 @@ def jax_is_available(ensure_available: bool = False, ensure_cuda: bool = True):
         return False
 
 
+@lru_cache(maxsize=1)
+def cupy_is_available(ensure_available: bool = False) -> bool:
+    """Check if CuPy is available."""
+    try:
+        import cupy  # type: ignore
+
+        MODULE_CACHE["cupy"] = cupy
+        logger.info("CuPy is available.")
+        return True
+    except ImportError as e:
+        logger.info("CuPy is not available.")
+        if ensure_available:
+            raise RuntimeError("Failed to import CuPy") from e
+        return False
+
+
 def sync_execution(
-    gpu_devices: list[int], sync_with: Literal["torch", "jax"] = "torch"
+    gpu_devices: list[int], sync_with: Literal["torch", "jax", "cupy"] = "torch"
 ) -> None:
     """Block until all computations on the specified devices are finished.
 
@@ -65,6 +83,10 @@ def sync_execution(
     device. On the other hand, JAX runs both CPU and GPU computations asynchronously,
     but by default it only has a single CPU device (id=0). Therefore for JAX, all GPU
     devices passed in and the CPU device (id=0) are synchronized.
+
+    CuPy is independent of the specific ML framework and calls the CUDA API directly,
+    but you'll need to install it separately and ensure that it is compatible with
+    the ML framework you are using.
 
     !!! Note
         `jax.device_put` with `block_until_ready` is used to synchronize computations
@@ -99,6 +121,12 @@ def sync_execution(
         ]
         futures.append(jax.device_put(0.0, device=jax.devices("cpu")[0]) + 0)
         jax.block_until_ready(futures)
+        return
+
+    if sync_with == "cupy" and cupy_is_available(ensure_available=True):
+        cupy = MODULE_CACHE["cupy"]
+        for device in gpu_devices:
+            cupy.cuda.Device(device).synchronize()
         return
 
     raise RuntimeError("No framework is available.")
