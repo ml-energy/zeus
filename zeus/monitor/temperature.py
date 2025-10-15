@@ -291,7 +291,7 @@ def _temperature_polling_process(
                         gpu_index,
                         e,
                     )
-                    raise e
+                    raise
 
             # Sleep for the remaining time
             elapsed = time() - timestamp

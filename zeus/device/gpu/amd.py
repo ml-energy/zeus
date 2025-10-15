@@ -309,7 +309,11 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def getGpuTemperature(self) -> int:
-        """Return the current GPU temperature (hotspot). Units: Celsius."""
+        """Return the current GPU temperature. Units: Celsius.
+
+        We use the hotspot temperatue (as opposed to edge) as we believe it to be more representative
+        of the GPU core's temperature under load.
+        """
         return amdsmi.amdsmi_get_temp_metric(
             self.handle,
             amdsmi.AmdSmiTemperatureType.HOTSPOT,
