@@ -277,6 +277,14 @@ class NVIDIAGPU(gpu_common.GPU):
         """Return the total energy consumption of the specified GPU. Units: mJ."""
         return pynvml.nvmlDeviceGetTotalEnergyConsumption(self.handle)
 
+    @_handle_nvml_errors
+    def getGpuTemperature(self) -> int:
+        """Return the current GPU temperature. Units: Celsius."""
+        temperature = pynvml.nvmlDeviceGetTemperatureV(
+            self.handle, pynvml.NVML_TEMPERATURE_GPU
+        )
+        return temperature  # type: ignore
+
 
 class ZeusdNVIDIAGPU(NVIDIAGPU):
     """An NVIDIAGPU that sets GPU knobs that require `SYS_ADMIN` via zeusd.

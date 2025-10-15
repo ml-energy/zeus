@@ -121,6 +121,11 @@ class GPU(abc.ABC):
         """Return the total energy consumption of the GPU since driver load. Units: mJ."""
         pass
 
+    @abc.abstractmethod
+    def getGpuTemperature(self) -> int:
+        """Return the current GPU temperature. Units: Celsius."""
+        pass
+
 
 class GPUs(abc.ABC):
     """An abstract base class for a collection of `GPU` objects.
@@ -273,6 +278,10 @@ class GPUs(abc.ABC):
         """Return the total energy consumption of the GPU since driver load. Units: mJ."""
         return self.gpus[gpu_index].getTotalEnergyConsumption()
 
+    def getGpuTemperature(self, gpu_index: int) -> int:
+        """Return the current GPU temperature. Units: Celsius."""
+        return self.gpus[gpu_index].getGpuTemperature()
+
 
 class EmptyGPUs(GPUs):
     """A concrete class implementing the GPUs abstract base class, but representing an empty collection of GPUs.
@@ -383,6 +392,10 @@ class EmptyGPUs(GPUs):
         raise ValueError("No GPUs available.")
 
     def getTotalEnergyConsumption(self, gpu_index: int) -> int:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def getGpuTemperature(self, gpu_index: int) -> int:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
