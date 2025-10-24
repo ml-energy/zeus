@@ -455,3 +455,31 @@ class ZeusMonitor:
             dram_energy=dram_energy_consumption or None,
             soc_energy=soc_energy_consumption,
         )
+
+    def reset_windows(self) -> None:
+        """Reset the monitor by removing all active measurement windows.
+
+        Any ongoing measurements will be cancelled and their data will be lost.
+        """
+        # Get list of active measurement windows
+        active_windows = list(self.measurement_states.keys())
+
+        # Cancel all active SoC windows first (if SoC is present)
+        if self.soc_is_present:
+            for window_key in active_windows:
+                try:
+                    # End the SoC window and zero its fields to cancel it
+                    soc_measurement = self.soc.endWindow(window_key)
+                    if soc_measurement is not None:
+                        soc_measurement.zeroAllFields()
+                except Exception as e:
+                    logger.warning(
+                        "Failed to cancel SoC window '%s' during reset: %s",
+                        window_key,
+                        e,
+                    )
+
+        # Clear all measurement states
+        self.measurement_states.clear()
+
+        logger.info("ZeusMonitor reset dropped active windows: %s", active_windows)

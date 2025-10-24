@@ -199,7 +199,7 @@ class PowerMonitor:
                 )
 
         # Spawn collector processes for each supported domain
-        atexit.register(self._stop)
+        atexit.register(self.stop)
         ctx = mp.get_context("spawn")
         for domain in self.supported_domains:
             self.data_queues[domain] = ctx.Queue()
@@ -231,6 +231,10 @@ class PowerMonitor:
                 )
         logger.info("All power monitoring subprocesses are ready")
 
+    def __del__(self) -> None:
+        """Destructor to ensure subprocesses are stopped."""
+        self.stop()
+
     def _determine_supported_domains(self) -> list[PowerDomain]:
         """Determine which power domains are supported by the current GPUs."""
         supported = []
@@ -259,7 +263,7 @@ class PowerMonitor:
 
         return supported
 
-    def _stop(self) -> None:
+    def stop(self) -> None:
         """Stop all monitoring processes."""
         # First, signal all processes to stop
         for domain in PowerDomain:
