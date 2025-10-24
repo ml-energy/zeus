@@ -482,4 +482,7 @@ class ZeusMonitor:
         # Clear all measurement states
         self.measurement_states.clear()
 
-        logger.info("ZeusMonitor reset dropped active windows: %s", active_windows)
+        if active_windows:
+            logger.info("ZeusMonitor reset dropped active windows: %s", active_windows)
+        else:
+            logger.info("ZeusMonitor reset with no active windows to drop.")
