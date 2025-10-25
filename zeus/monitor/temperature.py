@@ -125,7 +125,6 @@ class TemperatureMonitor:
         self.temperature_process.start()
 
         # Cleanup function
-        self._stopped = False
         self._finalizer = weakref.finalize(
             self,
             _cleanup_temperature_process,
@@ -143,11 +142,8 @@ class TemperatureMonitor:
 
     def stop(self) -> None:
         """Stop the monitoring process."""
-        if not self._stopped:
-            _cleanup_temperature_process(
-                self.temperature_stop_event, self.temperature_process
-            )
-            self._stopped = True
+        if self._finalizer.alive:
+            self._finalizer()
 
     def _process_temperature_queue_data(self) -> None:
         """Process all pending temperature samples from the queue."""

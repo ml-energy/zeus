@@ -243,7 +243,6 @@ class PowerMonitor:
             process.start()
 
         # Cleanup functions
-        self._stopped = False
         self._finalizer = weakref.finalize(
             self, _cleanup_processes, self.stop_events, self.processes
         )
@@ -288,9 +287,8 @@ class PowerMonitor:
 
     def stop(self) -> None:
         """Stop all monitoring processes."""
-        if not self._stopped:
-            _cleanup_processes(self.stop_events, self.processes)
-            self._stopped = True
+        if not self._finalizer.alive:
+            self._finalizer()
 
     def _process_queue_data(self, domain: PowerDomain) -> None:
         """Process all pending samples from a specific domain's queue."""
