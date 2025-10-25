@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import atexit
 import bisect
 import collections
 import multiprocessing as mp
+import weakref
 from enum import Enum
 from time import time, sleep
 from dataclasses import dataclass
 from queue import Empty
-from typing import TYPE_CHECKING
+from typing import Literal, TYPE_CHECKING
 
 from sklearn.metrics import auc
 
@@ -115,6 +115,28 @@ class PowerSample:
     power_mw: float
 
 
+def _cleanup_processes(
+    stop_events: dict[PowerDomain, EventClass],
+    processes: dict[PowerDomain, SpawnProcess],
+) -> None:
+    """Idempotent cleanup function for power monitoring processes."""
+    # Signal all processes to stop
+    for event in stop_events.values():
+        event.set()
+
+    # Wait for each process to complete
+    for process in processes.values():
+        if process.is_alive():
+            process.join(timeout=2.0)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=1.0)
+
+    # Clean up dictionaries
+    stop_events.clear()
+    processes.clear()
+
+
 class PowerMonitor:
     """Enhanced PowerMonitor with multiple power domains and timeline export.
 
@@ -199,7 +221,6 @@ class PowerMonitor:
                 )
 
         # Spawn collector processes for each supported domain
-        atexit.register(self._stop)
         ctx = mp.get_context("spawn")
         for domain in self.supported_domains:
             self.data_queues[domain] = ctx.Queue()
@@ -220,6 +241,12 @@ class PowerMonitor:
             )
         for process in self.processes.values():
             process.start()
+
+        # Cleanup functions
+        self._stopped = False
+        self._finalizer = weakref.finalize(
+            self, _cleanup_processes, self.stop_events, self.processes
+        )
 
         # Wait for all subprocesses to signal they're ready
         logger.info("Waiting for all power monitoring subprocesses to be ready...")
@@ -259,22 +286,11 @@ class PowerMonitor:
 
         return supported
 
-    def _stop(self) -> None:
+    def stop(self) -> None:
         """Stop all monitoring processes."""
-        # First, signal all processes to stop
-        for domain in PowerDomain:
-            if domain in self.stop_events:
-                self.stop_events[domain].set()
-
-        # Then, wait for each process to complete
-        for domain in PowerDomain:
-            if domain in self.processes and self.processes[domain].is_alive():
-                self.processes[domain].join(timeout=2.0)
-                if self.processes[domain].is_alive():
-                    self.processes[domain].terminate()
-                    self.processes[domain].join(timeout=1.0)
-
-        self.processes.clear()
+        if not self._stopped:
+            _cleanup_processes(self.stop_events, self.processes)
+            self._stopped = True
 
     def _process_queue_data(self, domain: PowerDomain) -> None:
         """Process all pending samples from a specific domain's queue."""
@@ -298,7 +314,8 @@ class PowerMonitor:
 
     def get_power_timeline(
         self,
-        power_domain: PowerDomain,
+        power_domain: PowerDomain
+        | Literal["device_instant", "device_average", "memory_average"],
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
@@ -308,15 +325,20 @@ class PowerMonitor:
         Args:
             power_domain: Power domain to query
             gpu_index: Specific GPU index, or None for all GPUs
-            start_time: Start time filter (unix timestamp)
-            end_time: End time filter (unix timestamp)
+            start_time: Start time filter (unix timestamp from time.time() or similar)
+            end_time: End time filter (unix timestamp from time.time() or similar)
 
         Returns:
             Dictionary mapping GPU indices to timeline data with deduplication.
             Timeline data is list of (timestamp, power_watts) tuples.
         """
+        if isinstance(power_domain, str):
+            power_domain = PowerDomain(power_domain)
+
         if power_domain not in self.supported_domains:
-            return {}
+            raise ValueError(
+                f"Power domain {power_domain.value} is not supported by the current GPUs."
+            )
 
         # Process any pending queue data for this domain
         self._process_queue_data(power_domain)
@@ -358,8 +380,8 @@ class PowerMonitor:
 
         Args:
             gpu_index: Specific GPU index, or None for all GPUs
-            start_time: Start time filter (unix timestamp)
-            end_time: End time filter (unix timestamp)
+            start_time: Start time filter (unix timestamp from time.time() or similar)
+            end_time: End time filter (unix timestamp from time.time() or similar)
 
         Returns:
             Dictionary with power domain names as keys and each value is a dict
