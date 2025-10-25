@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import atexit
 import bisect
 import collections
 import multiprocessing as mp
+import weakref
 from time import time, sleep
 from dataclasses import dataclass
 from queue import Empty
@@ -17,8 +17,25 @@ from zeus.device import get_gpus
 
 if TYPE_CHECKING:
     from multiprocessing.synchronize import Event as EventClass
+    from multiprocessing.context import SpawnProcess
 
 logger = get_logger(__name__)
+
+
+def _cleanup_temperature_process(
+    stop_event: EventClass,
+    process: SpawnProcess,
+) -> None:
+    """Idempotent cleanup function for temperature monitoring process."""
+    # Signal the process to stop
+    stop_event.set()
+
+    # Wait for the process to complete
+    if process.is_alive():
+        process.join(timeout=2.0)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1.0)
 
 
 @dataclass
@@ -89,7 +106,6 @@ class TemperatureMonitor:
             )
 
         # Spawn temperature collector process
-        atexit.register(self._stop)
         ctx = mp.get_context("spawn")
         self.temperature_queue = ctx.Queue()
         self.temperature_ready_event = ctx.Event()
@@ -108,6 +124,15 @@ class TemperatureMonitor:
         )
         self.temperature_process.start()
 
+        # Cleanup function
+        self._stopped = False
+        self._finalizer = weakref.finalize(
+            self,
+            _cleanup_temperature_process,
+            self.temperature_stop_event,
+            self.temperature_process,
+        )
+
         # Wait for subprocess to signal it's ready
         logger.info("Waiting for temperature monitoring subprocess to be ready...")
         if not self.temperature_ready_event.wait(timeout=10.0):
@@ -118,14 +143,11 @@ class TemperatureMonitor:
 
     def _stop(self) -> None:
         """Stop the monitoring process."""
-        if hasattr(self, "temperature_stop_event"):
-            self.temperature_stop_event.set()
-
-        if hasattr(self, "temperature_process") and self.temperature_process.is_alive():
-            self.temperature_process.join(timeout=2.0)
-            if self.temperature_process.is_alive():
-                self.temperature_process.terminate()
-                self.temperature_process.join(timeout=1.0)
+        if not self._stopped:
+            _cleanup_temperature_process(
+                self.temperature_stop_event, self.temperature_process
+            )
+            self._stopped = True
 
     def _process_temperature_queue_data(self) -> None:
         """Process all pending temperature samples from the queue."""
