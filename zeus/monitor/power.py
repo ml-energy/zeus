@@ -131,6 +131,9 @@ def _cleanup_processes(
             if process.is_alive():
                 process.terminate()
                 process.join(timeout=1.0)
+                if process.is_alive():
+                    process.kill()
+                    process.join(timeout=1.0)
 
     # Clean up dictionaries
     stop_events.clear()
@@ -287,7 +290,7 @@ class PowerMonitor:
 
     def stop(self) -> None:
         """Stop all monitoring processes."""
-        if not self._finalizer.alive:
+        if self._finalizer.alive:
             self._finalizer()
 
     def _process_queue_data(self, domain: PowerDomain) -> None:

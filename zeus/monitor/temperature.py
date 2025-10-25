@@ -36,6 +36,9 @@ def _cleanup_temperature_process(
         if process.is_alive():
             process.terminate()
             process.join(timeout=1.0)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=1.0)
 
 
 @dataclass
