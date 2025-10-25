@@ -141,7 +141,7 @@ class TemperatureMonitor:
             )
         logger.info("Temperature monitoring subprocess is ready")
 
-    def _stop(self) -> None:
+    def stop(self) -> None:
         """Stop the monitoring process."""
         if not self._stopped:
             _cleanup_temperature_process(
