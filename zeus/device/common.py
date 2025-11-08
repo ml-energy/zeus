@@ -7,6 +7,7 @@ import os
 import ctypes
 import functools
 import warnings
+from typing import Callable
 from functools import lru_cache
 
 from zeus.utils.logging import get_logger
@@ -71,7 +72,7 @@ def has_sys_admin() -> bool:
     return has
 
 
-def deprecated_alias(old_name: str):
+def deprecated_alias(old_name: str) -> Callable[[Callable], Callable]:
     """Decorator that marks a method to have a deprecated camelCase alias.
 
     Apply this decorator to the new snake_case method. When the old camelCase
@@ -101,7 +102,9 @@ def deprecated_alias(old_name: str):
     return decorator
 
 
-def _make_deprecated_method(new_method, old_name, new_name):
+def _make_deprecated_method(
+    new_method: Callable, old_name: str, new_name: str
+) -> Callable:
     """Create a deprecated method wrapper that warns once globally per method.
 
     Args:
