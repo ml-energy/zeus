@@ -279,7 +279,7 @@ def _temperature_polling_process(
 
             for gpu_index in gpu_indices:
                 try:
-                    temperature_c = gpus.getGpuTemperature(gpu_index)
+                    temperature_c = gpus.get_gpu_temperature(gpu_index)
 
                     # Deduplication: only send if temperature changed
                     if (

@@ -39,7 +39,7 @@ class MockCPU(CPU):
             itertools.count(start=200, step=5) if self.index % 2 == 0 else None
         )
 
-    def getTotalEnergyConsumption(self):
+    def get_total_energy_consumption(self):
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         return CpuDramMeasurement(
             cpu_mj=float(next(self.cpu_energy)),
@@ -48,7 +48,7 @@ class MockCPU(CPU):
             ),
         )
 
-    def supportsGetDramEnergyConsumption(self):
+    def supports_get_dram_energy_consumption(self):
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram_energy is not None
 

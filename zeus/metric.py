@@ -139,7 +139,9 @@ class EnergyHistogram(Metric):
                 registry=self.registry,
             )
             # Initialize CPU and DRAM histograms
-            if any(cpu.supportsGetDramEnergyConsumption() for cpu in get_cpus().cpus):
+            if any(
+                cpu.supports_get_dram_energy_consumption() for cpu in get_cpus().cpus
+            ):
                 self.dram_histograms = Histogram(
                     "energy_monitor_dram_energy_joules",
                     "DRAM energy consumption",
@@ -371,7 +373,7 @@ def energy_monitoring_loop(
             ["window", "index"],
             registry=registry,
         )
-        if any(cpu.supportsGetDramEnergyConsumption() for cpu in get_cpus().cpus):
+        if any(cpu.supports_get_dram_energy_consumption() for cpu in get_cpus().cpus):
             dram_counters = Counter(
                 "energy_monitor_dram_energy_joules",
                 "DRAM energy consumption",

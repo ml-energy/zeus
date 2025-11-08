@@ -120,7 +120,7 @@ class NVIDIAGPU(gpu_common.GPU):
         self.handle = pynvml.nvmlDeviceGetHandleByIndex(self.gpu_index)
 
     @_handle_nvml_errors
-    def getName(self) -> str:
+    def get_name(self) -> str:
         """Return the name of the GPU model."""
         return pynvml.nvmlDeviceGetName(self.handle)
 
@@ -130,18 +130,20 @@ class NVIDIAGPU(gpu_common.GPU):
         return False
 
     @_handle_nvml_errors
-    def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
+    def get_power_management_limit_constraints(self) -> tuple[int, int]:
         """Return the minimum and maximum power management limits. Units: mW."""
         min_, max_ = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
         return (min_, max_)
 
     @_handle_nvml_errors
-    def setPowerManagementLimit(self, power_limit_mw: int, _block: bool = True) -> None:
+    def set_power_management_limit(
+        self, power_limit_mw: int, _block: bool = True
+    ) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, power_limit_mw)
 
     @_handle_nvml_errors
-    def resetPowerManagementLimit(self, _block: bool = True) -> None:
+    def reset_power_management_limit(self, _block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
         pynvml.nvmlDeviceSetPowerManagementLimit(
             self.handle,
@@ -149,7 +151,7 @@ class NVIDIAGPU(gpu_common.GPU):
         )
 
     @_handle_nvml_errors
-    def setPersistenceMode(self, enabled: bool, _block: bool = True) -> None:
+    def set_persistence_mode(self, enabled: bool, _block: bool = True) -> None:
         """Set persistence mode."""
         if enabled:
             pynvml.nvmlDeviceSetPersistenceMode(
@@ -161,12 +163,12 @@ class NVIDIAGPU(gpu_common.GPU):
             )
 
     @_handle_nvml_errors
-    def getSupportedMemoryClocks(self) -> list[int]:
+    def get_supported_memory_clocks(self) -> list[int]:
         """Return a list of supported memory clock frequencies. Units: MHz."""
         return pynvml.nvmlDeviceGetSupportedMemoryClocks(self.handle)
 
     @_handle_nvml_errors
-    def setMemoryLockedClocks(
+    def set_memory_locked_clocks(
         self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
@@ -175,12 +177,12 @@ class NVIDIAGPU(gpu_common.GPU):
         )
 
     @_handle_nvml_errors
-    def resetMemoryLockedClocks(self, _block: bool = True) -> None:
+    def reset_memory_locked_clocks(self, _block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
         pynvml.nvmlDeviceResetMemoryLockedClocks(self.handle)
 
     @_handle_nvml_errors
-    def getSupportedGraphicsClocks(
+    def get_supported_graphics_clocks(
         self, memory_clock_mhz: int | None = None
     ) -> list[int]:
         """Return a list of supported graphics clock frequencies. Units: MHz.
@@ -195,19 +197,19 @@ class NVIDIAGPU(gpu_common.GPU):
         )
 
     @_handle_nvml_errors
-    def setGpuLockedClocks(
+    def set_gpu_locked_clocks(
         self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, min_clock_mhz, max_clock_mhz)
 
     @_handle_nvml_errors
-    def resetGpuLockedClocks(self, _block: bool = True) -> None:
+    def reset_gpu_locked_clocks(self, _block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
 
     @_handle_nvml_errors
-    def getAveragePowerUsage(self) -> int:
+    def get_average_power_usage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
         if self._is_grace_hopper:
             fields = [
@@ -222,7 +224,7 @@ class NVIDIAGPU(gpu_common.GPU):
         return metric.value.uiVal
 
     @_handle_nvml_errors
-    def getInstantPowerUsage(self) -> int:
+    def get_instant_power_usage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         if self._is_grace_hopper:
             fields = [
@@ -237,7 +239,7 @@ class NVIDIAGPU(gpu_common.GPU):
         return metric.value.uiVal
 
     @_handle_nvml_errors
-    def getAverageMemoryPowerUsage(self) -> int:
+    def get_average_memory_power_usage(self) -> int:
         """Return the average power draw of the GPU's memory. Units: mW.
 
         !!! Warning
@@ -261,7 +263,7 @@ class NVIDIAGPU(gpu_common.GPU):
         return power
 
     @_handle_nvml_errors
-    def supportsGetTotalEnergyConsumption(self) -> bool:
+    def supports_get_total_energy_consumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption."""
         # Supported on Volta or newer microarchitectures
         if self._supportsGetTotalEnergyConsumption is None:
@@ -273,12 +275,12 @@ class NVIDIAGPU(gpu_common.GPU):
         return self._supportsGetTotalEnergyConsumption
 
     @_handle_nvml_errors
-    def getTotalEnergyConsumption(self) -> int:
+    def get_total_energy_consumption(self) -> int:
         """Return the total energy consumption of the specified GPU. Units: mJ."""
         return pynvml.nvmlDeviceGetTotalEnergyConsumption(self.handle)
 
     @_handle_nvml_errors
-    def getGpuTemperature(self) -> int:
+    def get_gpu_temperature(self) -> int:
         """Return the current GPU temperature. Units: Celsius."""
         temperature = pynvml.nvmlDeviceGetTemperatureV(
             self.handle, pynvml.NVML_TEMPERATURE_GPU
@@ -320,7 +322,9 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         """Return True if the GPU object supports non-blocking configuration setters."""
         return True
 
-    def setPowerManagementLimit(self, power_limit_mw: int, block: bool = True) -> None:
+    def set_power_management_limit(
+        self, power_limit_mw: int, block: bool = True
+    ) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         resp = self._client.post(
             self._url_prefix + "/set_power_limit",
@@ -331,14 +335,14 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         logger.debug("Took %s ms to set power limit", resp.elapsed.microseconds / 1000)
 
     @_handle_nvml_errors
-    def resetPowerManagementLimit(self, block: bool = True) -> None:
+    def reset_power_management_limit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
-        self.setPowerManagementLimit(
+        self.set_power_management_limit(
             pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
             block,
         )
 
-    def setPersistenceMode(self, enabled: bool, block: bool = False) -> None:
+    def set_persistence_mode(self, enabled: bool, block: bool = False) -> None:
         """Set persistence mode."""
         resp = self._client.post(
             self._url_prefix + "/set_persistence_mode",
@@ -350,7 +354,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
             "Took %s ms to set persistence mode", resp.elapsed.microseconds / 1000
         )
 
-    def setMemoryLockedClocks(
+    def set_memory_locked_clocks(
         self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
@@ -366,7 +370,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
             "Took %s ms to set memory locked clocks", resp.elapsed.microseconds / 1000
         )
 
-    def resetMemoryLockedClocks(self, block: bool = True) -> None:
+    def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
         resp = self._client.post(
             self._url_prefix + "/reset_mem_locked_clocks", json=dict(block=block)
@@ -374,7 +378,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to reset memory locked clocks: {resp.text}")
 
-    def setGpuLockedClocks(
+    def set_gpu_locked_clocks(
         self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
@@ -387,7 +391,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set GPU locked clocks: {resp.text}")
 
-    def resetGpuLockedClocks(self, block: bool = True) -> None:
+    def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
         resp = self._client.post(
             self._url_prefix + "/reset_gpu_locked_clocks", json=dict(block=block)

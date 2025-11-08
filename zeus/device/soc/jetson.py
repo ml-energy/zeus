@@ -104,7 +104,7 @@ class JetsonMeasurement(SoCMeasurement):
 
         return result
 
-    def zeroAllFields(self) -> None:
+    def zero_all_fields(self) -> None:
         """Set all internal measurement values to zero."""
         for field in fields(self):
             f_name = field.name
@@ -227,10 +227,10 @@ class Jetson(SoC):
             # Else, skip the rail due to insufficient metrics for power
         return power_measurement
 
-    def getAvailableMetrics(self) -> set[str]:
+    def get_available_metrics(self) -> set[str]:
         """Return a set of all observable metrics on the Jetson device."""
         if self.available_metrics is None:
-            result: JetsonMeasurement = self.getTotalEnergyConsumption()
+            result: JetsonMeasurement = self.get_total_energy_consumption()
             available_metrics = set()
 
             metrics_dict = asdict(result)
@@ -247,7 +247,7 @@ class Jetson(SoC):
         self.process.join(timeout=1.0)
         self.process.kill()
 
-    def getTotalEnergyConsumption(self, timeout: float = 15.0) -> JetsonMeasurement:
+    def get_total_energy_consumption(self, timeout: float = 15.0) -> JetsonMeasurement:
         """Returns the total energy consumption of the Jetson device. This measurement is cumulative.
 
         Units: mJ.

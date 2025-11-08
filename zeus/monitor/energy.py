@@ -252,7 +252,7 @@ class ZeusMonitor:
         old_gpu_indices = [
             gpu_index
             for gpu_index in self.gpu_indices
-            if not self.gpus.supportsGetTotalEnergyConsumption(gpu_index)
+            if not self.gpus.supports_get_total_energy_consumption(gpu_index)
         ]
         if old_gpu_indices:
             self.power_monitor = PowerMonitor(
@@ -265,7 +265,7 @@ class ZeusMonitor:
         """Measure the power consumption of all GPUs at the current time."""
         power_measurement_start_time: float = time()
         power = {
-            i: self.gpus.getInstantPowerUsage(i) / 1000.0 for i in self.gpu_indices
+            i: self.gpus.get_instant_power_usage(i) / 1000.0 for i in self.gpu_indices
         }
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
@@ -296,21 +296,21 @@ class ZeusMonitor:
             # Query energy directly if the GPU has newer architecture.
             # Otherwise, the Zeus power monitor is running in the background to
             # collect power consumption, so we just need to read the log file later.
-            if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
+            if self.gpus.supports_get_total_energy_consumption(gpu_index):
                 gpu_energy_state[gpu_index] = (
-                    self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
+                    self.gpus.get_total_energy_consumption(gpu_index) / 1000.0
                 )
 
         cpu_energy_state: dict[int, float] = {}
         dram_energy_state: dict[int, float] = {}
         for cpu_index in self.cpu_indices:
-            cpu_measurement = self.cpus.getTotalEnergyConsumption(cpu_index) / 1000.0
+            cpu_measurement = self.cpus.get_total_energy_consumption(cpu_index) / 1000.0
             cpu_energy_state[cpu_index] = cpu_measurement.cpu_mj
             if cpu_measurement.dram_mj is not None:
                 dram_energy_state[cpu_index] = cpu_measurement.dram_mj
 
         if self.soc_is_present:
-            self.soc.beginWindow(key)
+            self.soc.begin_window(key)
 
         # Add measurement state to dictionary.
         self.measurement_states[key] = MeasurementState(
@@ -347,7 +347,7 @@ class ZeusMonitor:
         # If we're also tracking an SoC, end its window.
         soc_energy_consumption: SoCMeasurement | None = None
         if self.soc_is_present:
-            soc_energy_consumption = self.soc.endWindow(key)
+            soc_energy_consumption = self.soc.end_window(key)
 
         # Take instant power consumption measurements.
         # This, in theory, is introducing extra NVMLs call in the critical path
@@ -369,7 +369,7 @@ class ZeusMonitor:
 
             # If we had a non-None SoC measurement object to report, empty its fields.
             if soc_energy_consumption is not None:
-                soc_energy_consumption.zeroAllFields()
+                soc_energy_consumption.zero_all_fields()
 
             return Measurement(
                 time=0.0,
@@ -388,8 +388,8 @@ class ZeusMonitor:
         gpu_energy_consumption: dict[int, float] = {}
         for gpu_index in self.gpu_indices:
             # Query energy directly if the GPU has newer architecture.
-            if self.gpus.supportsGetTotalEnergyConsumption(gpu_index):
-                end_energy = self.gpus.getTotalEnergyConsumption(gpu_index) / 1000.0
+            if self.gpus.supports_get_total_energy_consumption(gpu_index):
+                end_energy = self.gpus.get_total_energy_consumption(gpu_index) / 1000.0
                 gpu_energy_consumption[gpu_index] = (
                     end_energy - gpu_start_energy[gpu_index]
                 )
@@ -397,7 +397,7 @@ class ZeusMonitor:
         cpu_energy_consumption: dict[int, float] = {}
         dram_energy_consumption: dict[int, float] = {}
         for cpu_index in self.cpu_indices:
-            cpu_measurement = self.cpus.getTotalEnergyConsumption(cpu_index) / 1000.0
+            cpu_measurement = self.cpus.get_total_energy_consumption(cpu_index) / 1000.0
             if cpu_start_energy is not None:
                 cpu_energy_consumption[cpu_index] = (
                     cpu_measurement.cpu_mj - cpu_start_energy[cpu_index]
@@ -469,9 +469,9 @@ class ZeusMonitor:
             for window_key in active_windows:
                 try:
                     # End the SoC window and zero its fields to cancel it
-                    soc_measurement = self.soc.endWindow(window_key)
+                    soc_measurement = self.soc.end_window(window_key)
                     if soc_measurement is not None:
-                        soc_measurement.zeroAllFields()
+                        soc_measurement.zero_all_fields()
                 except Exception as e:
                     logger.warning(
                         "Failed to cancel SoC window '%s' during reset: %s",

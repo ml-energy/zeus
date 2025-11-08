@@ -192,7 +192,7 @@ def test_rapl_cpu_class(mocker, mock_os_listdir_cpu):
 
     mocker.patch("zeus.device.cpu.rapl.RAPLFile", side_effect=rapl_file_side_effect)
     cpu = RAPLCPU(cpu_index=0, rapl_dir=RAPL_DIR)
-    measurement = cpu.getTotalEnergyConsumption()
+    measurement = cpu.get_total_energy_consumption()
 
     assert cpu.path == os.path.join(RAPL_DIR, "intel-rapl:0")
     assert cpu.rapl_file == mock_rapl_file_package

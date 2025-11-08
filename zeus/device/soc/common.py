@@ -6,6 +6,7 @@ import abc
 from dataclasses import dataclass
 
 from zeus.device.exception import ZeusBaseSoCError
+from zeus.device.common import deprecated_alias, DeprecatedAliasABCMeta
 
 
 class ZeusSoCInitError(ZeusBaseSoCError):
@@ -17,7 +18,7 @@ class ZeusSoCInitError(ZeusBaseSoCError):
 
 
 @dataclass
-class SoCMeasurement(abc.ABC):
+class SoCMeasurement(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     """Represents energy consumption metrics of various subsystems on a SoC processor.
 
     Since subsystems available on a SoC processor are highly variable, the fields of
@@ -36,13 +37,14 @@ class SoCMeasurement(abc.ABC):
         """Produce a single measurement object containing differences across all fields."""
         pass
 
+    @deprecated_alias("zeroAllFields")
     @abc.abstractmethod
-    def zeroAllFields(self) -> None:
+    def zero_all_fields(self) -> None:
         """Set the value of all fields in the measurement object to zero."""
         pass
 
 
-class SoC(abc.ABC):
+class SoC(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     """An abstract base class for monitoring the energy consumption of a monolithic SoC processor.
 
     This class will be utilized by ZeusMonitor.
@@ -52,18 +54,20 @@ class SoC(abc.ABC):
         """Initialize the SoC class.
 
         If a derived class implementation intends to rely on this base class's implementation of
-        `beginWindow` and `endWindow`, it must invoke this constructor in its own. Otherwise, if
+        `begin_window` and `end_window`, it must invoke this constructor in its own. Otherwise, if
         it will override both of those methods, it can skip invoking this.
         """
         self.measurement_states: dict[str, SoCMeasurement] = {}
 
+    @deprecated_alias("getAvailableMetrics")
     @abc.abstractmethod
-    def getAvailableMetrics(self) -> set[str]:
+    def get_available_metrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""
         pass
 
+    @deprecated_alias("getTotalEnergyConsumption")
     @abc.abstractmethod
-    def getTotalEnergyConsumption(self) -> SoCMeasurement:
+    def get_total_energy_consumption(self) -> SoCMeasurement:
         """Returns the total energy consumption of the SoC.
 
         The measurement should be cumulative; different calls to this function throughout
@@ -74,14 +78,16 @@ class SoC(abc.ABC):
         """
         pass
 
-    def beginWindow(self, key) -> None:
+    @deprecated_alias("beginWindow")
+    def begin_window(self, key) -> None:
         """Begin a measurement interval labeled with `key`."""
         if key in self.measurement_states:
             raise KeyError(f"Measurement window '{key}' already exists")
 
-        self.measurement_states[key] = self.getTotalEnergyConsumption()
+        self.measurement_states[key] = self.get_total_energy_consumption()
 
-    def endWindow(self, key) -> SoCMeasurement:
+    @deprecated_alias("endWindow")
+    def end_window(self, key) -> SoCMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
         # Retrieve the measurement taken at the start of the window.
         try:
@@ -89,7 +95,7 @@ class SoC(abc.ABC):
         except KeyError:
             raise KeyError(f"Measurement window '{key}' does not exist") from None
 
-        end_cumulative: SoCMeasurement = self.getTotalEnergyConsumption()
+        end_cumulative: SoCMeasurement = self.get_total_energy_consumption()
         return end_cumulative - start_cumulative
 
 
@@ -100,11 +106,13 @@ class EmptySoC(SoC):
         """Initialize an empty SoC class."""
         pass
 
-    def getAvailableMetrics(self) -> set[str]:
+    @deprecated_alias("getAvailableMetrics")
+    def get_available_metrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""
         return set()
 
-    def getTotalEnergyConsumption(self) -> SoCMeasurement:
+    @deprecated_alias("getTotalEnergyConsumption")
+    def get_total_energy_consumption(self) -> SoCMeasurement:
         """Returns the total energy consumption of the SoC.
 
         The measurement should be cumulative, with different calls to this function all
@@ -114,10 +122,12 @@ class EmptySoC(SoC):
         """
         raise ValueError("No SoC is available.")
 
-    def beginWindow(self, key) -> None:
+    @deprecated_alias("beginWindow")
+    def begin_window(self, key) -> None:
         """Begin a measurement interval labeled with `key`."""
         raise ValueError("No SoC is available.")
 
-    def endWindow(self, key) -> SoCMeasurement:
+    @deprecated_alias("endWindow")
+    def end_window(self, key) -> SoCMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
         raise ValueError("No SoC is available.")

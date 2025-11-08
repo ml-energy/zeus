@@ -7,6 +7,7 @@ from typing import Sequence
 from dataclasses import dataclass
 
 from zeus.device.exception import ZeusBaseCPUError
+from zeus.device.common import deprecated_alias, DeprecatedAliasABCMeta
 
 
 @dataclass
@@ -86,7 +87,7 @@ class ZeusCPUNotFoundError(ZeusBaseCPUError):
         super().__init__(message)
 
 
-class CPU(abc.ABC):
+class CPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     """Abstract base class for CPU management.
 
     This class defines the interface for interacting with CPUs, subclasses should implement the methods to interact with specific CPU libraries.
@@ -96,18 +97,20 @@ class CPU(abc.ABC):
         """Initialize the CPU with a specified index."""
         self.cpu_index = cpu_index
 
+    @deprecated_alias("getTotalEnergyConsumption")
     @abc.abstractmethod
-    def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
+    def get_total_energy_consumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         pass
 
+    @deprecated_alias("supportsGetDramEnergyConsumption")
     @abc.abstractmethod
-    def supportsGetDramEnergyConsumption(self) -> bool:
+    def supports_get_dram_energy_consumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         pass
 
 
-class CPUs(abc.ABC):
+class CPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     """An abstract base class for CPU manager object.
 
     This class defines the essential interface and common functionality for CPU management, instantiating multiple `CPU` objects for each CPU being tracked.
@@ -130,13 +133,15 @@ class CPUs(abc.ABC):
         """Returns a list of CPU objects being tracked."""
         pass
 
-    def getTotalEnergyConsumption(self, index: int) -> CpuDramMeasurement:
+    @deprecated_alias("getTotalEnergyConsumption")
+    def get_total_energy_consumption(self, index: int) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
-        return self.cpus[index].getTotalEnergyConsumption()
+        return self.cpus[index].get_total_energy_consumption()
 
-    def supportsGetDramEnergyConsumption(self, index: int) -> bool:
+    @deprecated_alias("supportsGetDramEnergyConsumption")
+    def supports_get_dram_energy_consumption(self, index: int) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
-        return self.cpus[index].supportsGetDramEnergyConsumption()
+        return self.cpus[index].supports_get_dram_energy_consumption()
 
     def __len__(self) -> int:
         """Returns the number of CPUs being tracked."""
@@ -162,11 +167,13 @@ class EmptyCPUs(CPUs):
         """Returns a list of CPU objects being tracked."""
         return []
 
-    def getTotalEnergyConsumption(self, index: int) -> CpuDramMeasurement:
+    @deprecated_alias("getTotalEnergyConsumption")
+    def get_total_energy_consumption(self, index: int) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         raise ValueError("No CPUs available.")
 
-    def supportsGetDramEnergyConsumption(self, index: int) -> bool:
+    @deprecated_alias("supportsGetDramEnergyConsumption")
+    def supports_get_dram_energy_consumption(self, index: int) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         raise ValueError("No CPUs available.")
 

@@ -42,7 +42,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     update_period = 0.0
     gpu_models_covered = set()
     for index in gpu_indicies:
-        if (model := gpus.getName(index)) not in gpu_models_covered:
+        if (model := gpus.get_name(index)) not in gpu_models_covered:
             logger.info(
                 "Detected %s, inferring NVML power counter update period.", model
             )
@@ -77,7 +77,7 @@ def _infer_counter_update_period_single(gpu_index: int) -> float:
     for i in range(len(time_power_samples)):
         time_power_samples[i] = (
             time(),
-            gpus.getInstantPowerUsage(gpu_index),
+            gpus.get_instant_power_usage(gpu_index),
         )
 
     # Find the timestamps when the power readings changed.
