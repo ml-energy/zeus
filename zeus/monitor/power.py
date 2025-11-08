@@ -265,9 +265,9 @@ class PowerMonitor:
         supported = []
         gpus = get_gpus(ensure_homogeneous=True)
         methods = {
-            PowerDomain.DEVICE_INSTANT: gpus.getInstantPowerUsage,
-            PowerDomain.DEVICE_AVERAGE: gpus.getAveragePowerUsage,
-            PowerDomain.MEMORY_AVERAGE: gpus.getAverageMemoryPowerUsage,
+            PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
+            PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
+            PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
         }
 
         # Just check the first GPU for support, since all GPUs are homogeneous.
@@ -500,9 +500,9 @@ def _domain_polling_process(
 
         # Determine the GPU method to call based on domain
         power_methods = {
-            PowerDomain.DEVICE_INSTANT: gpus.getInstantPowerUsage,
-            PowerDomain.DEVICE_AVERAGE: gpus.getAveragePowerUsage,
-            PowerDomain.MEMORY_AVERAGE: gpus.getAverageMemoryPowerUsage,
+            PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
+            PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
+            PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
         }
         try:
             power_method = power_methods[power_domain]

@@ -124,7 +124,12 @@ def _make_deprecated_method(new_method, old_name, new_name):
                 stacklevel=2,
             )
             warned[0] = True
-        return new_method(self, *args, **kwargs)
+        return getattr(self, new_name)(*args, **kwargs)
+
+    # Remove the _deprecated_alias attribute to prevent recursion when the metaclass
+    # processes this deprecated method during class creation
+    if hasattr(deprecated_method, "_deprecated_alias"):
+        delattr(deprecated_method, "_deprecated_alias")
 
     return deprecated_method
 
@@ -136,7 +141,10 @@ class DeprecatedAliasABCMeta(abc.ABCMeta):
     creates the old camelCase method names that emit deprecation warnings once and then
     call the new snake_case methods.
 
-    Example:
+    Since this is frequently composed with `abc.ABCMeta`, this metaclass inherits from it
+    to avoid metaclass conflicts.
+
+    !!! Example
         ```python
         class MyClass(abc.ABC, metaclass=DeprecatedAliasABCMeta):
             @deprecated_alias("oldMethod")
@@ -155,6 +163,7 @@ class DeprecatedAliasABCMeta(abc.ABCMeta):
     """
 
     def __new__(mcs, name, bases, namespace):
+        """Create the class and add deprecated alias methods."""
         cls = super().__new__(mcs, name, bases, namespace)
 
         # Create deprecated aliases for methods marked with @deprecated_alias
