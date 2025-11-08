@@ -153,7 +153,7 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def set_power_management_limit(
-        self, power_limit_mw: int, _block: bool = True
+        self, power_limit_mw: int, block: bool = True
     ) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         amdsmi.amdsmi_set_power_cap(
@@ -161,7 +161,7 @@ class AMDGPU(gpu_common.GPU):
         )  # Units for set_power_cap: microwatts
 
     @_handle_amdsmi_errors
-    def reset_power_management_limit(self, _block: bool = True) -> None:
+    def reset_power_management_limit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
         amdsmi.amdsmi_set_power_cap(
@@ -169,7 +169,7 @@ class AMDGPU(gpu_common.GPU):
         )  # expects value in microwatts
 
     @_handle_amdsmi_errors
-    def set_persistence_mode(self, enabled: bool, _block: bool = True) -> None:
+    def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         raise gpu_common.ZeusGPUNotSupportedError(
             "Persistence mode is not supported on AMD GPUs."
@@ -185,7 +185,7 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def set_memory_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         amdsmi.amdsmi_set_gpu_clk_range(
@@ -196,7 +196,7 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
-    def reset_memory_locked_clocks(self, _block: bool = True) -> None:
+    def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
         # Get default MEM clock values
         info = amdsmi.amdsmi_get_clock_info(
@@ -228,7 +228,7 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def set_gpu_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         amdsmi.amdsmi_set_gpu_clk_range(
@@ -239,7 +239,7 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
-    def reset_gpu_locked_clocks(self, _block: bool = True) -> None:
+    def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
         # Get default GPU clock values
         info = amdsmi.amdsmi_get_clock_info(

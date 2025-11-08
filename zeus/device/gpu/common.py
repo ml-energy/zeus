@@ -45,20 +45,20 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     @deprecated_alias("setPowerManagementLimit")
     @abc.abstractmethod
     def set_power_management_limit(
-        self, power_limit_mw: int, _block: bool = True
+        self, power_limit_mw: int, block: bool = True
     ) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         pass
 
     @deprecated_alias("resetPowerManagementLimit")
     @abc.abstractmethod
-    def reset_power_management_limit(self, _block: bool = True) -> None:
+    def reset_power_management_limit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
         pass
 
     @deprecated_alias("setPersistenceMode")
     @abc.abstractmethod
-    def set_persistence_mode(self, enabled: bool, _block: bool = True) -> None:
+    def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         pass
 
@@ -71,14 +71,14 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     @deprecated_alias("setMemoryLockedClocks")
     @abc.abstractmethod
     def set_memory_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         pass
 
     @deprecated_alias("resetMemoryLockedClocks")
     @abc.abstractmethod
-    def reset_memory_locked_clocks(self, _block: bool = True) -> None:
+    def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
         pass
 
@@ -98,14 +98,14 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     @deprecated_alias("setGpuLockedClocks")
     @abc.abstractmethod
     def set_gpu_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         pass
 
     @deprecated_alias("resetGpuLockedClocks")
     @abc.abstractmethod
-    def reset_gpu_locked_clocks(self, _block: bool = True) -> None:
+    def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
         pass
 
@@ -214,25 +214,25 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
 
     @deprecated_alias("setPowerManagementLimit")
     def set_power_management_limit(
-        self, gpu_index: int, power_limit_mw: int, _block: bool = True
+        self, gpu_index: int, power_limit_mw: int, block: bool = True
     ) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].set_power_management_limit(power_limit_mw, _block)
+        self.gpus[gpu_index].set_power_management_limit(power_limit_mw, block)
 
     @deprecated_alias("resetPowerManagementLimit")
-    def reset_power_management_limit(self, gpu_index: int, _block: bool = True) -> None:
+    def reset_power_management_limit(self, gpu_index: int, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].reset_power_management_limit(_block)
+        self.gpus[gpu_index].reset_power_management_limit(block)
 
     @deprecated_alias("setPersistenceMode")
     def set_persistence_mode(
-        self, gpu_index: int, enabled: bool, _block: bool = True
+        self, gpu_index: int, enabled: bool, block: bool = True
     ) -> None:
         """Set persistence mode for the specified GPU."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].set_persistence_mode(enabled, _block)
+        self.gpus[gpu_index].set_persistence_mode(enabled, block)
 
     @deprecated_alias("getSupportedMemoryClocks")
     def get_supported_memory_clocks(self, gpu_index: int) -> list[int]:
@@ -245,19 +245,19 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         gpu_index: int,
         min_clock_mhz: int,
         max_clock_mhz: int,
-        _block: bool = True,
+        block: bool = True,
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         self._warn_sys_admin()
         self.gpus[gpu_index].set_memory_locked_clocks(
-            min_clock_mhz, max_clock_mhz, _block
+            min_clock_mhz, max_clock_mhz, block
         )
 
     @deprecated_alias("resetMemoryLockedClocks")
-    def reset_memory_locked_clocks(self, gpu_index: int, _block: bool = True) -> None:
+    def reset_memory_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].reset_memory_locked_clocks(_block)
+        self.gpus[gpu_index].reset_memory_locked_clocks(block)
 
     @deprecated_alias("getSupportedGraphicsClocks")
     def get_supported_graphics_clocks(
@@ -278,17 +278,17 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         gpu_index: int,
         min_clock_mhz: int,
         max_clock_mhz: int,
-        _block: bool = True,
+        block: bool = True,
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].set_gpu_locked_clocks(min_clock_mhz, max_clock_mhz, _block)
+        self.gpus[gpu_index].set_gpu_locked_clocks(min_clock_mhz, max_clock_mhz, block)
 
     @deprecated_alias("resetGpuLockedClocks")
-    def reset_gpu_locked_clocks(self, gpu_index: int, _block: bool = True) -> None:
+    def reset_gpu_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].reset_gpu_locked_clocks(_block)
+        self.gpus[gpu_index].reset_gpu_locked_clocks(block)
 
     @deprecated_alias("getAveragePowerUsage")
     def get_average_power_usage(self, gpu_index: int) -> int:
@@ -371,19 +371,19 @@ class EmptyGPUs(GPUs):
 
     @deprecated_alias("setPowerManagementLimit")
     def set_power_management_limit(
-        self, gpu_index: int, power_limit_mw: int, _block: bool = True
+        self, gpu_index: int, power_limit_mw: int, block: bool = True
     ) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
     @deprecated_alias("resetPowerManagementLimit")
-    def reset_power_management_limit(self, gpu_index: int, _block: bool = True) -> None:
+    def reset_power_management_limit(self, gpu_index: int, block: bool = True) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
     @deprecated_alias("setPersistenceMode")
     def set_persistence_mode(
-        self, gpu_index: int, enabled: bool, _block: bool = True
+        self, gpu_index: int, enabled: bool, block: bool = True
     ) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
@@ -399,13 +399,13 @@ class EmptyGPUs(GPUs):
         gpu_index: int,
         min_clock_mhz: int,
         max_clock_mhz: int,
-        _block: bool = True,
+        block: bool = True,
     ) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
     @deprecated_alias("resetMemoryLockedClocks")
-    def reset_memory_locked_clocks(self, gpu_index: int, _block: bool = True) -> None:
+    def reset_memory_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
@@ -422,13 +422,13 @@ class EmptyGPUs(GPUs):
         gpu_index: int,
         min_clock_mhz: int,
         max_clock_mhz: int,
-        _block: bool = True,
+        block: bool = True,
     ) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
     @deprecated_alias("resetGpuLockedClocks")
-    def reset_gpu_locked_clocks(self, gpu_index: int, _block: bool = True) -> None:
+    def reset_gpu_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
