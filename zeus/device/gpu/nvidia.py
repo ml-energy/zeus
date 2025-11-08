@@ -342,7 +342,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
             block,
         )
 
-    def set_persistence_mode(self, enabled: bool, block: bool = False) -> None:
+    def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         resp = self._client.post(
             self._url_prefix + "/set_persistence_mode",
