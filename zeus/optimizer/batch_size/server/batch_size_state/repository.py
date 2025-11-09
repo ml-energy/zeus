@@ -53,9 +53,7 @@ class BatchSizeStateRepository(DatabaseRepository):
             return 1
         return res + 1
 
-    async def get_trial_results_of_bs(
-        self, batch_size: BatchSizeBase, window_size: int
-    ) -> TrialResultsPerBs:
+    async def get_trial_results_of_bs(self, batch_size: BatchSizeBase, window_size: int) -> TrialResultsPerBs:
         """Load window size amount of results for a given batch size. If window size <= 0, load all of them.
 
         From all trials, we filter succeeded one since failed/dispatched ones doesn't have a valid result.
@@ -98,9 +96,7 @@ class BatchSizeStateRepository(DatabaseRepository):
             List[GaussianTsArmStateModel]: List of Gaussian Thompson Sampling arms. These arms are all "good" arms (converged during pruning stage).
             Refer to `GaussianTsArmStateModel`[zeus.optimizer.batch_size.server.batch_size_state.models.GaussianTsArmStateModel] for attributes.
         """
-        stmt = select(GaussianTsArmStateTable).where(
-            GaussianTsArmStateTable.job_id == job_id
-        )
+        stmt = select(GaussianTsArmStateTable).where(GaussianTsArmStateTable.job_id == job_id)
         res = (await self.session.scalars(stmt)).all()
         return [GaussianTsArmState.from_orm(arm) for arm in res]
 
@@ -215,9 +211,7 @@ class BatchSizeStateRepository(DatabaseRepository):
             self.fetched_arm.job_id != updated_mab_state.job_id
             or self.fetched_arm.batch_size != updated_mab_state.batch_size
         ):
-            raise ZeusBSOValueError(
-                "Fetch arm does not correspond with the arm trying to update."
-            )
+            raise ZeusBSOValueError("Fetch arm does not correspond with the arm trying to update.")
 
         self.fetched_arm.param_mean = updated_mab_state.param_mean
         self.fetched_arm.param_precision = updated_mab_state.param_precision

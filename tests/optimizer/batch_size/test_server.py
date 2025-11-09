@@ -111,9 +111,7 @@ def test_report(client, helpers):
         },
     )
     assert (
-        response.status_code == 200
-        and response.json()["converged"] == True
-        and response.json()["stop_train"] == True
+        response.status_code == 200 and response.json()["converged"] == True and response.json()["stop_train"] == True
     )
 
     response = client.get(
@@ -134,9 +132,7 @@ def test_report(client, helpers):
         },
     )
     assert (
-        response.status_code == 200
-        and response.json()["converged"] == False
-        and response.json()["stop_train"] == True
+        response.status_code == 200 and response.json()["converged"] == False and response.json()["stop_train"] == True
     ), response.text
 
 
@@ -173,11 +169,7 @@ def test_exploration_stage(client, helpers):
                     params={"job_id": job_config["job_id"]},
                 )
                 assert response.status_code == 200
-                assert (
-                    response.json()["batch_size"] == cur_default_bs
-                    if trial == 1 and bs == 512
-                    else 512
-                )
+                assert response.json()["batch_size"] == cur_default_bs if trial == 1 and bs == 512 else 512
                 assert response.json()["trial_number"] == trial_number
                 trial_number += 1
 
@@ -185,9 +177,7 @@ def test_exploration_stage(client, helpers):
                 converged = random.choice([True, True, False])
                 if bs == 1024:  # make default bs converged for 512
                     converged = True
-                if (
-                    bs == 512
-                ):  # make 512 as the best bs so that we can change the default bs to 512 next round
+                if bs == 512:  # make 512 as the best bs so that we can change the default bs to 512 next round
                     converged = True
                     time = 12
                 if converged:

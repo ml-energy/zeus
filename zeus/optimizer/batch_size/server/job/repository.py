@@ -75,9 +75,7 @@ class JobStateRepository(DatabaseRepository):
         if updated_bs.job_id == self.fetched_job.job_id:
             self.fetched_job.exp_default_batch_size = updated_bs.exp_default_batch_size
         else:
-            raise ZeusBSOValueError(
-                f"Unknown job_id ({updated_bs.job_id}). Expecting {self.fetched_job.job_id}"
-            )
+            raise ZeusBSOValueError(f"Unknown job_id ({updated_bs.job_id}). Expecting {self.fetched_job.job_id}")
 
     def update_stage(self, updated_stage: UpdateJobStage) -> None:
         """Update stage on fetched job.
@@ -91,9 +89,7 @@ class JobStateRepository(DatabaseRepository):
         if self.fetched_job.job_id == updated_stage.job_id:
             self.fetched_job.stage = updated_stage.stage
         else:
-            raise ZeusBSOValueError(
-                f"Unknown job_id ({updated_stage.job_id}). Expecting {self.fetched_job.job_id}"
-            )
+            raise ZeusBSOValueError(f"Unknown job_id ({updated_stage.job_id}). Expecting {self.fetched_job.job_id}")
 
     def update_min(self, updated_min: UpdateJobMinCost) -> None:
         """Update exploration min training cost and corresponding batch size on fetched job.
@@ -108,9 +104,7 @@ class JobStateRepository(DatabaseRepository):
             self.fetched_job.min_cost = updated_min.min_cost
             self.fetched_job.min_cost_batch_size = updated_min.min_cost_batch_size
         else:
-            raise ZeusBSOValueError(
-                f"Unknown job_id ({updated_min.job_id}). Expecting {self.fetched_job.job_id}"
-            )
+            raise ZeusBSOValueError(f"Unknown job_id ({updated_min.job_id}). Expecting {self.fetched_job.job_id}")
 
     def update_generator_state(self, updated_state: UpdateGeneratorState) -> None:
         """Update generator state on fetched job.
@@ -124,9 +118,7 @@ class JobStateRepository(DatabaseRepository):
         if self.fetched_job.job_id == updated_state.job_id:
             self.fetched_job.mab_random_generator_state = updated_state.state
         else:
-            raise ZeusBSOValueError(
-                f"Unknown job_id ({updated_state.job_id}). Expecting {self.fetched_job.job_id}"
-            )
+            raise ZeusBSOValueError(f"Unknown job_id ({updated_state.job_id}). Expecting {self.fetched_job.job_id}")
 
     def create_job(self, new_job: CreateJob) -> None:
         """Create a new job by adding a new job to the session.

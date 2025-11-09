@@ -246,7 +246,5 @@ def test_rapl_cpus_class_init_error(mocker):
     """Test initialization when RAPL is not available."""
     mocker.patch("zeus.device.cpu.rapl.rapl_is_available", return_value=False)
 
-    with pytest.raises(
-        ZeusRAPLNotSupportedError, match="RAPL is not supported on this CPU."
-    ):
+    with pytest.raises(ZeusRAPLNotSupportedError, match="RAPL is not supported on this CPU."):
         RAPLCPUs()

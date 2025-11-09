@@ -69,9 +69,7 @@ class PipelineFrequencyOptimizer(Callback):
                 be appended to the job ID if given. Typically for logging purposes.
         """
         if not dist.is_initialized():
-            raise RuntimeError(
-                "Instantiate `PipelineFrequencyOptimizer` after `init_process_group`."
-            )
+            raise RuntimeError("Instantiate `PipelineFrequencyOptimizer` after `init_process_group`.")
 
         self.server_url = server_url
         self.rank = rank
@@ -93,13 +91,9 @@ class PipelineFrequencyOptimizer(Callback):
                 world_size=world_size,
                 job_metadata=job_metadata,
             )
-            response = httpx.post(
-                self.server_url + REGISTER_JOB_URL, json=job_info.dict()
-            )
+            response = httpx.post(self.server_url + REGISTER_JOB_URL, json=job_info.dict())
             if (code := response.status_code) != 200:
-                raise RuntimeError(
-                    f"PFO server returned status code {code}: {response.text}"
-                )
+                raise RuntimeError(f"PFO server returned status code {code}: {response.text}")
             job_id = response.json()
             if not isinstance(job_id, str):
                 raise RuntimeError(f"PFO server returned a strange job ID: {job_id=}")
@@ -131,9 +125,7 @@ class PipelineFrequencyOptimizer(Callback):
             json=rank_info.dict(),
         )
         if (code := response.status_code) != 200:
-            raise RuntimeError(
-                f"PFO server returned status code {code}: {response.text}"
-            )
+            raise RuntimeError(f"PFO server returned status code {code}: {response.text}")
 
         # The frequency controller is responsible for controlling the frequency
         # of the GPU (device_id) asynchronously.
@@ -151,14 +143,10 @@ class PipelineFrequencyOptimizer(Callback):
             timeout=None,
         )
         if (code := response.status_code) != 200:
-            raise RuntimeError(
-                f"PFO server returned status code {code}: {response.text}"
-            )
+            raise RuntimeError(f"PFO server returned status code {code}: {response.text}")
         schedule = FrequencySchedule.parse_raw(response.text)
         if schedule.rank != self.rank:
-            raise RuntimeError(
-                f"PFO server returned a schedule for rank {schedule.rank} to rank {self.rank}"
-            )
+            raise RuntimeError(f"PFO server returned a schedule for rank {schedule.rank} to rank {self.rank}")
         return schedule.frequencies
 
     def on_step_begin(self) -> None:
@@ -179,8 +167,7 @@ class PipelineFrequencyOptimizer(Callback):
         item = next(self.freq_schedule_iter, None)
         if item is not None:
             raise RuntimeError(
-                "PFO server returned more frequencies than expected. "
-                f"Next expected instruction and frequency is {item}"
+                f"PFO server returned more frequencies than expected. Next expected instruction and frequency is {item}"
             )
         self.freq_schedule_iter = iter(self.freq_schedule)
 
@@ -201,9 +188,7 @@ class PipelineFrequencyOptimizer(Callback):
         # Check whether the next expected instruction matches the name of the instruction.
         instruction, frequency = item
         if instruction != name:
-            raise RuntimeError(
-                f"The next expected instruction is not forward: {instruction}"
-            )
+            raise RuntimeError(f"The next expected instruction is not forward: {instruction}")
 
         self.frequency_controller.set_frequency(frequency)
 

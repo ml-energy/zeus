@@ -123,12 +123,8 @@ class ZeusService:
         if updated_trial.status != TrialStatus.Failed:
             job = self._get_job(updated_trial.job_id)
             if updated_trial.energy is None or updated_trial.time is None:
-                raise ZeusBSOValueError(
-                    "Energy and time should be set if the trial is not failed."
-                )
-            cur_cost = zeus_cost(
-                updated_trial.energy, updated_trial.time, job.eta_knob, job.max_power
-            )
+                raise ZeusBSOValueError("Energy and time should be set if the trial is not failed.")
+            cur_cost = zeus_cost(updated_trial.energy, updated_trial.time, job.eta_knob, job.max_power)
             if job.min_cost is None or job.min_cost > cur_cost:
                 self.job_repo.update_min(
                     UpdateJobMinCost(
@@ -160,9 +156,7 @@ class ZeusService:
             )
         )
         if trial.type != TrialType.MAB:
-            raise ZeusBSOServiceBadOperationError(
-                "Cannot update an arm since this trial is not issued from MAB stage."
-            )
+            raise ZeusBSOServiceBadOperationError("Cannot update an arm since this trial is not issued from MAB stage.")
         self.bs_repo.update_arm_state(arm.updated_arm)
 
     def update_exp_default_bs(self, updated_default_bs: UpdateExpDefaultBs) -> None:
@@ -178,9 +172,7 @@ class ZeusService:
         self._check_job_fetched(updated_default_bs.job_id)
         self.job_repo.update_exp_default_bs(updated_default_bs)
 
-    async def create_trial(
-        self, trial: CreateExplorationTrial | CreateMabTrial | CreateConcurrentTrial
-    ) -> ReadTrial:
+    async def create_trial(self, trial: CreateExplorationTrial | CreateMabTrial | CreateConcurrentTrial) -> ReadTrial:
         """Create a new trial.
 
         Args:
@@ -192,12 +184,8 @@ class ZeusService:
         """
         self._check_job_fetched(trial.job_id)
         trial_number = await self.bs_repo.get_next_trial_number(trial.job_id)
-        self.bs_repo.create_trial(
-            CreateTrial(**trial.dict(), trial_number=trial_number)
-        )
-        return ReadTrial(
-            job_id=trial.job_id, batch_size=trial.batch_size, trial_number=trial_number
-        )
+        self.bs_repo.create_trial(CreateTrial(**trial.dict(), trial_number=trial_number))
+        return ReadTrial(job_id=trial.job_id, batch_size=trial.batch_size, trial_number=trial_number)
 
     def get_random_choices(self, choice: GetRandomChoices) -> np.ndarray[Any, Any]:
         """Get randome choices based on job's seed.
@@ -222,9 +210,7 @@ class ZeusService:
         if should_update:
             # If we used the generator from database, should update the generator state after using it
             self.job_repo.update_generator_state(
-                UpdateGeneratorState(
-                    job_id=choice.job_id, state=json.dumps(rng.__getstate__())
-                )
+                UpdateGeneratorState(job_id=choice.job_id, state=json.dumps(rng.__getstate__()))
             )
 
         return res
@@ -248,9 +234,7 @@ class ZeusService:
         if should_update:
             # If we used the generator from database, should update the generator state after using it
             self.job_repo.update_generator_state(
-                UpdateGeneratorState(
-                    job_id=arg.job_id, state=json.dumps(rng.__getstate__())
-                )
+                UpdateGeneratorState(job_id=arg.job_id, state=json.dumps(rng.__getstate__()))
             )
 
         return res
@@ -355,9 +339,7 @@ class ZeusService:
         should_update = job_state.mab_seed is not None
         if job_state.mab_seed is not None:
             if job_state.mab_random_generator_state is None:
-                raise ZeusBSOValueError(
-                    "Seed is set but generator state is none. Should be impossible"
-                )
+                raise ZeusBSOValueError("Seed is set but generator state is none. Should be impossible")
 
             state = json.loads(job_state.mab_random_generator_state)
             rng.__setstate__(state)
@@ -385,6 +367,4 @@ class ZeusService:
     def _check_job_fetched(self, job_id: str) -> None:
         """Check if we fetched the job in the current session. If we didn't raise a `ZeusBSOServiceBadOperationError`."""
         if not self.job_repo.check_job_fetched(job_id):
-            raise ZeusBSOServiceBadOperationError(
-                f"check_job_fetched: {job_id} is not currently in the session"
-            )
+            raise ZeusBSOServiceBadOperationError(f"check_job_fetched: {job_id} is not currently in the session")

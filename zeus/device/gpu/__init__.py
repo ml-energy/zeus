@@ -114,6 +114,4 @@ def get_gpus(ensure_homogeneous: bool = False) -> GPUs:
         _gpus = AMDGPUs(ensure_homogeneous)
         return _gpus
     else:
-        raise ZeusGPUInitError(
-            "NVML and AMDSMI unavailable. Failed to initialize GPU management library."
-        )
+        raise ZeusGPUInitError("NVML and AMDSMI unavailable. Failed to initialize GPU management library.")

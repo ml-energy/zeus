@@ -65,9 +65,7 @@ async def startup_hook():
 
 
 @app.post(REGISTER_JOB_URL, response_model=str)
-async def register_job(
-    job_info: JobInfo, job_manager: JobManager = Depends(get_global_job_manager)
-) -> str:
+async def register_job(job_info: JobInfo, job_manager: JobManager = Depends(get_global_job_manager)) -> str:
     """Register the training job's information in the server."""
     job_info.set_job_id(scheduler_name=settings.scheduler.__name__)
     job_manager.register_job(job_info)

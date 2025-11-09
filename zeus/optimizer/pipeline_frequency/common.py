@@ -99,10 +99,7 @@ class JobInfo(BaseModel):
     @validator("world_size")
     def _check_world_size(cls, world_size, values):
         """Product of PP, DP, and TP degree would be identical to the world size."""
-        assert (
-            values["pp_degree"] * values["dp_degree"] * values["tp_degree"]
-            == world_size
-        )
+        assert values["pp_degree"] * values["dp_degree"] * values["tp_degree"] == world_size
         return world_size
 
     def set_job_id(self, scheduler_name: str):

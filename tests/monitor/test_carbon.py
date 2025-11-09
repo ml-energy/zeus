@@ -92,9 +92,7 @@ def mock_requests():
 def test_get_current_carbon_intensity(mock_requests):
     latlong = get_ip_lat_long()
     assert latlong == (pytest.approx(42.2776), pytest.approx(-83.7409))
-    provider = ElectrictyMapsClient(
-        latlong, estimate=True, emission_factor_type="lifecycle"
-    )
+    provider = ElectrictyMapsClient(latlong, estimate=True, emission_factor_type="lifecycle")
     assert provider.get_current_carbon_intensity() == 466
 
     provider.emission_factor_type = "direct"
@@ -142,18 +140,14 @@ def mock_carbon_history():
             == "https://api.electricitymap.org/v3/carbon-intensity/history?lat=42.2776&lon=-83.7409&disableEstimations=False&emissionFactorType=lifecycle"
             and current_time < TIME_TO_SWITCH
         ):
-            with open(
-                "tests/monitor/carbon_history_files/carbon_history_file1", "r"
-            ) as file:
+            with open("tests/monitor/carbon_history_files/carbon_history_file1", "r") as file:
                 content = file.read()
             return MockHttpResponse(content)
         elif (
             url
             == "https://api.electricitymap.org/v3/carbon-intensity/history?lat=42.2776&lon=-83.7409&disableEstimations=False&emissionFactorType=lifecycle"
         ):
-            with open(
-                "tests/monitor/carbon_history_files/carbon_history_file2", "r"
-            ) as file:
+            with open("tests/monitor/carbon_history_files/carbon_history_file2", "r") as file:
                 content = file.read()
             return MockHttpResponse(content)
         else:
@@ -179,9 +173,7 @@ class MockDateTime(datetime):
 
     @classmethod
     def get_previous_hour(cls):
-        return cls.times[
-            cls.i - 1
-        ]  # minus one to handle off by one error: want to get previous hour
+        return cls.times[cls.i - 1]  # minus one to handle off by one error: want to get previous hour
 
 
 @pytest.fixture
@@ -202,9 +194,7 @@ def mock_datetime():
             tzinfo=timezone.utc,
         )
 
-    patch_dateutil_parser = patch(
-        "zeus.monitor.carbon.parser.parse", side_effect=mock_parse
-    )
+    patch_dateutil_parser = patch("zeus.monitor.carbon.parser.parse", side_effect=mock_parse)
     patch_datetime_now.start()
     patch_dateutil_parser.start()
 
@@ -238,52 +228,24 @@ def get_expected_cpu_gpu_carbon_emision(datetimes):
         for time in unique_datetimes:
             for measurement in content1["history"]:
                 if measurement["datetime"] == time:
-                    expected_gpu_values[0] += (
-                        30.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_gpu_values[1] += (
-                        35.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_gpu_values[2] += (
-                        40.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_cpu_values[0] += (
-                        20.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_cpu_values[1] += (
-                        25.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_dram_values[0] += (
-                        15.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_dram_values[1] += (
-                        20.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
+                    expected_gpu_values[0] += 30.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_gpu_values[1] += 35.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_gpu_values[2] += 40.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_cpu_values[0] += 20.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_cpu_values[1] += 25.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_dram_values[0] += 15.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_dram_values[1] += 20.0 / 3.6e6 * measurement["carbonIntensity"]
 
             for measurement in content2["history"]:
                 if measurement["datetime"] == time:
-                    expected_gpu_values[0] += (
-                        30.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_gpu_values[1] += (
-                        35.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_gpu_values[2] += (
-                        40.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_cpu_values[0] += (
-                        20.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_cpu_values[1] += (
-                        25.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
+                    expected_gpu_values[0] += 30.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_gpu_values[1] += 35.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_gpu_values[2] += 40.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_cpu_values[0] += 20.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_cpu_values[1] += 25.0 / 3.6e6 * measurement["carbonIntensity"]
 
-                    expected_dram_values[0] += (
-                        15.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
-                    expected_dram_values[1] += (
-                        20.0 / 3.6e6 * measurement["carbonIntensity"]
-                    )
+                    expected_dram_values[0] += 15.0 / 3.6e6 * measurement["carbonIntensity"]
+                    expected_dram_values[1] += 20.0 / 3.6e6 * measurement["carbonIntensity"]
 
     return expected_gpu_values, expected_cpu_values, expected_dram_values
 
@@ -294,9 +256,7 @@ def test_single_window_one_hour(mock_zeus_monitor, mock_carbon_history, mock_dat
     finished_q = mp.Queue()
     gpu_indices = [0, 1, 2]
     cpu_indices = [0, 1]
-    provider = ElectrictyMapsClient(
-        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
-    )
+    provider = ElectrictyMapsClient((42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle")
 
     MockDateTime.times = [
         MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window start
@@ -334,16 +294,12 @@ def test_single_window_one_day(mock_zeus_monitor, mock_carbon_history, mock_date
     finished_q = mp.Queue()
     gpu_indices = [0, 1, 2]
     cpu_indices = [0, 1]
-    provider = ElectrictyMapsClient(
-        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
-    )
+    provider = ElectrictyMapsClient((42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle")
 
     # times so that exactly 25 iterations inside the polling loop executes
     MockDateTime.times = [
         MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window start
-        MockDateTime(
-            2024, 11, 30, 8, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
@@ -400,22 +356,16 @@ def test_single_window_one_day(mock_zeus_monitor, mock_carbon_history, mock_date
 
 
 # test multiple windows active for a window length of less than an one hour
-def test_multiple_windows_one_hour(
-    mock_zeus_monitor, mock_carbon_history, mock_datetime
-):
+def test_multiple_windows_one_hour(mock_zeus_monitor, mock_carbon_history, mock_datetime):
     command_q = mp.Queue()
     finished_q = mp.Queue()
     gpu_indices = [0, 1, 2]
     cpu_indices = [0, 1]
-    provider = ElectrictyMapsClient(
-        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
-    )
+    provider = ElectrictyMapsClient((42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle")
 
     MockDateTime.times = [
         MockDateTime(2024, 12, 1, 4, 30, tzinfo=timezone.utc),  # test_window1 start
-        MockDateTime(
-            2024, 12, 1, 5, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),  # test_window2 start
         MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window1 end
         MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window2 end
@@ -468,26 +418,18 @@ def test_multiple_windows_one_hour(
 
 
 # test multiple windows active for a window length of at least a day
-def test_multiple_windows_one_day(
-    mock_zeus_monitor, mock_carbon_history, mock_datetime
-):
+def test_multiple_windows_one_day(mock_zeus_monitor, mock_carbon_history, mock_datetime):
     command_q = mp.Queue()
     finished_q = mp.Queue()
     gpu_indices = [0, 1, 2]
     cpu_indices = [0, 1]
-    provider = ElectrictyMapsClient(
-        (42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle"
-    )
+    provider = ElectrictyMapsClient((42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle")
 
     MockDateTime.times = [
         MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window1 start
-        MockDateTime(
-            2024, 11, 30, 8, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # test_window2 start
-        MockDateTime(
-            2024, 11, 30, 9, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 11, 0, tzinfo=timezone.utc),
@@ -511,9 +453,7 @@ def test_multiple_windows_one_day(
         MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 12, 1, 6, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 12, 1, 7, 0, tzinfo=timezone.utc),  # test_window1 end
-        MockDateTime(
-            2024, 12, 1, 8, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "end" is called
+        MockDateTime(2024, 12, 1, 8, 0, tzinfo=timezone.utc),  # extra datetime called after "end" is called
         MockDateTime(2024, 12, 1, 8, 0, tzinfo=timezone.utc),  # test_window2 end
     ]
     MockDateTime.i = 0

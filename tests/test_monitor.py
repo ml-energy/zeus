@@ -35,17 +35,13 @@ class MockCPU(CPU):
         """Initialize the MOCKCPU with a specified index for testing."""
         self.index = index
         self.cpu_energy = itertools.count(start=1000, step=10)
-        self.dram_energy = (
-            itertools.count(start=200, step=5) if self.index % 2 == 0 else None
-        )
+        self.dram_energy = itertools.count(start=200, step=5) if self.index % 2 == 0 else None
 
     def get_total_energy_consumption(self):
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         return CpuDramMeasurement(
             cpu_mj=float(next(self.cpu_energy)),
-            dram_mj=(
-                float(next(self.dram_energy)) if self.dram_energy is not None else None
-            ),
+            dram_mj=(float(next(self.dram_energy)) if self.dram_energy is not None else None),
         )
 
     def supports_get_dram_energy_consumption(self):
@@ -114,9 +110,7 @@ def gpu_cases():
     # `CUDA_VISIBLE_DEVICES` is given.
     for cuda_visible_devices in nonempty_subsequences(range(NUM_GPUS)):  # NVML index
         # `gpu_indices` is not `None`.
-        for gpu_indices in nonempty_subsequences(
-            range(len(cuda_visible_devices))
-        ):  # PyTorch index
+        for gpu_indices in nonempty_subsequences(range(len(cuda_visible_devices))):  # PyTorch index
             for gpu_archs in product(ARCHS, repeat=len(gpu_indices)):
                 yield cuda_visible_devices, gpu_indices, list(gpu_archs)
         # `gpu_indices` is `None` (use all GPUs visible to PyTorch).
@@ -133,9 +127,7 @@ def gpu_cases():
 
 
 @pytest.fixture(params=gpu_cases())
-def mock_gpus(
-    request, mocker: MockerFixture, pynvml_mock: MagicMock
-) -> tuple[tuple[int], tuple[int]]:
+def mock_gpus(request, mocker: MockerFixture, pynvml_mock: MagicMock) -> tuple[tuple[int], tuple[int]]:
     """Mock `pynvml` so that it looks like there are GPUs with the given archs.
 
     This fixture automatically generates (1) all combinations of possible GPU indices
@@ -158,9 +150,7 @@ def mock_gpus(
         pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = (
             lambda index: f"handle{index}"
         )  # GPU Monitoring object grabs all handles visible to system on initialization.
-        pynvml_mock.nvmlDeviceGetArchitecture.side_effect = (
-            lambda handle: handle_to_arch[handle]
-        )
+        pynvml_mock.nvmlDeviceGetArchitecture.side_effect = lambda handle: handle_to_arch[handle]
 
     if cuda_visible_devices is None:  # All GPUs are visible to PyTorch.
         # When `CUDA_VISIBLE_DEVICES` is not given, NVML indices and PyTorch indices conincide.
@@ -202,20 +192,12 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     assert len(nvml_gpu_indices) == len(torch_gpu_indices) == len(gpu_archs)
 
     num_gpus = len(gpu_archs)
-    is_old_nvml = {
-        index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA
-        for index, arch in zip(nvml_gpu_indices, gpu_archs)
-    }
-    is_old_torch = {
-        index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA
-        for index, arch in zip(torch_gpu_indices, gpu_archs)
-    }
+    is_old_nvml = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(nvml_gpu_indices, gpu_archs)}
+    is_old_torch = {index: arch < pynvml.NVML_DEVICE_ARCH_VOLTA for index, arch in zip(torch_gpu_indices, gpu_archs)}
     old_gpu_torch_indices = [index for index, is_old in is_old_torch.items() if is_old]
 
     class MockPowerMonitor:
-        def __init__(
-            self, gpu_indices: list[int] | None, update_period: float | None
-        ) -> None:
+        def __init__(self, gpu_indices: list[int] | None, update_period: float | None) -> None:
             assert gpu_indices == old_gpu_torch_indices
             self.gpu_indices = gpu_indices
             self.update_period = update_period
@@ -229,13 +211,9 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     mocker.patch("zeus.monitor.energy.time", side_effect=time_counter)
 
     energy_counters = {
-        f"handle{i}": itertools.count(start=1000, step=3)
-        for i in nvml_gpu_indices
-        if not is_old_nvml[i]
+        f"handle{i}": itertools.count(start=1000, step=3) for i in nvml_gpu_indices if not is_old_nvml[i]
     }
-    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(
-        energy_counters[handle]
-    )
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counters[handle])
 
     log_file = tmp_path / "log.csv"
 
@@ -246,9 +224,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
     ########################################
     # Test ZeusMonitor initialization.
     ########################################
-    monitor = ZeusMonitor(
-        gpu_indices=gpu_indices, cpu_indices=list(range(NUM_CPUS)), log_file=log_file
-    )
+    monitor = ZeusMonitor(gpu_indices=gpu_indices, cpu_indices=list(range(NUM_CPUS)), log_file=log_file)
 
     # Check GPU index parsing from the log file.
     replay_monitor = ReplayZeusMonitor(gpu_indices=None, log_file=log_file)
@@ -277,15 +253,10 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
             if not is_old_torch[i]
         }
         assert monitor.measurement_states[name].cpu_energy == {
-            i: pytest.approx((1000 + 10 * (begin_time - 4)) / 1000.0)
-            for i in range(len(monitor.cpu_indices))
+            i: pytest.approx((1000 + 10 * (begin_time - 4)) / 1000.0) for i in range(len(monitor.cpu_indices))
         }
         assert monitor.measurement_states[name].dram_energy == {
-            i: (
-                pytest.approx((200 + 5 * (begin_time - 4)) / 1000.0)
-                if i % 2 == 0
-                else None
-            )
+            i: (pytest.approx((200 + 5 * (begin_time - 4)) / 1000.0) if i % 2 == 0 else None)
             for i in range(0, len(monitor.cpu_indices), 2)
         }
         pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.assert_has_calls(
@@ -316,21 +287,15 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         for i in torch_gpu_indices:
             if not is_old_torch[i]:
                 # The energy counter increments with step size 3.
-                assert measurement.gpu_energy[i] == pytest.approx(
-                    elapsed_time * 3 / 1000.0
-                )
+                assert measurement.gpu_energy[i] == pytest.approx(elapsed_time * 3 / 1000.0)
 
         if measurement.cpu_energy is not None:
             for i in measurement.cpu_energy.keys():
-                assert measurement.cpu_energy[i] == pytest.approx(
-                    elapsed_time * 10 / 1000.0
-                )
+                assert measurement.cpu_energy[i] == pytest.approx(elapsed_time * 10 / 1000.0)
 
         if measurement.dram_energy is not None:
             for i in measurement.dram_energy.keys():
-                assert measurement.dram_energy[i] == pytest.approx(
-                    elapsed_time * 5 / 1000.0
-                )
+                assert measurement.dram_energy[i] == pytest.approx(elapsed_time * 5 / 1000.0)
 
         if not assert_calls:
             return
@@ -467,9 +432,7 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         replay_monitor.begin_window("window1", sync_execution=False)
 
     measurement = replay_monitor.end_window("window1", sync_execution=False)
-    assert_measurement(
-        "window1", measurement, begin_time=5, elapsed_time=2, assert_calls=False
-    )
+    assert_measurement("window1", measurement, begin_time=5, elapsed_time=2, assert_calls=False)
 
     # Calling `end_window` with a non-existant window name should raise an error.
     with pytest.raises(RuntimeError, match="is not ongoing"):
@@ -477,32 +440,22 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
 
     replay_monitor.begin_window("window2", sync_execution=False)
     measurement = replay_monitor.end_window("window2", sync_execution=False)
-    assert_measurement(
-        "window2", measurement, begin_time=10, elapsed_time=4, assert_calls=False
-    )
+    assert_measurement("window2", measurement, begin_time=10, elapsed_time=4, assert_calls=False)
 
     replay_monitor.begin_window("window3", sync_execution=False)
     replay_monitor.begin_window("window4", sync_execution=False)
 
     measurement = replay_monitor.end_window("window3", sync_execution=False)
-    assert_measurement(
-        "window3", measurement, begin_time=15, elapsed_time=5, assert_calls=False
-    )
+    assert_measurement("window3", measurement, begin_time=15, elapsed_time=5, assert_calls=False)
     measurement = replay_monitor.end_window("window4", sync_execution=False)
-    assert_measurement(
-        "window4", measurement, begin_time=17, elapsed_time=7, assert_calls=False
-    )
+    assert_measurement("window4", measurement, begin_time=17, elapsed_time=7, assert_calls=False)
 
     replay_monitor.begin_window("window5", sync_execution=False)
     replay_monitor.begin_window("window6", sync_execution=False)
     measurement = replay_monitor.end_window("window6", sync_execution=False)
-    assert_measurement(
-        "window6", measurement, begin_time=26, elapsed_time=3, assert_calls=False
-    )
+    assert_measurement("window6", measurement, begin_time=26, elapsed_time=3, assert_calls=False)
     measurement = replay_monitor.end_window("window5", sync_execution=False)
-    assert_measurement(
-        "window5", measurement, begin_time=25, elapsed_time=8, assert_calls=False
-    )
+    assert_measurement("window5", measurement, begin_time=25, elapsed_time=8, assert_calls=False)
 
     # Calling `end_window` when the energy consumption of one or more GPUs was measured as zero should raise a warning.
     pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: 0.0

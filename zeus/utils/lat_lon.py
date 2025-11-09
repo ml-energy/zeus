@@ -17,7 +17,5 @@ def get_ip_lat_long() -> tuple[float, float]:
         logger.info("Retrieved latitude and longitude: %s, %s", lat, long)
         return lat, long
     except requests.exceptions.RequestException as e:
-        logger.exception(
-            "Failed to retrieve current latitude and longitude of IP: %s", e
-        )
+        logger.exception("Failed to retrieve current latitude and longitude of IP: %s", e)
         raise

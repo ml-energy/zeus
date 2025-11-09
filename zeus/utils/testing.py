@@ -62,15 +62,11 @@ class ReplayZeusMonitor(ZeusMonitor):
         # Infer GPU indices from the log file if not provided.
         header = self.log_file.readline()
         if gpu_indices is None:
-            gpu_indices = [
-                int(gpu.split("_")[0][3:]) for gpu in header.split(",")[3:] if gpu
-            ]
+            gpu_indices = [int(gpu.split("_")[0][3:]) for gpu in header.split(",")[3:] if gpu]
         self.nvml_gpu_indices = self.gpu_indices = gpu_indices
 
         self.logger = get_logger(type(self).__name__)
-        self.logger.info(
-            "Replaying from '%s' with GPU indices %s", log_file, gpu_indices
-        )
+        self.logger.info("Replaying from '%s' with GPU indices %s", log_file, gpu_indices)
 
         # Keep track of ongoing measurement windows.
         self.ongoing_windows = []
@@ -95,9 +91,7 @@ class ReplayZeusMonitor(ZeusMonitor):
 
         self.logger.info("Measurement window '%s' started.", key)
 
-    def end_window(
-        self, key: str, sync_execution: bool = True, cancel: bool = False
-    ) -> Measurement:
+    def end_window(self, key: str, sync_execution: bool = True, cancel: bool = False) -> Measurement:
         """End an ongoing window.
 
         This method pops the key from a list of ongoing measurement windows and
@@ -135,9 +129,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         if self.match_window_name and window_name != key:
             raise RuntimeError(f"Was expecting {window_name}, not {key}.")
         if len(nums) != len(self.gpu_indices) + 1:
-            raise RuntimeError(
-                f"Line has unexpected number of energy measurements: {line}"
-            )
+            raise RuntimeError(f"Line has unexpected number of energy measurements: {line}")
         time_consumption, *energy_consumptions = map(float, nums)
         energy = dict(zip(self.gpu_indices, energy_consumptions))
         measurement = Measurement(time=time_consumption, gpu_energy=energy)

@@ -56,16 +56,10 @@ def read_trace(
     """Read the train and power trace files as Pandas DataFrames."""
     trace_dir = Path(__file__).resolve(strict=True).parents[3]
     train_df = pd.DataFrame(
-        pd.read_csv(
-            trace_dir
-            / "examples/research_reproducibility/zeus_nsdi23/trace/summary_train.csv"
-        )
+        pd.read_csv(trace_dir / "examples/research_reproducibility/zeus_nsdi23/trace/summary_train.csv")
     )
     power_df = pd.DataFrame(
-        pd.read_csv(
-            trace_dir
-            / f"examples/research_reproducibility/zeus_nsdi23/trace/summary_power_{gpu}.csv"
-        )
+        pd.read_csv(trace_dir / f"examples/research_reproducibility/zeus_nsdi23/trace/summary_power_{gpu}.csv")
     )
     return train_df, power_df
 
@@ -105,18 +99,14 @@ def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
     # print(num_recurrence)
     if num_recurrence is None:
         job_df = job.filter_df(train_df.merge(power_df, how="inner"))
-        num_recurrence = (
-            2 * len(job_df.batch_size.unique()) * len(job_df.power_limit.unique())
-        )
+        num_recurrence = 2 * len(job_df.batch_size.unique()) * len(job_df.power_limit.unique())
 
     ### New simulator
     # Instantiate optimizers.
     plo = JITPowerLimitOptimizer(verbose=False)
 
     # Instantitate the simulator.
-    simulator = SimulatorWithServer(
-        train_df, power_df, plo, gpu, seed=seed, verbose=False
-    )
+    simulator = SimulatorWithServer(train_df, power_df, plo, gpu, seed=seed, verbose=False)
     # # Run the simulator.
     result = simulator.simulate_one_job(job, num_recurrence, beta_knob, eta_knob)
     selected_bs = [item.bs for item in result]
@@ -127,12 +117,8 @@ def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
     org_bso = PruningGTSBatchSizeOptimizer(seed=seed, verbose=True)
 
     # Instantitate the simulator.
-    original_simulator = Simulator(
-        train_df, power_df, org_bso, org_plo, seed=seed, verbose=False
-    )
-    original_result = original_simulator.simulate_one_job(
-        job, num_recurrence, beta_knob, eta_knob
-    )
+    original_simulator = Simulator(train_df, power_df, org_bso, org_plo, seed=seed, verbose=False)
+    original_result = original_simulator.simulate_one_job(job, num_recurrence, beta_knob, eta_knob)
     org_selected_bs = [item.bs for item in original_result]
 
     out, err = capsys.readouterr()

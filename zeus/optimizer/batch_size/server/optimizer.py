@@ -101,9 +101,7 @@ class ZeusBatchSizeOptimizer:
         job = await self.service.get_job(job_id)
 
         if job is None:
-            raise ZeusBSOValueError(
-                f"Unknown job({job_id}). Please register the job first"
-            )
+            raise ZeusBSOValueError(f"Unknown job({job_id}). Please register the job first")
 
         if job.stage == Stage.MAB:
             # If we are in MAB stage, use mab to get the next batch size
@@ -111,9 +109,7 @@ class ZeusBatchSizeOptimizer:
             next_trial = await self.service.create_trial(
                 CreateMabTrial(
                     job_id=job_id,
-                    batch_size=self.mab.predict(
-                        job_id, job.mab_prior_precision, job.mab_num_explorations, arms
-                    ),
+                    batch_size=self.mab.predict(job_id, job.mab_prior_precision, job.mab_num_explorations, arms),
                 )
             )
         else:
@@ -173,9 +169,7 @@ class ZeusBatchSizeOptimizer:
         if trial.status != TrialStatus.Dispatched:
             # result is already reported
             if trial.converged is None:
-                raise ZeusBSOValueError(
-                    f"Trial({trial.trial_number}) is already reported but converged is not set."
-                )
+                raise ZeusBSOValueError(f"Trial({trial.trial_number}) is already reported but converged is not set.")
             return ReportResponse(
                 stop_train=True,
                 converged=trial.converged,
@@ -193,15 +187,11 @@ class ZeusBatchSizeOptimizer:
         )
 
         within_cost_range = cost_ub >= reported_cost
-        converged = (
-            job.higher_is_better_metric and job.target_metric <= result.metric
-        ) or (not job.higher_is_better_metric and job.target_metric >= result.metric)
+        converged = (job.higher_is_better_metric and job.target_metric <= result.metric) or (
+            not job.higher_is_better_metric and job.target_metric >= result.metric
+        )
 
-        if (
-            within_cost_range
-            and result.current_epoch < job.max_epochs
-            and not converged
-        ):
+        if within_cost_range and result.current_epoch < job.max_epochs and not converged:
             # If it's not converged but below cost upper bound and haven't reached max_epochs, keep training
 
             return ReportResponse(
@@ -246,9 +236,7 @@ class ZeusBatchSizeOptimizer:
             self.service.update_trial(trial_result)
 
         assert trial_result.converged is not None, "This just set to boolean above."
-        return ReportResponse(
-            stop_train=True, converged=trial_result.converged, message=message
-        )
+        return ReportResponse(stop_train=True, converged=trial_result.converged, message=message)
 
     async def end_trial(self, trial_id: TrialId) -> None:
         """Mark the trial as finished. If status is still `Dispatched` make the trial as `Failed`.

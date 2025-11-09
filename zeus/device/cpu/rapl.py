@@ -108,9 +108,7 @@ class RaplWraparoundTracker:
             return self.wraparound_counter.value
 
 
-def _polling_process(
-    rapl_file_path: str, max_energy_uj: float, wraparound_counter: Synchronized[int]
-) -> None:
+def _polling_process(rapl_file_path: str, max_energy_uj: float, wraparound_counter: Synchronized[int]) -> None:
     """Check for wraparounds in the specified rapl file."""
     try:
         with open(rapl_file_path) as rapl_file:
@@ -197,18 +195,12 @@ class RAPLFile:
                 "Refer to https://ml.energy/zeus/getting_started/#system-privileges for more details."
             ) from err
         try:
-            with open(
-                os.path.join(path, "max_energy_range_uj"), "r"
-            ) as max_energy_file:
+            with open(os.path.join(path, "max_energy_range_uj"), "r") as max_energy_file:
                 self.max_energy_range_uj = float(max_energy_file.read().strip())
         except FileNotFoundError as err:
-            raise ZeusRAPLFileInitError(
-                "Error reading package max energy range"
-            ) from err
+            raise ZeusRAPLFileInitError("Error reading package max energy range") from err
 
-        self.wraparound_tracker = RaplWraparoundTracker(
-            self.energy_uj_path, self.max_energy_range_uj
-        )
+        self.wraparound_tracker = RaplWraparoundTracker(self.energy_uj_path, self.max_energy_range_uj)
 
     def __str__(self) -> str:
         """Return a string representation of the RAPL file object."""
@@ -251,9 +243,7 @@ class RAPLCPU(cpu_common.CPU):
                 try:
                     rapl_file = RAPLFile(os.path.join(self.path, dir))
                 except ZeusRAPLFileInitError as err:
-                    warnings.warn(
-                        f"Failed to initialize subpackage {err}", stacklevel=1
-                    )
+                    warnings.warn(f"Failed to initialize subpackage {err}", stacklevel=1)
                     continue
                 if rapl_file.name == "dram":
                     self.dram = rapl_file
@@ -303,9 +293,7 @@ class ZeusdRAPLCPU(RAPLCPU):
             self._url_prefix + "/supports_dram_energy",
         )
         if resp.status_code != 200:
-            raise ZeusdError(
-                f"Failed to query Zeusd whether DRAM energy is supported: {resp.text}"
-            )
+            raise ZeusdError(f"Failed to query Zeusd whether DRAM energy is supported: {resp.text}")
         data = resp.json()
         dram_available = data.get("dram_available")
         if dram_available is None:
@@ -331,9 +319,7 @@ class ZeusdRAPLCPU(RAPLCPU):
         dram_uj = data.get("dram_energy_uj")
         if dram_uj is None:
             if self.dram_available:
-                raise ZeusdError(
-                    "DRAM energy should be available but no measurement was found"
-                )
+                raise ZeusdError("DRAM energy should be available but no measurement was found")
         else:
             dram_mj = dram_uj / 1000
 
@@ -377,20 +363,14 @@ class RAPLCPUs(cpu_common.CPUs):
         # If `ZEUSD_SOCK_PATH` is set, always use ZeusdRAPLCPU
         if (sock_path := os.environ.get("ZEUSD_SOCK_PATH")) is not None:
             if not Path(sock_path).exists():
-                raise ZeusdError(
-                    f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}"
-                )
+                raise ZeusdError(f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}")
             if not Path(sock_path).is_socket():
                 raise ZeusdError(f"ZEUSD_SOCK_PATH is not a socket: {sock_path}")
             if not os.access(sock_path, os.W_OK):
                 raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
-            self._cpus = [
-                ZeusdRAPLCPU(cpu_index, sock_path) for cpu_index in cpu_indices
-            ]
+            self._cpus = [ZeusdRAPLCPU(cpu_index, sock_path) for cpu_index in cpu_indices]
         else:
-            self._cpus = [
-                RAPLCPU(cpu_index, self.rapl_dir) for cpu_index in cpu_indices
-            ]
+            self._cpus = [RAPLCPU(cpu_index, self.rapl_dir) for cpu_index in cpu_indices]
 
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""

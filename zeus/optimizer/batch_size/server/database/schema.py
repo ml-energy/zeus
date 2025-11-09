@@ -54,9 +54,7 @@ class JobTable(Base):
     mab_num_explorations: Mapped[int] = mapped_column(Integer, default=2)
     mab_seed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    mab_random_generator_state: Mapped[Optional[str]] = mapped_column(
-        VARCHAR(length=10000), nullable=True
-    )
+    mab_random_generator_state: Mapped[Optional[str]] = mapped_column(VARCHAR(length=10000), nullable=True)
     exp_default_batch_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
     stage: Mapped[Stage] = mapped_column(Enum(Stage), default=Stage.Pruning)
@@ -93,9 +91,7 @@ class BatchSizeTable(Base):
     )
     batch_size: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    trials: Mapped[list["TrialTable"]] = relationship(
-        back_populates="batch_size_state", cascade="all, delete-orphan"
-    )
+    trials: Mapped[list["TrialTable"]] = relationship(back_populates="batch_size_state", cascade="all, delete-orphan")
 
     arm_state: Mapped[Optional["GaussianTsArmStateTable"]] = relationship(
         back_populates="batch_size_state",  # populates GaussianTsArmState->BatchSize
@@ -122,9 +118,7 @@ class GaussianTsArmStateTable(Base):
     reward_precision: Mapped[float] = mapped_column(Float, default=0.0)
     num_observations: Mapped[int] = mapped_column(Integer, default=0)
 
-    batch_size_state: Mapped["BatchSizeTable"] = relationship(
-        back_populates="arm_state"
-    )
+    batch_size_state: Mapped["BatchSizeTable"] = relationship(back_populates="arm_state")
 
     __table_args__ = (
         ForeignKeyConstraint(

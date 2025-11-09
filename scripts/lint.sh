@@ -3,9 +3,9 @@
 set -ev
 
 if [[ -z $GITHUB_ACTION ]]; then
-  black zeus tests
+  ruff format zeus tests
 else
-  black --check zeus tests
+  ruff format --check zeus tests
 fi
 
 ruff check zeus

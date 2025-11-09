@@ -139,9 +139,7 @@ class UpdateTrial(BatchSizeBase):
         if s != TrialStatus.Dispatched:
             return s
         else:
-            raise ValueError(
-                f"{s} shouldn't be Dispatched since this is reporting the result."
-            )
+            raise ValueError(f"{s} shouldn't be Dispatched since this is reporting the result.")
 
     @root_validator(skip_on_failure=True)
     def _validate_sanity(cls, values: dict[str, Any]) -> dict[str, Any]:
@@ -157,11 +155,7 @@ class UpdateTrial(BatchSizeBase):
         energy: float | None = values["energy"]
         converged: bool | None = values["converged"]
 
-        if status != TrialStatus.Failed and (
-            time is None or energy is None or converged is None
-        ):
-            raise ValueError(
-                f"Result is incomplete: time({time}), energy({energy}), converged({converged})"
-            )
+        if status != TrialStatus.Failed and (time is None or energy is None or converged is None):
+            raise ValueError(f"Result is incomplete: time({time}), energy({energy}), converged({converged})")
 
         return values

@@ -62,9 +62,7 @@ class JobManager:
         self._job_rank_infos[job_id] = []
         self._job_result_channels[job_id] = asyncio.Queue(maxsize=world_size)
         self._job_sched_request_channels[job_id] = asyncio.Queue(maxsize=world_size)
-        self._job_sched_response_channels[job_id] = [
-            asyncio.Queue(maxsize=1) for _ in range(world_size)
-        ]
+        self._job_sched_response_channels[job_id] = [asyncio.Queue(maxsize=1) for _ in range(world_size)]
         self._job_tasks[job_id] = create_task(
             self._job_task(job_id, self.pfo_settings.dump_data),
             logger=logger,
@@ -95,9 +93,7 @@ class JobManager:
             code = 400 if isinstance(res, ValueError) else 500
             raise HTTPException(
                 status_code=code,
-                detail="".join(
-                    traceback.format_exception(type(res), res, res.__traceback__)
-                ),
+                detail="".join(traceback.format_exception(type(res), res, res.__traceback__)),
             )
         self._job_last_active_time[job_id] = time.monotonic()
         return res
@@ -124,10 +120,7 @@ class JobManager:
         while True:
             await asyncio.sleep(cleanup_period)
             for job_id in list(self._job_last_active_time.keys()):
-                if (
-                    time.monotonic() - self._job_last_active_time[job_id]
-                    > max_idle_time
-                ):
+                if time.monotonic() - self._job_last_active_time[job_id] > max_idle_time:
                     self._job_tasks[job_id].cancel()
                     del self._job_infos[job_id]
                     del self._job_rank_infos[job_id]
@@ -182,9 +175,7 @@ class JobManager:
                 await asyncio.gather(*[sched_req_chan.get() for _ in rank_infos])
 
                 # Send out `FrequencySchedule`s.
-                await asyncio.gather(
-                    *[sched_resp_chan[s.rank].put(s) for s in schedules]
-                )
+                await asyncio.gather(*[sched_resp_chan[s.rank].put(s) for s in schedules])
 
                 # Gather profiling results from all ranks.
                 results = await asyncio.gather(*[result_chan.get() for _ in rank_infos])

@@ -13,9 +13,7 @@ MODULE_CACHE: dict[str, types.ModuleType] = {}
 
 
 @lru_cache(maxsize=1)
-def torch_is_available(
-    ensure_available: bool = False, ensure_cuda: bool = True
-) -> bool:
+def torch_is_available(ensure_available: bool = False, ensure_cuda: bool = True) -> bool:
     """Check if PyTorch is available."""
     try:
         import torch
@@ -46,9 +44,7 @@ def jax_is_available(ensure_available: bool = False, ensure_cuda: bool = True) -
         if ensure_cuda and not cuda_available:
             raise RuntimeError("JAX is available but does not have CUDA support.")
         MODULE_CACHE["jax"] = jax
-        logger.info(
-            "JAX %s CUDA support is available.", "with" if cuda_available else "without"
-        )
+        logger.info("JAX %s CUDA support is available.", "with" if cuda_available else "without")
         return True
     except ImportError as e:
         logger.info("JAX is not available")
@@ -73,9 +69,7 @@ def cupy_is_available(ensure_available: bool = False) -> bool:
         return False
 
 
-def sync_execution(
-    gpu_devices: list[int], sync_with: Literal["torch", "jax", "cupy"] = "torch"
-) -> None:
+def sync_execution(gpu_devices: list[int], sync_with: Literal["torch", "jax", "cupy"] = "torch") -> None:
     """Block until all computations on the specified devices are finished.
 
     PyTorch only runs GPU computations asynchronously, so synchronizing computations
@@ -115,10 +109,7 @@ def sync_execution(
 
     if sync_with == "jax" and jax_is_available(ensure_available=True):
         jax = MODULE_CACHE["jax"]
-        futures = [
-            jax.device_put(0.0, device=jax.devices("gpu")[device]) + 0
-            for device in gpu_devices
-        ]
+        futures = [jax.device_put(0.0, device=jax.devices("gpu")[device]) + 0 for device in gpu_devices]
         futures.append(jax.device_put(0.0, device=jax.devices("cpu")[0]) + 0)
         jax.block_until_ready(futures)
         return
@@ -132,9 +123,7 @@ def sync_execution(
     raise RuntimeError("No framework is available.")
 
 
-def all_reduce(
-    object: list[int] | list[float], operation: Literal["sum", "max"]
-) -> list[int] | list[float]:
+def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]) -> list[int] | list[float]:
     """Reduce objects from all replicas through the specified operation.
 
     If the current execution is not distributed, the object is returned as is.
@@ -143,10 +132,7 @@ def all_reduce(
         torch = MODULE_CACHE["torch"]
 
         # if torch.distributed is not available or not initialized, return the object as is
-        if (
-            not torch.distributed.is_available()
-            or not torch.distributed.is_initialized()
-        ):
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
             return object
 
         # wrap object in a tensor

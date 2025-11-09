@@ -31,7 +31,6 @@ def mock_monitor():
 
 
 def test_total_energy(mock_monitor):
-
     # These imports must happen at each test (i.e., function) instead of at
     # the top of the file because they have an optional dependency that must
     # be mocked. The `mock_monitor` fixture mocks the optional dependency
@@ -208,12 +207,8 @@ def test_available_metrics(mock_monitor):
 def test_metrics_subtraction(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
-    metrics1 = AppleSiliconMeasurement(
-        10, [10, 10, 10], [1, 0, 1], 10, 30, 5, None, None, 5
-    )
-    metrics2 = AppleSiliconMeasurement(
-        20, [100, 110, 100], [1, 1, 1], 30, 40, 5, None, None, 10
-    )
+    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 0, 1], 10, 30, 5, None, None, 5)
+    metrics2 = AppleSiliconMeasurement(20, [100, 110, 100], [1, 1, 1], 30, 40, 5, None, None, 10)
     diff = metrics2 - metrics1
     assert diff.cpu_total_mj == 10
     assert diff.efficiency_cores_mj == [90, 100, 90]
@@ -230,42 +225,26 @@ def test_metrics_bad_subtraction(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
     # Differing list lengths
-    metrics1 = AppleSiliconMeasurement(
-        10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5
-    )
-    metrics2 = AppleSiliconMeasurement(
-        20, [100, 110, 100], [1, 1, 1], 30, 40, 5, None, None, 10
-    )
+    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5)
+    metrics2 = AppleSiliconMeasurement(20, [100, 110, 100], [1, 1, 1], 30, 40, 5, None, None, 10)
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 
     # Differing field types
-    metrics1 = AppleSiliconMeasurement(
-        10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5
-    )
-    metrics2 = AppleSiliconMeasurement(
-        [20], [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10
-    )
+    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5)
+    metrics2 = AppleSiliconMeasurement([20], [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10)
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 
     # (None) - (not None)
-    metrics1 = AppleSiliconMeasurement(
-        10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5
-    )
-    metrics2 = AppleSiliconMeasurement(
-        None, [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10
-    )
+    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5)
+    metrics2 = AppleSiliconMeasurement(None, [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10)
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 
     # (not None) - (None)
-    metrics1 = AppleSiliconMeasurement(
-        None, [10, 10, 10], [1, 1], 10, 30, 5, None, None, None
-    )
-    metrics2 = AppleSiliconMeasurement(
-        None, [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10
-    )
+    metrics1 = AppleSiliconMeasurement(None, [10, 10, 10], [1, 1], 10, 30, 5, None, None, None)
+    metrics2 = AppleSiliconMeasurement(None, [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10)
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 

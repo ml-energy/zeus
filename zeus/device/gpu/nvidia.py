@@ -26,9 +26,7 @@ def nvml_is_available() -> bool:
     try:
         import pynvml
     except ImportError:
-        logger.info(
-            "Failed to import `pynvml`. Make sure you have `nvidia-ml-py` installed."
-        )
+        logger.info("Failed to import `pynvml`. Make sure you have `nvidia-ml-py` installed.")
         return False
 
     # Detect unofficial pynvml packages.
@@ -136,9 +134,7 @@ class NVIDIAGPU(gpu_common.GPU):
         return (min_, max_)
 
     @_handle_nvml_errors
-    def set_power_management_limit(
-        self, power_limit_mw: int, block: bool = True
-    ) -> None:
+    def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, power_limit_mw)
 
@@ -154,13 +150,9 @@ class NVIDIAGPU(gpu_common.GPU):
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         if enabled:
-            pynvml.nvmlDeviceSetPersistenceMode(
-                self.handle, pynvml.NVML_FEATURE_ENABLED
-            )
+            pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_ENABLED)
         else:
-            pynvml.nvmlDeviceSetPersistenceMode(
-                self.handle, pynvml.NVML_FEATURE_DISABLED
-            )
+            pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_DISABLED)
 
     @_handle_nvml_errors
     def get_supported_memory_clocks(self) -> list[int]:
@@ -168,13 +160,9 @@ class NVIDIAGPU(gpu_common.GPU):
         return pynvml.nvmlDeviceGetSupportedMemoryClocks(self.handle)
 
     @_handle_nvml_errors
-    def set_memory_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
-    ) -> None:
+    def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
-        pynvml.nvmlDeviceSetMemoryLockedClocks(
-            self.handle, min_clock_mhz, max_clock_mhz
-        )
+        pynvml.nvmlDeviceSetMemoryLockedClocks(self.handle, min_clock_mhz, max_clock_mhz)
 
     @_handle_nvml_errors
     def reset_memory_locked_clocks(self, block: bool = True) -> None:
@@ -182,9 +170,7 @@ class NVIDIAGPU(gpu_common.GPU):
         pynvml.nvmlDeviceResetMemoryLockedClocks(self.handle)
 
     @_handle_nvml_errors
-    def get_supported_graphics_clocks(
-        self, memory_clock_mhz: int | None = None
-    ) -> list[int]:
+    def get_supported_graphics_clocks(self, memory_clock_mhz: int | None = None) -> list[int]:
         """Return a list of supported graphics clock frequencies. Units: MHz.
 
         Args:
@@ -192,14 +178,10 @@ class NVIDIAGPU(gpu_common.GPU):
                 different supported graphics clocks depending on the memory clock.
         """
         pass
-        return pynvml.nvmlDeviceGetSupportedGraphicsClocks(
-            self.handle, memory_clock_mhz
-        )
+        return pynvml.nvmlDeviceGetSupportedGraphicsClocks(self.handle, memory_clock_mhz)
 
     @_handle_nvml_errors
-    def set_gpu_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
-    ) -> None:
+    def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, min_clock_mhz, max_clock_mhz)
 
@@ -212,9 +194,7 @@ class NVIDIAGPU(gpu_common.GPU):
     def get_average_power_usage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
         if self._is_grace_hopper:
-            fields = [
-                (pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_MODULE)
-            ]
+            fields = [(pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_MODULE)]
         else:
             fields = [(pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_GPU)]
 
@@ -227,9 +207,7 @@ class NVIDIAGPU(gpu_common.GPU):
     def get_instant_power_usage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         if self._is_grace_hopper:
-            fields = [
-                (pynvml.NVML_FI_DEV_POWER_INSTANT, pynvml.NVML_POWER_SCOPE_MODULE)
-            ]
+            fields = [(pynvml.NVML_FI_DEV_POWER_INSTANT, pynvml.NVML_POWER_SCOPE_MODULE)]
         else:
             fields = [(pynvml.NVML_FI_DEV_POWER_INSTANT, pynvml.NVML_POWER_SCOPE_GPU)]
 
@@ -268,8 +246,7 @@ class NVIDIAGPU(gpu_common.GPU):
         # Supported on Volta or newer microarchitectures
         if self._supportsGetTotalEnergyConsumption is None:
             self._supportsGetTotalEnergyConsumption = (
-                pynvml.nvmlDeviceGetArchitecture(self.handle)
-                >= pynvml.NVML_DEVICE_ARCH_VOLTA
+                pynvml.nvmlDeviceGetArchitecture(self.handle) >= pynvml.NVML_DEVICE_ARCH_VOLTA
             )
 
         return self._supportsGetTotalEnergyConsumption
@@ -282,9 +259,7 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def get_gpu_temperature(self) -> int:
         """Return the current GPU temperature. Units: Celsius."""
-        temperature = pynvml.nvmlDeviceGetTemperatureV(
-            self.handle, pynvml.NVML_TEMPERATURE_GPU
-        )
+        temperature = pynvml.nvmlDeviceGetTemperatureV(self.handle, pynvml.NVML_TEMPERATURE_GPU)
         return temperature  # type: ignore
 
 
@@ -322,9 +297,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         """Return True if the GPU object supports non-blocking configuration setters."""
         return True
 
-    def set_power_management_limit(
-        self, power_limit_mw: int, block: bool = True
-    ) -> None:
+    def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         resp = self._client.post(
             self._url_prefix + "/set_power_limit",
@@ -350,52 +323,36 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set persistence mode: {resp.text}")
-        logger.debug(
-            "Took %s ms to set persistence mode", resp.elapsed.microseconds / 1000
-        )
+        logger.debug("Took %s ms to set persistence mode", resp.elapsed.microseconds / 1000)
 
-    def set_memory_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
-    ) -> None:
+    def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         resp = self._client.post(
             self._url_prefix + "/set_mem_locked_clocks",
-            json=dict(
-                min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block
-            ),
+            json=dict(min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block),
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set memory locked clocks: {resp.text}")
-        logger.debug(
-            "Took %s ms to set memory locked clocks", resp.elapsed.microseconds / 1000
-        )
+        logger.debug("Took %s ms to set memory locked clocks", resp.elapsed.microseconds / 1000)
 
     def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
-        resp = self._client.post(
-            self._url_prefix + "/reset_mem_locked_clocks", json=dict(block=block)
-        )
+        resp = self._client.post(self._url_prefix + "/reset_mem_locked_clocks", json=dict(block=block))
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to reset memory locked clocks: {resp.text}")
 
-    def set_gpu_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
-    ) -> None:
+    def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         resp = self._client.post(
             self._url_prefix + "/set_gpu_locked_clocks",
-            json=dict(
-                min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block
-            ),
+            json=dict(min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block),
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set GPU locked clocks: {resp.text}")
 
     def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
-        resp = self._client.post(
-            self._url_prefix + "/reset_gpu_locked_clocks", json=dict(block=block)
-        )
+        resp = self._client.post(self._url_prefix + "/reset_gpu_locked_clocks", json=dict(block=block))
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to reset GPU locked clocks: {resp.text}")
 
@@ -464,16 +421,12 @@ class NVIDIAGPUs(gpu_common.GPUs):
         # If `ZEUSD_SOCK_PATH` is set, always use ZeusdNVIDIAGPU
         if (sock_path := os.environ.get("ZEUSD_SOCK_PATH")) is not None:
             if not Path(sock_path).exists():
-                raise ZeusdError(
-                    f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}"
-                )
+                raise ZeusdError(f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}")
             if not Path(sock_path).is_socket():
                 raise ZeusdError(f"ZEUSD_SOCK_PATH is not a socket: {sock_path}")
             if not os.access(sock_path, os.W_OK):
                 raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
-            self._gpus = [
-                ZeusdNVIDIAGPU(gpu_num, sock_path) for gpu_num in visible_indices
-            ]
+            self._gpus = [ZeusdNVIDIAGPU(gpu_num, sock_path) for gpu_num in visible_indices]
             # Disable the warning about SYS_ADMIN capabilities
             self._disable_sys_admin_warning = True
 

@@ -92,9 +92,7 @@ class TemperatureMonitor:
         gpus = get_gpus(ensure_homogeneous=True)
 
         # Configure GPU indices
-        self.gpu_indices = (
-            gpu_indices if gpu_indices is not None else list(range(len(gpus)))
-        )
+        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(gpus)))
         if not self.gpu_indices:
             raise ValueError("At least one GPU index must be specified")
         logger.info("Monitoring temperature of GPUs %s", self.gpu_indices)
@@ -104,9 +102,7 @@ class TemperatureMonitor:
         # Temperature samples are collected for each device index.
         self.temperature_samples: dict[int, collections.deque[TemperatureSample]] = {}
         for gpu_idx in self.gpu_indices:
-            self.temperature_samples[gpu_idx] = collections.deque(
-                maxlen=max_samples_per_gpu
-            )
+            self.temperature_samples[gpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
 
         # Spawn temperature collector process
         ctx = mp.get_context("spawn")
@@ -138,9 +134,7 @@ class TemperatureMonitor:
         # Wait for subprocess to signal it's ready
         logger.info("Waiting for temperature monitoring subprocess to be ready...")
         if not self.temperature_ready_event.wait(timeout=10.0):
-            logger.warning(
-                "Temperature monitor subprocess did not signal ready within timeout"
-            )
+            logger.warning("Temperature monitor subprocess did not signal ready within timeout")
         logger.info("Temperature monitoring subprocess is ready")
 
     def stop(self) -> None:
@@ -245,11 +239,7 @@ class TemperatureMonitor:
                     # Check the closest sample before and after the requested time
                     before = samples[pos - 1]
                     after = samples[pos]
-                    closest_sample = (
-                        before
-                        if time - before.timestamp <= after.timestamp - time
-                        else after
-                    )
+                    closest_sample = before if time - before.timestamp <= after.timestamp - time else after
                 result[gpu_idx] = closest_sample.temperature_c
 
         return result
@@ -282,10 +272,7 @@ def _temperature_polling_process(
                     temperature_c = gpus.get_gpu_temperature(gpu_index)
 
                     # Deduplication: only send if temperature changed
-                    if (
-                        gpu_index in prev_temperature
-                        and prev_temperature[gpu_index] == temperature_c
-                    ):
+                    if gpu_index in prev_temperature and prev_temperature[gpu_index] == temperature_c:
                         continue
 
                     prev_temperature[gpu_index] = temperature_c

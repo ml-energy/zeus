@@ -45,9 +45,7 @@ class BatchSizeOptimizer(Callback):
     from the `ZeusMonitor` instance passed into the constructor.
     """
 
-    def __init__(
-        self, monitor: ZeusMonitor, server_url: str, job: JobSpec, rank: int = 0
-    ) -> None:
+    def __init__(self, monitor: ZeusMonitor, server_url: str, job: JobSpec, rank: int = 0) -> None:
         """Initialize the optimizer, and register the job to the server.
 
         If job is already registered, check if the job configuration is identical with previously registered config.
@@ -75,9 +73,7 @@ class BatchSizeOptimizer(Callback):
         # set gpu configurations(max_power, number of gpus, and gpu model)
         self.job_spec = JobSpecFromClient(
             **job.dict(),
-            max_power=gpus.get_power_management_limit_constraints(0)[1]
-            // 1000
-            * len(monitor.gpu_indices),
+            max_power=gpus.get_power_management_limit_constraints(0)[1] // 1000 * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
             gpu_model=gpus.get_name(0),
         )
@@ -86,16 +82,12 @@ class BatchSizeOptimizer(Callback):
         self.current_batch_size = 0
 
         # Register job
-        res = httpx.post(
-            self.server_url + REGISTER_JOB_URL, content=self.job_spec.json()
-        )
+        res = httpx.post(self.server_url + REGISTER_JOB_URL, content=self.job_spec.json())
         self._handle_response(res)
 
         self.job = CreatedJob.parse_obj(res.json())
 
-        logger.critical(
-            "Job is registered with job_id: \x1b[31;1m%s\x1b[0m", self.job.job_id
-        )
+        logger.critical("Job is registered with job_id: \x1b[31;1m%s\x1b[0m", self.job.job_id)
         logger.info("Job is registered: %s", str(self.job))
 
     def get_batch_size(self) -> int:
@@ -123,9 +115,7 @@ class BatchSizeOptimizer(Callback):
         trial_id = TrialId.parse_obj(res.json())
 
         if trial_id.batch_size not in self.job.batch_sizes:
-            raise ZeusBSORuntimError(
-                f"Zeus server returned a strange batch_size: {trial_id.batch_size}"
-            )
+            raise ZeusBSORuntimError(f"Zeus server returned a strange batch_size: {trial_id.batch_size}")
 
         self.current_batch_size = trial_id.batch_size
         self.trial_number = trial_id.trial_number
@@ -164,9 +154,7 @@ class BatchSizeOptimizer(Callback):
             `ZeusBSORuntimError`: When the server returns an error
         """
         if self.current_batch_size == 0:
-            raise ZeusBSOOperationOrderError(
-                "Call get_batch_size to set the batch size first"
-            )
+            raise ZeusBSOOperationOrderError("Call get_batch_size to set the batch size first")
 
         if self.training_finished:
             return
@@ -189,9 +177,7 @@ class BatchSizeOptimizer(Callback):
         )
 
         # report to the server about the result of this training
-        res = httpx.post(
-            self.server_url + REPORT_RESULT_URL, content=training_result.json()
-        )
+        res = httpx.post(self.server_url + REPORT_RESULT_URL, content=training_result.json())
         self._handle_response(res)
 
         parsed_response = ReportResponse.parse_obj(res.json())
@@ -214,6 +200,4 @@ class BatchSizeOptimizer(Callback):
             res: response from the server
         """
         if not (200 <= (code := res.status_code) < 300):
-            raise ZeusBSORuntimError(
-                f"Zeus server returned status code {code}: {res.text}"
-            )
+            raise ZeusBSORuntimError(f"Zeus server returned status code {code}: {res.text}")

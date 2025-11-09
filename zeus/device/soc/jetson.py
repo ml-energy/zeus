@@ -129,9 +129,7 @@ class Jetson(SoC):
     def __init__(self) -> None:
         """Initialize an instance of a Jetson energy monitor."""
         if not jetson_is_available():
-            raise ZeusJetsonInitError(
-                "No Jetson processor was detected on the current device."
-            )
+            raise ZeusJetsonInitError("No Jetson processor was detected on the current device.")
 
         super().__init__()
 
@@ -164,9 +162,7 @@ class Jetson(SoC):
         metric_paths: dict[str, dict[str, Path]] = {}
         power_measurement: DeviceMap = {}
 
-        def extract_directories(
-            path: Path, rail_name: str, rail_index: str, type: str
-        ) -> None:
+        def extract_directories(path: Path, rail_name: str, rail_index: str, type: str) -> None:
             """Extract file paths for power, voltage, and current measurements based on the rail naming type."""
             rail_name_lower = rail_name.lower()
 
@@ -174,11 +170,7 @@ class Jetson(SoC):
                 rail_name_simplified = "cpu_power_mw"
             elif "gpu" in rail_name_lower:
                 rail_name_simplified = "gpu_power_mw"
-            elif (
-                "system" in rail_name_lower
-                or "_in" in rail_name_lower
-                or "total" in rail_name_lower
-            ):
+            elif "system" in rail_name_lower or "_in" in rail_name_lower or "total" in rail_name_lower:
                 rail_name_simplified = "total_power_mw"
             else:
                 return  # Skip unsupported rail types
@@ -221,9 +213,7 @@ class Jetson(SoC):
             if "power" in metrics:
                 power_measurement[rail] = DirectPower(metrics["power"])
             elif "volt" in metrics and "curr" in metrics:
-                power_measurement[rail] = VoltageCurrentProduct(
-                    metrics["volt"], metrics["curr"]
-                )
+                power_measurement[rail] = VoltageCurrentProduct(metrics["volt"], metrics["curr"])
             # Else, skip the rail due to insufficient metrics for power
         return power_measurement
 
@@ -299,21 +289,15 @@ async def _polling_process_async(
         if "cpu_power_mw" in power_measurement:
             cpu_power_mw = power_measurement["cpu_power_mw"].measure_power()
             cpu_energy_mj = cpu_power_mw * dt
-            cumulative_measurement.cpu_energy_mj = (
-                cumulative_measurement.cpu_energy_mj or 0.0
-            ) + cpu_energy_mj
+            cumulative_measurement.cpu_energy_mj = (cumulative_measurement.cpu_energy_mj or 0.0) + cpu_energy_mj
         if "gpu_power_mw" in power_measurement:
             gpu_power_mw = power_measurement["gpu_power_mw"].measure_power()
             gpu_energy_mj = gpu_power_mw * dt
-            cumulative_measurement.gpu_energy_mj = (
-                cumulative_measurement.gpu_energy_mj or 0.0
-            ) + gpu_energy_mj
+            cumulative_measurement.gpu_energy_mj = (cumulative_measurement.gpu_energy_mj or 0.0) + gpu_energy_mj
         if "total_power_mw" in power_measurement:
             total_power_mw = power_measurement["total_power_mw"].measure_power()
             total_energy_mj = total_power_mw * dt
-            cumulative_measurement.total_energy_mj = (
-                cumulative_measurement.total_energy_mj or 0.0
-            ) + total_energy_mj
+            cumulative_measurement.total_energy_mj = (cumulative_measurement.total_energy_mj or 0.0) + total_energy_mj
 
         prev_ts = current_ts
 
@@ -338,6 +322,4 @@ def jetson_is_available() -> bool:
     if sys.platform != "linux" or platform.processor() != "aarch64":
         return False
 
-    return os.path.exists("/usr/lib/aarch64-linux-gnu/tegra") or os.path.exists(
-        "/etc/nv_tegra_release"
-    )
+    return os.path.exists("/usr/lib/aarch64-linux-gnu/tegra") or os.path.exists("/etc/nv_tegra_release")

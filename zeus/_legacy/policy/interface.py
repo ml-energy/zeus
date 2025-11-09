@@ -37,9 +37,7 @@ class BatchSizeOptimizer(ABC):
         """
 
     @abstractmethod
-    def observe(
-        self, job: Job, batch_size: int, cost: float, converged: bool | None = None
-    ) -> None:
+    def observe(self, job: Job, batch_size: int, cost: float, converged: bool | None = None) -> None:
         """Observe the cost of using the given batch size for the job.
 
         Args:

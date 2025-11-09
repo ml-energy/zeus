@@ -139,9 +139,7 @@ class EnergyHistogram(Metric):
                 registry=self.registry,
             )
             # Initialize CPU and DRAM histograms
-            if any(
-                cpu.supports_get_dram_energy_consumption() for cpu in get_cpus().cpus
-            ):
+            if any(cpu.supports_get_dram_energy_consumption() for cpu in get_cpus().cpus):
                 self.dram_histograms = Histogram(
                     "energy_monitor_dram_energy_joules",
                     "DRAM energy consumption",
@@ -158,9 +156,7 @@ class EnergyHistogram(Metric):
         self.min_cpu_bucket = min(self.cpu_bucket_range)
         self.min_dram_bucket = min(self.dram_bucket_range)
 
-        self.energy_monitor = ZeusMonitor(
-            cpu_indices=cpu_indices, gpu_indices=gpu_indices
-        )
+        self.energy_monitor = ZeusMonitor(cpu_indices=cpu_indices, gpu_indices=gpu_indices)
 
     def begin_window(self, name: str, sync_execution: bool = True) -> None:
         """Begin the energy monitoring window.
@@ -172,9 +168,7 @@ class EnergyHistogram(Metric):
         if sync_execution:
             sync_execution_fn(self.gpu_indices)
 
-        self.energy_monitor.begin_window(
-            f"__EnergyHistogram_{name}", sync_execution=sync_execution
-        )
+        self.energy_monitor.begin_window(f"__EnergyHistogram_{name}", sync_execution=sync_execution)
 
     def end_window(self, name: str, sync_execution: bool = True) -> None:
         """End the current energy monitoring window and record the energy data.
@@ -189,15 +183,11 @@ class EnergyHistogram(Metric):
         if sync_execution:
             sync_execution_fn(self.gpu_indices)
 
-        measurement = self.energy_monitor.end_window(
-            f"__EnergyHistogram_{name}", sync_execution=sync_execution
-        )
+        measurement = self.energy_monitor.end_window(f"__EnergyHistogram_{name}", sync_execution=sync_execution)
 
         if measurement.gpu_energy:
             for gpu_index, gpu_energy in measurement.gpu_energy.items():
-                self.gpu_histograms.labels(window=name, index=gpu_index).observe(
-                    gpu_energy
-                )
+                self.gpu_histograms.labels(window=name, index=gpu_index).observe(gpu_energy)
                 if gpu_energy > self.max_gpu_bucket:
                     warnings.warn(
                         f"GPU {gpu_index} energy {gpu_energy} exceeds the maximum bucket value of {self.max_gpu_bucket}",
@@ -211,9 +201,7 @@ class EnergyHistogram(Metric):
 
         if measurement.cpu_energy:
             for cpu_index, cpu_energy in measurement.cpu_energy.items():
-                self.cpu_histograms.labels(window=name, index=cpu_index).observe(
-                    cpu_energy
-                )
+                self.cpu_histograms.labels(window=name, index=cpu_index).observe(cpu_energy)
                 if cpu_energy > self.max_cpu_bucket:
                     warnings.warn(
                         f"CPU {cpu_index} energy {cpu_energy} exceeds the maximum bucket value of {self.max_cpu_bucket}",
@@ -227,9 +215,7 @@ class EnergyHistogram(Metric):
 
         if measurement.dram_energy:
             for dram_index, dram_energy in measurement.dram_energy.items():
-                self.dram_histograms.labels(window=name, index=dram_index).observe(
-                    dram_energy
-                )
+                self.dram_histograms.labels(window=name, index=dram_index).observe(dram_energy)
                 if dram_energy > self.max_dram_bucket:
                     warnings.warn(
                         f"DRAM {dram_index} energy {dram_energy} exceeds the maximum bucket value of {self.max_dram_bucket}",
@@ -385,13 +371,9 @@ def energy_monitoring_loop(
         if not pipe.empty():
             break
         # Begin and end monitoring window using sync_execution
-        energy_monitor.begin_window(
-            f"__EnergyCumulativeCounter_{name}", sync_execution=False
-        )
+        energy_monitor.begin_window(f"__EnergyCumulativeCounter_{name}", sync_execution=False)
         time.sleep(update_period)
-        measurement = energy_monitor.end_window(
-            f"__EnergyCumulativeCounter_{name}", sync_execution=False
-        )
+        measurement = energy_monitor.end_window(f"__EnergyCumulativeCounter_{name}", sync_execution=False)
 
         if measurement.gpu_energy:
             for gpu_index, energy in measurement.gpu_energy.items():
@@ -473,9 +455,7 @@ class PowerGauge(Metric):
         )
         proc.start()
         if not proc.is_alive():
-            raise RuntimeError(
-                f"Failed to start power monitoring process for '{name}'."
-            )
+            raise RuntimeError(f"Failed to start power monitoring process for '{name}'.")
 
         self.window_state[name] = MonitoringProcessState(queue=queue, proc=proc)
 
