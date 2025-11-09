@@ -288,7 +288,7 @@ class GlobalPowerLimitOptimizer(Callback):
         # Assert that supported power limits ranges are uniform across GPUs.
         pls = []
         for index in monitor.gpu_indices:
-            pls.append(gpus.getPowerManagementLimitConstraints(index))
+            pls.append(gpus.get_power_management_limit_constraints(index))
         if not all(pls[0] == pl for pl in pls):
             raise ValueError("Power limits ranges are not uniform across GPUs.")
         self.power_limits = list(range(pls[0][1], pls[0][0] - 1, -self.pl_step))
@@ -296,7 +296,7 @@ class GlobalPowerLimitOptimizer(Callback):
         # Turn on persistence mode and set to the highest power limit.
         try:
             for index in monitor.gpu_indices:
-                gpus.setPersistenceMode(index, enabled=True)
+                gpus.set_persistence_mode(index, enabled=True, block=True)
         except ZeusGPUNoPermissionError as ze:
             raise RuntimeError(
                 "SYS_ADMIN capability is required to modify GPU power limits. See "
@@ -465,7 +465,7 @@ class GlobalPowerLimitOptimizer(Callback):
         if self.current_power_limit == power_limit:
             return
         for index in self.monitor.gpu_indices:
-            gpus.setPowerManagementLimit(index, power_limit)
+            gpus.set_power_management_limit(index, power_limit)
         self.current_power_limit = power_limit
 
     def _compute_optimal_power_limit(self) -> int:

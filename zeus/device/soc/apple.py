@@ -108,7 +108,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
 
         return result
 
-    def zeroAllFields(self) -> None:
+    def zero_all_fields(self) -> None:
         """Set the value of all fields in the measurement object to zero."""
         for field in fields(self):
             f_name = field.name
@@ -156,10 +156,10 @@ class AppleSilicon(SoC):
                 f"Failed to initialize `AppleEnergyMonitor`: {e}"
             ) from None
 
-    def getAvailableMetrics(self) -> set[str]:
+    def get_available_metrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""
         if self.available_metrics is None:
-            result: SoCMeasurement = self.getTotalEnergyConsumption()
+            result: SoCMeasurement = self.get_total_energy_consumption()
             available_metrics = set()
 
             metrics_dict = asdict(result)
@@ -170,7 +170,7 @@ class AppleSilicon(SoC):
             self.available_metrics = available_metrics
         return self.available_metrics
 
-    def getTotalEnergyConsumption(self) -> AppleSiliconMeasurement:
+    def get_total_energy_consumption(self) -> AppleSiliconMeasurement:
         """Returns the total energy consumption of the SoC.
 
         The measurement should be cumulative; different calls to this function throughout
@@ -182,11 +182,11 @@ class AppleSilicon(SoC):
         result = self._monitor.get_cumulative_energy()
         return AppleSiliconMeasurement.from_metrics(result)
 
-    def beginWindow(self, key) -> None:
+    def begin_window(self, key) -> None:
         """Begin a measurement interval labeled with `key`."""
         self._monitor.begin_window(key)
 
-    def endWindow(self, key) -> AppleSiliconMeasurement:
+    def end_window(self, key) -> AppleSiliconMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
         result = self._monitor.end_window(key)
         return AppleSiliconMeasurement.from_metrics(result)

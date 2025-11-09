@@ -112,9 +112,9 @@ class PipelineFrequencyOptimizer(Callback):
             raise RuntimeError("Failed to broadcast job ID to all ranks")
 
         # Query the list of available frequencies of the GPU.
-        max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))
+        max_mem_freq = max(gpus.get_supported_memory_clocks(device_id))
         freqs = sorted(
-            gpus.getSupportedGraphicsClocks(device_id, max_mem_freq),
+            gpus.get_supported_graphics_clocks(device_id, max_mem_freq),
             reverse=True,
         )
 

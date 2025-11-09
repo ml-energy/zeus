@@ -258,7 +258,7 @@ class RAPLCPU(cpu_common.CPU):
                 if rapl_file.name == "dram":
                     self.dram = rapl_file
 
-    def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
+    def get_total_energy_consumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         cpu_mj = self.rapl_file.read()
         dram_mj = None
@@ -266,7 +266,7 @@ class RAPLCPU(cpu_common.CPU):
             dram_mj = self.dram.read()
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
-    def supportsGetDramEnergyConsumption(self) -> bool:
+    def supports_get_dram_energy_consumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram is not None
 
@@ -295,9 +295,9 @@ class ZeusdRAPLCPU(RAPLCPU):
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
         self._url_prefix = f"http://zeusd/cpu/{cpu_index}"
 
-        self.dram_available = self._supportsGetDramEnergyConsumption()
+        self.dram_available = self._supports_get_dram_energy_consumption()
 
-    def _supportsGetDramEnergyConsumption(self) -> bool:
+    def _supports_get_dram_energy_consumption(self) -> bool:
         """Calls zeusd to return if the specified CPU supports DRAM energy monitoring."""
         resp = self._client.get(
             self._url_prefix + "/supports_dram_energy",
@@ -312,7 +312,7 @@ class ZeusdRAPLCPU(RAPLCPU):
             raise ZeusdError("Failed to get whether DRAM energy is supported.")
         return dram_available
 
-    def getTotalEnergyConsumption(self) -> CpuDramMeasurement:
+    def get_total_energy_consumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
         resp = self._client.post(
             self._url_prefix + "/get_index_energy",
@@ -339,7 +339,7 @@ class ZeusdRAPLCPU(RAPLCPU):
 
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
-    def supportsGetDramEnergyConsumption(self) -> bool:
+    def supports_get_dram_energy_consumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram_available
 

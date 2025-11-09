@@ -75,11 +75,11 @@ class BatchSizeOptimizer(Callback):
         # set gpu configurations(max_power, number of gpus, and gpu model)
         self.job_spec = JobSpecFromClient(
             **job.dict(),
-            max_power=gpus.getPowerManagementLimitConstraints(0)[1]
+            max_power=gpus.get_power_management_limit_constraints(0)[1]
             // 1000
             * len(monitor.gpu_indices),
             number_of_gpus=len(monitor.gpu_indices),
-            gpu_model=gpus.getName(0),
+            gpu_model=gpus.get_name(0),
         )
 
         # Track the batch size of current job

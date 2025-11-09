@@ -42,7 +42,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     update_period = 0.0
     gpu_models_covered = set()
     for index in gpu_indicies:
-        if (model := gpus.getName(index)) not in gpu_models_covered:
+        if (model := gpus.get_name(index)) not in gpu_models_covered:
             logger.info(
                 "Detected %s, inferring NVML power counter update period.", model
             )
@@ -77,7 +77,7 @@ def _infer_counter_update_period_single(gpu_index: int) -> float:
     for i in range(len(time_power_samples)):
         time_power_samples[i] = (
             time(),
-            gpus.getInstantPowerUsage(gpu_index),
+            gpus.get_instant_power_usage(gpu_index),
         )
 
     # Find the timestamps when the power readings changed.
@@ -265,9 +265,9 @@ class PowerMonitor:
         supported = []
         gpus = get_gpus(ensure_homogeneous=True)
         methods = {
-            PowerDomain.DEVICE_INSTANT: gpus.getInstantPowerUsage,
-            PowerDomain.DEVICE_AVERAGE: gpus.getAveragePowerUsage,
-            PowerDomain.MEMORY_AVERAGE: gpus.getAverageMemoryPowerUsage,
+            PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
+            PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
+            PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
         }
 
         # Just check the first GPU for support, since all GPUs are homogeneous.
@@ -500,9 +500,9 @@ def _domain_polling_process(
 
         # Determine the GPU method to call based on domain
         power_methods = {
-            PowerDomain.DEVICE_INSTANT: gpus.getInstantPowerUsage,
-            PowerDomain.DEVICE_AVERAGE: gpus.getAveragePowerUsage,
-            PowerDomain.MEMORY_AVERAGE: gpus.getAverageMemoryPowerUsage,
+            PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
+            PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
+            PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
         }
         try:
             power_method = power_methods[power_domain]

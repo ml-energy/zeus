@@ -41,16 +41,16 @@ class FrequencyController:
         """Receive frequency values through a queue and apply it."""
         gpus = get_gpus()
         # Return the power limit to the default.
-        gpus.resetPowerManagementLimit(device_id)
+        gpus.reset_power_management_limit(device_id)
 
         # Set the memory frequency to be the highest.
-        max_mem_freq = max(gpus.getSupportedMemoryClocks(device_id))
+        max_mem_freq = max(gpus.get_supported_memory_clocks(device_id))
         with contextlib.suppress(ZeusGPUNotSupportedError):
-            gpus.setMemoryLockedClocks(device_id, max_mem_freq, max_mem_freq)
+            gpus.set_memory_locked_clocks(device_id, max_mem_freq, max_mem_freq)
 
         # Set the SM frequency to be the highest.
-        max_freq = max(gpus.getSupportedGraphicsClocks(device_id, max_mem_freq))
-        gpus.setGpuLockedClocks(device_id, max_freq, max_freq)
+        max_freq = max(gpus.get_supported_graphics_clocks(device_id, max_mem_freq))
+        gpus.set_gpu_locked_clocks(device_id, max_freq, max_freq)
         current_freq = max_freq
 
         # Wait on the queue for the next frequency to set.
@@ -59,10 +59,10 @@ class FrequencyController:
             if target_freq is None:
                 break
             if current_freq != target_freq:
-                gpus.setGpuLockedClocks(device_id, target_freq, target_freq)
+                gpus.set_gpu_locked_clocks(device_id, target_freq, target_freq)
                 current_freq = target_freq
 
         # Reset everything.
         with contextlib.suppress(ZeusGPUNotSupportedError):
-            gpus.resetMemoryLockedClocks(device_id)
-        gpus.resetGpuLockedClocks(device_id)
+            gpus.reset_memory_locked_clocks(device_id)
+        gpus.reset_gpu_locked_clocks(device_id)

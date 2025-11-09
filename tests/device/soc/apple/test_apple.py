@@ -55,7 +55,7 @@ def test_total_energy(mock_monitor):
     mock_monitor.get_cumulative_energy.return_value = mock_metrics
 
     monitor = AppleSilicon()
-    res = monitor.getTotalEnergyConsumption()
+    res = monitor.get_total_energy_consumption()
 
     res_dict = asdict(res)
     expected = {
@@ -91,8 +91,8 @@ def test_interval_energy(mock_monitor):
     mock_monitor.end_window.return_value = mock_metrics
 
     monitor = AppleSilicon()
-    monitor.beginWindow("test")
-    res = monitor.endWindow("test")
+    monitor.begin_window("test")
+    res = monitor.end_window("test")
 
     res_dict = asdict(res)
     expected = {
@@ -128,10 +128,10 @@ def test_overlapping_interval_energy(mock_monitor):
     mock_monitor.end_window.return_value = mock_metrics
 
     monitor = AppleSilicon()
-    monitor.beginWindow("test1")
-    monitor.beginWindow("test2")
+    monitor.begin_window("test1")
+    monitor.begin_window("test2")
 
-    res = monitor.endWindow("test1")
+    res = monitor.end_window("test1")
     res_dict = asdict(res)
     expected = {
         "cpu_total_mj": 100,
@@ -160,7 +160,7 @@ def test_overlapping_interval_energy(mock_monitor):
     )
     mock_monitor.end_window.return_value = mock_metrics
 
-    res = monitor.endWindow("test2")
+    res = monitor.end_window("test2")
     res_dict = asdict(res)
     expected = {
         "cpu_total_mj": 200,
@@ -194,7 +194,7 @@ def test_available_metrics(mock_monitor):
     mock_monitor.get_cumulative_energy.return_value = mock_metrics
 
     monitor = AppleSilicon()
-    available = monitor.getAvailableMetrics()
+    available = monitor.get_available_metrics()
     expected = {
         "cpu_total_mj",
         "efficiency_cores_mj",
@@ -274,7 +274,7 @@ def test_metrics_zero_out(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
     metrics = AppleSiliconMeasurement(10, [10, 10, 10], None, 30, 30, 5, None, None, 5)
-    metrics.zeroAllFields()
+    metrics.zero_all_fields()
 
     assert metrics.cpu_total_mj == 0
     assert metrics.efficiency_cores_mj == []

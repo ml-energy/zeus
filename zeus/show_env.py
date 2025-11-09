@@ -94,7 +94,7 @@ def show_env():
         gpus = EmptyGPUs()
     if len(gpus) > 0:
         for i in range(len(gpus)):
-            gpu_availability += f"  GPU {i}: {gpus.getName(i)}\n"
+            gpu_availability += f"  GPU {i}: {gpus.get_name(i)}\n"
     else:
         gpu_availability += "  No GPUs available.\n"
     print("\nDetected:\n" + gpu_availability)
@@ -117,13 +117,13 @@ def show_env():
         for i, cpu in enumerate(cpus.cpus):
             if isinstance(cpu, ZeusdRAPLCPU):
                 cpu_availability += f"  CPU {i}:\n    CPU measurements available (Zeusd at {cpu.zeusd_sock_path})\n"
-                if cpu.supportsGetDramEnergyConsumption():
+                if cpu.supports_get_dram_energy_consumption():
                     cpu_availability += f"    DRAM measurements available (Zeusd at {cpu.zeusd_sock_path})\n"
                 else:
                     cpu_availability += "    DRAM measurements unavailable\n"
             elif isinstance(cpu, RAPLCPU):
                 cpu_availability += f"  CPU {i}:\n    CPU measurements available ({cpu.rapl_file.path})\n"
-                if cpu.supportsGetDramEnergyConsumption():
+                if cpu.supports_get_dram_energy_consumption():
                     dram = cpu.dram
                     assert dram is not None
                     cpu_availability += (
@@ -151,11 +151,11 @@ def show_env():
         soc = EmptySoC()
 
     if isinstance(soc, AppleSilicon):
-        metrics = soc.getAvailableMetrics()
+        metrics = soc.get_available_metrics()
         soc_availability += "  Apple Silicon SoC available.\n"
         soc_availability += f"  Available metrics: {', '.join(metrics)}\n"
     elif isinstance(soc, Jetson):
-        metrics = soc.getAvailableMetrics()
+        metrics = soc.get_available_metrics()
         soc_availability += "  NVIDIA Jetson SoC available.\n"
         soc_availability += f"  Available metrics: {', '.join(metrics)}\n"
     else:

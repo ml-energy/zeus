@@ -135,7 +135,7 @@ class AMDGPU(gpu_common.GPU):
         self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
 
     @_handle_amdsmi_errors
-    def getName(self) -> str:
+    def get_name(self) -> str:
         """Return the name of the GPU model."""
         info = amdsmi.amdsmi_get_gpu_asic_info(self.handle)
         return info["market_name"]
@@ -146,20 +146,22 @@ class AMDGPU(gpu_common.GPU):
         return False
 
     @_handle_amdsmi_errors
-    def getPowerManagementLimitConstraints(self) -> tuple[int, int]:
+    def get_power_management_limit_constraints(self) -> tuple[int, int]:
         """Return the minimum and maximum power management limits. Units: mW."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
         return (info["min_power_cap"] * 1000, info["max_power_cap"] * 1000)
 
     @_handle_amdsmi_errors
-    def setPowerManagementLimit(self, power_limit_mw: int, _block: bool = True) -> None:
+    def set_power_management_limit(
+        self, power_limit_mw: int, block: bool = True
+    ) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         amdsmi.amdsmi_set_power_cap(
             self.handle, 0, int(power_limit_mw * 1000)
         )  # Units for set_power_cap: microwatts
 
     @_handle_amdsmi_errors
-    def resetPowerManagementLimit(self, _block: bool = True) -> None:
+    def reset_power_management_limit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
         info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
         amdsmi.amdsmi_set_power_cap(
@@ -167,14 +169,14 @@ class AMDGPU(gpu_common.GPU):
         )  # expects value in microwatts
 
     @_handle_amdsmi_errors
-    def setPersistenceMode(self, enabled: bool, _block: bool = True) -> None:
+    def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         raise gpu_common.ZeusGPUNotSupportedError(
             "Persistence mode is not supported on AMD GPUs."
         )
 
     @_handle_amdsmi_errors
-    def getSupportedMemoryClocks(self) -> list[int]:
+    def get_supported_memory_clocks(self) -> list[int]:
         """Return a list of supported memory clock frequencies. Units: MHz."""
         info = amdsmi.amdsmi_get_clock_info(
             self.handle, amdsmi.AmdSmiClkType.MEM
@@ -182,8 +184,8 @@ class AMDGPU(gpu_common.GPU):
         return [info["max_clk"], info["min_clk"]]
 
     @_handle_amdsmi_errors
-    def setMemoryLockedClocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+    def set_memory_locked_clocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         amdsmi.amdsmi_set_gpu_clk_range(
@@ -194,7 +196,7 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
-    def resetMemoryLockedClocks(self, _block: bool = True) -> None:
+    def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
         # Get default MEM clock values
         info = amdsmi.amdsmi_get_clock_info(
@@ -209,7 +211,7 @@ class AMDGPU(gpu_common.GPU):
         )  # expects MHz
 
     @_handle_amdsmi_errors
-    def getSupportedGraphicsClocks(
+    def get_supported_graphics_clocks(
         self, memory_clock_mhz: int | None = None
     ) -> list[int]:
         """Return a list of supported graphics clock frequencies. Units: MHz.
@@ -225,8 +227,8 @@ class AMDGPU(gpu_common.GPU):
         return [info["max_clk"], info["min_clk"]]
 
     @_handle_amdsmi_errors
-    def setGpuLockedClocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, _block: bool = True
+    def set_gpu_locked_clocks(
+        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         amdsmi.amdsmi_set_gpu_clk_range(
@@ -237,7 +239,7 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
-    def resetGpuLockedClocks(self, _block: bool = True) -> None:
+    def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
         # Get default GPU clock values
         info = amdsmi.amdsmi_get_clock_info(
@@ -252,7 +254,7 @@ class AMDGPU(gpu_common.GPU):
         )  # expects MHz
 
     @_handle_amdsmi_errors
-    def getAveragePowerUsage(self) -> int:
+    def get_average_power_usage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
         # returns in W, convert to mW
         return (
@@ -261,13 +263,13 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
-    def getInstantPowerUsage(self) -> int:
+    def get_instant_power_usage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
         if not self._supportsInstantPowerUsage:
             raise gpu_common.ZeusGPUNotSupportedError(
                 "Instant power usage is not supported on this AMD GPU. "
                 "This is because amdsmi.amdsmi_get_power_info does not return a valid 'current_socket_power'. "
-                "Please use `getAveragePowerUsage` instead."
+                "Please use `get_average_power_usage` instead."
             )
         # returns in W, convert to mW
         return (
@@ -276,25 +278,25 @@ class AMDGPU(gpu_common.GPU):
         )
 
     @_handle_amdsmi_errors
-    def getAverageMemoryPowerUsage(self) -> int:
+    def get_average_memory_power_usage(self) -> int:
         """Return the average power usage of the GPU's memory. Units: mW."""
         raise gpu_common.ZeusGPUNotSupportedError(
             "Average memory power usage is not supported on AMD GPUs."
         )
 
     @_handle_amdsmi_errors
-    def supportsGetTotalEnergyConsumption(self) -> bool:
+    def supports_get_total_energy_consumption(self) -> bool:
         """Check if the GPU supports retrieving total energy consumption. Returns a future object of the result."""
         return self._supportsGetTotalEnergyConsumption
 
     @_handle_amdsmi_errors
-    def getTotalEnergyConsumption(self) -> int:
+    def get_total_energy_consumption(self) -> int:
         """Return the total energy consumption of the GPU since driver load. Units: mJ."""
         if not self._supportsGetTotalEnergyConsumption:
             raise gpu_common.ZeusGPUNotSupportedError(
                 "Total energy consumption is not supported on this AMD GPU. "
                 "This is because the result of `amdsmi.amdsmi_get_energy_count` is not accurate. "
-                "Please use `getAveragePowerUsage` or `getInstantPowerUsage` to calculate energy usage."
+                "Please use `get_average_power_usage` or `get_instant_power_usage` to calculate energy usage."
             )
         energy_dict = amdsmi.amdsmi_get_energy_count(self.handle)
         if "energy_accumulator" in energy_dict:  # Changed since amdsmi 6.2.1
@@ -308,7 +310,7 @@ class AMDGPU(gpu_common.GPU):
         return int(energy / 1e3)  # returns in micro Joules, convert to mili Joules
 
     @_handle_amdsmi_errors
-    def getGpuTemperature(self) -> int:
+    def get_gpu_temperature(self) -> int:
         """Return the current GPU temperature. Units: Celsius.
 
         We use the hotspot temperatue (as opposed to edge) as we believe it to be more representative
@@ -385,10 +387,10 @@ class AMDGPUs(gpu_common.GPUs):
 
         # set _supportsGetTotalEnergyConsumption for all GPUs
         wait_time = 0.5  # seconds
-        powers = [gpu.getAveragePowerUsage() for gpu in self._gpus]
-        initial_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
+        powers = [gpu.get_average_power_usage() for gpu in self._gpus]
+        initial_energies = [gpu.get_total_energy_consumption() for gpu in self._gpus]
         time.sleep(wait_time)
-        final_energies = [gpu.getTotalEnergyConsumption() for gpu in self._gpus]
+        final_energies = [gpu.get_total_energy_consumption() for gpu in self._gpus]
         measured_energies = [
             final - initial for final, initial in zip(final_energies, initial_energies)
         ]
@@ -405,9 +407,9 @@ class AMDGPUs(gpu_common.GPUs):
             else:
                 gpu._supportsGetTotalEnergyConsumption = False
                 logger.info(
-                    "Disabling `getTotalEnergyConsumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
+                    "Disabling `get_total_energy_consumption` for device %d. The result of `amdsmi.amdsmi_get_energy_count` is not accurate. Expected energy: %d mJ, Measured energy: %d mJ. "
                     "This is a known issue with some AMD GPUs, please see https://github.com/ROCm/amdsmi/issues/38 for more information. "
-                    "You can still measure energy by polling either `getInstantPowerUsage` or `getAveragePowerUsage` and integrating over time.",
+                    "You can still measure energy by polling either `get_instant_power_usage` or `get_average_power_usage` and integrating over time.",
                     gpu.gpu_index,
                     expected_energy,
                     measured_energy,
