@@ -39,9 +39,7 @@ def get_logger(
     logger = logging.getLogger(name)
     logger.propagate = propagate
     logger.setLevel(os.environ.get("ZEUS_LOG_LEVEL", level))
-    formatter = logging.Formatter(
-        "[%(asctime)s] [%(name)s](%(filename)s:%(lineno)d) %(message)s"
-    )
+    formatter = logging.Formatter("[%(asctime)s] [%(name)s](%(filename)s:%(lineno)d) %(message)s")
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
     logger.addHandler(handler)

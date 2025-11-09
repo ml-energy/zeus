@@ -14,18 +14,15 @@ class MockDeviceBase(abc.ABC, metaclass=DeprecatedAliasABCMeta):
 
     @deprecated_alias("getName")
     @abc.abstractmethod
-    def get_name(self) -> str:
-        ...
+    def get_name(self) -> str: ...
 
     @deprecated_alias("getValue")
     @abc.abstractmethod
-    def get_value(self) -> int:
-        ...
+    def get_value(self) -> int: ...
 
     @deprecated_alias("setValue")
     @abc.abstractmethod
-    def set_value(self, value: int) -> None:
-        ...
+    def set_value(self, value: int) -> None: ...
 
 
 class MockDevice(MockDeviceBase):

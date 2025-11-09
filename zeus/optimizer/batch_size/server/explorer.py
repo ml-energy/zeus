@@ -72,10 +72,7 @@ class PruningExploreManager:
                         and len(exploration_history.explorations_per_bs[bs]) > round
                     ):
                         # Already explored at this round
-                        if (
-                            exploration_history.explorations_per_bs[bs][round].status
-                            == TrialStatus.Dispatched
-                        ):
+                        if exploration_history.explorations_per_bs[bs][round].status == TrialStatus.Dispatched:
                             # We are waiting for the result of this exploration -> Concurrent job!
                             return await self.service.create_trial(
                                 CreateConcurrentTrial(
@@ -84,9 +81,7 @@ class PruningExploreManager:
                                 )
                             )
 
-                        if not exploration_history.explorations_per_bs[bs][
-                            round
-                        ].converged:
+                        if not exploration_history.explorations_per_bs[bs][round].converged:
                             # Failed to converge -> Go to next list or round
                             break
                         else:
@@ -95,12 +90,8 @@ class PruningExploreManager:
 
                             m = exploration_history.explorations_per_bs[bs][round]
                             if m.energy is None or m.time is None:
-                                raise ZeusBSOValueError(
-                                    "Energy or time is not available for the exploration."
-                                )
-                            cost = zeus_cost(
-                                m.energy, m.time, job.eta_knob, job.max_power
-                            )
+                                raise ZeusBSOValueError("Energy or time is not available for the exploration.")
+                            cost = zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
                             if cost < min_cost_of_round:
                                 min_cost_of_round = cost
                                 min_batch_size_of_round = bs

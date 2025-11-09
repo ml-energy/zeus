@@ -30,9 +30,7 @@ def get_current_cpu_index(pid: int | Literal["current"] = "current") -> int:
     with open(f"/proc/{pid}/stat") as stat_file:
         cpu_core = int(stat_file.read().split()[38])
 
-    with open(
-        f"/sys/devices/system/cpu/cpu{cpu_core}/topology/physical_package_id"
-    ) as phys_package_file:
+    with open(f"/sys/devices/system/cpu/cpu{cpu_core}/topology/physical_package_id") as phys_package_file:
         return int(phys_package_file.read().strip())
 
 
@@ -52,6 +50,4 @@ def get_cpus() -> CPUs:
         _cpus = RAPLCPUs()
         return _cpus
     else:
-        raise ZeusCPUInitError(
-            "RAPL unvailable Failed to initialize CPU management library."
-        )
+        raise ZeusCPUInitError("RAPL unvailable Failed to initialize CPU management library.")

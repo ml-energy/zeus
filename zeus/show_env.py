@@ -49,9 +49,7 @@ def show_env():
         package_availability += f"  PyTorch: {torch.__version__} (with CUDA support)\n"
     elif torch_available and not torch_cuda_available:
         torch = framework.MODULE_CACHE["torch"]
-        package_availability += (
-            f"  PyTorch: {torch.__version__} (without CUDA support)\n"
-        )
+        package_availability += f"  PyTorch: {torch.__version__} (without CUDA support)\n"
     else:
         package_availability += "  PyTorch: not available\n"
 
@@ -126,9 +124,7 @@ def show_env():
                 if cpu.supports_get_dram_energy_consumption():
                     dram = cpu.dram
                     assert dram is not None
-                    cpu_availability += (
-                        f"    DRAM measurements available ({dram.path})\n"
-                    )
+                    cpu_availability += f"    DRAM measurements available ({dram.path})\n"
                 else:
                     cpu_availability += "    DRAM measurements unavailable\n"
             else:

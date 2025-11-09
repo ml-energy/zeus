@@ -72,9 +72,7 @@ class OpenEIClient(ElectricityPriceProvider):
         self,
         location: tuple[float, float],
         label: str,
-        sector: Literal[
-            "Residential", "Commercial", "Industrial", "Lighting"
-        ] = "Residential",
+        sector: Literal["Residential", "Commercial", "Industrial", "Lighting"] = "Residential",
         radius: int = 0,
     ) -> None:
         """Initializes OpenEI Utility Rates Provider.
@@ -105,15 +103,11 @@ class OpenEIClient(ElectricityPriceProvider):
                         results.append(None)
 
                 # Recursively search deeper in nested dictionaries
-                results.extend(
-                    self.search_json(val, key_name, target_value, return_value)
-                )
+                results.extend(self.search_json(val, key_name, target_value, return_value))
 
         elif isinstance(data, list):
             for item in data:
-                results.extend(
-                    self.search_json(item, key_name, target_value, return_value)
-                )
+                results.extend(self.search_json(item, key_name, target_value, return_value))
 
         return results
 
@@ -130,34 +124,18 @@ class OpenEIClient(ElectricityPriceProvider):
             data = resp.json()
 
         except requests.exceptions.RequestException as e:
-            raise ZeusElectricityPriceHTTPError(
-                f"Failed to retrieve current electricity price measurement: {e}"
-            ) from e
+            raise ZeusElectricityPriceHTTPError(f"Failed to retrieve current electricity price measurement: {e}") from e
 
         try:
             if "label" not in json.dumps(data):
-                raise ZeusElectricityPriceNotFoundError(
-                    f"No rates found for lat, lon: [{self.lat}, {self.long}]."
-                )
+                raise ZeusElectricityPriceNotFoundError(f"No rates found for lat, lon: [{self.lat}, {self.long}].")
 
-            energy_rate_structure = self.search_json(
-                data, "label", self.label, "energyratestructure"
-            )
-            energy_weekday_schedule = self.search_json(
-                data, "label", self.label, "energyweekdayschedule"
-            )
-            energy_weekend_schedule = self.search_json(
-                data, "label", self.label, "energyweekendschedule"
-            )
+            energy_rate_structure = self.search_json(data, "label", self.label, "energyratestructure")
+            energy_weekday_schedule = self.search_json(data, "label", self.label, "energyweekdayschedule")
+            energy_weekend_schedule = self.search_json(data, "label", self.label, "energyweekendschedule")
 
-            if (
-                not energy_rate_structure
-                or not energy_weekday_schedule
-                or not energy_weekend_schedule
-            ):
-                raise ZeusElectricityPriceNotFoundError(
-                    f"No rates found for the label: {self.label}."
-                )
+            if not energy_rate_structure or not energy_weekday_schedule or not energy_weekend_schedule:
+                raise ZeusElectricityPriceNotFoundError(f"No rates found for the label: {self.label}.")
 
             rate_data = {
                 "energy_rate_structure": energy_rate_structure[0],
@@ -167,12 +145,8 @@ class OpenEIClient(ElectricityPriceProvider):
             return rate_data
 
         except (KeyError, ValueError) as e:
-            logger.error(
-                "Error occurred while processing electricity price data: %s", e
-            )
-            raise ZeusElectricityPriceNotFoundError(
-                "Failed to process electricity price data."
-            ) from e
+            logger.error("Error occurred while processing electricity price data: %s", e)
+            raise ZeusElectricityPriceNotFoundError("Failed to process electricity price data.") from e
 
 
 @dataclass
@@ -304,9 +278,7 @@ class EnergyCostMonitor:
         # start subwindows
         self.command_q.put((Op.BEGIN, key))
 
-    def end_window(
-        self, key: str, sync_execution: bool = True
-    ) -> EnergyCostMeasurement:
+    def end_window(self, key: str, sync_execution: bool = True) -> EnergyCostMeasurement:
         """End a measurement window and return the time, energy consumption, and energy cost.
 
         Args:
@@ -330,9 +302,7 @@ class EnergyCostMonitor:
         ) = self.finished_q.get()
         self.current_keys.remove(key)
 
-        overall_measurement = self.zeus_monitor.end_window(
-            key, sync_execution=sync_execution
-        )
+        overall_measurement = self.zeus_monitor.end_window(key, sync_execution=sync_execution)
 
         measurement = EnergyCostMeasurement(
             time=overall_measurement.time,
@@ -367,9 +337,7 @@ def _polling_process(
 
     # Fetch electricity price data
     try:
-        electricity_price_data = (
-            electricity_price_provider.get_current_electricity_prices()
-        )
+        electricity_price_data = electricity_price_provider.get_current_electricity_prices()
         energy_rate_structure = electricity_price_data["energy_rate_structure"]
         energy_weekday_schedule = electricity_price_data["energy_weekday_schedule"]
         energy_weekend_schedule = electricity_price_data["energy_weekend_schedule"]
@@ -386,15 +354,11 @@ def _polling_process(
 
         if measurement.cpu_energy:
             for cpu_index, energy_measurement in measurement.cpu_energy.items():
-                energy_measurements[key][datetime][
-                    f"cpu_{cpu_index}"
-                ] = energy_measurement
+                energy_measurements[key][datetime][f"cpu_{cpu_index}"] = energy_measurement
 
         if measurement.dram_energy:
             for dram_index, energy_measurement in measurement.dram_energy.items():
-                energy_measurements[key][datetime][
-                    f"dram_{dram_index}"
-                ] = energy_measurement
+                energy_measurements[key][datetime][f"dram_{dram_index}"] = energy_measurement
 
     # update cumulative electricity costs
     def _update_energy_costs(key: str):
@@ -406,11 +370,7 @@ def _polling_process(
                 hour = dt.hour
                 day_of_week = dt.weekday()
 
-                tier = (
-                    energy_weekday_schedule[month][hour]
-                    if day_of_week < 5
-                    else energy_weekend_schedule[month][hour]
-                )
+                tier = energy_weekday_schedule[month][hour] if day_of_week < 5 else energy_weekend_schedule[month][hour]
 
                 try:
                     flat_rate = energy_rate_structure[tier][0]["rate"]
@@ -418,9 +378,7 @@ def _polling_process(
                     logger.error("Failed to parse electricity rate structure.")
                     return
 
-                cost = (
-                    energy / 3.6e6
-                ) * flat_rate  # Convert Wh to kWh and multiply by rate
+                cost = (energy / 3.6e6) * flat_rate  # Convert Wh to kWh and multiply by rate
 
                 if hardware_type == "gpu":
                     gpu_energy_cost[key][int(num_index)] += cost

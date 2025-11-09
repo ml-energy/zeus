@@ -29,9 +29,7 @@ def mock_monitor(mocker: MockerFixture):
         },
     )
 
-    mocker.patch(
-        "zeus.monitor.energy.ZeusMonitor", return_value=zeus_monitor_mock_instance
-    )
+    mocker.patch("zeus.monitor.energy.ZeusMonitor", return_value=zeus_monitor_mock_instance)
     mocker.patch("pynvml.nvmlDeviceGetName").return_value = "Tesla V100"
     mocker.patch("pynvml.nvmlDeviceGetCount").return_value = 4
     mocker.patch("pynvml.nvmlDeviceGetHandleByIndex").return_value = 0
@@ -124,9 +122,7 @@ def test_converge_fail(mock_monitor, helpers):
 def test_distributed_setting(mock_monitor, helpers):
     job = JobSpec.parse_obj(helpers.get_fake_job("test_distributed_setting"))
     NGPU = 4
-    bso_clients = [
-        BatchSizeOptimizer(mock_monitor, "", job, rank=i) for i in range(NGPU)
-    ]
+    bso_clients = [BatchSizeOptimizer(mock_monitor, "", job, rank=i) for i in range(NGPU)]
 
     # Only rank=0 can ask for bs
     for i in range(1, NGPU):

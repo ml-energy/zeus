@@ -57,9 +57,7 @@ def helpers():
 
 
 def init(db_url: str):
-    sessionmanager = DatabaseSessionManager(
-        f"sqlite+aiosqlite:///{db_url}", {"echo": False}
-    )
+    sessionmanager = DatabaseSessionManager(f"sqlite+aiosqlite:///{db_url}", {"echo": False})
 
     async def override_db_session() -> AsyncIterator[AsyncSession]:
         async with sessionmanager.session() as session:

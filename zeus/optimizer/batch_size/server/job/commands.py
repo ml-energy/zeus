@@ -128,9 +128,7 @@ class CreateJob(GpuConfig, JobParams):
                 f"During initialization, default_batch_size({dbs}), exp_default_batch_size({ebs}), min_batch_size({mbs}) should be all the same"
             )
         if dbs not in bss:
-            raise ValueError(
-                f"default_batch_size({dbs}) is not in the batch size list({bss})"
-            )
+            raise ValueError(f"default_batch_size({dbs}) is not in the batch size list({bss})")
 
         return values
 
@@ -155,7 +153,5 @@ class CreateJob(GpuConfig, JobParams):
         for k, v in d.items():
             if k != "batch_sizes":
                 setattr(job, k, v)
-        job.batch_sizes = [
-            BatchSizeTable(job_id=self.job_id, batch_size=bs) for bs in self.batch_sizes
-        ]
+        job.batch_sizes = [BatchSizeTable(job_id=self.job_id, batch_size=bs) for bs in self.batch_sizes]
         return job

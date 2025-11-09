@@ -43,9 +43,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     gpu_models_covered = set()
     for index in gpu_indicies:
         if (model := gpus.get_name(index)) not in gpu_models_covered:
-            logger.info(
-                "Detected %s, inferring NVML power counter update period.", model
-            )
+            logger.info("Detected %s, inferring NVML power counter update period.", model)
             gpu_models_covered.add(model)
             detected_period = _infer_counter_update_period_single(index)
             logger.info(
@@ -90,9 +88,7 @@ def _infer_counter_update_period_single(gpu_index: int) -> float:
             prev_power = p
 
     # Compute the minimum time difference between power change timestamps.
-    intervals = [
-        time2 - time1 for time1, time2 in zip(changed_times, changed_times[1:])
-    ]
+    intervals = [time2 - time1 for time1, time2 in zip(changed_times, changed_times[1:])]
     if len(intervals) == 0:
         return 0.1
     return min(intervals)
@@ -183,9 +179,7 @@ class PowerMonitor:
         gpus = get_gpus(ensure_homogeneous=True)
 
         # Configure GPU indices
-        self.gpu_indices = (
-            gpu_indices if gpu_indices is not None else list(range(len(gpus)))
-        )
+        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(gpus)))
         if not self.gpu_indices:
             raise ValueError("At least one GPU index must be specified")
         logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
@@ -210,18 +204,14 @@ class PowerMonitor:
 
         # Determine which domains are supported
         self.supported_domains = self._determine_supported_domains()
-        logger.info(
-            "Supported power domains: %s", [d.value for d in self.supported_domains]
-        )
+        logger.info("Supported power domains: %s", [d.value for d in self.supported_domains])
 
         # Power samples are collected for each power domain and device index.
         self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
         for domain in self.supported_domains:
             self.samples[domain] = {}
             for gpu_idx in self.gpu_indices:
-                self.samples[domain][gpu_idx] = collections.deque(
-                    maxlen=max_samples_per_gpu
-                )
+                self.samples[domain][gpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
 
         # Spawn collector processes for each supported domain
         ctx = mp.get_context("spawn")
@@ -246,9 +236,7 @@ class PowerMonitor:
             process.start()
 
         # Cleanup functions
-        self._finalizer = weakref.finalize(
-            self, _cleanup_processes, self.stop_events, self.processes
-        )
+        self._finalizer = weakref.finalize(self, _cleanup_processes, self.stop_events, self.processes)
 
         # Wait for all subprocesses to signal they're ready
         logger.info("Waiting for all power monitoring subprocesses to be ready...")
@@ -315,8 +303,7 @@ class PowerMonitor:
 
     def get_power_timeline(
         self,
-        power_domain: PowerDomain
-        | Literal["device_instant", "device_average", "memory_average"],
+        power_domain: PowerDomain | Literal["device_instant", "device_average", "memory_average"],
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
@@ -337,9 +324,7 @@ class PowerMonitor:
             power_domain = PowerDomain(power_domain)
 
         if power_domain not in self.supported_domains:
-            raise ValueError(
-                f"Power domain {power_domain.value} is not supported by the current GPUs."
-            )
+            raise ValueError(f"Power domain {power_domain.value} is not supported by the current GPUs.")
 
         # Process any pending queue data for this domain
         self._process_queue_data(power_domain)
@@ -361,9 +346,7 @@ class PowerMonitor:
                 if end_time is not None and sample.timestamp > end_time:
                     continue
 
-                timeline.append(
-                    (sample.timestamp, sample.power_mw / 1000.0)
-                )  # Convert to watts
+                timeline.append((sample.timestamp, sample.power_mw / 1000.0))  # Convert to watts
 
             # Sort by timestamp
             timeline.sort(key=lambda x: x[0])
@@ -390,9 +373,7 @@ class PowerMonitor:
         """
         result = {}
         for domain in self.supported_domains:
-            result[domain.value] = self.get_power_timeline(
-                domain, gpu_index, start_time, end_time
-            )
+            result[domain.value] = self.get_power_timeline(domain, gpu_index, start_time, end_time)
         return result
 
     def get_energy(self, start_time: float, end_time: float) -> dict[int, float] | None:
@@ -408,9 +389,7 @@ class PowerMonitor:
             A dictionary mapping GPU indices to the energy used by the GPU between the
             two times. If there are no power readings, return None.
         """
-        timelines = self.get_power_timeline(
-            PowerDomain.DEVICE_INSTANT, start_time=start_time, end_time=end_time
-        )
+        timelines = self.get_power_timeline(PowerDomain.DEVICE_INSTANT, start_time=start_time, end_time=end_time)
 
         if not timelines:
             return None
@@ -445,9 +424,7 @@ class PowerMonitor:
             specified time point. If there are no power readings, return None.
         """
         if PowerDomain.DEVICE_INSTANT not in self.supported_domains:
-            raise ValueError(
-                "PowerDomain.DEVICE_INSTANT is not supported by the current GPUs."
-            )
+            raise ValueError("PowerDomain.DEVICE_INSTANT is not supported by the current GPUs.")
 
         # Process any pending queue data
         self._process_all_queue_data()
@@ -475,11 +452,7 @@ class PowerMonitor:
                     # Check the closest sample before and after the requested time
                     before = samples[pos - 1]
                     after = samples[pos]
-                    closest_sample = (
-                        before
-                        if time - before.timestamp <= after.timestamp - time
-                        else after
-                    )
+                    closest_sample = before if time - before.timestamp <= after.timestamp - time else after
                 result[gpu_idx] = closest_sample.power_mw / 1000.0  # To Watts
 
         return result

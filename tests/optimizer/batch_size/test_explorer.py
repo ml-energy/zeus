@@ -56,9 +56,7 @@ class TestPruningExploreManager:
         )
         return res
 
-    def register_job_with_default_bs(
-        self, client, default_bs: int, helpers
-    ) -> tuple[str, int]:
+    def register_job_with_default_bs(self, client, default_bs: int, helpers) -> tuple[str, int]:
         job_id = f"test-{str(uuid.uuid4())}"
         fake_job = helpers.get_fake_job_config(job_id)
         fake_job["beta_knob"] = None
@@ -90,13 +88,9 @@ class TestPruningExploreManager:
             )
             assert response.status_code == 200
             parsed_res = TrialId.parse_obj(response.json())
-            assert (
-                parsed_res.batch_size == exp[0]
-            ), f"Expected {exp[0]} but got {parsed_res.batch_size} ({exp})"
+            assert parsed_res.batch_size == exp[0], f"Expected {exp[0]} but got {parsed_res.batch_size} ({exp})"
 
-            training_result = self.exploration_to_training_result(
-                exp, job_id, parsed_res.trial_number, max_power
-            )
+            training_result = self.exploration_to_training_result(exp, job_id, parsed_res.trial_number, max_power)
             response = client.post(
                 REPORT_RESULT_URL,
                 content=training_result.json(),

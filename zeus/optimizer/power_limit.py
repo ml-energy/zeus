@@ -91,10 +91,7 @@ class ZeusCost(OptimumSelector):
 
     def select(self, measurements: list[PowerLimitMeasurement]) -> int:
         """Select the optimal power limit (W) from measurements."""
-        max_power = (
-            max(measurement.power_limit for measurement in measurements)
-            * self.world_size
-        )
+        max_power = max(measurement.power_limit for measurement in measurements) * self.world_size
         zeus_cost_map = {
             measurement.power_limit: zeus_cost(
                 energy=measurement.energy,
@@ -127,11 +124,7 @@ class MaxSlowdownConstraint(OptimumSelector):
         """Select the optimal power limit (W) from measurements."""
         feasible_power_limits = []
         max_power = max(measurement.power_limit for measurement in measurements)
-        shortest_time = next(
-            measurement.time
-            for measurement in measurements
-            if measurement.power_limit == max_power
-        )
+        shortest_time = next(measurement.time for measurement in measurements if measurement.power_limit == max_power)
         for measurement in measurements:
             if measurement.time <= self.factor * shortest_time:
                 feasible_power_limits.append(measurement.power_limit)
@@ -266,9 +259,7 @@ class GlobalPowerLimitOptimizer(Callback):
         self.warmup_steps = warmup_steps
         self.profile_steps = profile_steps
         self.pl_step = pl_step * 1000  # Internally, we use milliWatts.
-        self.profile_path = (
-            Path(profile_path) if isinstance(profile_path, str) else profile_path
-        )
+        self.profile_path = Path(profile_path) if isinstance(profile_path, str) else profile_path
 
         # Setup logging.
         self.logger = get_logger(type(self).__name__)
@@ -315,9 +306,7 @@ class GlobalPowerLimitOptimizer(Callback):
         if self.profile_path is None:
             self.logger.info("JIT profiling enabled.")
             self.logger.info("Will wait %d step(s) before profiling.", wait_steps)
-            self.state = Ready(
-                next_power_limit=self.power_limits[0], steps=wait_steps + 1
-            )
+            self.state = Ready(next_power_limit=self.power_limits[0], steps=wait_steps + 1)
             self.logger.info("Set power limit to the maximum before starting.")
             self._set_power_limit(max(self.power_limits))
         elif not self.profile_path.exists():
@@ -326,9 +315,7 @@ class GlobalPowerLimitOptimizer(Callback):
                 str(self.profile_path),
             )
             self.logger.info("Will wait %d step(s) before profiling.", wait_steps)
-            self.state = Ready(
-                next_power_limit=self.power_limits[0], steps=wait_steps + 1
-            )
+            self.state = Ready(next_power_limit=self.power_limits[0], steps=wait_steps + 1)
             self.logger.info("Set power limit to the maximum before starting.")
             self._set_power_limit(max(self.power_limits))
         else:
@@ -339,13 +326,9 @@ class GlobalPowerLimitOptimizer(Callback):
             #     open(self.profile_path).read(),
             #     strict=True,
             # ).measurements
-            self.logger.info(
-                "Loaded previous profiling results from '%s'.", str(self.profile_path)
-            )
+            self.logger.info("Loaded previous profiling results from '%s'.", str(self.profile_path))
             optimal_power_limit = self._compute_optimal_power_limit()
-            self.logger.info(
-                "Optimal power limit is %d W.", optimal_power_limit // 1000
-            )
+            self.logger.info("Optimal power limit is %d W.", optimal_power_limit // 1000)
             self.state = Done(optimal_power_limit=optimal_power_limit)
             self._set_power_limit(self.state.optimal_power_limit)
 
@@ -419,20 +402,14 @@ class GlobalPowerLimitOptimizer(Callback):
                 self.measurements.append(
                     PowerLimitMeasurement(
                         power_limit=self.state.current_power_limit // 1000,
-                        energy=sum(
-                            all_reduce(
-                                list(measurement.gpu_energy.values()), operation="sum"
-                            )
-                        ),
+                        energy=sum(all_reduce(list(measurement.gpu_energy.values()), operation="sum")),
                         time=max(all_reduce([measurement.time], operation="max")),
                     )
                 )
                 # If we're done profiling all power limits, compute the optimal
                 # power limit and transition to the Done state. Otherwise, move
                 # on to the Warmup phase for the next power limit.
-                current_power_limit_index = self.power_limits.index(
-                    self.state.current_power_limit
-                )
+                current_power_limit_index = self.power_limits.index(self.state.current_power_limit)
                 if current_power_limit_index == len(self.power_limits) - 1:
                     self.state = Done(
                         optimal_power_limit=self._compute_optimal_power_limit(),
@@ -482,9 +459,7 @@ class GlobalPowerLimitOptimizer(Callback):
         assert isinstance(self.state, Done)
         with self.profile_path.open("w", encoding="utf-8") as f:
             f.write(
-                _PowerLimitMeasurementList(measurements=self.measurements).json(
-                    indent=4
-                ),
+                _PowerLimitMeasurementList(measurements=self.measurements).json(indent=4),
             )
         self.logger.info("JIT profiling results saved to '%s'.", str(self.profile_path))
 

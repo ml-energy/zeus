@@ -28,9 +28,7 @@ def create_task(
     """
     loop = asyncio.get_running_loop()
     task = loop.create_task(coroutine)
-    task.add_done_callback(
-        functools.partial(_handle_task_exception, logger=logger or default_logger)
-    )
+    task.add_done_callback(functools.partial(_handle_task_exception, logger=logger or default_logger))
     return task
 
 

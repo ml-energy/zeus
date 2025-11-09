@@ -199,12 +199,8 @@ class GaussianTS:
             # Collect rewards starting from the most recent ones and backwards.
             for trial in evidence.explorations_per_bs[bs]:
                 if trial.energy is None or trial.time is None:
-                    raise ZeusBSOValueError(
-                        f"Trial {trial.trial_number} has no energy or time set."
-                    )
-                rewards.append(
-                    -zeus_cost(trial.energy, trial.time, job.eta_knob, job.max_power)
-                )
+                    raise ZeusBSOValueError(f"Trial {trial.trial_number} has no energy or time set.")
+                rewards.append(-zeus_cost(trial.energy, trial.time, job.eta_knob, job.max_power))
 
             new_arms.append(
                 # create an arm
@@ -219,9 +215,7 @@ class GaussianTS:
         # submit new arms to db
         self.service.create_arms(new_arms)
         # update job stage from pruning to mab since we created arms
-        self.service.update_job_stage(
-            UpdateJobStage(job_id=job.job_id, stage=Stage.MAB)
-        )
+        self.service.update_job_stage(UpdateJobStage(job_id=job.job_id, stage=Stage.MAB))
         return new_arms
 
     async def report(self, job: JobState, trial_result: UpdateTrial) -> None:
@@ -235,9 +229,7 @@ class GaussianTS:
             `ZeusBSOValueError`: When the arm (job id, batch_size) doesn't exist
         """
         if trial_result.energy is None or trial_result.time is None:
-            raise ZeusBSOValueError(
-                f"Trial {trial_result.trial_number} has no energy or time set."
-            )
+            raise ZeusBSOValueError(f"Trial {trial_result.trial_number} has no energy or time set.")
 
         # Since we're learning the reward precision, we need to
         # 1. re-compute the precision of this arm based on the reward history,
@@ -245,9 +237,7 @@ class GaussianTS:
         # 3. and `fit` the new MAB instance on all the reward history.
         # Note that `arm_rewards` always has more than one entry (and hence a
         # non-zero variance) because we've been through pruning exploration.
-        batch_size_key = BatchSizeBase(
-            job_id=job.job_id, batch_size=trial_result.batch_size
-        )
+        batch_size_key = BatchSizeBase(job_id=job.job_id, batch_size=trial_result.batch_size)
 
         # Get measurements of this bs in descending order. At most window_size length
         history = await self.service.get_trial_results_of_bs(batch_size_key)
@@ -257,16 +247,9 @@ class GaussianTS:
             history.results.pop()
             history.results.reverse()  # Now ascending order.
 
-        costs = [
-            -zeus_cost(m.energy, m.time, job.eta_knob, job.max_power)
-            for m in history.results
-        ]
+        costs = [-zeus_cost(m.energy, m.time, job.eta_knob, job.max_power) for m in history.results]
         # Add current measurement to the costs
-        costs.append(
-            -zeus_cost(
-                trial_result.energy, trial_result.time, job.eta_knob, job.max_power
-            )
-        )
+        costs.append(-zeus_cost(trial_result.energy, trial_result.time, job.eta_knob, job.max_power))
         arm_rewards = np.array(costs)
 
         logger.info("Arm_rewards: %s", str(arm_rewards))
@@ -275,14 +258,10 @@ class GaussianTS:
         arm = await self.service.get_arm(batch_size_key)
 
         if arm is None:
-            raise ZeusBSOValueError(
-                f"MAB stage but Arm for batch size({trial_result.batch_size}) is not found."
-            )
+            raise ZeusBSOValueError(f"MAB stage but Arm for batch size({trial_result.batch_size}) is not found.")
 
         # Get a new arm state based on observation
-        new_arm = self._fit_arm(
-            batch_size_key, job.mab_prior_mean, job.mab_prior_precision, arm_rewards
-        )
+        new_arm = self._fit_arm(batch_size_key, job.mab_prior_mean, job.mab_prior_precision, arm_rewards)
 
         # update the new arm state in db
         self.service.update_arm_state(

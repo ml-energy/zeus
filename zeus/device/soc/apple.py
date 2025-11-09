@@ -79,9 +79,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
     def __sub__(self, other: AppleSiliconMeasurement) -> AppleSiliconMeasurement:
         """Produce a single measurement object containing differences across all fields."""
         if not isinstance(other, type(self)):
-            raise TypeError(
-                "Subtraction is only supported between AppleSiliconMeasurement instances."
-            )
+            raise TypeError("Subtraction is only supported between AppleSiliconMeasurement instances.")
 
         result = self.__class__()
 
@@ -93,17 +91,13 @@ class AppleSiliconMeasurement(SoCMeasurement):
                 continue
 
             if type(value1) is not type(value2):
-                raise ValueError(
-                    f"Inconsistent field between two AppleSiliconMeasurement objects: {f_name}"
-                )
+                raise ValueError(f"Inconsistent field between two AppleSiliconMeasurement objects: {f_name}")
 
             if isinstance(value1, int):
                 setattr(result, f_name, value1 - value2)
             elif isinstance(value1, list):
                 if len(value1) != len(value2):
-                    raise ValueError(
-                        f"Inconsistent field between two AppleSiliconMeasurement objects: {f_name}"
-                    )
+                    raise ValueError(f"Inconsistent field between two AppleSiliconMeasurement objects: {f_name}")
                 setattr(result, f_name, [x - y for x, y in zip(value1, value2)])
 
         return result
@@ -122,7 +116,8 @@ class AppleSiliconMeasurement(SoCMeasurement):
 
     @classmethod
     def from_metrics(
-        cls, metrics: zeus_apple_silicon.AppleEnergyMetrics  # type: ignore
+        cls,
+        metrics: zeus_apple_silicon.AppleEnergyMetrics,  # type: ignore
     ) -> AppleSiliconMeasurement:
         """Return an AppleSiliconMeasurement object based on an AppleEnergyMetrics object."""
         return cls(
@@ -152,9 +147,7 @@ class AppleSilicon(SoC):
         # This except block exists for failures the AppleEnergyMonitor
         # object may encounter during its own construction.
         except RuntimeError as e:
-            raise ZeusAppleInitError(
-                f"Failed to initialize `AppleEnergyMonitor`: {e}"
-            ) from None
+            raise ZeusAppleInitError(f"Failed to initialize `AppleEnergyMonitor`: {e}") from None
 
     def get_available_metrics(self) -> set[str]:
         """Return a set of all observable metrics on the current processor."""

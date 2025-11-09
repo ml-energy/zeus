@@ -91,9 +91,7 @@ class GTSBatchSizeOptimizer(BatchSizeOptimizer):
             self._log(f"{job} -> \033[31mBS = {pred}\033[0m")
         return pred
 
-    def observe(
-        self, job: Job, batch_size: int, cost: float, converged: bool | None = None
-    ) -> None:
+    def observe(self, job: Job, batch_size: int, cost: float, converged: bool | None = None) -> None:
         """Learn from the cost of using the given batch size for the job."""
         if batch_size not in self.batch_sizes[job]:
             raise ValueError(f"Unknown batch size '{batch_size}' for {job}.")
@@ -130,10 +128,7 @@ class GTSBatchSizeOptimizer(BatchSizeOptimizer):
             self.mabs[job] = mab
             if self.verbose:
                 arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])
-                self._log(
-                    f"{job} @ {batch_size}: "
-                    f"arm_rewards = [{arm_rewards_repr}], reward_prec = {precision}"
-                )
+                self._log(f"{job} @ {batch_size}: arm_rewards = [{arm_rewards_repr}], reward_prec = {precision}")
 
 
 class PruningExploreManager:
@@ -199,9 +194,7 @@ class PruningExploreManager:
                     self.expecting = bs
                     batch_size, cost, reached = yield bs
                     if self.expecting != batch_size:
-                        raise RuntimeError(
-                            f"PruningExplorationManager: {self.expecting=}, {batch_size=}"
-                        )
+                        raise RuntimeError(f"PruningExplorationManager: {self.expecting=}, {batch_size=}")
                     self.expecting = 0
 
                     # An empty `yield` to not proceed to the next batch size when the caller
@@ -236,9 +229,7 @@ class PruningExploreManager:
         assert batch_size is not None, "Call order may have been wrong."
         return batch_size
 
-    def report_batch_size_result(
-        self, batch_size: int, cost: float, reached: bool
-    ) -> None:
+    def report_batch_size_result(self, batch_size: int, cost: float, reached: bool) -> None:
         """Report whether the previous batch size reached the target metric.
 
         Args:
@@ -301,9 +292,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
             raise ValueError(f"Batch size list for {job} is empty.")
 
         # Set internal states.
-        self.exp_manager[job] = PruningExploreManager(
-            sorted(batch_sizes), job.default_bs
-        )
+        self.exp_manager[job] = PruningExploreManager(sorted(batch_sizes), job.default_bs)
         self.history[job] = []
         if self.verbose:
             self._log(f"Registered {job}")
@@ -321,15 +310,11 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
                 self._construct_mab(job, exp.value)
             batch_size = self.mabs[job].predict()
             if self.verbose:
-                self._log(
-                    f"{job} in Thompson Sampling stage -> \033[31mBS = {batch_size}\033[0m"
-                )
+                self._log(f"{job} in Thompson Sampling stage -> \033[31mBS = {batch_size}\033[0m")
 
         return batch_size
 
-    def observe(
-        self, job: Job, batch_size: int, cost: float, converged: bool | None = None
-    ) -> None:
+    def observe(self, job: Job, batch_size: int, cost: float, converged: bool | None = None) -> None:
         """Learn from the cost of using the given batch size for the job."""
         # Add observation to history.
         self.history[job].append((batch_size, -cost))
@@ -349,10 +334,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
             mab.fit_arm(batch_size, arm_rewards, reset=True)
             if self.verbose:
                 arm_rewards_repr = ", ".join([f"{r:.2f}" for r in arm_rewards])
-                self._log(
-                    f"{job} @ {batch_size}: "
-                    f"arm_rewards = [{arm_rewards_repr}], reward_prec = {precision}"
-                )
+                self._log(f"{job} @ {batch_size}: arm_rewards = [{arm_rewards_repr}], reward_prec = {precision}")
 
         # We're in pruning stage.
         else:
@@ -368,9 +350,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
             # exploration manager, and the manager will err if the order of batch sizes
             # is screwed up.
             if not self.concurrency:
-                self.exp_manager[job].report_batch_size_result(
-                    batch_size, cost, converged
-                )
+                self.exp_manager[job].report_batch_size_result(batch_size, cost, converged)
                 return
 
             # If we are supporting concurrency, there's a subtle issue.
@@ -386,9 +366,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
             # Otherwise, we silently insert the cost observation into the bso's history
             # (first line of this method) and don't touch the PruningExplorationManager.
             if self.exp_manager[job].expecting == batch_size:
-                self.exp_manager[job].report_batch_size_result(
-                    batch_size, cost, converged
-                )
+                self.exp_manager[job].report_batch_size_result(batch_size, cost, converged)
 
     def _get_history_for_bs(self, job: Job, batch_size: int) -> list[float]:
         """Return the windowed history for the given job's batch size."""
@@ -407,10 +385,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
         """When exploration is over, this method is called to construct and learn GTS."""
         # Sanity check.
         if not batch_sizes:
-            raise ValueError(
-                "Empty batch size set when constructing MAB. "
-                "Probably all batch sizes have been pruned."
-            )
+            raise ValueError("Empty batch size set when constructing MAB. Probably all batch sizes have been pruned.")
 
         if self.verbose:
             self._log(f"Construct MAB for {job} with arms {batch_sizes}")
@@ -427,9 +402,7 @@ class PruningGTSBatchSizeOptimizer(BatchSizeOptimizer):
         # Fit the arm for each good batch size.
         for batch_size in self.exp_manager[job].batch_sizes:
             arm_rewards = np.array(self._get_history_for_bs(job, batch_size))
-            assert (
-                len(arm_rewards) >= 2
-            ), f"Number of observations for {batch_size} is {len(arm_rewards)}."
+            assert len(arm_rewards) >= 2, f"Number of observations for {batch_size} is {len(arm_rewards)}."
             mab.arm_reward_prec[batch_size] = np.reciprocal(np.var(arm_rewards))
             mab.fit_arm(batch_size, arm_rewards, reset=True)
         # Save the MAB.
@@ -445,9 +418,7 @@ class JITPowerLimitOptimizer(PowerLimitOptimizer):
 
         self.best_pl: defaultdict[Job, dict[int, int]] = defaultdict(dict)
         self.best_cost: defaultdict[Job, dict[int, float]] = defaultdict(dict)
-        self.observe_count: defaultdict[Job, defaultdict[int, int]] = defaultdict(
-            lambda: defaultdict(int)
-        )
+        self.observe_count: defaultdict[Job, defaultdict[int, int]] = defaultdict(lambda: defaultdict(int))
 
     @property
     def name(self) -> str:
@@ -459,8 +430,7 @@ class JITPowerLimitOptimizer(PowerLimitOptimizer):
         pred = self.best_pl[job].get(batch_size)
         if self.verbose:
             self._log(
-                f"{job} @ {batch_size} -> \033[31mPL = "
-                f"{'needs profiling' if pred is None else str(pred) + 'W'}\033[0m"
+                f"{job} @ {batch_size} -> \033[31mPL = {'needs profiling' if pred is None else str(pred) + 'W'}\033[0m"
             )
         return pred
 

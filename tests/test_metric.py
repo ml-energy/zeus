@@ -159,14 +159,10 @@ def test_energy_cumulative_counter(
     mock_queue = MagicMock()
     mock_process = MagicMock()
     mock_mp_context.return_value.Queue.return_value = mock_queue
-    mock_mp_context.return_value.Process.return_value = (
-        mock_process  # Ensure Process returns mock_process
-    )
+    mock_mp_context.return_value.Process.return_value = mock_process  # Ensure Process returns mock_process
 
     # Mock the behavior of subprocess
-    mock_energy_monitoring_loop.return_value = (
-        None  # Simulate the subprocess running without errors
-    )
+    mock_energy_monitoring_loop.return_value = None  # Simulate the subprocess running without errors
 
     # Create the EnergyCumulativeCounter instance
     cumulative_counter = EnergyCumulativeCounter(
@@ -225,9 +221,7 @@ def test_power_gauge(
     mock_mp_context.return_value.Process.return_value = mock_process
 
     # Mock the behavior of subprocess
-    mock_power_monitoring_loop.return_value = (
-        None  # Simulate the subprocess running without errors
-    )
+    mock_power_monitoring_loop.return_value = None  # Simulate the subprocess running without errors
 
     # Create the EnergyCumulativeCounter instance
     power_gauge = PowerGauge(

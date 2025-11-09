@@ -61,9 +61,7 @@ def has_sys_admin() -> bool:
     # Call capget and check for errors
     if capget(ctypes.byref(header), ctypes.byref(data)) != 0:
         errno = ctypes.get_errno()
-        logger.info(
-            "capget failed with error: %s (errno %s)", os.strerror(errno), errno
-        )
+        logger.info("capget failed with error: %s (errno %s)", os.strerror(errno), errno)
         return False
 
     bitmask = data.effective
@@ -102,9 +100,7 @@ def deprecated_alias(old_name: str) -> Callable[[Callable], Callable]:
     return decorator
 
 
-def _make_deprecated_method(
-    new_method: Callable, old_name: str, new_name: str
-) -> Callable:
+def _make_deprecated_method(new_method: Callable, old_name: str, new_name: str) -> Callable:
     """Create a deprecated method wrapper that warns once globally per method.
 
     Args:
@@ -121,8 +117,7 @@ def _make_deprecated_method(
     def deprecated_method(self, *args, **kwargs):
         if not warned[0]:
             warnings.warn(
-                f"'{old_name}' is deprecated and will be removed in a future version. "
-                f"Use '{new_name}' instead.",
+                f"'{old_name}' is deprecated and will be removed in a future version. Use '{new_name}' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )

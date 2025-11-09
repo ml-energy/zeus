@@ -102,9 +102,7 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
             )
             resp = requests.get(url)
         except requests.exceptions.RequestException as e:
-            raise ZeusCarbonIntensityHTTPError(
-                f"Failed to retrieve current carbon intensity measurement: {e}"
-            ) from e
+            raise ZeusCarbonIntensityHTTPError(f"Failed to retrieve current carbon intensity measurement: {e}") from e
 
         try:
             return resp.json()["carbonIntensity"]
@@ -128,9 +126,7 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
             )
             resp = requests.get(url)
         except requests.exceptions.RequestException as e:
-            raise ZeusCarbonIntensityHTTPError(
-                f"Failed to retrieve recent carbon intensity measurement: {e}"
-            ) from e
+            raise ZeusCarbonIntensityHTTPError(f"Failed to retrieve recent carbon intensity measurement: {e}") from e
 
         try:
             recent_carbon_intensities: dict[datetime, float] = {
@@ -290,9 +286,7 @@ class CarbonEmissionMonitor:
         # start subwindows
         self.command_q.put((Op.BEGIN, key))
 
-    def end_window(
-        self, key: str, sync_execution: bool = True
-    ) -> CarbonEmissionMeasurement:
+    def end_window(self, key: str, sync_execution: bool = True) -> CarbonEmissionMeasurement:
         """End a measurement window and return the time, energy consumption, and carbon emission.
 
         Args:
@@ -316,9 +310,7 @@ class CarbonEmissionMonitor:
         ) = self.finished_q.get()
         self.current_keys.remove(key)
 
-        overall_measurement = self.zeus_monitor.end_window(
-            key, sync_execution=sync_execution
-        )
+        overall_measurement = self.zeus_monitor.end_window(key, sync_execution=sync_execution)
 
         measurement = CarbonEmissionMeasurement(
             time=overall_measurement.time,
@@ -366,15 +358,11 @@ def _polling_process(
 
         if measurement.cpu_energy:
             for cpu_index, energy_measurement in measurement.cpu_energy.items():
-                energy_measurements[key][datetime][
-                    f"cpu_{cpu_index}"
-                ] = energy_measurement
+                energy_measurements[key][datetime][f"cpu_{cpu_index}"] = energy_measurement
 
         if measurement.dram_energy:
             for dram_index, energy_measurement in measurement.dram_energy.items():
-                energy_measurements[key][datetime][
-                    f"dram_{dram_index}"
-                ] = energy_measurement
+                energy_measurements[key][datetime][f"dram_{dram_index}"] = energy_measurement
 
     # update cumulative carbon emissions
     def _update_carbon_emissions(key: str):
@@ -385,17 +373,11 @@ def _polling_process(
                 hardware_type, num_index = index.split("_")
 
                 if hardware_type == "gpu":
-                    gpu_carbon_emissions[key][int(num_index)] += (
-                        energy / 3.6e6 * carbon_intensities[dt]
-                    )
+                    gpu_carbon_emissions[key][int(num_index)] += energy / 3.6e6 * carbon_intensities[dt]
                 elif hardware_type == "cpu":
-                    cpu_carbon_emissions[key][int(num_index)] += (
-                        energy / 3.6e6 * carbon_intensities[dt]
-                    )
+                    cpu_carbon_emissions[key][int(num_index)] += energy / 3.6e6 * carbon_intensities[dt]
                 elif hardware_type == "dram":
-                    dram_carbon_emissions[key][int(num_index)] += (
-                        energy / 3.6e6 * carbon_intensities[dt]
-                    )
+                    dram_carbon_emissions[key][int(num_index)] += energy / 3.6e6 * carbon_intensities[dt]
 
         del energy_measurements[key]
 

@@ -138,7 +138,7 @@ class GaussianTS:
             for arm, sample in expectations.items():
                 print(
                     f"[{self.name}] Arm {arm:4d}: mu ~ N({self.arm_param_mean[arm]:.2f}, "
-                    f"{1/self.arm_param_prec[arm]:.2f}) -> {sample:.2f}"
+                    f"{1 / self.arm_param_prec[arm]:.2f}) -> {sample:.2f}"
                 )
         return max(expectations, key=expectations.get)  # type: ignore
 

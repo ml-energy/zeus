@@ -178,9 +178,7 @@ class MockDateTime(datetime):
 
     @classmethod
     def get_previous_hour(cls):
-        return cls.times[
-            cls.i - 1
-        ]  # minus one to handle off by one error: want to get previous hour
+        return cls.times[cls.i - 1]  # minus one to handle off by one error: want to get previous hour
 
 
 @pytest.fixture
@@ -214,14 +212,10 @@ def get_expected_cpu_gpu_energy_costs(
 
     current_dir = os.path.dirname(__file__)
     # CAUTION: change the file name based on what label ID you use
-    with open(
-        os.path.join(current_dir, "price_output_files", "virginia.json"), "r"
-    ) as file1:
+    with open(os.path.join(current_dir, "price_output_files", "virginia.json"), "r") as file1:
         data = json.loads(file1.read())
 
-        def search_json(
-            data: dict[str, str], key_name: str, target_value: str, return_value: str
-        ) -> list[str]:
+        def search_json(data: dict[str, str], key_name: str, target_value: str, return_value: str) -> list[str]:
             """Recursively search for a key in a nested JSON and return the matching values."""
             results = []
 
@@ -229,38 +223,24 @@ def get_expected_cpu_gpu_energy_costs(
                 for key, val in data.items():
                     if key == key_name and val == target_value:
                         results.append(data.get(return_value, None))
-                    results.extend(
-                        search_json(val, key_name, target_value, return_value)
-                    )
+                    results.extend(search_json(val, key_name, target_value, return_value))
 
             elif isinstance(data, list):
                 for item in data:
-                    results.extend(
-                        search_json(item, key_name, target_value, return_value)
-                    )
+                    results.extend(search_json(item, key_name, target_value, return_value))
 
             return results
 
-        energy_rate_structure = search_json(
-            data, "label", label, "energyratestructure"
-        )[0]
-        energy_weekday_schedule = search_json(
-            data, "label", label, "energyweekdayschedule"
-        )[0]
-        energy_weekend_schedule = search_json(
-            data, "label", label, "energyweekendschedule"
-        )[0]
+        energy_rate_structure = search_json(data, "label", label, "energyratestructure")[0]
+        energy_weekday_schedule = search_json(data, "label", label, "energyweekdayschedule")[0]
+        energy_weekend_schedule = search_json(data, "label", label, "energyweekendschedule")[0]
 
         for time_str, time_obj in unique_datetimes.items():
             month = time_obj.month - 1
             hour = time_obj.hour
             day = time_obj.weekday()
 
-            rate_index = (
-                energy_weekend_schedule[month][hour]
-                if day >= 5
-                else energy_weekday_schedule[month][hour]
-            )
+            rate_index = energy_weekend_schedule[month][hour] if day >= 5 else energy_weekday_schedule[month][hour]
 
             rate = energy_rate_structure[rate_index][0]["rate"]
 
@@ -325,9 +305,7 @@ def test_single_window_one_day(mock_zeus_monitor, mock_requests, mock_datetime):
     # times so that exactly 25 iterations inside the polling loop executes
     MockDateTime.times = [
         MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window start
-        MockDateTime(
-            2024, 11, 30, 8, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
@@ -394,9 +372,7 @@ def test_multiple_windows_one_hour(mock_zeus_monitor, mock_requests, mock_dateti
 
     MockDateTime.times = [
         MockDateTime(2024, 12, 1, 4, 30, tzinfo=timezone.utc),  # test_window1 start
-        MockDateTime(
-            2024, 12, 1, 5, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),  # test_window2 start
         MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window1 end
         MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window2 end
@@ -459,13 +435,9 @@ def test_multiple_windows_one_day(mock_zeus_monitor, mock_requests, mock_datetim
 
     MockDateTime.times = [
         MockDateTime(2024, 11, 30, 7, 0, tzinfo=timezone.utc),  # test_window1 start
-        MockDateTime(
-            2024, 11, 30, 8, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 11, 30, 8, 0, tzinfo=timezone.utc),  # test_window2 start
-        MockDateTime(
-            2024, 11, 30, 9, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "start" is called
+        MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),  # extra datetime called after "start" is called
         MockDateTime(2024, 11, 30, 9, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 10, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 11, 30, 11, 0, tzinfo=timezone.utc),
@@ -489,9 +461,7 @@ def test_multiple_windows_one_day(mock_zeus_monitor, mock_requests, mock_datetim
         MockDateTime(2024, 12, 1, 5, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 12, 1, 6, 0, tzinfo=timezone.utc),
         MockDateTime(2024, 12, 1, 7, 0, tzinfo=timezone.utc),  # test_window1 end
-        MockDateTime(
-            2024, 12, 1, 8, 0, tzinfo=timezone.utc
-        ),  # extra datetime called after "end" is called
+        MockDateTime(2024, 12, 1, 8, 0, tzinfo=timezone.utc),  # extra datetime called after "end" is called
         MockDateTime(2024, 12, 1, 8, 0, tzinfo=timezone.utc),  # test_window2 end
     ]
     MockDateTime.i = 0

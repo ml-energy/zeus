@@ -44,9 +44,7 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
 
     @deprecated_alias("setPowerManagementLimit")
     @abc.abstractmethod
-    def set_power_management_limit(
-        self, power_limit_mw: int, block: bool = True
-    ) -> None:
+    def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         pass
 
@@ -70,9 +68,7 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
 
     @deprecated_alias("setMemoryLockedClocks")
     @abc.abstractmethod
-    def set_memory_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
-    ) -> None:
+    def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         pass
 
@@ -84,9 +80,7 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
 
     @deprecated_alias("getSupportedGraphicsClocks")
     @abc.abstractmethod
-    def get_supported_graphics_clocks(
-        self, memory_clock_mhz: int | None = None
-    ) -> list[int]:
+    def get_supported_graphics_clocks(self, memory_clock_mhz: int | None = None) -> list[int]:
         """Return a list of supported graphics clock frequencies. Units: MHz.
 
         Args:
@@ -97,9 +91,7 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
 
     @deprecated_alias("setGpuLockedClocks")
     @abc.abstractmethod
-    def set_gpu_locked_clocks(
-        self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True
-    ) -> None:
+    def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         pass
 
@@ -187,10 +179,7 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     def _warn_sys_admin(self) -> None:
         """Warn the user if the current process doesn't have `SYS_ADMIN` privileges."""
         # Deriving classes can disable this warning by setting this attribute.
-        if (
-            not getattr(self, "_disable_sys_admin_warning", False)
-            and not has_sys_admin()
-        ):
+        if not getattr(self, "_disable_sys_admin_warning", False) and not has_sys_admin():
             warnings.warn(
                 "You are about to call a GPU management API that requires "
                 "`SYS_ADMIN` privileges. Some energy optimizers that change the "
@@ -213,9 +202,7 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         return self.gpus[gpu_index].get_power_management_limit_constraints()
 
     @deprecated_alias("setPowerManagementLimit")
-    def set_power_management_limit(
-        self, gpu_index: int, power_limit_mw: int, block: bool = True
-    ) -> None:
+    def set_power_management_limit(self, gpu_index: int, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
         self._warn_sys_admin()
         self.gpus[gpu_index].set_power_management_limit(power_limit_mw, block)
@@ -227,9 +214,7 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         self.gpus[gpu_index].reset_power_management_limit(block)
 
     @deprecated_alias("setPersistenceMode")
-    def set_persistence_mode(
-        self, gpu_index: int, enabled: bool, block: bool = True
-    ) -> None:
+    def set_persistence_mode(self, gpu_index: int, enabled: bool, block: bool = True) -> None:
         """Set persistence mode for the specified GPU."""
         self._warn_sys_admin()
         self.gpus[gpu_index].set_persistence_mode(enabled, block)
@@ -249,9 +234,7 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         self._warn_sys_admin()
-        self.gpus[gpu_index].set_memory_locked_clocks(
-            min_clock_mhz, max_clock_mhz, block
-        )
+        self.gpus[gpu_index].set_memory_locked_clocks(min_clock_mhz, max_clock_mhz, block)
 
     @deprecated_alias("resetMemoryLockedClocks")
     def reset_memory_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
@@ -260,9 +243,7 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         self.gpus[gpu_index].reset_memory_locked_clocks(block)
 
     @deprecated_alias("getSupportedGraphicsClocks")
-    def get_supported_graphics_clocks(
-        self, gpu_index: int, memory_clock_mhz: int | None = None
-    ) -> list[int]:
+    def get_supported_graphics_clocks(self, gpu_index: int, memory_clock_mhz: int | None = None) -> list[int]:
         """Return a list of supported graphics clock frequencies. Units: MHz.
 
         Args:
@@ -370,9 +351,7 @@ class EmptyGPUs(GPUs):
         raise ValueError("No GPUs available.")
 
     @deprecated_alias("setPowerManagementLimit")
-    def set_power_management_limit(
-        self, gpu_index: int, power_limit_mw: int, block: bool = True
-    ) -> None:
+    def set_power_management_limit(self, gpu_index: int, power_limit_mw: int, block: bool = True) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
@@ -382,9 +361,7 @@ class EmptyGPUs(GPUs):
         raise ValueError("No GPUs available.")
 
     @deprecated_alias("setPersistenceMode")
-    def set_persistence_mode(
-        self, gpu_index: int, enabled: bool, block: bool = True
-    ) -> None:
+    def set_persistence_mode(self, gpu_index: int, enabled: bool, block: bool = True) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 
@@ -410,9 +387,7 @@ class EmptyGPUs(GPUs):
         raise ValueError("No GPUs available.")
 
     @deprecated_alias("getSupportedGraphicsClocks")
-    def get_supported_graphics_clocks(
-        self, gpu_index: int, memory_clock_mhz: int | None = None
-    ) -> list[int]:
+    def get_supported_graphics_clocks(self, gpu_index: int, memory_clock_mhz: int | None = None) -> list[int]:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 

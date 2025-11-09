@@ -211,14 +211,10 @@ class ZeusMonitor:
             self.soc = EmptySoC()
 
         # Resolve GPU indices. If the user did not specify `gpu_indices`, use all available GPUs.
-        self.gpu_indices = (
-            gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
-        )
+        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
 
         # Resolve CPU indices. If the user did not specify `cpu_indices`, use all available CPUs.
-        self.cpu_indices = (
-            cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
-        )
+        self.cpu_indices = cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
 
         logger.info("Monitoring GPU indices %s.", self.gpu_indices)
         logger.info("Monitoring CPU indices %s", self.cpu_indices)
@@ -255,18 +251,14 @@ class ZeusMonitor:
             if not self.gpus.supports_get_total_energy_consumption(gpu_index)
         ]
         if old_gpu_indices:
-            self.power_monitor = PowerMonitor(
-                gpu_indices=old_gpu_indices, update_period=None
-            )
+            self.power_monitor = PowerMonitor(gpu_indices=old_gpu_indices, update_period=None)
         else:
             self.power_monitor = None
 
     def _get_instant_power(self) -> tuple[dict[int, float], float]:
         """Measure the power consumption of all GPUs at the current time."""
         power_measurement_start_time: float = time()
-        power = {
-            i: self.gpus.get_instant_power_usage(i) / 1000.0 for i in self.gpu_indices
-        }
+        power = {i: self.gpus.get_instant_power_usage(i) / 1000.0 for i in self.gpu_indices}
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
@@ -297,9 +289,7 @@ class ZeusMonitor:
             # Otherwise, the Zeus power monitor is running in the background to
             # collect power consumption, so we just need to read the log file later.
             if self.gpus.supports_get_total_energy_consumption(gpu_index):
-                gpu_energy_state[gpu_index] = (
-                    self.gpus.get_total_energy_consumption(gpu_index) / 1000.0
-                )
+                gpu_energy_state[gpu_index] = self.gpus.get_total_energy_consumption(gpu_index) / 1000.0
 
         cpu_energy_state: dict[int, float] = {}
         dram_energy_state: dict[int, float] = {}
@@ -321,9 +311,7 @@ class ZeusMonitor:
         )
         logger.debug("Measurement window '%s' started.", key)
 
-    def end_window(
-        self, key: str, sync_execution: bool = True, cancel: bool = False
-    ) -> Measurement:
+    def end_window(self, key: str, sync_execution: bool = True, cancel: bool = False) -> Measurement:
         """End a measurement window and return the time and energy consumption.
 
         Args:
@@ -355,9 +343,7 @@ class ZeusMonitor:
         # expect that computation time would be short if the user explicitly
         # turned on the `approx_instant_energy` option. Calling this function
         # as early as possible will lead to more accurate energy approximation.
-        power, power_measurement_time = (
-            self._get_instant_power() if self.approx_instant_energy else ({}, 0.0)
-        )
+        power, power_measurement_time = self._get_instant_power() if self.approx_instant_energy else ({}, 0.0)
 
         # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
         if sync_execution and self.gpu_indices:
@@ -390,22 +376,16 @@ class ZeusMonitor:
             # Query energy directly if the GPU has newer architecture.
             if self.gpus.supports_get_total_energy_consumption(gpu_index):
                 end_energy = self.gpus.get_total_energy_consumption(gpu_index) / 1000.0
-                gpu_energy_consumption[gpu_index] = (
-                    end_energy - gpu_start_energy[gpu_index]
-                )
+                gpu_energy_consumption[gpu_index] = end_energy - gpu_start_energy[gpu_index]
 
         cpu_energy_consumption: dict[int, float] = {}
         dram_energy_consumption: dict[int, float] = {}
         for cpu_index in self.cpu_indices:
             cpu_measurement = self.cpus.get_total_energy_consumption(cpu_index) / 1000.0
             if cpu_start_energy is not None:
-                cpu_energy_consumption[cpu_index] = (
-                    cpu_measurement.cpu_mj - cpu_start_energy[cpu_index]
-                )
+                cpu_energy_consumption[cpu_index] = cpu_measurement.cpu_mj - cpu_start_energy[cpu_index]
             if dram_start_energy is not None and cpu_measurement.dram_mj is not None:
-                dram_energy_consumption[cpu_index] = (
-                    cpu_measurement.dram_mj - dram_start_energy[cpu_index]
-                )
+                dram_energy_consumption[cpu_index] = cpu_measurement.dram_mj - dram_start_energy[cpu_index]
 
         # If there are older GPU architectures, the PowerMonitor will take care of those.
         if self.power_monitor is not None:
@@ -415,23 +395,17 @@ class ZeusMonitor:
             if energy is None:
                 energy = {}
                 for gpu_index in self.power_monitor.gpu_indices:
-                    energy[gpu_index] = power[gpu_index] * (
-                        time_consumption - power_measurement_time
-                    )
+                    energy[gpu_index] = power[gpu_index] * (time_consumption - power_measurement_time)
             gpu_energy_consumption |= energy
 
         # Approximate energy consumption if the measurement window is too short.
         if self.approx_instant_energy:
             for gpu_index in self.gpu_indices:
                 if gpu_energy_consumption[gpu_index] == 0.0:
-                    gpu_energy_consumption[gpu_index] = power[gpu_index] * (
-                        time_consumption - power_measurement_time
-                    )
+                    gpu_energy_consumption[gpu_index] = power[gpu_index] * (time_consumption - power_measurement_time)
 
         # Trigger a warning if energy consumption is zero and approx_instant_energy is not enabled.
-        if not self.approx_instant_energy and any(
-            energy == 0.0 for energy in gpu_energy_consumption.values()
-        ):
+        if not self.approx_instant_energy and any(energy == 0.0 for energy in gpu_energy_consumption.values()):
             warnings.warn(
                 "The energy consumption of one or more GPUs was measured as zero. This means that the time duration of the measurement window was shorter than the GPU's energy counter update period. Consider turning on the `approx_instant_energy` option in `ZeusMonitor`, which approximates the energy consumption of a short time window as instant power draw x window duration.",
                 stacklevel=1,

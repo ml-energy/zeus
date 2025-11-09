@@ -101,9 +101,7 @@ class FrequencyScheduler(ABC):
             logger.debug("%s", profiling_results)
 
 
-def make_3d_parallel(
-    sched_cls: Type[FrequencyScheduler], name: str | None = None
-) -> Type[FrequencyScheduler]:
+def make_3d_parallel(sched_cls: Type[FrequencyScheduler], name: str | None = None) -> Type[FrequencyScheduler]:
     """Wrap `sched_cls` so that it is aware of 3D parallelism.
 
     Internally, this function subclasses `sched_cls` and overrides `observe` and
@@ -150,12 +148,8 @@ def make_3d_parallel(
         def observe(self, profiling_results: list[ProfilingResult]) -> None:
             """Aggregate results so that each pipeline stage has one result."""
             # Aggregate results from ranks that share the same pp_rank.
-            rank_to_pp_rank = {
-                rank_info.rank: rank_info.pp_rank for rank_info in self._orig_rank_infos
-            }
-            pp_results: list[list[ProfilingResult]] = [
-                [] for _ in range(self._orig_job_info.pp_degree)
-            ]
+            rank_to_pp_rank = {rank_info.rank: rank_info.pp_rank for rank_info in self._orig_rank_infos}
+            pp_results: list[list[ProfilingResult]] = [[] for _ in range(self._orig_job_info.pp_degree)]
             for result in profiling_results:
                 pp_results[rank_to_pp_rank[result.rank]].append(result)
 
@@ -165,9 +159,7 @@ def make_3d_parallel(
             def agg_list(values: Sequence[list[float]], fun: Callable) -> list[float]:
                 return [fun(vals) for vals in zip(*values)]
 
-            def agg_list_of_list(
-                values: Sequence[list[list[float]]], fun: Callable
-            ) -> list[list[float]]:
+            def agg_list_of_list(values: Sequence[list[list[float]]], fun: Callable) -> list[list[float]]:
                 return [agg_list(vals, fun) for vals in zip(*values)]
 
             agg_results = []
@@ -175,19 +167,13 @@ def make_3d_parallel(
                 agg_result = ProfilingResult(
                     rank=pp_rank,
                     iter_time=agg_list([result.iter_time for result in results], max),
-                    iter_energy=agg_list(
-                        [result.iter_energy for result in results], sum
-                    ),
+                    iter_energy=agg_list([result.iter_energy for result in results], sum),
                     time_breakdown={
-                        key: agg_list_of_list(
-                            [result.time_breakdown[key] for result in results], max
-                        )
+                        key: agg_list_of_list([result.time_breakdown[key] for result in results], max)
                         for key in results[0].time_breakdown
                     },
                     energy_breakdown={
-                        key: agg_list_of_list(
-                            [result.energy_breakdown[key] for result in results], sum
-                        )
+                        key: agg_list_of_list([result.energy_breakdown[key] for result in results], sum)
                         for key in results[0].energy_breakdown
                     },
                 )
@@ -208,9 +194,7 @@ def make_3d_parallel(
             schedules = super().next_schedule()
 
             # Copy and paste the schedule for each stage to all ranks in that stage.
-            rank_to_pp_rank = {
-                rank_info.rank: rank_info.pp_rank for rank_info in self._orig_rank_infos
-            }
+            rank_to_pp_rank = {rank_info.rank: rank_info.pp_rank for rank_info in self._orig_rank_infos}
             next_schedule = []
             for rank in range(self._orig_job_info.world_size):
                 pp_rank = rank_to_pp_rank[rank]
@@ -262,8 +246,7 @@ class PointSolution(FrequencyScheduler):
             schedule: list[list[tuple[str, int]]] = eval(f.read())
             if len(schedule) != self.world_size:
                 raise RuntimeError(
-                    f"Solution file assumes {len(schedule)} ranks, but "
-                    f"the job has {self.world_size} ranks."
+                    f"Solution file assumes {len(schedule)} ranks, but the job has {self.world_size} ranks."
                 )
 
             self.schedule = []

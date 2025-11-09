@@ -90,16 +90,8 @@ class SimulatorWithServer:
             verbose: Whether to log out the internal states of the simulator.
         """
         # Generate relevant data.
-        train_df = (
-            pd.read_csv(summary_train)
-            if isinstance(summary_train, str)
-            else summary_train
-        )
-        power_df = (
-            pd.read_csv(summary_power)
-            if isinstance(summary_power, str)
-            else summary_power
-        )
+        train_df = pd.read_csv(summary_train) if isinstance(summary_train, str) else summary_train
+        power_df = pd.read_csv(summary_power) if isinstance(summary_power, str) else summary_power
         df = train_df.merge(power_df, how="inner")  # type: ignore
         df["TTA"] = df.target_epoch * df.time_per_epoch
         df["ETA"] = df.TTA * df.average_power
@@ -181,7 +173,7 @@ class SimulatorWithServer:
         # Job recurs.
         for i in range(num_recurrence):
             if self.verbose:
-                print(f"\nRecurrence: {i+1}")
+                print(f"\nRecurrence: {i + 1}")
 
             # Run the job until convergence. Upper bound the number of retries to 20.
             # Accumulate the cost of retries before convergence.
@@ -237,23 +229,17 @@ class SimulatorWithServer:
                 if reached:
                     if self.verbose:
                         print()
-                        print(
-                            f"[Simulator] Reached target metric in {tries} {'try' if tries == 1 else 'tries'}."
-                        )
+                        print(f"[Simulator] Reached target metric in {tries} {'try' if tries == 1 else 'tries'}.")
                     if min_cost > cost_acc:
                         if self.verbose:
-                            print(
-                                f"[Simulator] Minimum cost updated from {min_cost:.2f} to {cost_acc:.2f}."
-                            )
+                            print(f"[Simulator] Minimum cost updated from {min_cost:.2f} to {cost_acc:.2f}.")
                         min_cost = cost_acc
                     break
                 # Didn't reach the target metric.
                 # We assume that the default BS (set by the user) will always converge.
                 # That is, reaching the target metric with the model should be a feasible task.
                 if i == 0:
-                    raise RuntimeError(
-                        f"The default batch size {job.default_bs} did not converge."
-                    )
+                    raise RuntimeError(f"The default batch size {job.default_bs} did not converge.")
 
             # Target metric was not reached in 20 tries. We consider this target metric to be unreachable.
             else:
@@ -261,9 +247,7 @@ class SimulatorWithServer:
 
         if self.verbose:
             print()
-            print(
-                f"[Simulator] {job} (BS, PL, ETA, whether_reached, TTA) history: \n{history}"
-            )
+            print(f"[Simulator] {job} (BS, PL, ETA, whether_reached, TTA) history: \n{history}")
 
         return history
 
@@ -334,9 +318,7 @@ class SimulatorWithServer:
             # Stop right before the first epoch when cost will cross the upper bound.
             cost_per_epoch = (
                 eta_knob * path.energy_per_epoch.item()
-                + (1 - eta_knob)
-                * power_df.power_limit.max().item()
-                * path.time_per_epoch.item()
+                + (1 - eta_knob) * power_df.power_limit.max().item() * path.time_per_epoch.item()
             )
             max_epochs = min(cost_ub // cost_per_epoch, job.max_epochs)
             if self.verbose:
@@ -344,9 +326,7 @@ class SimulatorWithServer:
                 print(f"[run job] {cost_per_epoch=}")
                 print(f"[run job] {max_epochs=}")
 
-        def compute_energy_and_time(
-            num_epochs: int, profile_power: bool
-        ) -> tuple[float, float]:
+        def compute_energy_and_time(num_epochs: int, profile_power: bool) -> tuple[float, float]:
             """Compute the energy and time consumed for running the job for num_epochs."""
             # This is the first run of this batch size, and we need to profile power
             # during the first epoch.
@@ -358,9 +338,7 @@ class SimulatorWithServer:
                 # completely duplicated across different runs in the DataFrame.
                 # Thus, taking the mean across the entire power_df gets us what we want.
                 energy_first_epoch = power_df.energy_per_epoch.mean().item()
-                energy_from_second_epoch = path.energy_per_epoch.item() * (
-                    num_epochs - 1
-                )
+                energy_from_second_epoch = path.energy_per_epoch.item() * (num_epochs - 1)
                 energy_consumption = energy_first_epoch + energy_from_second_epoch
                 time_first_epoch = power_df.time_per_epoch.mean().item()
                 time_from_second_epoch = path.time_per_epoch.item() * (num_epochs - 1)
@@ -394,9 +372,7 @@ class SimulatorWithServer:
             return eta, tta, True, max_epochs
 
         # Job failed to reach the target metric.
-        energy_consumption, time_consumption = compute_energy_and_time(
-            max_epochs, profile_power
-        )
+        energy_consumption, time_consumption = compute_energy_and_time(max_epochs, profile_power)
         if self.verbose:
             print(
                 f"[run job] {job} @ {batch_size},{power_limit}W{' prof' if profile_power else ''} "
@@ -410,9 +386,7 @@ class SimulatorWithServer:
             job.max_epochs,
         )  # reached max epoch or the next epoch will reach cost ub. -> server will give another chance if epoch is less than max epoch
 
-    def _profile_power_limit(
-        self, job: Job, batch_size: int, eta_knob: float
-    ) -> dict[int, float]:
+    def _profile_power_limit(self, job: Job, batch_size: int, eta_knob: float) -> dict[int, float]:
         """Simulate running the job and profiling the power limit.
 
         Returns:
@@ -425,9 +399,7 @@ class SimulatorWithServer:
         # Compute the epoch cost of each power limit (Equation 7).
         max_pl = df.power_limit.max().item()
         df = df.groupby(["power_limit"], as_index=False).mean(numeric_only=True)
-        df["epoch_cost"] = (
-            eta_knob * df["average_power"] + (1 - eta_knob) * max_pl
-        ) * df["time_per_epoch"]
+        df["epoch_cost"] = (eta_knob * df["average_power"] + (1 - eta_knob) * max_pl) * df["time_per_epoch"]
 
         # We'll be profiling energy from larger to smaller power limits.
         df = df.sort_values(by="power_limit", ascending=False)
@@ -445,11 +417,7 @@ class SimulatorWithServer:
         df = self.df
         # Do not filter by target_metric here since we do not want to constrain
         # the feasible batch size range to only those that reached the target metric.
-        df = df.loc[
-            (df.dataset == job.dataset)
-            & (df.network == job.network)
-            & (df.optimizer == job.optimizer)
-        ]
+        df = df.loc[(df.dataset == job.dataset) & (df.network == job.network) & (df.optimizer == job.optimizer)]
         result = sorted(list(df.batch_size.unique()))
         if self.verbose:
             print(f"[BS profile] {job} => BS = {result}")
