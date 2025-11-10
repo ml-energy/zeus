@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 
@@ -90,9 +91,21 @@ def show_env():
     except ZeusBaseGPUError as e:
         gpu_availability += f"  Error initializing GPUs: {e}\n"
         gpus = EmptyGPUs()
+
     if len(gpus) > 0:
-        for i in range(len(gpus)):
-            gpu_availability += f"  GPU {i}: {gpus.get_name(i)}\n"
+        # Check for visibility environment variables
+        cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "[NOT SET]")
+        hip_visible_devices = os.environ.get("HIP_VISIBLE_DEVICES", "[NOT SET]")
+        gpu_availability += f"  CUDA_VISIBLE_DEVICES={cuda_visible_devices}\n"
+        gpu_availability += f"  HIP_VISIBLE_DEVICES={hip_visible_devices}\n"
+
+        # Use Zeus's internal state to get the physical GPU indices
+        physical_indices = [gpu.gpu_index for gpu in gpus.gpus]
+
+        # Show device index mapping if env var restricts visibility
+        gpu_availability += "  Device index mapping (Physical (e.g., nvidia-smi) -> Zeus (or any CUDA application)):\n"
+        for zeus_idx, physical_idx in enumerate(physical_indices):
+            gpu_availability += f"    GPU {physical_idx} -> GPU {zeus_idx}: {gpus.get_name(zeus_idx)}\n"
     else:
         gpu_availability += "  No GPUs available.\n"
     print("\nDetected:\n" + gpu_availability)
