@@ -29,7 +29,7 @@ from zeus.device.soc.jetson import Jetson
 # Configure logging for the show_env command
 logging.basicConfig(
     level=logging.INFO,
-    format="  %(message)s",  # Simple format for readability in show_env output
+    format="  [%(asctime)s] [%(name)s:%(lineno)d] %(message)s",
 )
 
 SECTION_SEPARATOR = "-" * shutil.get_terminal_size().columns
