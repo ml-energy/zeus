@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.utils.framework import sync_execution as sync_execution_fn
-from zeus.utils.logging import get_logger
 
 
 class ReplayZeusMonitor(ZeusMonitor):
@@ -65,7 +65,7 @@ class ReplayZeusMonitor(ZeusMonitor):
             gpu_indices = [int(gpu.split("_")[0][3:]) for gpu in header.split(",")[3:] if gpu]
         self.nvml_gpu_indices = self.gpu_indices = gpu_indices
 
-        self.logger = get_logger(type(self).__name__)
+        self.logger = logging.getLogger(type(self).__name__)
         self.logger.info("Replaying from '%s' with GPU indices %s", log_file, gpu_indices)
 
         # Keep track of ongoing measurement windows.

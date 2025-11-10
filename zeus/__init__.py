@@ -11,4 +11,11 @@
 - [`_legacy`][zeus._legacy.policy]: Legacy code mostly to keep our papers reproducible
 """
 
+import logging
+
 __version__ = "0.12.3"
+
+# Add NullHandler to prevent "No handler found" warnings when Zeus is used as a library.
+# Applications using Zeus should configure logging via logging.basicConfig() or by
+# setting up handlers on the root logger.
+logging.getLogger(__name__).addHandler(logging.NullHandler())

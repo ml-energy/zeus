@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
+
 from zeus.optimizer.batch_size.server.database.repository import DatabaseRepository
 from zeus.optimizer.batch_size.server.database.schema import JobTable
 from zeus.optimizer.batch_size.server.exceptions import (
@@ -18,9 +21,8 @@ from zeus.optimizer.batch_size.server.job.commands import (
     UpdateJobStage,
 )
 from zeus.optimizer.batch_size.server.job.models import JobState
-from zeus.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class JobStateRepository(DatabaseRepository):

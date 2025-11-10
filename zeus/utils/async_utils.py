@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import functools
+import logging
 from typing import Any, Coroutine, TypeVar
 
-from zeus.utils.logging import get_logger
-
 T = TypeVar("T")
-default_logger = get_logger(__name__)
+default_logger = logging.getLogger(__name__)
 
 
 def create_task(

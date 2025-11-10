@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import warnings
 from typing import Literal
 from time import time
@@ -11,14 +12,13 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from zeus.monitor.power import PowerMonitor
-from zeus.utils.logging import get_logger
 from zeus.utils.framework import sync_execution as sync_execution_fn
 from zeus.device import get_gpus, get_cpus, get_soc
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
 from zeus.device.cpu.common import ZeusCPUInitError, ZeusCPUNoPermissionError, EmptyCPUs
 from zeus.device.soc.common import ZeusSoCInitError, SoCMeasurement, EmptySoC
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

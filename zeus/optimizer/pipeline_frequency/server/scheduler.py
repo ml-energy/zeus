@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from pathlib import Path
 from contextlib import suppress
 from abc import ABC, abstractmethod
@@ -15,9 +16,8 @@ from zeus.optimizer.pipeline_frequency.common import (
     FrequencySchedule,
     ProfilingResult,
 )
-from zeus.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class FrequencyScheduler(ABC):

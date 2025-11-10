@@ -1,9 +1,12 @@
 """Zeus batch size optimizer client that communicates with server."""
 
 from __future__ import annotations
+
 import atexit
+import logging
 
 import httpx
+
 from zeus.callback import Callback
 from zeus.monitor import ZeusMonitor
 from zeus.optimizer.batch_size.common import (
@@ -25,10 +28,9 @@ from zeus.optimizer.batch_size.exceptions import (
     ZeusBSORuntimError,
     ZeusBSOTrainFailError,
 )
-from zeus.utils.logging import get_logger
 from zeus.device import get_gpus
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class BatchSizeOptimizer(Callback):

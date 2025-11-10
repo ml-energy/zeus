@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import abc
-from dataclasses import dataclass
-from enum import Enum
 import queue
+import logging
 import requests
 import multiprocessing as mp
-
+from dataclasses import dataclass
+from enum import Enum
 from typing import Literal
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
@@ -16,9 +16,8 @@ from collections import defaultdict
 
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
-from zeus.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ZeusCarbonIntensityHTTPError(ZeusBaseError):

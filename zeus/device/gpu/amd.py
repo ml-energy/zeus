@@ -1,9 +1,11 @@
 """AMD GPUs."""
 
 from __future__ import annotations
+
 import functools
 import os
 import contextlib
+import logging
 import time
 from typing import Sequence
 from functools import lru_cache
@@ -30,9 +32,8 @@ except Exception:
     amdsmi = MockAMDSMI()
 
 import zeus.device.gpu.common as gpu_common
-from zeus.utils.logging import get_logger
 
-logger = get_logger(name=__name__)
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)

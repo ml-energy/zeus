@@ -6,6 +6,7 @@ import os
 import warnings
 import functools
 import contextlib
+import logging
 from pathlib import Path
 from typing import Sequence
 from functools import lru_cache
@@ -15,9 +16,8 @@ import pynvml
 
 import zeus.device.gpu.common as gpu_common
 from zeus.device.exception import ZeusdError
-from zeus.utils.logging import get_logger
 
-logger = get_logger(name=__name__)
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)

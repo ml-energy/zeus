@@ -1,10 +1,13 @@
 """Batch size optimizer top-most layer that provides register/report/predict."""
 
 from __future__ import annotations
+
 import hashlib
+import logging
 import time
 
 import numpy as np
+
 from zeus.optimizer.batch_size.common import (
     JobSpecFromClient,
     TrialId,
@@ -28,10 +31,9 @@ from zeus.optimizer.batch_size.server.job.commands import CreateJob
 from zeus.optimizer.batch_size.server.job.models import Stage
 from zeus.optimizer.batch_size.server.mab import GaussianTS
 from zeus.optimizer.batch_size.server.services.service import ZeusService
-from zeus.utils.logging import get_logger
 from zeus.utils.metric import zeus_cost
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ZeusBatchSizeOptimizer:

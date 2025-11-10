@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import types
 from typing import Literal
 from functools import lru_cache
 
-from zeus.utils.logging import get_logger
-
-logger = get_logger(name=__name__)
+logger = logging.getLogger(__name__)
 MODULE_CACHE: dict[str, types.ModuleType] = {}
 
 

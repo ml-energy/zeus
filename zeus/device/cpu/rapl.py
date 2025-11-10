@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import atexit
+import logging
 import multiprocessing as mp
 import os
 import time
@@ -29,9 +30,8 @@ import httpx
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
 from zeus.device.exception import ZeusBaseCPUError, ZeusdError
-from zeus.utils.logging import get_logger
 
-logger = get_logger(name=__name__)
+logger = logging.getLogger(__name__)
 
 RAPL_DIR = "/sys/class/powercap/intel-rapl"
 
@@ -80,7 +80,7 @@ class RaplWraparoundTracker:
             raise ValueError(f"{rapl_file_path} is not a valid file path")
 
         # Set up logging.
-        self.logger = get_logger(type(self).__name__)
+        self.logger = logging.getLogger(type(self).__name__)
 
         self.logger.info("Monitoring wrap around of %s", rapl_file_path)
 
@@ -122,6 +122,11 @@ def _polling_process(rapl_file_path: str, max_energy_uj: float, wraparound_count
             if energy_uj < last_energy_uj:
                 with wraparound_counter.get_lock():
                     wraparound_counter.value += 1
+                    logger.debug(
+                        "RAPL wraparound detected for %s; counter now: %d",
+                        rapl_file_path,
+                        wraparound_counter.value,
+                    )
             last_energy_uj = energy_uj
             time.sleep(sleep_time)
     except KeyboardInterrupt:

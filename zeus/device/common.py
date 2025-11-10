@@ -6,13 +6,12 @@ import abc
 import os
 import ctypes
 import functools
+import logging
 import warnings
 from typing import Callable
 from functools import lru_cache
 
-from zeus.utils.logging import get_logger
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
