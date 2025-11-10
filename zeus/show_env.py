@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import shutil
@@ -25,6 +26,11 @@ from zeus.device.soc.common import ZeusSoCInitError, EmptySoC
 from zeus.device.soc.apple import AppleSilicon
 from zeus.device.soc.jetson import Jetson
 
+# Configure logging for the show_env command
+logging.basicConfig(
+    level=logging.INFO,
+    format="  %(message)s",  # Simple format for readability in show_env output
+)
 
 SECTION_SEPARATOR = "-" * shutil.get_terminal_size().columns
 
@@ -175,7 +181,7 @@ def show_env():
         if platform.system() == "Darwin" and platform.machine() in ["arm64", "aarch64"]:
             soc_availability += (
                 "\nThis appears to be an Apple Silicon device, but it wasn't picked up by Zeus.\n"
-                "Have you installed Zeus with the `apple` extra?\n\n"
+                "Have you installed Zeus with the `apple` extra dependencies?\n"
                 "    pip install 'zeus[apple]'\n"
             )
     print("\nDetected:\n" + soc_availability)
