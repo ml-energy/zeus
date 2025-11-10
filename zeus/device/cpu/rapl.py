@@ -80,9 +80,7 @@ class RaplWraparoundTracker:
             raise ValueError(f"{rapl_file_path} is not a valid file path")
 
         # Set up logging.
-        self.logger = logging.getLogger(type(self).__name__)
-
-        self.logger.info("Monitoring wrap around of %s", rapl_file_path)
+        logger.info("RaplWraparoundTracker is monitoring wrap around of %s", rapl_file_path)
 
         context = mp.get_context("spawn")
         self.wraparound_counter = context.Value("i", 0)
