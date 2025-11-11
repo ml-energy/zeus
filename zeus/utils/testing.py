@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.utils.framework import sync_execution as sync_execution_fn
-from zeus.utils.logging import get_logger
+
+logger = logging.getLogger(__name__)
 
 
 class ReplayZeusMonitor(ZeusMonitor):
@@ -65,8 +67,7 @@ class ReplayZeusMonitor(ZeusMonitor):
             gpu_indices = [int(gpu.split("_")[0][3:]) for gpu in header.split(",")[3:] if gpu]
         self.nvml_gpu_indices = self.gpu_indices = gpu_indices
 
-        self.logger = get_logger(type(self).__name__)
-        self.logger.info("Replaying from '%s' with GPU indices %s", log_file, gpu_indices)
+        logger.info("Replaying from '%s' with GPU indices %s", log_file, gpu_indices)
 
         # Keep track of ongoing measurement windows.
         self.ongoing_windows = []
@@ -89,7 +90,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         if not self.ignore_sync_execution and sync_execution:
             sync_execution_fn(self.gpu_indices)
 
-        self.logger.info("Measurement window '%s' started.", key)
+        logger.info("Measurement window '%s' started.", key)
 
     def end_window(self, key: str, sync_execution: bool = True, cancel: bool = False) -> Measurement:
         """End an ongoing window.
@@ -115,7 +116,7 @@ class ReplayZeusMonitor(ZeusMonitor):
             sync_execution_fn(self.gpu_indices)
 
         if cancel:
-            self.logger.info("Measurement window '%s' cancelled.", key)
+            logger.info("Measurement window '%s' cancelled.", key)
             return Measurement(
                 time=0.0,
                 gpu_energy={gpu_index: 0.0 for gpu_index in self.gpu_indices},
@@ -134,6 +135,6 @@ class ReplayZeusMonitor(ZeusMonitor):
         energy = dict(zip(self.gpu_indices, energy_consumptions))
         measurement = Measurement(time=time_consumption, gpu_energy=energy)
 
-        self.logger.info("Measurement window '%s' ended (%s).", key, measurement)
+        logger.info("Measurement window '%s' ended (%s).", key, measurement)
 
         return measurement

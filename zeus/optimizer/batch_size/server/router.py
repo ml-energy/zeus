@@ -23,7 +23,10 @@ from zeus.optimizer.batch_size.server.database.db_connection import get_db_sessi
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOServerBaseError
 from zeus.optimizer.batch_size.server.optimizer import ZeusBatchSizeOptimizer
 from zeus.optimizer.batch_size.server.services.service import ZeusService
-from zeus.utils.logging import get_logger
+
+# Configure logging for the server application.
+logging.basicConfig(level=logging.getLevelName(settings.log_level))
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -42,10 +45,6 @@ def get_job_locks() -> defaultdict[str, asyncio.Lock]:
 def get_prefix_locks() -> defaultdict[str, asyncio.Lock]:
     """Get global job Id prefix locks."""
     return PREFIX_LOCKS
-
-
-logger = get_logger(__name__)
-logging.basicConfig(level=logging.getLevelName(settings.log_level))
 
 
 @app.post(

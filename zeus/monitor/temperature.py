@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import bisect
 import collections
+import logging
 import multiprocessing as mp
 import weakref
 from time import time, sleep
@@ -12,14 +13,13 @@ from queue import Empty
 from typing import TYPE_CHECKING
 
 from zeus.device.gpu.common import ZeusGPUNotSupportedError
-from zeus.utils.logging import get_logger
 from zeus.device import get_gpus
 
 if TYPE_CHECKING:
     from multiprocessing.synchronize import Event as EventClass
     from multiprocessing.context import SpawnProcess
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _cleanup_temperature_process(

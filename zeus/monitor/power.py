@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import bisect
 import collections
+import logging
 import multiprocessing as mp
 import weakref
 from enum import Enum
@@ -15,14 +16,13 @@ from typing import Literal, TYPE_CHECKING
 from sklearn.metrics import auc
 
 from zeus.device.gpu.common import ZeusGPUNotSupportedError
-from zeus.utils.logging import get_logger
 from zeus.device import get_gpus
 
 if TYPE_CHECKING:
     from multiprocessing.synchronize import Event as EventClass
     from multiprocessing.context import SpawnProcess
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def infer_counter_update_period(gpu_indicies: list[int]) -> float:
@@ -34,8 +34,6 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     period detected. Then, it returns half the period to ensure that the
     counter is polled at least twice per update period.
     """
-    logger = get_logger(__name__)
-
     gpus = get_gpus()
 
     # For each unique GPU model, infer the update period.

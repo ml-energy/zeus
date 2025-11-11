@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     ReadTrial,
     UpdateTrial,
@@ -24,10 +27,9 @@ from zeus.optimizer.batch_size.server.services.commands import (
     UpdateArm,
 )
 from zeus.optimizer.batch_size.server.services.service import ZeusService
-from zeus.utils.logging import get_logger
 from zeus.utils.metric import zeus_cost
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class GaussianTS:

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import shutil
@@ -24,7 +25,6 @@ from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
 from zeus.device.soc.common import ZeusSoCInitError, EmptySoC
 from zeus.device.soc.apple import AppleSilicon
 from zeus.device.soc.jetson import Jetson
-
 
 SECTION_SEPARATOR = "-" * shutil.get_terminal_size().columns
 
@@ -103,9 +103,9 @@ def show_env():
         physical_indices = [gpu.gpu_index for gpu in gpus.gpus]
 
         # Show device index mapping if env var restricts visibility
-        gpu_availability += "  Device index mapping (Physical (e.g., nvidia-smi) -> Zeus (or any CUDA application)):\n"
+        gpu_availability += "  Device index mapping: Physical (e.g., nvidia-smi) -> Zeus (or any CUDA application)\n"
         for zeus_idx, physical_idx in enumerate(physical_indices):
-            gpu_availability += f"    GPU {physical_idx} -> GPU {zeus_idx}: {gpus.get_name(zeus_idx)}\n"
+            gpu_availability += f"    GPU {physical_idx} -> GPU {zeus_idx} ({gpus.get_name(zeus_idx)})\n"
     else:
         gpu_availability += "  No GPUs available.\n"
     print("\nDetected:\n" + gpu_availability)
@@ -175,7 +175,7 @@ def show_env():
         if platform.system() == "Darwin" and platform.machine() in ["arm64", "aarch64"]:
             soc_availability += (
                 "\nThis appears to be an Apple Silicon device, but it wasn't picked up by Zeus.\n"
-                "Have you installed Zeus with the `apple` extra?\n\n"
+                "Have you installed Zeus with the `apple` extra dependencies?\n"
                 "    pip install 'zeus[apple]'\n"
             )
     print("\nDetected:\n" + soc_availability)
@@ -184,4 +184,7 @@ def show_env():
 
 
 if __name__ == "__main__":
+    # For the `python -m zeus.show_env` usage
+    logging.basicConfig(level=logging.INFO, format="  [%(asctime)s] [%(name)s:%(lineno)d] %(message)s")
+
     show_env()

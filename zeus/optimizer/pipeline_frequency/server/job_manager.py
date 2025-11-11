@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import asyncio
+import logging
 import traceback
 
 from fastapi import HTTPException
@@ -18,12 +19,11 @@ from zeus.optimizer.pipeline_frequency.common import (
     save_sched,
     save_ranks,
 )
-from zeus.utils.logging import get_logger
 from zeus.utils.async_utils import create_task
 
 GLOBAL_JOB_MANAGER: JobManager | None = None
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class JobManager:

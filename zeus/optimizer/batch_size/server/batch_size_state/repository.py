@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from sqlalchemy import and_, select, func
 from sqlalchemy.ext.asyncio.session import AsyncSession
+
 from zeus.optimizer.batch_size.server.batch_size_state.commands import (
     CreateTrial,
     ReadTrial,
@@ -27,9 +29,8 @@ from zeus.optimizer.batch_size.server.database.schema import (
     TrialType,
 )
 from zeus.optimizer.batch_size.server.exceptions import ZeusBSOValueError
-from zeus.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class BatchSizeStateRepository(DatabaseRepository):

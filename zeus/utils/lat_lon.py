@@ -4,7 +4,6 @@ import requests
 import logging
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 def get_ip_lat_long() -> tuple[float, float]:

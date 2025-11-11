@@ -64,15 +64,9 @@ def read_trace(
     return train_df, power_df
 
 
-@pytest.fixture(scope="module", autouse=True)
-def logger_setup():
-    logger = logging.getLogger(
-        "zeus.optimizer.batch_size.server.mab"
-    )  # for testing, propagate the log to the root logger so that caplog can capture
-    logger.propagate = True
-
-
 def test_end_to_end(client, caplog, capsys, mocker: MockerFixture):
+    # Configure caplog to capture INFO level logs from Zeus
+    caplog.set_level(logging.INFO, logger="zeus")
     mocker.patch("httpx.post", side_effect=client.post)
     mocker.patch("httpx.get", side_effect=client.get)
     mocker.patch("httpx.patch", side_effect=client.patch)

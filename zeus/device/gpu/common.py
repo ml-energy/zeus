@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import abc
+import logging
 import warnings
 from typing import Sequence
 
 from zeus.device.exception import ZeusBaseGPUError
-from zeus.utils.logging import get_logger
 from zeus.device.common import has_sys_admin, deprecated_alias, DeprecatedAliasABCMeta
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):

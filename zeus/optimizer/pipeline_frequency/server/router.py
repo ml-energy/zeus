@@ -8,7 +8,6 @@ from typing import Callable
 from fastapi import Depends, FastAPI, Response, Request
 from fastapi.routing import APIRoute
 
-from zeus.utils.logging import get_logger
 from zeus.optimizer.pipeline_frequency.common import (
     REGISTER_JOB_URL,
     REGISTER_RANK_URL,
@@ -26,7 +25,12 @@ from zeus.optimizer.pipeline_frequency.server.job_manager import (
     get_global_job_manager,
 )
 
-logger = get_logger(__name__)
+settings = PFOServerSettings()
+
+# Configure logging for the server application.
+logging.basicConfig(level=logging.getLevelName(settings.log_level))
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
 
 
@@ -51,8 +55,6 @@ class LoggingRoute(APIRoute):
         return custom_route_handler
 
 
-settings = PFOServerSettings()
-logging.basicConfig(level=logging.getLevelName(settings.log_level))
 if logging.getLevelName(settings.log_level) <= logging.DEBUG:
     app.router.route_class = LoggingRoute
 
