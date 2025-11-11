@@ -67,7 +67,6 @@ class ReplayZeusMonitor(ZeusMonitor):
             gpu_indices = [int(gpu.split("_")[0][3:]) for gpu in header.split(",")[3:] if gpu]
         self.nvml_gpu_indices = self.gpu_indices = gpu_indices
 
-        logger = logging.getLogger(type(self).__name__)
         logger.info("Replaying from '%s' with GPU indices %s", log_file, gpu_indices)
 
         # Keep track of ongoing measurement windows.
