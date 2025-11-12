@@ -146,9 +146,20 @@ class AMDGPU(gpu_common.GPU):
         return (info["min_power_cap"] * 1000, info["max_power_cap"] * 1000)
 
     @_handle_amdsmi_errors
+    def get_power_management_limit(self) -> int:
+        """Return the current power management limit. Units: mW."""
+        info = amdsmi.amdsmi_get_power_info(self.handle)  # Returns in W
+        return int(info["power_limit"]) * 1000
+
+    @_handle_amdsmi_errors
     def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
-        amdsmi.amdsmi_set_power_cap(self.handle, 0, int(power_limit_mw * 1000))  # Units for set_power_cap: microwatts
+        current_limit = self.get_power_management_limit()
+        if current_limit == power_limit_mw:
+            return
+
+        # Units for set_power_cap is microwatts
+        amdsmi.amdsmi_set_power_cap(self.handle, 0, int(power_limit_mw * 1000))
 
     @_handle_amdsmi_errors
     def reset_power_management_limit(self, block: bool = True) -> None:
