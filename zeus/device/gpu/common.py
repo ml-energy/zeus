@@ -42,6 +42,11 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Return the minimum and maximum power management limits. Units: mW."""
         pass
 
+    @abc.abstractmethod
+    def get_power_management_limit(self) -> int:
+        """Return the current power management limit. Units: mW."""
+        pass
+
     @deprecated_alias("setPowerManagementLimit")
     @abc.abstractmethod
     def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
@@ -201,6 +206,10 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Return the minimum and maximum power management limits. Units: mW."""
         return self.gpus[gpu_index].get_power_management_limit_constraints()
 
+    def get_power_management_limit(self, gpu_index: int) -> int:
+        """Return the current power management limit. Units: mW."""
+        return self.gpus[gpu_index].get_power_management_limit()
+
     @deprecated_alias("setPowerManagementLimit")
     def set_power_management_limit(self, gpu_index: int, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
@@ -347,6 +356,10 @@ class EmptyGPUs(GPUs):
 
     @deprecated_alias("getPowerManagementLimitConstraints")
     def get_power_management_limit_constraints(self, gpu_index: int) -> tuple[int, int]:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def get_power_management_limit(self, gpu_index: int) -> int:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 

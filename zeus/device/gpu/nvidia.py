@@ -134,9 +134,16 @@ class NVIDIAGPU(gpu_common.GPU):
         return (min_, max_)
 
     @_handle_nvml_errors
+    def get_power_management_limit(self) -> int:
+        """Return the current power management limit. Units: mW."""
+        return pynvml.nvmlDeviceGetPowerManagementLimit(self.handle)
+
+    @_handle_nvml_errors
     def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
-        pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, power_limit_mw)
+        current_limit = self.get_power_management_limit()
+        if current_limit != power_limit_mw:
+            pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, power_limit_mw)
 
     @_handle_nvml_errors
     def reset_power_management_limit(self, block: bool = True) -> None:
@@ -299,6 +306,10 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
 
     def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
+        current_limit = self.get_power_management_limit()
+        if current_limit == power_limit_mw:
+            return
+
         resp = self._client.post(
             self._url_prefix + "/set_power_limit",
             json=dict(power_limit_mw=power_limit_mw, block=block),
