@@ -426,11 +426,10 @@ class AMDGPUs(gpu_common.GPUs):
         expected_energies = [power * wait_time for power in powers]  # energy = power * time
 
         for gpu, measured_energy, expected_energy in zip(self._gpus, measured_energies, expected_energies):
-            # Check for zero or very small expected_energy to avoid division by zero
-            if expected_energy < 0.001:
-                # Special handling for MI250/MI250X dual-die GPUs
-                gpu_name = gpu.get_name()
-                if "MI250" in gpu_name and gpu.gpu_index % 2 == 1:
+            # Check for MI250/MI250X dual-die GPUs and warn users about combined power reporting
+            gpu_name = gpu.get_name()
+            if "MI250" in gpu_name:
+                if gpu.gpu_index % 2 == 1 and expected_energy < 0.001:
                     # This is an odd-indexed MI250/MI250X GPU - it's a chiplet without power reporting
                     gpu._isDualDieOddChiplet = True
                     gpu._supportsGetTotalEnergyConsumption = False
@@ -446,7 +445,22 @@ class AMDGPUs(gpu_common.GPUs):
                         gpu.gpu_index - 1,
                         gpu.gpu_index,
                     )
-                else:
+                elif gpu.gpu_index % 2 == 0 and expected_energy >= 0.001:
+                    # This is an even-indexed MI250/MI250X GPU - it reports combined power
+                    logger.warning(
+                        "GPU %d is a dual-die AMD Instinct MI250/MI250X GPU. "
+                        "Power and energy measurements for this GPU represent the COMBINED consumption "
+                        "of BOTH chiplets (GPU %d and GPU %d). Workloads running on either chiplet "
+                        "will be included in these measurements and cannot be separated.",
+                        gpu.gpu_index,
+                        gpu.gpu_index,
+                        gpu.gpu_index + 1,
+                    )
+
+            # Check for zero or very small expected_energy to avoid division by zero
+            if expected_energy < 0.001:
+                # Skip if already handled as MI250 odd chiplet above
+                if not (gpu._isDualDieOddChiplet):
                     # Generic case: GPU reports zero power (idle or unsupported)
                     gpu._supportsGetTotalEnergyConsumption = False
                     logger.info(
