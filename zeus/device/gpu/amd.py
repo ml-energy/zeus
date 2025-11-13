@@ -95,6 +95,8 @@ class AMDGPU(gpu_common.GPU):
         # These values are updated in AMDGPUs constructor
         self._supportsGetTotalEnergyConsumption = True
         self._supportsInstantPowerUsage = True
+        self._supportsAveragePowerUsage = True
+        self._isDualDieOddChiplet = False  # Set for MI250/MI250X odd-indexed GPUs
 
     _exception_map = {
         1: gpu_common.ZeusGPUInvalidArgError,  # amdsmi.amdsmi_wrapper.AMDSMI_STATUS_INVAL
@@ -241,12 +243,50 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def get_average_power_usage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
+        if self._isDualDieOddChiplet:
+            raise gpu_common.ZeusGPUNotSupportedError(
+                f"GPU {self.gpu_index} is a chiplet of a dual-die AMD Instinct MI250/MI250X GPU "
+                f"that does not support individual power monitoring. AMD's driver only reports power "
+                f"for GPU {self.gpu_index - 1}, which represents the COMBINED power draw of BOTH chiplets "
+                f"(GPU {self.gpu_index - 1} and GPU {self.gpu_index}).\n\n"
+                f"To measure power/energy for workloads on this GPU:\n"
+                f"  1. Use GPU {self.gpu_index - 1} for measurements (e.g., PowerMonitor(gpu_indices=[{self.gpu_index - 1}]))\n"
+                f"  2. Be aware that measurements include BOTH chiplets and cannot be separated\n"
+                f"  3. If you run workloads on GPU {self.gpu_index}, its power consumption will be "
+                f"included in GPU {self.gpu_index - 1}'s readings"
+            )
+        if not self._supportsAveragePowerUsage:
+            raise gpu_common.ZeusGPUNotSupportedError(
+                "Average power usage is not supported on this AMD GPU. "
+                "This is because amdsmi.amdsmi_get_power_info does not return a valid 'average_socket_power'. "
+                "Please use `get_instant_power_usage` instead."
+            )
         # returns in W, convert to mW
-        return int(amdsmi.amdsmi_get_power_info(self.handle)["average_socket_power"]) * 1000
+        power_info = amdsmi.amdsmi_get_power_info(self.handle)
+        avg_power = power_info["average_socket_power"]
+        if not isinstance(avg_power, int):
+            raise gpu_common.ZeusGPUNotSupportedError(
+                f"Average power usage is not supported on this AMD GPU. "
+                f"amdsmi.amdsmi_get_power_info returned '{avg_power}' for 'average_socket_power'. "
+                f"Please use `get_instant_power_usage` instead."
+            )
+        return avg_power * 1000
 
     @_handle_amdsmi_errors
     def get_instant_power_usage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
+        if self._isDualDieOddChiplet:
+            raise gpu_common.ZeusGPUNotSupportedError(
+                f"GPU {self.gpu_index} is a chiplet of a dual-die AMD Instinct MI250/MI250X GPU "
+                f"that does not support individual power monitoring. AMD's driver only reports power "
+                f"for GPU {self.gpu_index - 1}, which represents the COMBINED power draw of BOTH chiplets "
+                f"(GPU {self.gpu_index - 1} and GPU {self.gpu_index}).\n\n"
+                f"To measure power/energy for workloads on this GPU:\n"
+                f"  1. Use GPU {self.gpu_index - 1} for measurements (e.g., PowerMonitor(gpu_indices=[{self.gpu_index - 1}]))\n"
+                f"  2. Be aware that measurements include BOTH chiplets and cannot be separated\n"
+                f"  3. If you run workloads on GPU {self.gpu_index}, its power consumption will be "
+                f"included in GPU {self.gpu_index - 1}'s readings"
+            )
         if not self._supportsInstantPowerUsage:
             raise gpu_common.ZeusGPUNotSupportedError(
                 "Instant power usage is not supported on this AMD GPU. "
@@ -358,9 +398,27 @@ class AMDGPUs(gpu_common.GPUs):
                 int,
             )  # amdsmi.amdsmi_get_power_info["current_socket_power"] returns "N/A" if not supported
 
+        # set _supportsAveragePowerUsage for all GPUs
+        for gpu in self._gpus:
+            gpu._supportsAveragePowerUsage = isinstance(
+                amdsmi.amdsmi_get_power_info(gpu.handle)["average_socket_power"],
+                int,
+            )  # amdsmi.amdsmi_get_power_info["average_socket_power"] returns "N/A" if not supported
+
         # set _supportsGetTotalEnergyConsumption for all GPUs
         wait_time = 0.5  # seconds
-        powers = [gpu.get_average_power_usage() for gpu in self._gpus]
+        # Try to get power for energy validation, fallback if needed
+        powers = []
+        for gpu in self._gpus:
+            try:
+                power = gpu.get_average_power_usage()
+            except gpu_common.ZeusGPUNotSupportedError:
+                try:
+                    power = gpu.get_instant_power_usage()
+                except gpu_common.ZeusGPUNotSupportedError:
+                    # Neither average nor instant power available, use 0
+                    power = 0
+            powers.append(power)
         initial_energies = [gpu.get_total_energy_consumption() for gpu in self._gpus]
         time.sleep(wait_time)
         final_energies = [gpu.get_total_energy_consumption() for gpu in self._gpus]
@@ -368,8 +426,39 @@ class AMDGPUs(gpu_common.GPUs):
         expected_energies = [power * wait_time for power in powers]  # energy = power * time
 
         for gpu, measured_energy, expected_energy in zip(self._gpus, measured_energies, expected_energies):
+            # Check for zero or very small expected_energy to avoid division by zero
+            if expected_energy < 0.001:
+                # Special handling for MI250/MI250X dual-die GPUs
+                gpu_name = gpu.get_name()
+                if "MI250" in gpu_name and gpu.gpu_index % 2 == 1:
+                    # This is an odd-indexed MI250/MI250X GPU - it's a chiplet without power reporting
+                    gpu._isDualDieOddChiplet = True
+                    gpu._supportsGetTotalEnergyConsumption = False
+                    gpu._supportsInstantPowerUsage = False
+                    gpu._supportsAveragePowerUsage = False
+                    logger.warning(
+                        "GPU %d is a chiplet of a dual-die AMD Instinct MI250/MI250X GPU. "
+                        "AMD's driver only reports power for GPU %d, which represents the COMBINED "
+                        "power draw of BOTH chiplets (GPU %d and GPU %d). "
+                        "Power and energy measurements are not available for this GPU individually.",
+                        gpu.gpu_index,
+                        gpu.gpu_index - 1,
+                        gpu.gpu_index - 1,
+                        gpu.gpu_index,
+                    )
+                else:
+                    # Generic case: GPU reports zero power (idle or unsupported)
+                    gpu._supportsGetTotalEnergyConsumption = False
+                    logger.info(
+                        "Disabling `get_total_energy_consumption` for device %d. "
+                        "Power reading is zero or negligible (expected energy: %.3f mJ), "
+                        "so energy counter validation cannot be performed. "
+                        "You can still measure energy by polling either `get_instant_power_usage` or `get_average_power_usage` and integrating over time.",
+                        gpu.gpu_index,
+                        expected_energy,
+                    )
             # Loose bound to rule out very obvious counter problems
-            if 0.1 < measured_energy / expected_energy < 10:
+            elif 0.1 < measured_energy / expected_energy < 10:
                 gpu._supportsGetTotalEnergyConsumption = True
             else:
                 gpu._supportsGetTotalEnergyConsumption = False
