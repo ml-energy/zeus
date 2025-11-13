@@ -13,7 +13,7 @@
 
 import logging
 
-__version__ = "0.12.3"
+__version__ = "0.13.0"
 
 # Add NullHandler to prevent "No handler found" warnings when Zeus is used as a library.
 # Applications using Zeus should configure logging via logging.basicConfig() or by
