@@ -11,7 +11,7 @@ from enum import Enum
 from time import time, sleep
 from dataclasses import dataclass
 from queue import Empty
-from typing import Literal, TYPE_CHECKING
+from typing import Literal, Callable, TYPE_CHECKING
 
 from sklearn.metrics import auc
 
@@ -70,7 +70,7 @@ def _infer_counter_update_period_single(gpu_index: int) -> float:
 
     # Determine which power measurement method to use
     # Try instant power first, fall back to average power
-    power_method = None
+    power_method: Callable[[int], int] | None = None
     try:
         # Test if instant power is available
         _ = gpus.get_instant_power_usage(gpu_index)
@@ -91,7 +91,7 @@ def _infer_counter_update_period_single(gpu_index: int) -> float:
                 "Using conservative default update period of 0.1s",
                 gpu_index,
             )
-            return 0.1
+            return 0.2  # Will be halved later to 0.1s
 
     # Collect 1000 samples of the power counter with timestamps.
     time_power_samples: list[tuple[float, int]] = [(0.0, 0) for _ in range(1000)]
@@ -213,7 +213,7 @@ class PowerMonitor:
         elif update_period < 0.05:
             logger.warning(
                 "An update period of %g might be too fast, which may lead to unexpected "
-                "GPU driver errors (e.g., NotSupported) and/or zero values being returned. "
+                "errors (e.g., NotSupported) and/or zero values being returned. "
                 "If you see these, consider increasing to >= 0.05.",
                 update_period,
             )
