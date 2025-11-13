@@ -11,7 +11,7 @@ from enum import Enum
 from time import time, sleep
 from dataclasses import dataclass
 from queue import Empty
-from typing import Literal, TYPE_CHECKING
+from typing import Literal, Callable, TYPE_CHECKING
 
 from sklearn.metrics import auc
 
@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 def infer_counter_update_period(gpu_indicies: list[int]) -> float:
-    """Infer the update period of the NVML power counter.
+    """Infer the update period of the GPU power counter.
 
-    NVML counters can update as slow as 10 Hz depending on the GPU model, so
+    GPU power counters can update as slow as 10 Hz depending on the GPU model, so
     there's no need to poll them too faster than that. This function infers the
     update period for each unique GPU model and selects the fastest-updating
     period detected. Then, it returns half the period to ensure that the
@@ -41,7 +41,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     gpu_models_covered = set()
     for index in gpu_indicies:
         if (model := gpus.get_name(index)) not in gpu_models_covered:
-            logger.info("Detected %s, inferring NVML power counter update period.", model)
+            logger.info("Detected %s, inferring GPU power counter update period.", model)
             gpu_models_covered.add(model)
             detected_period = _infer_counter_update_period_single(index)
             logger.info(
@@ -65,15 +65,40 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
 
 
 def _infer_counter_update_period_single(gpu_index: int) -> float:
-    """Infer the update period of the NVML power counter for a single GPU."""
+    """Infer the update period of the GPU power counter for a single GPU."""
     gpus = get_gpus()
+
+    # Determine which power measurement method to use
+    # Try instant power first, fall back to average power
+    power_method: Callable[[int], int] | None = None
+    try:
+        # Test if instant power is available
+        _ = gpus.get_instant_power_usage(gpu_index)
+        power_method = gpus.get_instant_power_usage
+    except ZeusGPUNotSupportedError:
+        try:
+            # Fall back to average power
+            _ = gpus.get_average_power_usage(gpu_index)
+            power_method = gpus.get_average_power_usage
+            logger.info(
+                "Instant power not available for GPU %d, using average power for counter period inference",
+                gpu_index,
+            )
+        except ZeusGPUNotSupportedError:
+            # Neither method available, return conservative default
+            logger.warning(
+                "Neither instant nor average power available for GPU %d. "
+                "Using conservative default update period of 0.1s",
+                gpu_index,
+            )
+            return 0.2  # Will be halved later to 0.1s
 
     # Collect 1000 samples of the power counter with timestamps.
     time_power_samples: list[tuple[float, int]] = [(0.0, 0) for _ in range(1000)]
     for i in range(len(time_power_samples)):
         time_power_samples[i] = (
             time(),
-            gpus.get_instant_power_usage(gpu_index),
+            power_method(gpu_index),
         )
 
     # Find the timestamps when the power readings changed.
@@ -188,7 +213,7 @@ class PowerMonitor:
         elif update_period < 0.05:
             logger.warning(
                 "An update period of %g might be too fast, which may lead to unexpected "
-                "NVML errors (e.g., NotSupported) and/or zero values being returned. "
+                "errors (e.g., NotSupported) and/or zero values being returned. "
                 "If you see these, consider increasing to >= 0.05.",
                 update_period,
             )
