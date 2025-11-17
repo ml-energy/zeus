@@ -144,14 +144,35 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def get_power_management_limit_constraints(self) -> tuple[int, int]:
         """Return the minimum and maximum power management limits. Units: mW."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
-        return (info["min_power_cap"] * 1000, info["max_power_cap"] * 1000)
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in uW
+        min_power_cap, res = divmod(info["min_power_cap"], 1000)
+        if res != 0:
+            logger.warning(
+                "Minimum power cap for GPU %d is not a multiple of 1000 uW: %d uW",
+                self.gpu_index,
+                info["min_power_cap"],
+            )
+        max_power_cap, res = divmod(info["max_power_cap"], 1000)
+        if res != 0:
+            logger.warning(
+                "Maximum power cap for GPU %d is not a multiple of 1000 uW: %d uW",
+                self.gpu_index,
+                info["max_power_cap"],
+            )
+        return (int(min_power_cap), int(max_power_cap))
 
     @_handle_amdsmi_errors
     def get_power_management_limit(self) -> int:
         """Return the current power management limit. Units: mW."""
-        info = amdsmi.amdsmi_get_power_info(self.handle)  # Returns in W
-        return int(info["power_limit"]) * 1000
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in uW
+        power_cap, res = divmod(info["power_cap"], 1000)
+        if res != 0:
+            logger.warning(
+                "Current power cap for GPU %d is not a multiple of 1000 uW: %d uW",
+                self.gpu_index,
+                info["power_cap"],
+            )
+        return int(power_cap)
 
     @_handle_amdsmi_errors
     def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
@@ -166,10 +187,8 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def reset_power_management_limit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
-        amdsmi.amdsmi_set_power_cap(
-            self.handle, 0, cap=int(info["default_power_cap"] * 1e6)
-        )  # expects value in microwatts
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in uW
+        amdsmi.amdsmi_set_power_cap(self.handle, 0, cap=int(info["default_power_cap"]))  # Expects uW
 
     @_handle_amdsmi_errors
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
