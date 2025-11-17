@@ -144,14 +144,35 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def get_power_management_limit_constraints(self) -> tuple[int, int]:
         """Return the minimum and maximum power management limits. Units: mW."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
-        return (info["min_power_cap"] * 1000, info["max_power_cap"] * 1000)
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in uW
+        min_power_cap, res = divmod(info["min_power_cap"], 1000)
+        if res != 0:
+            logger.warning(
+                "Minimum power cap for GPU %d is not a multiple of 1000 uW: %d uW",
+                self.gpu_index,
+                info["min_power_cap"],
+            )
+        max_power_cap, res = divmod(info["max_power_cap"], 1000)
+        if res != 0:
+            logger.warning(
+                "Maximum power cap for GPU %d is not a multiple of 1000 uW: %d uW",
+                self.gpu_index,
+                info["max_power_cap"],
+            )
+        return (int(min_power_cap), int(max_power_cap))
 
     @_handle_amdsmi_errors
     def get_power_management_limit(self) -> int:
         """Return the current power management limit. Units: mW."""
-        info = amdsmi.amdsmi_get_power_info(self.handle)  # Returns in W
-        return int(info["power_limit"]) * 1000
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in uW
+        power_cap, res = divmod(info["power_cap"], 1000)
+        if res != 0:
+            logger.warning(
+                "Current power cap for GPU %d is not a multiple of 1000 uW: %d uW",
+                self.gpu_index,
+                info["power_cap"],
+            )
+        return int(power_cap)
 
     @_handle_amdsmi_errors
     def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
@@ -160,16 +181,22 @@ class AMDGPU(gpu_common.GPU):
         if current_limit == power_limit_mw:
             return
 
-        # Units for set_power_cap is microwatts
+        self._warn_sys_admin()
+        # Units for set_power_cap is uW
         amdsmi.amdsmi_set_power_cap(self.handle, 0, int(power_limit_mw * 1000))
 
     @_handle_amdsmi_errors
     def reset_power_management_limit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
-        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in W
-        amdsmi.amdsmi_set_power_cap(
-            self.handle, 0, cap=int(info["default_power_cap"] * 1e6)
-        )  # expects value in microwatts
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)  # Returns in uW
+        default_power_cap_uw = int(info["default_power_cap"])
+        current_limit_mw = self.get_power_management_limit()
+        if current_limit_mw * 1000 == default_power_cap_uw:
+            return
+
+        self._warn_sys_admin()
+        # Units for set_power_cap is uW
+        amdsmi.amdsmi_set_power_cap(self.handle, 0, cap=default_power_cap_uw)
 
     @_handle_amdsmi_errors
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
@@ -185,6 +212,7 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             min_clock_mhz,
@@ -198,6 +226,7 @@ class AMDGPU(gpu_common.GPU):
         # Get default MEM clock values
         info = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.MEM)  # returns MHz
 
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             info["min_clk"],
@@ -220,6 +249,7 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             min_clock_mhz,
@@ -233,6 +263,7 @@ class AMDGPU(gpu_common.GPU):
         # Get default GPU clock values
         info = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.GFX)  # returns MHz
 
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             info["min_clk"],
@@ -326,11 +357,13 @@ class AMDGPU(gpu_common.GPU):
         We use the hotspot temperatue (as opposed to edge) as we believe it to be more representative
         of the GPU core's temperature under load.
         """
-        return amdsmi.amdsmi_get_temp_metric(
+        # amdsmi_get_temp_metric returns millidegrees Celsius, convert to Celsius
+        temp_millidegrees = amdsmi.amdsmi_get_temp_metric(
             self.handle,
             amdsmi.AmdSmiTemperatureType.HOTSPOT,
             amdsmi.AmdSmiTemperatureMetric.CURRENT,
         )
+        return temp_millidegrees // 1000
 
 
 class AMDGPUs(gpu_common.GPUs):

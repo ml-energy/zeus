@@ -24,6 +24,21 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Initializ the GPU with a specified index."""
         self.gpu_index = gpu_index
 
+    def _warn_sys_admin(self) -> None:
+        """Warn the user if the current process doesn't have `SYS_ADMIN` privileges."""
+        # Deriving classes can disable this warning by setting this attribute.
+        if not getattr(self, "_disable_sys_admin_warning", False) and not has_sys_admin():
+            warnings.warn(
+                "You are about to call a GPU management API that requires "
+                "`SYS_ADMIN` privileges. Some energy optimizers that change the "
+                "GPU's power settings need this.\nSee "
+                "https://ml.energy/zeus/getting_started/#system-privileges "
+                "for more information and how to obtain `SYS_ADMIN`.",
+                stacklevel=2,
+            )
+            # Only warn once.
+            self._disable_sys_admin_warning = True
+
     @property
     @abc.abstractmethod
     def supports_nonblocking_setters(self) -> bool:
@@ -213,19 +228,16 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     @deprecated_alias("setPowerManagementLimit")
     def set_power_management_limit(self, gpu_index: int, power_limit_mw: int, block: bool = True) -> None:
         """Set the GPU's power management limit. Unit: mW."""
-        self._warn_sys_admin()
         self.gpus[gpu_index].set_power_management_limit(power_limit_mw, block)
 
     @deprecated_alias("resetPowerManagementLimit")
     def reset_power_management_limit(self, gpu_index: int, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
-        self._warn_sys_admin()
         self.gpus[gpu_index].reset_power_management_limit(block)
 
     @deprecated_alias("setPersistenceMode")
     def set_persistence_mode(self, gpu_index: int, enabled: bool, block: bool = True) -> None:
         """Set persistence mode for the specified GPU."""
-        self._warn_sys_admin()
         self.gpus[gpu_index].set_persistence_mode(enabled, block)
 
     @deprecated_alias("getSupportedMemoryClocks")
@@ -242,13 +254,11 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         block: bool = True,
     ) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
-        self._warn_sys_admin()
         self.gpus[gpu_index].set_memory_locked_clocks(min_clock_mhz, max_clock_mhz, block)
 
     @deprecated_alias("resetMemoryLockedClocks")
     def reset_memory_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
-        self._warn_sys_admin()
         self.gpus[gpu_index].reset_memory_locked_clocks(block)
 
     @deprecated_alias("getSupportedGraphicsClocks")
@@ -271,13 +281,11 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         block: bool = True,
     ) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
-        self._warn_sys_admin()
         self.gpus[gpu_index].set_gpu_locked_clocks(min_clock_mhz, max_clock_mhz, block)
 
     @deprecated_alias("resetGpuLockedClocks")
     def reset_gpu_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
-        self._warn_sys_admin()
         self.gpus[gpu_index].reset_gpu_locked_clocks(block)
 
     @deprecated_alias("getAveragePowerUsage")

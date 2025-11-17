@@ -143,23 +143,26 @@ class NVIDIAGPU(gpu_common.GPU):
         """Set the GPU's power management limit. Unit: mW."""
         current_limit = self.get_power_management_limit()
         if current_limit != power_limit_mw:
+            self._warn_sys_admin()
             pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, power_limit_mw)
 
     @_handle_nvml_errors
     def reset_power_management_limit(self, block: bool = True) -> None:
         """Reset the GPU's power management limit to the default value."""
-        pynvml.nvmlDeviceSetPowerManagementLimit(
-            self.handle,
-            pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle),
-        )
+        default_limit = pynvml.nvmlDeviceGetPowerManagementDefaultLimit(self.handle)
+        current_limit = self.get_power_management_limit()
+        if current_limit != default_limit:
+            self._warn_sys_admin()
+            pynvml.nvmlDeviceSetPowerManagementLimit(self.handle, default_limit)
 
     @_handle_nvml_errors
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
-        if enabled:
-            pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_ENABLED)
-        else:
-            pynvml.nvmlDeviceSetPersistenceMode(self.handle, pynvml.NVML_FEATURE_DISABLED)
+        current_mode = pynvml.nvmlDeviceGetPersistenceMode(self.handle)
+        desired_mode = pynvml.NVML_FEATURE_ENABLED if enabled else pynvml.NVML_FEATURE_DISABLED
+        if current_mode != desired_mode:
+            self._warn_sys_admin()
+            pynvml.nvmlDeviceSetPersistenceMode(self.handle, desired_mode)
 
     @_handle_nvml_errors
     def get_supported_memory_clocks(self) -> list[int]:
@@ -169,11 +172,13 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
         pynvml.nvmlDeviceSetMemoryLockedClocks(self.handle, min_clock_mhz, max_clock_mhz)
 
     @_handle_nvml_errors
     def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
+        self._warn_sys_admin()
         pynvml.nvmlDeviceResetMemoryLockedClocks(self.handle)
 
     @_handle_nvml_errors
@@ -190,11 +195,13 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
         pynvml.nvmlDeviceSetGpuLockedClocks(self.handle, min_clock_mhz, max_clock_mhz)
 
     @_handle_nvml_errors
     def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
+        self._warn_sys_admin()
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
 
     @_handle_nvml_errors
@@ -438,8 +445,9 @@ class NVIDIAGPUs(gpu_common.GPUs):
             if not os.access(sock_path, os.W_OK):
                 raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
             self._gpus = [ZeusdNVIDIAGPU(gpu_num, sock_path) for gpu_num in visible_indices]
-            # Disable the warning about SYS_ADMIN capabilities
-            self._disable_sys_admin_warning = True
+            # Disable the warning about SYS_ADMIN capabilities for each GPU
+            for gpu in self._gpus:
+                gpu._disable_sys_admin_warning = True
 
         # Otherwise just use NVIDIAGPU
         else:
