@@ -181,6 +181,7 @@ class AMDGPU(gpu_common.GPU):
         if current_limit == power_limit_mw:
             return
 
+        self._warn_sys_admin()
         # Units for set_power_cap is uW
         amdsmi.amdsmi_set_power_cap(self.handle, 0, int(power_limit_mw * 1000))
 
@@ -193,6 +194,7 @@ class AMDGPU(gpu_common.GPU):
         if current_limit_mw * 1000 == default_power_cap_uw:
             return
 
+        self._warn_sys_admin()
         # Units for set_power_cap is uW
         amdsmi.amdsmi_set_power_cap(self.handle, 0, cap=default_power_cap_uw)
 
@@ -210,6 +212,7 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             min_clock_mhz,
@@ -223,6 +226,7 @@ class AMDGPU(gpu_common.GPU):
         # Get default MEM clock values
         info = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.MEM)  # returns MHz
 
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             info["min_clk"],
@@ -245,6 +249,7 @@ class AMDGPU(gpu_common.GPU):
     @_handle_amdsmi_errors
     def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             min_clock_mhz,
@@ -258,6 +263,7 @@ class AMDGPU(gpu_common.GPU):
         # Get default GPU clock values
         info = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.GFX)  # returns MHz
 
+        self._warn_sys_admin()
         amdsmi.amdsmi_set_gpu_clk_range(
             self.handle,
             info["min_clk"],
@@ -351,11 +357,13 @@ class AMDGPU(gpu_common.GPU):
         We use the hotspot temperatue (as opposed to edge) as we believe it to be more representative
         of the GPU core's temperature under load.
         """
-        return amdsmi.amdsmi_get_temp_metric(
+        # amdsmi_get_temp_metric returns millidegrees Celsius, convert to Celsius
+        temp_millidegrees = amdsmi.amdsmi_get_temp_metric(
             self.handle,
             amdsmi.AmdSmiTemperatureType.HOTSPOT,
             amdsmi.AmdSmiTemperatureMetric.CURRENT,
         )
+        return temp_millidegrees // 1000
 
 
 class AMDGPUs(gpu_common.GPUs):
