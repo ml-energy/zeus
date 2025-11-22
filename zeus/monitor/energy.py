@@ -114,13 +114,15 @@ class ZeusMonitor:
     ## Integration Example
 
     ```python
-    import time
     from zeus.monitor import ZeusMonitor
 
     def training():
-        # A dummy training function
+        \"\"\"A dummy training function.\"\"\"
+        import time
         time.sleep(5)
 
+    # Make sure to protect the entry point of the program to avoid monitoring
+    # subprocesses from re-executing the main module.
     if __name__ == "__main__":
         # Time/Energy measurements for four GPUs will begin and end at the same time.
         gpu_indices = [0, 1, 2, 3]

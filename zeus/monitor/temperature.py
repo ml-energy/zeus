@@ -54,6 +54,7 @@ class TemperatureMonitor:
     """Monitor GPU temperature over time.
 
     This class provides:
+
     1. Continuous temperature monitoring in a background process
     2. Timeline export with deduplication
     3. Point-in-time temperature queries

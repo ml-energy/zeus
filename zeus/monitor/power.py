@@ -163,6 +163,7 @@ class PowerMonitor:
     """Enhanced PowerMonitor with multiple power domains and timeline export.
 
     This class provides:
+
     1. Multiple power domains: device instant, device average, and memory average
     2. Timeline export with independent deduplication per domain
     3. Separate processes for each power domain (2-3 processes depending on GPU support)
