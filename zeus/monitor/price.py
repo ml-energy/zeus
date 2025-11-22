@@ -202,6 +202,13 @@ class EnergyCostMonitor:
     You can mark the beginning and end of a measurement window, during which the energy cost,
     GPU energy, and time consumed will be recorded. Multiple concurrent measurement windows
     are supported.
+
+    !!! Warning
+        This monitor uses multiprocessing with the spawn start method to measure energy and electricity cost
+        in a background process. Spawned processes re-import your main module, so keep
+        heavy setup under `if __name__ == "__main__":` or inside functions.
+        See also the "Safe importing of main module" section in the [Python documentation](
+        https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods).
     """
 
     def __init__(

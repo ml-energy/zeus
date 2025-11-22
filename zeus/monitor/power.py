@@ -163,6 +163,7 @@ class PowerMonitor:
     """Enhanced PowerMonitor with multiple power domains and timeline export.
 
     This class provides:
+
     1. Multiple power domains: device instant, device average, and memory average
     2. Timeline export with independent deduplication per domain
     3. Separate processes for each power domain (2-3 processes depending on GPU support)
@@ -173,10 +174,12 @@ class PowerMonitor:
         (i.e., the same model).
 
     !!! Warning
-        Since the monitor spawns child processes, **it should not be instantiated as a global variable**.
-        Refer to the "Safe importing of main module" section in the
-        [Python documentation](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods)
-        for more details.
+        This monitor uses multiprocessing with the spawn start method to poll power in
+        background processes. Spawned processes re-import your main module, so keep heavy
+        initialization (for example, model loading) under `if __name__ == "__main__":` or
+        inside functions.
+        See also the "Safe importing of main module" section in the [Python documentation](
+        https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods).
     """
 
     def __init__(

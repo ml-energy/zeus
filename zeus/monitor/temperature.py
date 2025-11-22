@@ -54,6 +54,7 @@ class TemperatureMonitor:
     """Monitor GPU temperature over time.
 
     This class provides:
+
     1. Continuous temperature monitoring in a background process
     2. Timeline export with deduplication
     3. Point-in-time temperature queries
@@ -63,10 +64,11 @@ class TemperatureMonitor:
         (i.e., the same model).
 
     !!! Warning
-        Since the monitor spawns child processes, **it should not be instantiated as a global variable**.
-        Refer to the "Safe importing of main module" section in the
-        [Python documentation](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods)
-        for more details.
+        This monitor uses multiprocessing with the spawn start method to poll temperature
+        in a background process. Spawned processes re-import your main module, so keep
+        heavy setup under `if __name__ == "__main__":` or inside functions.
+        See also the "Safe importing of main module" section in the [Python documentation](
+        https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods).
     """
 
     def __init__(

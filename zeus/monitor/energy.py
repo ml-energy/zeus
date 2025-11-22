@@ -104,23 +104,25 @@ class ZeusMonitor:
     to get power samples over time, which are integrated to compute energy consumption.
 
     !!! Warning
-        Since the monitor may spawn a process to poll the power API on GPUs older than
-        Volta, **the monitor should not be instantiated as a global variable
-        without guarding it with `if __name__ == "__main__"`**.
-        Refer to the "Safe importing of main module" section in the
-        [Python documentation](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods)
-        for more details.
+        This monitor may start helper processes for power polling on some hardware using
+        the spawn start method. Spawned processes re-import your main module, so keep heavy
+        initialization (for example, model loading) under `if __name__ == "__main__":` or
+        inside functions.
+        See also the "Safe importing of main module" section in the [Python documentation](
+        https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods).
 
     ## Integration Example
 
     ```python
-    import time
     from zeus.monitor import ZeusMonitor
 
     def training():
-        # A dummy training function
+        \"\"\"A dummy training function.\"\"\"
+        import time
         time.sleep(5)
 
+    # Make sure to protect the entry point of the program to avoid monitoring
+    # subprocesses from re-executing the main module.
     if __name__ == "__main__":
         # Time/Energy measurements for four GPUs will begin and end at the same time.
         gpu_indices = [0, 1, 2, 3]
