@@ -211,6 +211,13 @@ class CarbonEmissionMonitor:
         `carbon_intensity_provider` must have `estimate` turned on because during some hours,
         ElectricityMaps does not have carbon intensity values available and has to rely on
         estimation.
+
+    !!! Warning
+        This monitor uses multiprocessing with the spawn start method to poll temperature
+        in a background process. Spawned processes re-import your main module, so keep
+        heavy setup under `if __name__ == "__main__":` or inside functions.
+        See also the "Safe importing of main module" section in the [Python documentation](
+        https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods).
     """
 
     def __init__(

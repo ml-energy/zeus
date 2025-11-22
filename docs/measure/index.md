@@ -373,3 +373,13 @@ Total time (s): 4.421529293060303
 Total energy (J):
 {'GPU0': 198.52566362297537, 'GPU1': 206.22215216255188, 'GPU2': 201.08565518283845, 'GPU3': 201.79834523367884}
 ```
+
+## Troubleshooting
+
+### Repeated execution of the main script module after using Zeus monitors
+
+Zeus monitors (e.g., [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor], [`PowerMonitor`][zeus.monitor.power.PowerMonitor], [`TemperatureMonitor`][zeus.monitor.temperature.TemperatureMonitor]) use the `spawn` start method for helper processes. Each spawned subprocess re-imports your `__main__` module (as `__mp_main__`), so any work done at import time, such as loading a model or instantiating a monitor, runs again in every process and can exhaust GPU/CPU memory. Keep heavy initialization under `if __name__ == "__main__":` or inside functions, so subprocess imports stay lightweight.
+
+### CPU energy measurement missing or permission denied (Intel RAPL)
+
+Reading CPU/DRAM energy via Intel RAPL requires root because of kernel restrictions. If you cannot run as root, disable CPU measurement with `cpu_indices=[]` or follow the steps in [System privileges](../getting_started/index.md#system-privileges) to grant access.

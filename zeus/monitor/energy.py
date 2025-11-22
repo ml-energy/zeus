@@ -104,12 +104,12 @@ class ZeusMonitor:
     to get power samples over time, which are integrated to compute energy consumption.
 
     !!! Warning
-        Since the monitor may spawn a process to poll the power API on GPUs older than
-        Volta, **the monitor should not be instantiated as a global variable
-        without guarding it with `if __name__ == "__main__"`**.
-        Refer to the "Safe importing of main module" section in the
-        [Python documentation](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods)
-        for more details.
+        This monitor may start helper processes for power polling on some hardware using
+        the spawn start method. Spawned processes re-import your main module, so keep heavy
+        initialization (for example, model loading) under `if __name__ == "__main__":` or
+        inside functions.
+        See also the "Safe importing of main module" section in the [Python documentation](
+        https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods).
 
     ## Integration Example
 
