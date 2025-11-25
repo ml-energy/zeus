@@ -187,6 +187,7 @@ class PowerMonitor:
         gpu_indices: list[int] | None = None,
         update_period: float | None = None,
         max_samples_per_gpu: int | None = None,
+        power_domains: list[PowerDomain | Literal["device_instant", "device_average", "memory_average"]] | None = None,
     ) -> None:
         """Initialize the enhanced power monitor.
 
@@ -197,6 +198,7 @@ class PowerMonitor:
                 each GPU model.
             max_samples_per_gpu: Maximum number of power samples to keep per GPU per domain
                 in memory. If None (default), unlimited samples are kept.
+            power_domains: Power domains to monitor. If None, monitor all supported domains.
         """
         if gpu_indices is not None and not gpu_indices:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
@@ -229,19 +231,30 @@ class PowerMonitor:
         self.processes: dict[PowerDomain, SpawnProcess] = {}
 
         # Determine which domains are supported
-        self.supported_domains = self._determine_supported_domains()
-        logger.info("Supported power domains: %s", [d.value for d in self.supported_domains])
+        supported_domains = self._determine_supported_domains()
+        logger.info("Supported power domains: %s", [d.value for d in supported_domains])
+
+        # Configure requested power domains
+        self.measurement_domains: list[PowerDomain] = []
+        for requested_domain in power_domains or list(PowerDomain):
+            domain = PowerDomain(requested_domain)
+            if domain not in supported_domains:
+                raise ValueError(
+                    f"Request power domain {domain.value} is not supported by the current GPUs. "
+                    f"Supported domains are: {[d.value for d in supported_domains]}",
+                )
+            self.measurement_domains.append(domain)
 
         # Power samples are collected for each power domain and device index.
         self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
-        for domain in self.supported_domains:
+        for domain in self.measurement_domains:
             self.samples[domain] = {}
             for gpu_idx in self.gpu_indices:
                 self.samples[domain][gpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
 
         # Spawn collector processes for each supported domain
         ctx = mp.get_context("spawn")
-        for domain in self.supported_domains:
+        for domain in self.measurement_domains:
             self.data_queues[domain] = ctx.Queue()
             self.ready_events[domain] = ctx.Event()
             self.stop_events[domain] = ctx.Event()
@@ -266,12 +279,13 @@ class PowerMonitor:
 
         # Wait for all subprocesses to signal they're ready
         logger.info("Waiting for all power monitoring subprocesses to be ready...")
-        for domain in self.supported_domains:
+        for domain in self.measurement_domains:
             if not self.ready_events[domain].wait(timeout=10.0):
                 logger.warning(
-                    "Power monitor subprocess for %s did not signal ready within timeout",
+                    "Power monitor subprocess for %s did not signal ready within 10 seconds",
                     domain.value,
                 )
+                raise RuntimeError(f"Power monitor subprocess for {domain.value} failed to start")
         logger.info("All power monitoring subprocesses are ready")
 
     def _determine_supported_domains(self) -> list[PowerDomain]:
@@ -324,7 +338,7 @@ class PowerMonitor:
 
     def _process_all_queue_data(self) -> None:
         """Process all pending samples from all domain queues."""
-        for domain in self.supported_domains:
+        for domain in self.measurement_domains:
             self._process_queue_data(domain)
 
     def get_power_timeline(
@@ -349,7 +363,7 @@ class PowerMonitor:
         if isinstance(power_domain, str):
             power_domain = PowerDomain(power_domain)
 
-        if power_domain not in self.supported_domains:
+        if power_domain not in self.measurement_domains:
             raise ValueError(f"Power domain {power_domain.value} is not supported by the current GPUs.")
 
         # Process any pending queue data for this domain
@@ -398,7 +412,7 @@ class PowerMonitor:
             mapping GPU indices to timeline data.
         """
         result = {}
-        for domain in self.supported_domains:
+        for domain in self.measurement_domains:
             result[domain.value] = self.get_power_timeline(domain, gpu_index, start_time, end_time)
         return result
 
@@ -449,7 +463,7 @@ class PowerMonitor:
             A dictionary mapping GPU indices to the power usage of the GPU at the
             specified time point. If there are no power readings, return None.
         """
-        if PowerDomain.DEVICE_INSTANT not in self.supported_domains:
+        if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
             raise ValueError("PowerDomain.DEVICE_INSTANT is not supported by the current GPUs.")
 
         # Process any pending queue data
