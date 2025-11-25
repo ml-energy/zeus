@@ -251,6 +251,11 @@ class PowerMonitor:
                     )
                 self.measurement_domains.append(domain)
 
+        if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
+            logger.warning(
+                "PowerDomain.DEVICE_INSTANT is not being monitored. The `get_power` method will not be available.",
+            )
+
         # Power samples are collected for each power domain and device index.
         self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
         for domain in self.measurement_domains:
@@ -372,7 +377,10 @@ class PowerMonitor:
             power_domain = PowerDomain(power_domain)
 
         if power_domain not in self.measurement_domains:
-            raise ValueError(f"Power domain {power_domain.value} is not supported by the current GPUs.")
+            raise ValueError(
+                f"Power domain {power_domain.value} is not being monitored. "
+                f"Monitored domains: {[d.value for d in self.measurement_domains]}",
+            )
 
         # Process any pending queue data for this domain
         self._process_queue_data(power_domain)
@@ -437,7 +445,17 @@ class PowerMonitor:
             A dictionary mapping GPU indices to the energy used by the GPU between the
             two times. If there are no power readings, return None.
         """
-        timelines = self.get_power_timeline(PowerDomain.DEVICE_INSTANT, start_time=start_time, end_time=end_time)
+        if PowerDomain.DEVICE_INSTANT in self.measurement_domains:
+            domain = PowerDomain.DEVICE_INSTANT
+        elif PowerDomain.DEVICE_AVERAGE in self.measurement_domains:
+            domain = PowerDomain.DEVICE_AVERAGE
+        else:
+            raise ValueError(
+                "Neither PowerDomain.DEVICE_INSTANT nor PowerDomain.DEVICE_AVERAGE is being monitored. "
+                "Cannot compute energy usage.",
+            )
+
+        timelines = self.get_power_timeline(domain, start_time=start_time, end_time=end_time)
 
         if not timelines:
             return None
@@ -472,7 +490,9 @@ class PowerMonitor:
             specified time point. If there are no power readings, return None.
         """
         if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
-            raise ValueError("PowerDomain.DEVICE_INSTANT is not supported by the current GPUs.")
+            raise ValueError(
+                f"PowerDomain.DEVICE_INSTANT is not being monitored. Currently monitored domains: {[d.value for d in self.measurement_domains]}",
+            )
 
         # Process any pending queue data
         self._process_all_queue_data()
