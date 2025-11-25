@@ -236,14 +236,17 @@ class PowerMonitor:
 
         # Configure requested power domains
         self.measurement_domains: list[PowerDomain] = []
-        for requested_domain in power_domains or list(PowerDomain):
-            domain = PowerDomain(requested_domain)
-            if domain not in supported_domains:
-                raise ValueError(
-                    f"Request power domain {domain.value} is not supported by the current GPUs. "
-                    f"Supported domains are: {[d.value for d in supported_domains]}",
-                )
-            self.measurement_domains.append(domain)
+        if power_domains is None:
+            self.measurement_domains = supported_domains
+        else:
+            for requested_domain in power_domains or list(PowerDomain):
+                domain = PowerDomain(requested_domain)
+                if domain not in supported_domains:
+                    raise ValueError(
+                        f"Requested power domain {domain.value} is not supported by the current GPUs. "
+                        f"Supported domains are: {[d.value for d in supported_domains]}",
+                    )
+                self.measurement_domains.append(domain)
 
         # Power samples are collected for each power domain and device index.
         self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
@@ -285,7 +288,9 @@ class PowerMonitor:
                     "Power monitor subprocess for %s did not signal ready within 10 seconds",
                     domain.value,
                 )
-                raise RuntimeError(f"Power monitor subprocess for {domain.value} failed to start")
+                raise RuntimeError(
+                    f"Power monitor subprocess for {domain.value} failed to start within 10 seconds",
+                )
         logger.info("All power monitoring subprocesses are ready")
 
     def _determine_supported_domains(self) -> list[PowerDomain]:
