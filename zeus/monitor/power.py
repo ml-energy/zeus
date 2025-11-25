@@ -203,6 +203,9 @@ class PowerMonitor:
         if gpu_indices is not None and not gpu_indices:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
 
+        if power_domains is not None and not power_domains:
+            raise ValueError("`power_domains` must be either `None` or non-empty")
+
         # Get GPUs
         gpus = get_gpus(ensure_homogeneous=True)
 
@@ -239,7 +242,7 @@ class PowerMonitor:
         if power_domains is None:
             self.measurement_domains = supported_domains
         else:
-            for requested_domain in power_domains or list(PowerDomain):
+            for requested_domain in power_domains:
                 domain = PowerDomain(requested_domain)
                 if domain not in supported_domains:
                     raise ValueError(
