@@ -250,6 +250,7 @@ class PowerMonitor:
                         f"Supported domains are: {[d.value for d in supported_domains]}",
                     )
                 self.measurement_domains.append(domain)
+        self.measurement_domains = list(set(self.measurement_domains))
 
         if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
             logger.warning(
