@@ -169,18 +169,18 @@ class TestMeasure:
 
     def test_measure_creates_monitor_if_not_provided(self):
         """Test measure creates a ZeusMonitor if not provided."""
-        with patch("zeus.monitor.energy.ZeusMonitor") as MockMonitor:
+        with patch("zeus.monitor.energy.ZeusMonitor") as mock_monitor_class:
             mock_instance = MagicMock()
             mock_instance.end_window.return_value = Measurement(
                 time=1.0,
                 gpu_energy={0: 10.0},
             )
-            MockMonitor.return_value = mock_instance
+            mock_monitor_class.return_value = mock_instance
 
             measure(lambda: None)
 
             # Verify a monitor was created
-            MockMonitor.assert_called_once()
+            mock_monitor_class.assert_called_once()
 
     def test_measure_returns_measurement(self):
         """Test measure returns the correct Measurement object."""

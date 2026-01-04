@@ -80,10 +80,7 @@ def measure(
         raise ValueError(f"num_repeats must be at least 1, got {num_repeats}")
 
     # Create a monitor if not provided
-    if zeus_monitor is None:
-        monitor = ZeusMonitorClass()
-    else:
-        monitor = zeus_monitor
+    monitor = ZeusMonitorClass() if zeus_monitor is None else zeus_monitor
 
     # Prepare arguments
     call_args: Sequence[Any] = args if args is not None else ()
