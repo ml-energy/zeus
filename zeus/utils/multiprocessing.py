@@ -6,15 +6,20 @@ import inspect
 import multiprocessing as mp
 import sys
 import warnings
+from functools import lru_cache
 from typing import Any
 
 
+@lru_cache(maxsize=1)
 def _is_spawned_child() -> bool:
     """Return True if running in a spawned child process.
 
     This checks both:
     1. Whether we have a parent process (we're a subprocess)
     2. Whether __mp_main__ is in sys.modules (indicates spawn method was used)
+
+    Result is cached since it cannot change during process lifetime.
+    The cache is thread-safe.
     """
     return mp.parent_process() is not None and "__mp_main__" in sys.modules
 

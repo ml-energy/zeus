@@ -50,11 +50,11 @@ class TestWarnIfGlobalInSubprocess:
 
     def test_warning_when_spawned_child_at_module_level(self, mocker: MockerFixture):
         """Warning should be raised when in spawned child at module level."""
+        # Mock _is_spawned_child directly (not its dependencies) because it's cached
         mocker.patch(
-            "zeus.utils.multiprocessing.mp.parent_process",
-            return_value=MagicMock(),
+            "zeus.utils.multiprocessing._is_spawned_child",
+            return_value=True,
         )
-        mocker.patch.dict(sys.modules, {"__mp_main__": MagicMock()})
         mocker.patch(
             "zeus.utils.multiprocessing._called_from_module_level",
             return_value=True,
