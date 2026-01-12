@@ -16,6 +16,7 @@ from collections import defaultdict
 
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
+from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,9 @@ class CarbonEmissionMonitor:
                 Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
                 See [`sync_execution`][zeus.utils.framework.sync_execution] for more details.
         """
+        # Warn if instantiated as a global variable in a subprocess.
+        warn_if_global_in_subprocess("CarbonEmissionMonitor")
+
         self.zeus_monitor = ZeusMonitor(
             gpu_indices=gpu_indices,
             cpu_indices=cpu_indices,

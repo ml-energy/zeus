@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from zeus.device.gpu.common import ZeusGPUNotSupportedError
 from zeus.device import get_gpus
+from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 
 if TYPE_CHECKING:
     from multiprocessing.synchronize import Event as EventClass
@@ -87,6 +88,9 @@ class TemperatureMonitor:
             max_samples_per_gpu: Maximum number of temperature samples to keep per GPU
                 in memory. If None (default), unlimited samples are kept.
         """
+        # Warn if instantiated as a global variable in a subprocess.
+        warn_if_global_in_subprocess("TemperatureMonitor")
+
         if gpu_indices is not None and not gpu_indices:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")
 
