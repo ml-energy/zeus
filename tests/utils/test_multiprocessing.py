@@ -5,9 +5,10 @@ from __future__ import annotations
 import multiprocessing
 import sys
 import warnings
-from unittest import mock
+from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 
@@ -26,38 +27,36 @@ class TestWarnIfGlobalInSubprocess:
         """In the main process, no warning should be raised."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            # Instantiate through a class like ZeusMonitor does
             monitor = FakeMonitor()
             assert len(w) == 0
 
-    def test_no_warning_when_not_spawned_child(self):
+    def test_no_warning_when_not_spawned_child(self, mocker: MockerFixture):
         """No warning if not in a spawned child process."""
         # Even with __mp_main__ in sys.modules, if parent_process is None, no warning
-        with mock.patch.dict(sys.modules, {"__mp_main__": mock.MagicMock()}):
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                monitor = FakeMonitor()
-                assert len(w) == 0
+        mocker.patch.dict(sys.modules, {"__mp_main__": MagicMock()})
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            monitor = FakeMonitor()
+            assert len(w) == 0
 
-    def test_warning_when_spawned_child_at_module_level(self):
+    def test_warning_when_spawned_child_at_module_level(self, mocker: MockerFixture):
         """Warning should be raised when in spawned child at module level."""
-        mock_parent = mock.MagicMock()
-        with mock.patch(
+        mocker.patch(
             "zeus.utils.multiprocessing.mp.parent_process",
-            return_value=mock_parent,
-        ):
-            with mock.patch.dict(sys.modules, {"__mp_main__": mock.MagicMock()}):
-                with mock.patch(
-                    "zeus.utils.multiprocessing._called_from_module_level",
-                    return_value=True,
-                ):
-                    with warnings.catch_warnings(record=True) as w:
-                        warnings.simplefilter("always")
-                        warn_if_global_in_subprocess("TestClass")
-                        assert len(w) == 1
-                        assert "TestClass" in str(w[0].message)
-                        assert "module import" in str(w[0].message)
-                        assert '__name__ == "__main__"' in str(w[0].message)
+            return_value=MagicMock(),
+        )
+        mocker.patch.dict(sys.modules, {"__mp_main__": MagicMock()})
+        mocker.patch(
+            "zeus.utils.multiprocessing._called_from_module_level",
+            return_value=True,
+        )
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            warn_if_global_in_subprocess("TestClass")
+            assert len(w) == 1
+            assert "TestClass" in str(w[0].message)
+            assert "module import" in str(w[0].message)
+            assert '__name__ == "__main__"' in str(w[0].message)
 
 
 class TestIntegration:
@@ -70,25 +69,20 @@ class TestIntegration:
             """Function that runs in subprocess and instantiates FakeMonitor."""
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
-                # Instantiate inside a function - should NOT warn
                 monitor = FakeMonitor()
                 return len(w)
 
         ctx = multiprocessing.get_context("spawn")
         with ctx.Pool(1) as pool:
             result = pool.apply(worker_function)
-            # Should be 0 warnings
             assert result == 0
 
     def test_main_process_detection(self):
         """Verify that parent_process() returns None in main process."""
-        # This is mostly a sanity check
         assert multiprocessing.parent_process() is None
 
     def test_main_process_instantiation_no_warning(self):
-        """Instantiating in main process should never warn, even at module level."""
-        # This test verifies that in the main process, we never warn
-        # regardless of where the instantiation happens
+        """Instantiating in main process should never warn."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             monitor = FakeMonitor()
@@ -98,87 +92,80 @@ class TestIntegration:
 class TestMonitorIntegration:
     """Test that each monitor class calls warn_if_global_in_subprocess."""
 
-    def test_zeus_monitor_calls_warning(self):
+    def test_zeus_monitor_calls_warning(self, mocker: MockerFixture):
         """ZeusMonitor should call warn_if_global_in_subprocess with correct name."""
-        with mock.patch("zeus.monitor.energy.warn_if_global_in_subprocess") as mock_warn:
-            # Mock dependencies to avoid actual GPU/CPU initialization
-            with mock.patch("zeus.monitor.energy.get_gpus") as mock_gpus:
-                with mock.patch("zeus.monitor.energy.get_cpus") as mock_cpus:
-                    with mock.patch("zeus.monitor.energy.get_soc") as mock_soc:
-                        mock_gpus.return_value = mock.MagicMock()
-                        mock_gpus.return_value.__len__ = mock.MagicMock(return_value=0)
-                        mock_cpus.return_value = mock.MagicMock()
-                        mock_cpus.return_value.cpus = []
-                        mock_soc.return_value = mock.MagicMock()
-                        mock_soc.return_value.__len__ = mock.MagicMock(return_value=0)
+        mock_warn = mocker.patch("zeus.monitor.energy.warn_if_global_in_subprocess")
+        mock_gpus = mocker.patch("zeus.monitor.energy.get_gpus")
+        mock_cpus = mocker.patch("zeus.monitor.energy.get_cpus")
+        mock_soc = mocker.patch("zeus.monitor.energy.get_soc")
 
-                        from zeus.monitor.energy import ZeusMonitor
+        mock_gpus.return_value = MagicMock(__len__=MagicMock(return_value=0))
+        mock_cpus.return_value = MagicMock(cpus=[])
+        mock_soc.return_value = MagicMock(__len__=MagicMock(return_value=0))
 
-                        try:
-                            monitor = ZeusMonitor()
-                        except Exception:
-                            pass  # We only care that the warning function was called
+        from zeus.monitor.energy import ZeusMonitor
 
-                        mock_warn.assert_called_once_with("ZeusMonitor")
+        try:
+            ZeusMonitor()
+        except Exception:
+            pass  # We only care that the warning function was called
 
-    def test_power_monitor_calls_warning(self):
+        mock_warn.assert_called_once_with("ZeusMonitor")
+
+    def test_power_monitor_calls_warning(self, mocker: MockerFixture):
         """PowerMonitor should call warn_if_global_in_subprocess with correct name."""
-        with mock.patch("zeus.monitor.power.warn_if_global_in_subprocess") as mock_warn:
-            with mock.patch("zeus.monitor.power.get_gpus") as mock_gpus:
-                mock_gpu_obj = mock.MagicMock()
-                mock_gpu_obj.__len__ = mock.MagicMock(return_value=1)
-                mock_gpus.return_value = mock_gpu_obj
+        mock_warn = mocker.patch("zeus.monitor.power.warn_if_global_in_subprocess")
+        mock_gpus = mocker.patch("zeus.monitor.power.get_gpus")
+        mock_gpus.return_value = MagicMock(__len__=MagicMock(return_value=1))
 
-                from zeus.monitor.power import PowerMonitor
+        from zeus.monitor.power import PowerMonitor
 
-                try:
-                    monitor = PowerMonitor(gpu_indices=[0])
-                except Exception:
-                    pass  # We only care that the warning function was called
+        try:
+            PowerMonitor(gpu_indices=[0])
+        except Exception:
+            pass
 
-                mock_warn.assert_called_once_with("PowerMonitor")
+        mock_warn.assert_called_once_with("PowerMonitor")
 
-    def test_temperature_monitor_calls_warning(self):
+    def test_temperature_monitor_calls_warning(self, mocker: MockerFixture):
         """TemperatureMonitor should call warn_if_global_in_subprocess with correct name."""
-        with mock.patch("zeus.monitor.temperature.warn_if_global_in_subprocess") as mock_warn:
-            with mock.patch("zeus.monitor.temperature.get_gpus") as mock_gpus:
-                mock_gpu_obj = mock.MagicMock()
-                mock_gpu_obj.__len__ = mock.MagicMock(return_value=1)
-                mock_gpus.return_value = mock_gpu_obj
+        mock_warn = mocker.patch("zeus.monitor.temperature.warn_if_global_in_subprocess")
+        mock_gpus = mocker.patch("zeus.monitor.temperature.get_gpus")
+        mock_gpus.return_value = MagicMock(__len__=MagicMock(return_value=1))
 
-                from zeus.monitor.temperature import TemperatureMonitor
+        from zeus.monitor.temperature import TemperatureMonitor
 
-                try:
-                    monitor = TemperatureMonitor(gpu_indices=[0])
-                except Exception:
-                    pass  # We only care that the warning function was called
+        try:
+            TemperatureMonitor(gpu_indices=[0])
+        except Exception:
+            pass
 
-                mock_warn.assert_called_once_with("TemperatureMonitor")
+        mock_warn.assert_called_once_with("TemperatureMonitor")
 
-    def test_carbon_emission_monitor_calls_warning(self):
+    def test_carbon_emission_monitor_calls_warning(self, mocker: MockerFixture):
         """CarbonEmissionMonitor should call warn_if_global_in_subprocess with correct name."""
-        with mock.patch("zeus.monitor.carbon.warn_if_global_in_subprocess") as mock_warn:
-            with mock.patch("zeus.monitor.carbon.ZeusMonitor"):
-                from zeus.monitor.carbon import CarbonEmissionMonitor
+        mock_warn = mocker.patch("zeus.monitor.carbon.warn_if_global_in_subprocess")
+        mocker.patch("zeus.monitor.carbon.ZeusMonitor")
 
-                mock_provider = mock.MagicMock()
-                try:
-                    monitor = CarbonEmissionMonitor(carbon_intensity_provider=mock_provider)
-                except Exception:
-                    pass  # We only care that the warning function was called
+        from zeus.monitor.carbon import CarbonEmissionMonitor
 
-                mock_warn.assert_called_once_with("CarbonEmissionMonitor")
+        try:
+            CarbonEmissionMonitor(carbon_intensity_provider=MagicMock())
+        except Exception:
+            pass
 
-    def test_energy_cost_monitor_calls_warning(self):
+        mock_warn.assert_called_once_with("CarbonEmissionMonitor")
+
+    def test_energy_cost_monitor_calls_warning(self, mocker: MockerFixture):
         """EnergyCostMonitor should call warn_if_global_in_subprocess with correct name."""
-        with mock.patch("zeus.monitor.price.warn_if_global_in_subprocess") as mock_warn:
-            with mock.patch("zeus.monitor.price.ZeusMonitor"):
-                from zeus.monitor.price import EnergyCostMonitor
+        mock_warn = mocker.patch("zeus.monitor.price.warn_if_global_in_subprocess")
+        mocker.patch("zeus.monitor.price.ZeusMonitor")
 
-                mock_provider = mock.MagicMock()
-                try:
-                    monitor = EnergyCostMonitor(electricity_price_provider=mock_provider)
-                except Exception:
-                    pass  # We only care that the warning function was called
+        from zeus.monitor.price import EnergyCostMonitor
 
-                mock_warn.assert_called_once_with("EnergyCostMonitor")
+        try:
+            EnergyCostMonitor(electricity_price_provider=MagicMock())
+        except Exception:
+            pass
+
+        mock_warn.assert_called_once_with("EnergyCostMonitor")
