@@ -19,11 +19,11 @@ def _is_spawned_child() -> bool:
 
 
 def _called_from_module_level() -> bool:
-    """Return True if any caller frame is executing module-level code.
+    """Return True if any caller frame is executing module-level code in a real file.
 
-    This walks the entire call stack looking for any <module> frame,
-    which indicates that somewhere in the call chain, code is being
-    executed at module level (during import).
+    This walks the call stack looking for any <module> frame from a real Python
+    file (not multiprocessing infrastructure like <string> or <frozen ...>).
+    Such a frame indicates that code is being executed at module level during import.
     """
     frame = inspect.currentframe()
     if frame is None:
@@ -31,7 +31,10 @@ def _called_from_module_level() -> bool:
     frame = frame.f_back
     while frame is not None:
         if frame.f_code.co_name == "<module>":
-            return True
+            filename = frame.f_code.co_filename
+            # Skip multiprocessing infrastructure frames
+            if not (filename == "<string>" or filename.startswith("<frozen")):
+                return True
         frame = frame.f_back
     return False
 
