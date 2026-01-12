@@ -181,7 +181,7 @@ class ZeusMonitor:
                 See [`sync_execution`][zeus.utils.framework.sync_execution] for more details.
         """
         # Warn if instantiated as a global variable in a subprocess.
-        warn_if_global_in_subprocess("ZeusMonitor")
+        warn_if_global_in_subprocess(self)
 
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy

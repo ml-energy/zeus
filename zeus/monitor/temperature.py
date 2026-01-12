@@ -89,7 +89,7 @@ class TemperatureMonitor:
                 in memory. If None (default), unlimited samples are kept.
         """
         # Warn if instantiated as a global variable in a subprocess.
-        warn_if_global_in_subprocess("TemperatureMonitor")
+        warn_if_global_in_subprocess(self)
 
         if gpu_indices is not None and not gpu_indices:
             raise ValueError("`gpu_indices` must be either `None` or non-empty")

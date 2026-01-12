@@ -6,6 +6,7 @@ import inspect
 import multiprocessing as mp
 import sys
 import warnings
+from typing import Any
 
 
 def _is_spawned_child() -> bool:
@@ -39,7 +40,7 @@ def _called_from_module_level() -> bool:
     return False
 
 
-def warn_if_global_in_subprocess(class_name: str) -> None:
+def warn_if_global_in_subprocess(self: Any) -> None:
     """Warn when a monitor is created at import time in a spawned subprocess.
 
     This detects a common pitfall where ZeusMonitor (or related classes) is
@@ -49,12 +50,13 @@ def warn_if_global_in_subprocess(class_name: str) -> None:
     code to run again (e.g., loading DNN models), leading to OOM errors.
 
     Args:
-        class_name: Name of the class being instantiated (for the warning message).
+        self: The instance being constructed (used to derive class name).
     """
     if not _is_spawned_child():
         return
     if not _called_from_module_level():
         return
+    class_name = type(self).__name__
     warnings.warn(
         f"{class_name} was instantiated during module import in a spawned subprocess. "
         "This usually means the monitor was created as a global variable, so the child "

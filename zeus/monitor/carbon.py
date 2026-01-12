@@ -245,7 +245,7 @@ class CarbonEmissionMonitor:
                 See [`sync_execution`][zeus.utils.framework.sync_execution] for more details.
         """
         # Warn if instantiated as a global variable in a subprocess.
-        warn_if_global_in_subprocess("CarbonEmissionMonitor")
+        warn_if_global_in_subprocess(self)
 
         self.zeus_monitor = ZeusMonitor(
             gpu_indices=gpu_indices,

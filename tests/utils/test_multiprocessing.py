@@ -17,7 +17,7 @@ class FakeMonitor:
     """A class that mimics the ZeusMonitor pattern for testing."""
 
     def __init__(self):
-        warn_if_global_in_subprocess("FakeMonitor")
+        warn_if_global_in_subprocess(self)
 
 
 # Module-level function for subprocess test (local functions can't be pickled)
@@ -61,9 +61,10 @@ class TestWarnIfGlobalInSubprocess:
         )
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            warn_if_global_in_subprocess("TestClass")
+            # Pass an object so type(self).__name__ works
+            warn_if_global_in_subprocess(FakeMonitor.__new__(FakeMonitor))
             assert len(w) == 1
-            assert "TestClass" in str(w[0].message)
+            assert "FakeMonitor" in str(w[0].message)
             assert "module import" in str(w[0].message)
             assert '__name__ == "__main__"' in str(w[0].message)
 
