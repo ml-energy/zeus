@@ -1,7 +1,7 @@
 # Measuring Energy
 
 !!! Important
-    This page assumes that your environment is already set up. Please refer to the [Getting Started](../getting_started/index.md) guide if not.
+    Please refer to the [Getting Started](../getting_started/index.md) guide to first install Zeus and set up your environment before proceeding with this section.
     
 !!! Tip
     Once you've installed Zeus, you can use our [environment validation script](../getting_started/index.md#verifying-installation) to see if devices are being detected by Zeus as expected.
