@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import multiprocessing
+import subprocess
 import sys
+import textwrap
 import warnings
-from unittest.mock import MagicMock
+from pathlib import Path
 
 import pytest
 from pytest_mock import MockerFixture
@@ -39,24 +41,18 @@ class TestWarnIfGlobalInSubprocess:
             monitor = FakeMonitor()
             assert len(w) == 0
 
-    def test_no_warning_when_not_spawned_child(self, mocker: MockerFixture):
-        """No warning if not in a spawned child process."""
-        # Even with __mp_main__ in sys.modules, if parent_process is None, no warning
-        mocker.patch.dict(sys.modules, {"__mp_main__": MagicMock()})
+    def test_no_warning_when_not_at_module_level(self, mocker: MockerFixture):
+        """No warning if not at module level (e.g., inside a function)."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             monitor = FakeMonitor()
             assert len(w) == 0
 
-    def test_warning_when_spawned_child_at_module_level(self, mocker: MockerFixture):
+    def test_warning_when_global_in_spawned_child(self, mocker: MockerFixture):
         """Warning should be raised when in spawned child at module level."""
-        # Mock _is_spawned_child directly (not its dependencies) because it's cached
+        # Mock the detection function directly
         mocker.patch(
-            "zeus.utils.multiprocessing._is_spawned_child",
-            return_value=True,
-        )
-        mocker.patch(
-            "zeus.utils.multiprocessing._called_from_module_level",
+            "zeus.utils.multiprocessing._is_global_in_spawned_child",
             return_value=True,
         )
         with warnings.catch_warnings(record=True) as w:
@@ -89,3 +85,42 @@ class TestIntegration:
             warnings.simplefilter("always")
             monitor = FakeMonitor()
             assert len(w) == 0
+
+    def test_warning_is_raised_for_global_monitor_in_subprocess(self, tmp_path):
+        """Integration test: warning is raised for a global monitor in a spawned subprocess."""
+        # The root of the project, to be added to PYTHONPATH for the subprocess
+        project_root = Path(__file__).parent.parent.parent
+
+        script_content = textwrap.dedent(f'''
+            import sys
+            import multiprocessing
+
+            # Add project root to path to allow importing from tests and zeus
+            sys.path.insert(0, r"{project_root}")
+
+            from tests.utils.test_multiprocessing import FakeMonitor
+
+            # Global monitor instance. This should trigger a warning in the spawned child process.
+            monitor = FakeMonitor()
+
+            def dummy_worker():
+                pass
+
+            if __name__ == "__main__":
+                ctx = multiprocessing.get_context("spawn")
+                with ctx.Pool(1) as pool:
+                    pool.apply(dummy_worker)
+        ''')
+
+        script_path = tmp_path / "global_monitor_test.py"
+        script_path.write_text(script_content)
+
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert "FakeMonitor was instantiated during module import" in result.stderr
+        assert "spawned subprocess" in result.stderr
