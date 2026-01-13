@@ -13,6 +13,7 @@ from functools import cached_property
 
 from zeus.monitor.power import PowerMonitor
 from zeus.utils.framework import sync_execution as sync_execution_fn
+from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 from zeus.device import get_gpus, get_cpus, get_soc
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
 from zeus.device.cpu.common import ZeusCPUInitError, ZeusCPUNoPermissionError, EmptyCPUs
@@ -179,6 +180,9 @@ class ZeusMonitor:
                 Defaults to `"torch"`, in which case `torch.cuda.synchronize` will be used.
                 See [`sync_execution`][zeus.utils.framework.sync_execution] for more details.
         """
+        # Warn if instantiated as a global variable in a subprocess.
+        warn_if_global_in_subprocess(self)
+
         # Save arguments.
         self.approx_instant_energy = approx_instant_energy
         self.sync_with: Literal["torch", "jax", "cupy"] = sync_execution_with
