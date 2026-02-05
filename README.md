@@ -92,3 +92,7 @@ If you find Zeus relevant to your research, please consider citing:
 ## Contact
 
 Jae-Won Chung (jwnchung@umich.edu)
+
+## Newsletter
+
+Subscribe to the [ML.ENERGY newsletter](https://buttondown.com/ml-energy) for the latest news on Zeus and other projects by the ML.ENERGY Initiative.
