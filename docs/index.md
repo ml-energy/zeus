@@ -51,3 +51,16 @@ If you find Zeus relevant to your research, please consider citing:
 ## Contact
 
 Jae-Won Chung (jwnchung@umich.edu)
+
+## Newsletter
+
+<div align="center">
+<i>
+Stay updated on latest news about Zeus and the ML.ENERGY Initiative.
+</i>
+</div>
+
+<form action="https://buttondown.com/api/emails/embed-subscribe/ml-energy" method="post" target="popupwindow" onsubmit="window.open('https://buttondown.com/ml-energy', 'popupwindow')" style="display: flex; gap: 0.5em; max-width: 600px; margin: 1.5em auto 0 auto;">
+<input type="email" name="email" placeholder="Enter your email" required style="flex: 1; padding: 0.5em 1em; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 4px; font-size: 0.85rem;">
+<button type="submit" style="padding: 0.5em 1.5em; background: var(--md-primary-fg-color); color: var(--md-primary-bg-color); border: none; border-radius: 4px; cursor: pointer;">Subscribe</button>
+</form>
