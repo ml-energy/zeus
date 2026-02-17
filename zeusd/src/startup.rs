@@ -12,7 +12,9 @@ use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
+use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerPoller};
 use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
+use crate::devices::gpu::power::{GpuPowerBroadcast, GpuPowerPoller};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::cpu_routes;
 use crate::routes::gpu_routes;
@@ -65,6 +67,18 @@ pub fn start_gpu_device_tasks() -> anyhow::Result<GpuManagementTasks> {
     Ok(GpuManagementTasks::start(gpus)?)
 }
 
+/// Initialize a separate set of NVML handles and start the GPU power poller.
+pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerPoller> {
+    tracing::info!("Starting GPU power poller at {} Hz.", poll_hz);
+    let num_gpus = NvmlGpu::device_count()?;
+    let mut gpus = Vec::with_capacity(num_gpus as usize);
+    for gpu_id in 0..num_gpus {
+        let gpu = NvmlGpu::init(gpu_id)?;
+        gpus.push((gpu_id as usize, gpu));
+    }
+    Ok(GpuPowerPoller::start(gpus, poll_hz))
+}
+
 pub fn start_cpu_device_tasks() -> anyhow::Result<CpuManagementTasks> {
     tracing::info!("Starting Rapl and CPU management tasks.");
     let num_cpus = RaplCpu::device_count()?;
@@ -75,6 +89,18 @@ pub fn start_cpu_device_tasks() -> anyhow::Result<CpuManagementTasks> {
         cpus.push(cpu);
     }
     Ok(CpuManagementTasks::start(cpus)?)
+}
+
+/// Initialize a separate set of RAPL handles and start the CPU power poller.
+pub fn start_cpu_power_poller(poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
+    tracing::info!("Starting CPU RAPL power poller at {} Hz.", poll_hz);
+    let num_cpus = RaplCpu::device_count()?;
+    let mut cpus = Vec::with_capacity(num_cpus);
+    for cpu_id in 0..num_cpus {
+        let cpu = RaplCpu::init(cpu_id)?;
+        cpus.push((cpu_id, cpu));
+    }
+    Ok(CpuPowerPoller::start(cpus, poll_hz))
 }
 
 /// Ensure the daemon is running as root.
@@ -94,6 +120,8 @@ pub fn start_server_uds(
     listener: UnixListener,
     gpu_device_tasks: GpuManagementTasks,
     cpu_device_tasks: CpuManagementTasks,
+    gpu_power_broadcast: GpuPowerBroadcast,
+    cpu_power_broadcast: CpuPowerBroadcast,
     num_workers: usize,
 ) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
@@ -103,6 +131,8 @@ pub fn start_server_uds(
             .service(web::scope("/cpu").configure(cpu_routes))
             .app_data(web::Data::new(gpu_device_tasks.clone()))
             .app_data(web::Data::new(cpu_device_tasks.clone()))
+            .app_data(web::Data::new(gpu_power_broadcast.clone()))
+            .app_data(web::Data::new(cpu_power_broadcast.clone()))
     })
     .workers(num_workers)
     .listen_uds(listener)?
@@ -116,6 +146,8 @@ pub fn start_server_tcp(
     listener: TcpListener,
     gpu_device_tasks: GpuManagementTasks,
     cpu_device_tasks: CpuManagementTasks,
+    gpu_power_broadcast: GpuPowerBroadcast,
+    cpu_power_broadcast: CpuPowerBroadcast,
     num_workers: usize,
 ) -> std::io::Result<Server> {
     let server = HttpServer::new(move || {
@@ -125,6 +157,8 @@ pub fn start_server_tcp(
             .service(web::scope("/cpu").configure(cpu_routes))
             .app_data(web::Data::new(gpu_device_tasks.clone()))
             .app_data(web::Data::new(cpu_device_tasks.clone()))
+            .app_data(web::Data::new(gpu_power_broadcast.clone()))
+            .app_data(web::Data::new(cpu_power_broadcast.clone()))
     })
     .workers(num_workers)
     .listen(listener)?

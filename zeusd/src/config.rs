@@ -40,6 +40,14 @@ pub struct Config {
     /// Number of worker threads to use. Default is the number of logical CPUs.
     #[clap(long)]
     pub num_workers: Option<usize>,
+
+    /// GPU power polling frequency in Hz for the streaming endpoint.
+    #[clap(long, default_value = "20")]
+    pub gpu_power_poll_hz: u32,
+
+    /// CPU RAPL power polling frequency in Hz for the streaming endpoint.
+    #[clap(long, default_value = "20")]
+    pub cpu_power_poll_hz: u32,
 }
 
 impl Config {

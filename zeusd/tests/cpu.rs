@@ -173,3 +173,40 @@ async fn test_supports_dram_energy() {
         .expect("Failed to deserialize response body");
     assert!(dram_response.dram_available);
 }
+
+#[tokio::test]
+async fn test_cpu_power_oneshot() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/cpu/power", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    assert!(body["power_mw"].is_object());
+    assert!(body["timestamp_ms"].is_number());
+}
+
+#[tokio::test]
+async fn test_cpu_power_stream_receives_events() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/cpu/power/stream", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers()
+            .get("content-type")
+            .expect("Missing content-type")
+            .to_str()
+            .unwrap(),
+        "text/event-stream"
+    );
+}

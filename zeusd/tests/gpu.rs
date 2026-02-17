@@ -7,7 +7,7 @@ use zeusd::routes::gpu::{
     SetPersistenceMode, SetPowerLimit,
 };
 
-use crate::helpers::{TestApp, ZeusdRequest};
+use crate::helpers::{TestApp, ZeusdRequest, NUM_GPUS};
 
 #[tokio::test]
 async fn test_set_persistence_mode_single() {
@@ -771,5 +771,87 @@ async fn test_mem_locked_clocks_bulk() {
         (0..11)
             .map(|i| (1000 + i * 100, 2000 + i * 100))
             .collect::<HashSet<_>>()
+    );
+}
+
+#[tokio::test]
+async fn test_gpu_power_oneshot() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    assert!(body["power_mw"].is_object());
+    assert!(body["timestamp_ms"].is_number());
+}
+
+#[tokio::test]
+async fn test_gpu_power_oneshot_filtered() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power?gpu_ids=0,2", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let power = body["power_mw"]
+        .as_object()
+        .expect("power_mw should be object");
+    assert!(power.contains_key("0"));
+    assert!(power.contains_key("2"));
+    assert!(!power.contains_key("1"));
+    assert!(!power.contains_key("3"));
+}
+
+#[tokio::test]
+async fn test_gpu_power_oneshot_has_all_gpus() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let power = body["power_mw"]
+        .as_object()
+        .expect("power_mw should be object");
+    for i in 0..NUM_GPUS {
+        assert!(
+            power.contains_key(&i.to_string()),
+            "Missing GPU {} in power_mw",
+            i
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_gpu_power_stream_receives_events() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power/stream", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers()
+            .get("content-type")
+            .expect("Missing content-type")
+            .to_str()
+            .unwrap(),
+        "text/event-stream"
     );
 }

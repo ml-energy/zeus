@@ -47,4 +47,8 @@ impl GpuManager for NvmlGpu {
     fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError> {
         Ok(())
     }
+
+    fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
+        Ok(150_000) // Fake 150W
+    }
 }

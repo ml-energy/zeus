@@ -4,8 +4,8 @@ use std::net::TcpListener;
 
 use zeusd::config::{get_config, ConnectionMode};
 use zeusd::startup::{
-    ensure_root, get_unix_listener, init_tracing, start_cpu_device_tasks, start_gpu_device_tasks,
-    start_server_tcp, start_server_uds,
+    ensure_root, get_unix_listener, init_tracing, start_cpu_device_tasks, start_cpu_power_poller,
+    start_gpu_device_tasks, start_gpu_power_poller, start_server_tcp, start_server_uds,
 };
 
 #[tokio::main]
@@ -20,7 +20,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let gpu_device_tasks = start_gpu_device_tasks()?;
+    let gpu_power_poller = start_gpu_power_poller(config.gpu_power_poll_hz)?;
+    let gpu_power_broadcast = gpu_power_poller.broadcast();
     let cpu_device_tasks = start_cpu_device_tasks()?;
+    let cpu_power_poller = start_cpu_power_poller(config.cpu_power_poll_hz)?;
+    let cpu_power_broadcast = cpu_power_poller.broadcast();
     tracing::info!("Started all device tasks");
 
     let num_workers = config.num_workers.unwrap_or_else(|| {
@@ -42,6 +46,8 @@ async fn main() -> anyhow::Result<()> {
                 listener,
                 gpu_device_tasks,
                 cpu_device_tasks.clone(),
+                gpu_power_broadcast,
+                cpu_power_broadcast,
                 num_workers,
             )?
             .await?;
@@ -54,6 +60,8 @@ async fn main() -> anyhow::Result<()> {
                 listener,
                 gpu_device_tasks,
                 cpu_device_tasks.clone(),
+                gpu_power_broadcast,
+                cpu_power_broadcast,
                 num_workers,
             )?
             .await?;

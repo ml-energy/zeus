@@ -98,4 +98,24 @@ impl GpuManager for NvmlGpu<'static> {
     fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError> {
         Ok(self.device.reset_mem_locked_clocks()?)
     }
+
+    fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
+        use nvml_wrapper::enums::device::SampleValue;
+        use nvml_wrapper::structs::device::FieldId;
+        use nvml_wrapper::sys_exports::field_id::NVML_FI_DEV_POWER_INSTANT;
+
+        let results = self
+            .device
+            .field_values_for(&[FieldId(NVML_FI_DEV_POWER_INSTANT)])?;
+        match results.into_iter().next() {
+            Some(Ok(sample)) => match sample.value {
+                Ok(SampleValue::U32(v)) => Ok(v),
+                Ok(SampleValue::U64(v)) => Ok(v as u32),
+                Ok(_) => Err(ZeusdError::NvmlError(NvmlError::InvalidArg)),
+                Err(e) => Err(ZeusdError::NvmlError(e)),
+            },
+            Some(Err(e)) => Err(ZeusdError::NvmlError(e)),
+            None => Err(ZeusdError::NvmlError(NvmlError::InvalidArg)),
+        }
+    }
 }
