@@ -76,7 +76,11 @@ impl GpuPowerBroadcast {
     /// Returns `Ok(())` if all indices are valid, or `Err` with the
     /// set of unknown indices.
     pub fn validate_ids(&self, ids: &[usize]) -> Result<(), Vec<usize>> {
-        let unknown: Vec<usize> = ids.iter().filter(|id| !self.valid_ids.contains(id)).copied().collect();
+        let unknown: Vec<usize> = ids
+            .iter()
+            .filter(|id| !self.valid_ids.contains(id))
+            .copied()
+            .collect();
         if unknown.is_empty() {
             Ok(())
         } else {
