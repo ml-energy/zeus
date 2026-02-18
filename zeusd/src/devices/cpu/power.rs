@@ -6,7 +6,7 @@
 //! Polling is demand-driven: the task sleeps when no subscribers are
 //! connected and wakes when the first subscriber arrives.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -33,7 +33,7 @@ pub struct CpuPowerSnapshot {
     /// Unix timestamp in milliseconds.
     pub timestamp_ms: u64,
     /// Power readings keyed by CPU index.
-    pub power_mw: HashMap<usize, CpuDramPower>,
+    pub power_mw: BTreeMap<usize, CpuDramPower>,
 }
 
 /// RAII guard that decrements the subscriber count on drop.
@@ -142,7 +142,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
     let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
 
     // Initialize energy tracking state.
-    let mut states: HashMap<usize, CpuEnergyState> = HashMap::new();
+    let mut states: BTreeMap<usize, CpuEnergyState> = BTreeMap::new();
     for (idx, _) in &cpus {
         states.insert(
             *idx,
@@ -156,7 +156,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
     }
 
     tracing::info!(
-        "CPU RAPL power poller ready: {} CPUs at {} Hz (demand-driven)",
+        "CPU RAPL power poller ready: {} CPUs at {} Hz when subscribers are present",
         cpus.len(),
         poll_hz
     );
@@ -167,13 +167,13 @@ async fn cpu_power_poll_task<T: CpuManager>(
             wake.notified().await;
         }
 
-        tracing::debug!("CPU power poller waking up");
+        tracing::info!("CPU power poller starting");
         let mut tick = interval(Duration::from_micros(period_us));
 
         // Poll while subscribers are present.
         while subscriber_count.load(Ordering::Relaxed) > 0 {
             tick.tick().await;
-            let mut current_power = HashMap::with_capacity(cpus.len());
+            let mut current_power = BTreeMap::new();
             let mut changed = false;
 
             for (idx, cpu) in cpus.iter_mut() {
@@ -193,7 +193,6 @@ async fn cpu_power_poll_task<T: CpuManager>(
                             power_mw
                         } else {
                             state.last_cpu_energy_uj = Some(energy_uj);
-                            changed = true;
                             0
                         }
                     }
@@ -218,7 +217,6 @@ async fn cpu_power_poll_task<T: CpuManager>(
                                 Some(power_mw)
                             } else {
                                 state.last_dram_energy_uj = Some(energy_uj);
-                                changed = true;
                                 Some(0)
                             }
                         }
@@ -252,6 +250,10 @@ async fn cpu_power_poll_task<T: CpuManager>(
             }
         }
 
-        tracing::debug!("CPU power poller sleeping (no subscribers)");
+        for state in states.values_mut() {
+            state.last_cpu_energy_uj = None;
+            state.last_dram_energy_uj = None;
+        }
+        tracing::info!("CPU power poller pausing (no subscribers)");
     }
 }

@@ -77,7 +77,7 @@ async fn supports_dram_energy_handler(
 }
 
 /// Query parameters for CPU power endpoints.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct CpuPowerQuery {
     /// Comma-separated list of CPU indices. If omitted, all CPUs are included.
     pub cpu_ids: Option<String>,
@@ -114,13 +114,16 @@ fn filter_cpu_snapshot(
 /// Subscribes briefly to wake the poller, waits for a fresh reading (up to
 /// 200 ms), then returns the snapshot as JSON.
 #[actix_web::get("/power")]
+#[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
 async fn get_cpu_power_handler(
     query: web::Query<CpuPowerQuery>,
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
+    tracing::info!("Received request");
     let cpu_ids = parse_cpu_ids(&query.cpu_ids);
     let _guard = broadcast.add_subscriber();
     let mut rx = broadcast.subscribe();
+    rx.borrow_and_update();
     let _ = tokio::time::timeout(Duration::from_millis(200), rx.changed()).await;
     let snapshot = rx.borrow().clone();
     let filtered = filter_cpu_snapshot(&snapshot, &cpu_ids);
@@ -131,10 +134,12 @@ async fn get_cpu_power_handler(
 ///
 /// The subscriber guard keeps the poller active for the lifetime of the stream.
 #[actix_web::get("/power/stream")]
+#[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
 async fn cpu_power_stream_handler(
     query: web::Query<CpuPowerQuery>,
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
+    tracing::info!("Received request");
     let guard = broadcast.add_subscriber();
     tokio::time::sleep(Duration::from_millis(100)).await;
     let cpu_ids = parse_cpu_ids(&query.cpu_ids);

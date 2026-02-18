@@ -1,7 +1,12 @@
 mod helpers;
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::task::JoinSet;
+use zeusd::devices::gpu::power::GpuPowerPoller;
+use zeusd::devices::gpu::GpuManager;
+use zeusd::error::ZeusdError;
 use zeusd::routes::gpu::{
     ResetGpuLockedClocks, ResetMemLockedClocks, SetGpuLockedClocks, SetMemLockedClocks,
     SetPersistenceMode, SetPowerLimit,
@@ -853,5 +858,76 @@ async fn test_gpu_power_stream_receives_events() {
             .to_str()
             .unwrap(),
         "text/event-stream"
+    );
+}
+
+/// A mock GPU that counts how many times `get_instant_power_mw` is called.
+struct PollCountingGpu {
+    poll_count: Arc<AtomicUsize>,
+}
+
+impl GpuManager for PollCountingGpu {
+    fn device_count() -> Result<u32, ZeusdError> {
+        Ok(1)
+    }
+    fn set_persistence_mode(&mut self, _enabled: bool) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn set_power_management_limit(&mut self, _power_limit: u32) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn set_gpu_locked_clocks(&mut self, _min: u32, _max: u32) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn reset_gpu_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn set_mem_locked_clocks(&mut self, _min: u32, _max: u32) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
+        self.poll_count.fetch_add(1, Ordering::Relaxed);
+        Ok(150_000)
+    }
+}
+
+#[tokio::test]
+async fn test_gpu_power_lazy_polling() {
+    let poll_count = Arc::new(AtomicUsize::new(0));
+    let gpu = PollCountingGpu {
+        poll_count: poll_count.clone(),
+    };
+    let poller = GpuPowerPoller::start(vec![(0, gpu)], 100);
+    let broadcast = poller.broadcast();
+
+    // No subscribers: poller should be asleep.
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    assert_eq!(
+        poll_count.load(Ordering::Relaxed),
+        0,
+        "Poller should not poll when there are no subscribers"
+    );
+
+    // Add a subscriber: poller should wake up and start polling.
+    let guard = broadcast.add_subscriber();
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    let count_with_sub = poll_count.load(Ordering::Relaxed);
+    assert!(
+        count_with_sub > 0,
+        "Poller should poll when a subscriber is present"
+    );
+
+    // Drop the subscriber: poller should go back to sleep.
+    drop(guard);
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    let count_after_drop = poll_count.load(Ordering::Relaxed);
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    let count_later = poll_count.load(Ordering::Relaxed);
+    assert_eq!(
+        count_after_drop, count_later,
+        "Poller should stop polling after the last subscriber disconnects"
     );
 }

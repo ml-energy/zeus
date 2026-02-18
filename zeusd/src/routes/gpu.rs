@@ -122,7 +122,7 @@ impl_handler_for_gpu_command!(
 );
 
 /// Query parameters for GPU power endpoints.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct PowerQuery {
     /// Comma-separated list of GPU indices. If omitted, all GPUs are included.
     pub gpu_ids: Option<String>,
@@ -157,13 +157,16 @@ fn filter_snapshot(snapshot: &GpuPowerSnapshot, gpu_ids: &Option<Vec<usize>>) ->
 /// 200 ms), then returns the snapshot as JSON. Optionally filtered by
 /// `gpu_ids` query parameter (comma-separated GPU indices).
 #[actix_web::get("/power")]
+#[tracing::instrument(skip(broadcast), fields(gpu_ids = ?query.gpu_ids))]
 async fn get_power_handler(
     query: web::Query<PowerQuery>,
     broadcast: web::Data<GpuPowerBroadcast>,
 ) -> HttpResponse {
+    tracing::info!("Received request");
     let gpu_ids = parse_gpu_ids(&query.gpu_ids);
     let _guard = broadcast.add_subscriber();
     let mut rx = broadcast.subscribe();
+    rx.borrow_and_update();
     let _ = tokio::time::timeout(Duration::from_millis(200), rx.changed()).await;
     let snapshot = rx.borrow().clone();
     let filtered = filter_snapshot(&snapshot, &gpu_ids);
@@ -177,10 +180,12 @@ async fn get_power_handler(
 /// stream. Optionally filtered by `gpu_ids` query parameter (comma-separated
 /// GPU indices).
 #[actix_web::get("/power/stream")]
+#[tracing::instrument(skip(broadcast), fields(gpu_ids = ?query.gpu_ids))]
 async fn power_stream_handler(
     query: web::Query<PowerQuery>,
     broadcast: web::Data<GpuPowerBroadcast>,
 ) -> HttpResponse {
+    tracing::info!("Received request");
     let guard = broadcast.add_subscriber();
     // Brief sleep to let the poller produce a first reading.
     tokio::time::sleep(Duration::from_millis(100)).await;

@@ -5,7 +5,7 @@
 //! demand-driven: the task sleeps when no subscribers are connected and wakes
 //! when the first subscriber arrives.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,7 +23,7 @@ pub struct GpuPowerSnapshot {
     /// Unix timestamp in milliseconds.
     pub timestamp_ms: u64,
     /// Power readings in milliwatts, keyed by GPU index.
-    pub power_mw: HashMap<usize, u32>,
+    pub power_mw: BTreeMap<usize, u32>,
 }
 
 /// RAII guard that decrements the subscriber count on drop.
@@ -125,10 +125,10 @@ async fn gpu_power_poll_task<T: GpuManager>(
     }
 
     let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
-    let mut last_power: HashMap<usize, u32> = HashMap::new();
+    let mut last_power: BTreeMap<usize, u32> = BTreeMap::new();
 
     tracing::info!(
-        "GPU power poller ready: {} GPUs at {} Hz (demand-driven)",
+        "GPU power poller ready: {} GPUs at {} Hz when subscribers are present",
         gpus.len(),
         poll_hz
     );
@@ -139,13 +139,13 @@ async fn gpu_power_poll_task<T: GpuManager>(
             wake.notified().await;
         }
 
-        tracing::debug!("GPU power poller waking up");
+        tracing::info!("GPU power poller starting");
         let mut tick = interval(Duration::from_micros(period_us));
 
         // Poll while subscribers are present.
         while subscriber_count.load(Ordering::Relaxed) > 0 {
             tick.tick().await;
-            let mut current_power = HashMap::with_capacity(gpus.len());
+            let mut current_power = BTreeMap::new();
             let mut changed = false;
 
             for (idx, gpu) in gpus.iter_mut() {
@@ -179,6 +179,7 @@ async fn gpu_power_poll_task<T: GpuManager>(
             }
         }
 
-        tracing::debug!("GPU power poller sleeping (no subscribers)");
+        last_power.clear();
+        tracing::info!("GPU power poller pausing (no subscribers)");
     }
 }

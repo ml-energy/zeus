@@ -46,7 +46,7 @@ pub struct Config {
     pub gpu_power_poll_hz: u32,
 
     /// CPU RAPL power polling frequency in Hz for the streaming endpoint.
-    #[clap(long, default_value = "20")]
+    #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
 }
 
