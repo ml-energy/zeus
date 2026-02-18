@@ -37,7 +37,6 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time
 import typing
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -343,34 +342,28 @@ class PowerStreamingClient:
     def _check_cpu_available(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> bool:
         """Probe the one-shot CPU power endpoint to check RAPL availability.
 
-        The first call to a freshly started zeusd may return an empty
-        `power_mw` because the poller needs two energy samples to compute
-        a power delta. We probe twice with a short sleep in between.
-
         Raises:
             ValueError: If requested CPU indices are not available on the server.
         """
         url = self._url(server, "/cpu/power")
         try:
             with self._make_http_client(server, timeout=5.0) as client:
-                for _ in range(2):
-                    response = client.get(url)
-                    response.raise_for_status()
-                    data = response.json()
-                    power_mw = data.get("power_mw", {})
-                    if power_mw:
-                        if server.cpu_indices is not None:
-                            available = {int(k) for k in power_mw}
-                            requested = set(server.cpu_indices)
-                            missing = requested - available
-                            if missing:
-                                raise ValueError(
-                                    f"CPU indices {sorted(missing)} requested for "
-                                    f"{server.key} but only {sorted(available)} "
-                                    f"are available"
-                                )
-                        return True
-                    time.sleep(0.1)
+                response = client.get(url)
+                response.raise_for_status()
+                data = response.json()
+                power_mw = data.get("power_mw", {})
+                if power_mw:
+                    if server.cpu_indices is not None:
+                        available = {int(k) for k in power_mw}
+                        requested = set(server.cpu_indices)
+                        missing = requested - available
+                        if missing:
+                            raise ValueError(
+                                f"CPU indices {sorted(missing)} requested for "
+                                f"{server.key} but only {sorted(available)} "
+                                f"are available"
+                            )
+                    return True
                 return False
         except (httpx.RequestError, httpx.HTTPStatusError):
             logger.warning("Failed to probe CPU power endpoint on %s", server.key, exc_info=True)
