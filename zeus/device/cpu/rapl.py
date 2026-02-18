@@ -286,40 +286,46 @@ class ZeusdRAPLCPU(RAPLCPU):
         self.zeusd_sock_path = zeusd_sock_path
 
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
-        self._url_prefix = f"http://zeusd/cpu/{cpu_index}"
 
         self.dram_available = self._supports_get_dram_energy_consumption()
 
     def _supports_get_dram_energy_consumption(self) -> bool:
-        """Calls zeusd to return if the specified CPU supports DRAM energy monitoring."""
-        resp = self._client.get(
-            self._url_prefix + "/supports_dram_energy",
-        )
+        """Query the /discover endpoint to check DRAM energy support for this CPU."""
+        resp = self._client.get("http://zeusd/discover")
         if resp.status_code != 200:
-            raise ZeusdError(f"Failed to query Zeusd whether DRAM energy is supported: {resp.text}")
+            raise ZeusdError(f"Failed to query Zeusd discovery endpoint: {resp.text}")
         data = resp.json()
         dram_available = data.get("dram_available")
         if dram_available is None:
-            raise ZeusdError("Failed to get whether DRAM energy is supported.")
-        return dram_available
+            raise ZeusdError("Discovery response missing 'dram_available' field.")
+        cpu_ids = data.get("cpu_ids", [])
+        try:
+            idx = cpu_ids.index(self.cpu_index)
+        except ValueError as e:
+            raise ZeusdError(f"CPU {self.cpu_index} not found in discovery response (available: {cpu_ids})") from e
+        return dram_available[idx]
 
     def get_total_energy_consumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
-        resp = self._client.post(
-            self._url_prefix + "/get_index_energy",
-            json={
-                "cpu": True,
-                "dram": True,
+        resp = self._client.get(
+            "http://zeusd/cpu/get_cumulative_energy",
+            params={
+                "cpu_ids": str(self.cpu_index),
+                "cpu": "true",
+                "dram": "true",
             },
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")
 
         data = resp.json()
-        cpu_mj = data["cpu_energy_uj"] / 1000
+        cpu_data = data.get(str(self.cpu_index))
+        if cpu_data is None:
+            raise ZeusdError(f"CPU {self.cpu_index} not found in response")
+        cpu_mj = cpu_data["cpu_energy_uj"] / 1000
 
         dram_mj = None
-        dram_uj = data.get("dram_energy_uj")
+        dram_uj = cpu_data.get("dram_energy_uj")
         if dram_uj is None:
             if self.dram_available:
                 raise ZeusdError("DRAM energy should be available but no measurement was found")

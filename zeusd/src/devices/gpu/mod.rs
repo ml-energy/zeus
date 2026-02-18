@@ -45,6 +45,15 @@ pub trait GpuManager {
     fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError>;
     /// Read instantaneous power draw in milliwatts.
     fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError>;
+    /// Get total energy consumption since driver load in millijoules.
+    fn get_total_energy_consumption(&mut self) -> Result<u64, ZeusdError>;
+}
+
+/// Response from a GPU command.
+#[derive(Debug)]
+pub enum GpuResponse {
+    Ok,
+    Energy { energy_mj: u64 },
 }
 
 /// A request to execute a GPU command.
@@ -57,7 +66,7 @@ pub trait GpuManager {
 /// The `Span` object is used to propagate tracing context starting from the request.
 pub type GpuCommandRequest = (
     GpuCommand,
-    Option<Sender<Result<(), ZeusdError>>>,
+    Option<Sender<Result<GpuResponse, ZeusdError>>>,
     Instant,
     Span,
 );
@@ -92,6 +101,11 @@ impl GpuManagementTasks {
         Ok(Self { senders })
     }
 
+    /// Return the number of GPUs managed by these tasks.
+    pub fn device_count(&self) -> usize {
+        self.senders.len()
+    }
+
     /// Send a command to the corresponding GPU management task and immediately return
     /// without checking the result. Results will be logged via tracing.
     /// Returns `Ok(())` if the command was *sent* successfully.
@@ -110,13 +124,12 @@ impl GpuManagementTasks {
     }
 
     /// Send a command to the corresponding GPU management task and wait for completion.
-    /// Returns `Ok(())` if the command was *executed* successfully.
     pub async fn send_command_blocking(
         &self,
         gpu_id: usize,
         command: GpuCommand,
         request_start_time: Instant,
-    ) -> Result<(), ZeusdError> {
+    ) -> Result<GpuResponse, ZeusdError> {
         if gpu_id >= self.senders.len() {
             return Err(ZeusdError::GpuNotFoundError(gpu_id));
         }
@@ -150,7 +163,7 @@ async fn gpu_management_task<T: GpuManager>(
 }
 
 /// A GPU command that can be executed on a GPU.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GpuCommand {
     /// Enable or disable persistence mode.
     SetPersistenceMode { enabled: bool },
@@ -170,11 +183,13 @@ pub enum GpuCommand {
     },
     /// Reset the GPU's memory locked clocks.
     ResetMemLockedClocks,
+    /// Get total energy consumption since driver load.
+    GetTotalEnergyConsumption,
 }
 
 /// Log the result of a GPU command with timing information.
-fn log_command_result(
-    result: &Result<(), ZeusdError>,
+fn log_command_result<T>(
+    result: &Result<T, ZeusdError>,
     request_arrival_time: Instant,
     command_start_time: Instant,
     ok_msg: &str,
@@ -196,7 +211,11 @@ fn log_command_result(
 }
 
 impl GpuCommand {
-    fn execute<T>(&self, device: &mut T, request_arrival_time: Instant) -> Result<(), ZeusdError>
+    fn execute<T>(
+        &self,
+        device: &mut T,
+        request_arrival_time: Instant,
+    ) -> Result<GpuResponse, ZeusdError>
     where
         T: GpuManager,
     {
@@ -215,7 +234,7 @@ impl GpuCommand {
                         action_verb = if enabled { "enable" } else { "disable" }
                     ),
                 );
-                result
+                result.map(|_| GpuResponse::Ok)
             }
             Self::SetPowerLimit { power_limit_mw } => {
                 let result = device.set_power_management_limit(power_limit_mw);
@@ -227,7 +246,7 @@ impl GpuCommand {
                     &format!("Power limit set to {watts} W"),
                     &format!("Cannot set power limit to {watts} W"),
                 );
-                result
+                result.map(|_| GpuResponse::Ok)
             }
             Self::SetGpuLockedClocks {
                 min_clock_mhz,
@@ -241,7 +260,7 @@ impl GpuCommand {
                     &format!("GPU frequency set to [{min_clock_mhz}, {max_clock_mhz}] MHz"),
                     &format!("Cannot set GPU frequency to [{min_clock_mhz}, {max_clock_mhz}] MHz"),
                 );
-                result
+                result.map(|_| GpuResponse::Ok)
             }
             Self::ResetGpuLockedClocks => {
                 let result = device.reset_gpu_locked_clocks();
@@ -252,7 +271,7 @@ impl GpuCommand {
                     "GPU locked clocks reset",
                     "Cannot reset GPU locked clocks",
                 );
-                result
+                result.map(|_| GpuResponse::Ok)
             }
             Self::SetMemLockedClocks {
                 min_clock_mhz,
@@ -268,7 +287,7 @@ impl GpuCommand {
                         "Cannot set memory locked clocks to [{min_clock_mhz}, {max_clock_mhz}] MHz"
                     ),
                 );
-                result
+                result.map(|_| GpuResponse::Ok)
             }
             Self::ResetMemLockedClocks => {
                 let result = device.reset_mem_locked_clocks();
@@ -279,7 +298,18 @@ impl GpuCommand {
                     "Memory locked clocks reset",
                     "Cannot reset memory locked clocks",
                 );
-                result
+                result.map(|_| GpuResponse::Ok)
+            }
+            Self::GetTotalEnergyConsumption => {
+                let result = device.get_total_energy_consumption();
+                log_command_result(
+                    &result,
+                    request_arrival_time,
+                    command_start_time,
+                    "Total energy consumption read",
+                    "Cannot read total energy consumption",
+                );
+                result.map(|energy_mj| GpuResponse::Energy { energy_mj })
             }
         }
     }

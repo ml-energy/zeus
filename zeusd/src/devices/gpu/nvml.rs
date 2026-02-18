@@ -99,6 +99,11 @@ impl GpuManager for NvmlGpu<'static> {
         Ok(self.device.reset_mem_locked_clocks()?)
     }
 
+    #[inline]
+    fn get_total_energy_consumption(&mut self) -> Result<u64, ZeusdError> {
+        Ok(self.device.total_energy_consumption()?)
+    }
+
     fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
         use nvml_wrapper::enums::device::SampleValue;
         use nvml_wrapper::structs::device::FieldId;

@@ -315,7 +315,7 @@ class PowerStreamingClient:
             ConnectionError: If the server is not reachable.
             ValueError: If requested GPU or CPU indices are not available.
         """
-        url = self._url(server, "/gpu/power")
+        url = self._url(server, "/discover")
         try:
             with self._make_http_client(server, timeout=5.0) as client:
                 response = client.get(url)
@@ -329,7 +329,7 @@ class PowerStreamingClient:
             raise ConnectionError(f"zeusd at {server.key} returned HTTP {e.response.status_code}") from e
 
         if server.gpu_indices is not None:
-            available = {int(k) for k in data.get("power_mw", {})}
+            available = set(data.get("gpu_ids", []))
             requested = set(server.gpu_indices)
             missing = requested - available
             if missing:
@@ -344,16 +344,16 @@ class PowerStreamingClient:
         Raises:
             ValueError: If requested CPU indices are not available on the server.
         """
-        url = self._url(server, "/cpu/power")
+        url = self._url(server, "/discover")
         try:
             with self._make_http_client(server, timeout=5.0) as client:
                 response = client.get(url)
                 response.raise_for_status()
                 data = response.json()
-                power_mw = data.get("power_mw", {})
-                if power_mw:
+                cpu_ids = data.get("cpu_ids", [])
+                if cpu_ids:
                     if server.cpu_indices is not None:
-                        available = {int(k) for k in power_mw}
+                        available = set(cpu_ids)
                         requested = set(server.cpu_indices)
                         missing = requested - available
                         if missing:
@@ -365,12 +365,12 @@ class PowerStreamingClient:
                     return True
                 return False
         except (httpx.RequestError, httpx.HTTPStatusError):
-            logger.warning("Failed to probe CPU power endpoint on %s", server.key, exc_info=True)
+            logger.warning("Failed to probe discovery endpoint on %s", server.key, exc_info=True)
             return False
 
     def _gpu_stream_loop(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
         """Background thread: stream GPU power from a single server."""
-        base_url = self._url(server, "/gpu/power/stream")
+        base_url = self._url(server, "/gpu/stream_power")
         # User specified specific indices to stream
         if server.gpu_indices is not None:
             ids_param = ",".join(str(i) for i in server.gpu_indices)
@@ -382,7 +382,7 @@ class PowerStreamingClient:
 
     def _cpu_stream_loop(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
         """Background thread: stream CPU power from a single server."""
-        base_url = self._url(server, "/cpu/power/stream")
+        base_url = self._url(server, "/cpu/stream_power")
         # User specified specific indices to stream
         if server.cpu_indices is not None:
             ids_param = ",".join(str(i) for i in server.cpu_indices)

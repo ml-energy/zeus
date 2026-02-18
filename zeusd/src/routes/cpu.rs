@@ -1,5 +1,6 @@
 //! Routes for interacting with CPUs
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use actix_web::web::Bytes;
@@ -10,77 +11,102 @@ use tokio_stream::wrappers::WatchStream;
 use tokio_stream::StreamExt;
 
 use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerSnapshot};
-use crate::devices::cpu::{CpuCommand, CpuManagementTasks};
+use crate::devices::cpu::{CpuCommand, CpuManagementTasks, RaplResponse};
 use crate::error::ZeusdError;
 
+/// Query parameters for CPU read endpoints.
+/// `cpu_ids` is optional; omit to read all CPUs.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CpuReadQuery {
+    pub cpu_ids: Option<String>,
+}
+
+/// Parse a comma-separated list of device indices.
+fn parse_cpu_ids(raw: &str) -> Vec<usize> {
+    raw.split(',')
+        .filter_map(|part| part.trim().parse().ok())
+        .collect()
+}
+
 #[derive(Serialize, Deserialize, Debug)]
-pub struct GetIndexEnergy {
+#[serde(deny_unknown_fields)]
+pub struct GetCumulativeEnergy {
+    pub cpu_ids: String,
     pub cpu: bool,
     pub dram: bool,
 }
 
-impl From<GetIndexEnergy> for CpuCommand {
-    fn from(_request: GetIndexEnergy) -> Self {
+impl From<GetCumulativeEnergy> for CpuCommand {
+    fn from(request: GetCumulativeEnergy) -> Self {
         CpuCommand::GetIndexEnergy {
-            cpu: _request.cpu,
-            dram: _request.dram,
+            cpu: request.cpu,
+            dram: request.dram,
         }
     }
 }
 
-#[actix_web::post("/{cpu_id}/get_index_energy")]
+#[actix_web::get("/get_cumulative_energy")]
 #[tracing::instrument(
-    skip(request, device_tasks),
+    skip(query, device_tasks),
     fields(
-        cpu_id = %cpu_id,
-        cpu = %request.cpu,
-        dram = %request.dram,
+        cpu_ids = %query.cpu_ids,
+        cpu = %query.cpu,
+        dram = %query.dram,
     )
 )]
-async fn get_index_energy_handler(
-    cpu_id: web::Path<usize>,
-    request: web::Json<GetIndexEnergy>,
+async fn get_cumulative_energy_handler(
+    query: web::Query<GetCumulativeEnergy>,
     device_tasks: web::Data<CpuManagementTasks>,
 ) -> Result<HttpResponse, ZeusdError> {
     let now = Instant::now();
     tracing::info!("Received request");
-    let cpu_id = cpu_id.into_inner();
-    let request = request.into_inner();
 
-    let measurement = device_tasks
-        .send_command_blocking(cpu_id, request.into(), now)
-        .await?;
+    let cpu_ids = parse_cpu_ids(&query.cpu_ids);
+    if cpu_ids.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "cpu_ids must contain at least one CPU index"
+        })));
+    }
+    let device_count = device_tasks.device_count();
+    for &id in &cpu_ids {
+        if id >= device_count {
+            return Err(ZeusdError::CpuNotFoundError(id));
+        }
+    }
 
-    Ok(HttpResponse::Ok().json(measurement))
-}
+    // Execute concurrently for all requested CPUs.
+    let mut handles = Vec::with_capacity(cpu_ids.len());
+    for &cpu_id in &cpu_ids {
+        let cmd: CpuCommand = CpuCommand::GetIndexEnergy {
+            cpu: query.cpu,
+            dram: query.dram,
+        };
+        let tasks = device_tasks.clone();
+        handles.push(async move { (cpu_id, tasks.send_command_blocking(cpu_id, cmd, now).await) });
+    }
+    let results = futures::future::join_all(handles).await;
 
-#[actix_web::get("/{cpu_id}/supports_dram_energy")]
-#[tracing::instrument(
-    skip(device_tasks),
-    fields(
-        cpu_id = %cpu_id,
-    )
-)]
-async fn supports_dram_energy_handler(
-    cpu_id: web::Path<usize>,
-    device_tasks: web::Data<CpuManagementTasks>,
-) -> Result<HttpResponse, ZeusdError> {
-    let now = Instant::now();
-    tracing::info!("Received request");
-    let cpu_id = cpu_id.into_inner();
+    let mut response_map: HashMap<String, RaplResponse> = HashMap::new();
+    let mut errors: HashMap<String, String> = HashMap::new();
+    for (cpu_id, result) in results {
+        match result {
+            Ok(measurement) => {
+                response_map.insert(cpu_id.to_string(), measurement);
+            }
+            Err(e) => {
+                errors.insert(cpu_id.to_string(), e.to_string());
+            }
+        }
+    }
 
-    let answer = device_tasks
-        .send_command_blocking(cpu_id, CpuCommand::SupportsDramEnergy, now)
-        .await?;
-
-    Ok(HttpResponse::Ok().json(answer))
-}
-
-/// Query parameters for CPU power endpoints.
-#[derive(Debug, Deserialize)]
-pub struct CpuPowerQuery {
-    /// Comma-separated list of CPU indices. If omitted, all CPUs are included.
-    pub cpu_ids: Option<String>,
+    if errors.is_empty() {
+        Ok(HttpResponse::Ok().json(response_map))
+    } else {
+        Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+            "errors": errors
+        })))
+    }
 }
 
 fn filter_cpu_snapshot(
@@ -105,14 +131,14 @@ fn filter_cpu_snapshot(
 ///
 /// Subscribes briefly to wake the poller, waits for a fresh reading (up to
 /// 200 ms), then returns the snapshot as JSON.
-#[actix_web::get("/power")]
+#[actix_web::get("/get_power")]
 #[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
 async fn get_cpu_power_handler(
-    query: web::Query<CpuPowerQuery>,
+    query: web::Query<CpuReadQuery>,
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
     tracing::info!("Received request");
-    let cpu_ids = super::parse_device_ids(&query.cpu_ids);
+    let cpu_ids = query.cpu_ids.as_ref().map(|s| parse_cpu_ids(s));
     if let Some(ref ids) = cpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
             return HttpResponse::BadRequest().json(serde_json::json!({
@@ -136,14 +162,14 @@ async fn get_cpu_power_handler(
 /// SSE stream of CPU power readings.
 ///
 /// The subscriber guard keeps the poller active for the lifetime of the stream.
-#[actix_web::get("/power/stream")]
+#[actix_web::get("/stream_power")]
 #[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
 async fn cpu_power_stream_handler(
-    query: web::Query<CpuPowerQuery>,
+    query: web::Query<CpuReadQuery>,
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
     tracing::info!("Received request");
-    let cpu_ids = super::parse_device_ids(&query.cpu_ids);
+    let cpu_ids = query.cpu_ids.as_ref().map(|s| parse_cpu_ids(s));
     if let Some(ref ids) = cpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
             return HttpResponse::BadRequest().json(serde_json::json!({
@@ -171,8 +197,7 @@ async fn cpu_power_stream_handler(
 }
 
 pub fn cpu_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_index_energy_handler)
-        .service(supports_dram_energy_handler)
+    cfg.service(get_cumulative_energy_handler)
         .service(get_cpu_power_handler)
         .service(cpu_power_stream_handler);
 }

@@ -18,6 +18,7 @@ use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcast, GpuPowerPo
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::cpu_routes;
 use crate::routes::gpu_routes;
+use crate::routes::{discovery_routes, DiscoveryInfo};
 
 /// Initialize tracing with the given where to write logs to.
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
@@ -79,16 +80,25 @@ pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerPoller> {
     Ok(start_gpu_poller(gpus, poll_hz))
 }
 
-pub fn start_cpu_device_tasks() -> anyhow::Result<CpuManagementTasks> {
+/// Initialize RAPL and start CPU management tasks.
+///
+/// Returns the management tasks and a per-CPU DRAM availability vector.
+pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<bool>)> {
     tracing::info!("Starting Rapl and CPU management tasks.");
     let num_cpus = RaplCpu::device_count()?;
     let mut cpus = Vec::with_capacity(num_cpus);
+    let mut dram_available = Vec::with_capacity(num_cpus);
     for cpu_id in 0..num_cpus {
         let cpu = RaplCpu::init(cpu_id)?;
-        tracing::info!("Initialized RAPL for CPU {}", cpu_id);
+        dram_available.push(cpu.is_dram_available());
+        tracing::info!(
+            "Initialized RAPL for CPU {} (DRAM: {})",
+            cpu_id,
+            dram_available[cpu_id],
+        );
         cpus.push(cpu);
     }
-    Ok(CpuManagementTasks::start(cpus)?)
+    Ok((CpuManagementTasks::start(cpus)?, dram_available))
 }
 
 /// Initialize a separate set of RAPL handles and start the CPU power poller.
@@ -117,16 +127,18 @@ pub fn ensure_root() -> anyhow::Result<()> {
 
 /// Build an `HttpServer` with all routes and shared application state.
 macro_rules! configure_server {
-    ($gpu_tasks:expr, $cpu_tasks:expr, $gpu_power:expr, $cpu_power:expr, $workers:expr) => {
+    ($gpu_tasks:expr, $cpu_tasks:expr, $gpu_power:expr, $cpu_power:expr, $discovery:expr, $workers:expr) => {
         HttpServer::new(move || {
             App::new()
                 .wrap(tracing_actix_web::TracingLogger::default())
+                .configure(discovery_routes)
                 .service(web::scope("/gpu").configure(gpu_routes))
                 .service(web::scope("/cpu").configure(cpu_routes))
                 .app_data(web::Data::new($gpu_tasks.clone()))
                 .app_data(web::Data::new($cpu_tasks.clone()))
                 .app_data(web::Data::new($gpu_power.clone()))
                 .app_data(web::Data::new($cpu_power.clone()))
+                .app_data(web::Data::new($discovery.clone()))
         })
         .workers($workers)
     };
@@ -139,6 +151,7 @@ pub fn start_server_uds(
     cpu_device_tasks: CpuManagementTasks,
     gpu_power_broadcast: GpuPowerBroadcast,
     cpu_power_broadcast: CpuPowerBroadcast,
+    discovery_info: DiscoveryInfo,
     num_workers: usize,
 ) -> std::io::Result<Server> {
     Ok(configure_server!(
@@ -146,6 +159,7 @@ pub fn start_server_uds(
         cpu_device_tasks,
         gpu_power_broadcast,
         cpu_power_broadcast,
+        discovery_info,
         num_workers
     )
     .listen_uds(listener)?
@@ -159,6 +173,7 @@ pub fn start_server_tcp(
     cpu_device_tasks: CpuManagementTasks,
     gpu_power_broadcast: GpuPowerBroadcast,
     cpu_power_broadcast: CpuPowerBroadcast,
+    discovery_info: DiscoveryInfo,
     num_workers: usize,
 ) -> std::io::Result<Server> {
     Ok(configure_server!(
@@ -166,6 +181,7 @@ pub fn start_server_tcp(
         cpu_device_tasks,
         gpu_power_broadcast,
         cpu_power_broadcast,
+        discovery_info,
         num_workers
     )
     .listen(listener)?
