@@ -130,6 +130,32 @@ class PowerStreamingClient:
     connection to the zeusd streaming endpoints. The latest power readings
     are stored in a thread-safe dict, accessible via `get_power()`.
 
+    The client supports three access patterns:
+
+    - Snapshot: Call `get_power()` to retrieve the latest readings at any time.
+    - Blocking iterator: Use `for readings in client` to block and yield a
+      snapshot each time new SSE data arrives. Iteration stops when `stop()`
+      is called.
+    - Async iterator: Use `async for readings in client` for the same
+      behavior without blocking the event loop.
+
+    ```python
+    client = PowerStreamingClient(servers=[...])
+
+    # Snapshot
+    readings = client.get_power()
+
+    # Blocking iterator
+    for readings in client:
+        print(readings)
+
+    # Async iterator
+    async for readings in client:
+        print(readings)
+
+    client.stop()
+    ```
+
     Args:
         servers: List of `ZeusdTcpConfig` or `ZeusdUdsConfig` specifying
             zeusd endpoints and which GPUs/CPUs to stream from each.

@@ -95,12 +95,12 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
     This is usually what you want, except when using more advanced device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX to partition CPUs into more pieces).
     In such cases, you probably want to opt out from using this function and handle synchronization manually at the appropriate granularity.
 
-## Distributed power measurement
+## Distributed power measurement and aggregation
 
-[`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient] streams live GPU and CPU power readings from one or more remote [`zeusd`](https://crates.io/crates/zeusd) instances over SSE (Server-Sent Events).
-This is useful for monitoring power across multiple nodes in a cluster, for example during datacenter-scale power simulations or multi-node training jobs.
+[`ZeusMonitor`][zeus.monitor.ZeusMonitor] is local to a single machine, but sometimes, you may want to monitor power across multiple nodes in a cluster.
+In this case, you can run the Zeus daemon ([zeusd](https://crates.io/crates/zeusd)) on each machine and stream power readings over SSE (Server-Sent Events) to a central client ([`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient]) for real-time monitoring and aggregation.
 
-Each zeusd instance is described by a [`ZeusdTcpConfig`][zeus.monitor.power_streaming.ZeusdTcpConfig] (for TCP connections) or [`ZeusdUdsConfig`][zeus.monitor.power_streaming.ZeusdUdsConfig] (for Unix domain sockets), which specifies the endpoint and optionally which GPU/CPU indices to monitor.
+Each Zeus daemon instance is described by a [`ZeusdTcpConfig`][zeus.monitor.power_streaming.ZeusdTcpConfig] (for TCP connections) or [`ZeusdUdsConfig`][zeus.monitor.power_streaming.ZeusdUdsConfig] (for Unix domain sockets), which specifies the endpoint and optionally which GPU/CPU indices to monitor.
 Both `gpu_indices` and `cpu_indices` follow the same convention as [`ZeusMonitor`][zeus.monitor.ZeusMonitor]:
 
 - `None` (default): Stream all available devices.
@@ -127,13 +127,24 @@ client = PowerStreamingClient(
     ],
 )
 
-# Latest readings from all endpoints, keyed by "host:port".
+# Snapshot: latest readings from all endpoints, keyed by "host:port".
 readings = client.get_power()
 for key, pr in readings.items():
     print(f"{key}: timestamp={pr.timestamp_s:.3f}s")
     print(f"  GPU power: {pr.gpu_power_w}")
     for cpu_idx, cpu_reading in pr.cpu_power_w.items():
         print(f"  CPU {cpu_idx}: {cpu_reading.cpu_w:.1f} W, DRAM: {cpu_reading.dram_w}")
+
+# Blocking iterator: yields a snapshot each time new SSE data arrives.
+# Iteration stops when stop() is called.
+for readings in client:
+    for key, pr in readings.items():
+        print(f"{key}: GPU={pr.gpu_power_w}, CPU={pr.cpu_power_w}")
+
+# Async iterator: same as above, without blocking the event loop.
+async for readings in client:
+    for key, pr in readings.items():
+        print(f"{key}: GPU={pr.gpu_power_w}, CPU={pr.cpu_power_w}")
 
 client.stop()
 ```
