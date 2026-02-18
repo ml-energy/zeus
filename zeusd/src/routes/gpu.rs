@@ -164,6 +164,17 @@ async fn get_power_handler(
 ) -> HttpResponse {
     tracing::info!("Received request");
     let gpu_ids = parse_gpu_ids(&query.gpu_ids);
+    if let Some(ref ids) = gpu_ids {
+        if let Err(unknown) = broadcast.validate_ids(ids) {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!(
+                    "Unknown GPU indices: {:?}. Available: {:?}",
+                    unknown,
+                    broadcast.valid_ids(),
+                )
+            }));
+        }
+    }
     let _guard = broadcast.add_subscriber();
     let mut rx = broadcast.subscribe();
     rx.borrow_and_update();
@@ -186,10 +197,21 @@ async fn power_stream_handler(
     broadcast: web::Data<GpuPowerBroadcast>,
 ) -> HttpResponse {
     tracing::info!("Received request");
+    let gpu_ids = parse_gpu_ids(&query.gpu_ids);
+    if let Some(ref ids) = gpu_ids {
+        if let Err(unknown) = broadcast.validate_ids(ids) {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!(
+                    "Unknown GPU indices: {:?}. Available: {:?}",
+                    unknown,
+                    broadcast.valid_ids(),
+                )
+            }));
+        }
+    }
     let guard = broadcast.add_subscriber();
     // Brief sleep to let the poller produce a first reading.
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let gpu_ids = parse_gpu_ids(&query.gpu_ids);
     let rx = broadcast.subscribe();
     let stream = WatchStream::new(rx).map(move |snapshot| {
         let _ = &guard; // prevent drop until stream ends

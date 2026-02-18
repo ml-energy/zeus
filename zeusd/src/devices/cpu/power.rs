@@ -6,7 +6,7 @@
 //! Polling is demand-driven: the task sleeps when no subscribers are
 //! connected and wakes when the first subscriber arrives.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -53,6 +53,8 @@ pub struct CpuPowerBroadcast {
     rx: watch::Receiver<CpuPowerSnapshot>,
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
+    /// Set of CPU indices being monitored.
+    valid_ids: Arc<BTreeSet<usize>>,
 }
 
 impl CpuPowerBroadcast {
@@ -76,6 +78,24 @@ impl CpuPowerBroadcast {
             count: self.subscriber_count.clone(),
         }
     }
+
+    /// Validate that all requested CPU indices are being monitored.
+    ///
+    /// Returns `Ok(())` if all indices are valid, or `Err` with the
+    /// set of unknown indices.
+    pub fn validate_ids(&self, ids: &[usize]) -> Result<(), Vec<usize>> {
+        let unknown: Vec<usize> = ids.iter().filter(|id| !self.valid_ids.contains(id)).copied().collect();
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(unknown)
+        }
+    }
+
+    /// Get the set of valid CPU indices.
+    pub fn valid_ids(&self) -> &BTreeSet<usize> {
+        &self.valid_ids
+    }
 }
 
 /// Background task that polls CPU RAPL counters at a configured frequency,
@@ -92,6 +112,7 @@ impl CpuPowerPoller {
     /// energy counters and computes instantaneous power from deltas.
     /// Polling is demand-driven: sleeps when no subscribers are connected.
     pub fn start<T: CpuManager + Send + 'static>(cpus: Vec<(usize, T)>, poll_hz: u32) -> Self {
+        let valid_ids: BTreeSet<usize> = cpus.iter().map(|(idx, _)| *idx).collect();
         let (tx, rx) = watch::channel(CpuPowerSnapshot::default());
         let subscriber_count = Arc::new(AtomicUsize::new(0));
         let wake = Arc::new(Notify::new());
@@ -107,6 +128,7 @@ impl CpuPowerPoller {
                 rx,
                 subscriber_count,
                 wake,
+                valid_ids: Arc::new(valid_ids),
             },
             _handle: handle,
         }

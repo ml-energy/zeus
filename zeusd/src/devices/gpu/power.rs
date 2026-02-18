@@ -5,7 +5,7 @@
 //! demand-driven: the task sleeps when no subscribers are connected and wakes
 //! when the first subscriber arrives.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -45,6 +45,8 @@ pub struct GpuPowerBroadcast {
     rx: watch::Receiver<GpuPowerSnapshot>,
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
+    /// Set of GPU indices being monitored.
+    valid_ids: Arc<BTreeSet<usize>>,
 }
 
 impl GpuPowerBroadcast {
@@ -68,6 +70,24 @@ impl GpuPowerBroadcast {
             count: self.subscriber_count.clone(),
         }
     }
+
+    /// Validate that all requested GPU indices are being monitored.
+    ///
+    /// Returns `Ok(())` if all indices are valid, or `Err` with the
+    /// set of unknown indices.
+    pub fn validate_ids(&self, ids: &[usize]) -> Result<(), Vec<usize>> {
+        let unknown: Vec<usize> = ids.iter().filter(|id| !self.valid_ids.contains(id)).copied().collect();
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(unknown)
+        }
+    }
+
+    /// Get the set of valid GPU indices.
+    pub fn valid_ids(&self) -> &BTreeSet<usize> {
+        &self.valid_ids
+    }
 }
 
 /// Background task that polls GPU power at a configured frequency and
@@ -84,6 +104,7 @@ impl GpuPowerPoller {
     /// `poll_hz` frequency when subscribers are present. The task sleeps
     /// when no subscribers are connected.
     pub fn start<T: GpuManager + Send + 'static>(gpus: Vec<(usize, T)>, poll_hz: u32) -> Self {
+        let valid_ids: BTreeSet<usize> = gpus.iter().map(|(idx, _)| *idx).collect();
         let (tx, rx) = watch::channel(GpuPowerSnapshot::default());
         let subscriber_count = Arc::new(AtomicUsize::new(0));
         let wake = Arc::new(Notify::new());
@@ -99,6 +120,7 @@ impl GpuPowerPoller {
                 rx,
                 subscriber_count,
                 wake,
+                valid_ids: Arc::new(valid_ids),
             },
             _handle: handle,
         }
