@@ -13,6 +13,8 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::NvmlGpu;
 
+pub mod power;
+
 // GPU management.
 // As long as there is a struct that implements the GpuManager trait,
 // the code below will work with any GPU management library.
@@ -51,6 +53,8 @@ pub trait GpuManager {
     ) -> Result<(), ZeusdError>;
     /// Reset the memory locked clocks.
     fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError>;
+    /// Read instantaneous power draw in milliwatts.
+    fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError>;
 }
 
 /// A request to execute a GPU command.

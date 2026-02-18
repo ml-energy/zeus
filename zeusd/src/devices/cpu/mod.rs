@@ -11,6 +11,8 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::RaplCpu;
 
+pub mod power;
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;

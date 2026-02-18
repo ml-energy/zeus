@@ -1,13 +1,18 @@
 mod helpers;
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::task::JoinSet;
+use zeusd::devices::gpu::power::GpuPowerPoller;
+use zeusd::devices::gpu::GpuManager;
+use zeusd::error::ZeusdError;
 use zeusd::routes::gpu::{
     ResetGpuLockedClocks, ResetMemLockedClocks, SetGpuLockedClocks, SetMemLockedClocks,
     SetPersistenceMode, SetPowerLimit,
 };
 
-use crate::helpers::{TestApp, ZeusdRequest};
+use crate::helpers::{TestApp, ZeusdRequest, NUM_GPUS};
 
 #[tokio::test]
 async fn test_set_persistence_mode_single() {
@@ -771,5 +776,158 @@ async fn test_mem_locked_clocks_bulk() {
         (0..11)
             .map(|i| (1000 + i * 100, 2000 + i * 100))
             .collect::<HashSet<_>>()
+    );
+}
+
+#[tokio::test]
+async fn test_gpu_power_oneshot() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    assert!(body["power_mw"].is_object());
+    assert!(body["timestamp_ms"].is_number());
+}
+
+#[tokio::test]
+async fn test_gpu_power_oneshot_filtered() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power?gpu_ids=0,2", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let power = body["power_mw"]
+        .as_object()
+        .expect("power_mw should be object");
+    assert!(power.contains_key("0"));
+    assert!(power.contains_key("2"));
+    assert!(!power.contains_key("1"));
+    assert!(!power.contains_key("3"));
+}
+
+#[tokio::test]
+async fn test_gpu_power_oneshot_has_all_gpus() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let power = body["power_mw"]
+        .as_object()
+        .expect("power_mw should be object");
+    for i in 0..NUM_GPUS {
+        assert!(
+            power.contains_key(&i.to_string()),
+            "Missing GPU {} in power_mw",
+            i
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_gpu_power_stream_receives_events() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/power/stream", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers()
+            .get("content-type")
+            .expect("Missing content-type")
+            .to_str()
+            .unwrap(),
+        "text/event-stream"
+    );
+}
+
+/// A mock GPU that counts how many times `get_instant_power_mw` is called.
+struct PollCountingGpu {
+    poll_count: Arc<AtomicUsize>,
+}
+
+impl GpuManager for PollCountingGpu {
+    fn device_count() -> Result<u32, ZeusdError> {
+        Ok(1)
+    }
+    fn set_persistence_mode(&mut self, _enabled: bool) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn set_power_management_limit(&mut self, _power_limit: u32) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn set_gpu_locked_clocks(&mut self, _min: u32, _max: u32) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn reset_gpu_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn set_mem_locked_clocks(&mut self, _min: u32, _max: u32) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
+        self.poll_count.fetch_add(1, Ordering::Relaxed);
+        Ok(150_000)
+    }
+}
+
+#[tokio::test]
+async fn test_gpu_power_lazy_polling() {
+    let poll_count = Arc::new(AtomicUsize::new(0));
+    let gpu = PollCountingGpu {
+        poll_count: poll_count.clone(),
+    };
+    let poller = GpuPowerPoller::start(vec![(0, gpu)], 100);
+    let broadcast = poller.broadcast();
+
+    // No subscribers: poller should be asleep.
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    assert_eq!(
+        poll_count.load(Ordering::Relaxed),
+        0,
+        "Poller should not poll when there are no subscribers"
+    );
+
+    // Add a subscriber: poller should wake up and start polling.
+    let guard = broadcast.add_subscriber();
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    let count_with_sub = poll_count.load(Ordering::Relaxed);
+    assert!(
+        count_with_sub > 0,
+        "Poller should poll when a subscriber is present"
+    );
+
+    // Drop the subscriber: poller should go back to sleep.
+    drop(guard);
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    let count_after_drop = poll_count.load(Ordering::Relaxed);
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    let count_later = poll_count.load(Ordering::Relaxed);
+    assert_eq!(
+        count_after_drop, count_later,
+        "Poller should stop polling after the last subscriber disconnects"
     );
 }

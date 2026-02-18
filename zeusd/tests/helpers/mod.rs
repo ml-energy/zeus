@@ -11,12 +11,14 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use zeusd::devices::cpu::power::CpuPowerPoller;
 use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
+use zeusd::devices::gpu::power::GpuPowerPoller;
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
 use zeusd::startup::{init_tracing, start_server_tcp};
 
-static NUM_GPUS: u32 = 4;
+pub static NUM_GPUS: u32 = 4;
 
 static NUM_CPUS: usize = 1;
 
@@ -120,6 +122,10 @@ impl GpuManager for TestGpu {
         self.mem_locked_clocks_tx.send((0, 0)).unwrap();
         Ok(())
     }
+
+    fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
+        Ok(150_000)
+    }
 }
 
 pub struct TestCpu {
@@ -185,6 +191,82 @@ impl CpuManager for TestCpu {
 
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
         Ok(self.dram.try_recv().ok().unwrap())
+    }
+
+    fn stop_monitoring(&mut self) {}
+
+    fn is_dram_available(&self) -> bool {
+        true
+    }
+}
+
+/// Mock CPU for the power poller that returns deterministically incrementing
+/// energy counters, producing predictable power readings.
+pub struct PowerTestCpu {
+    cpu_energy_uj: u64,
+    dram_energy_uj: u64,
+    cpu_increment_uj: u64,
+    dram_increment_uj: u64,
+}
+
+/// CPU energy increment per poll tick (microjoules).
+pub const POWER_TEST_CPU_INCREMENT_UJ: u64 = 10_000;
+/// DRAM energy increment per poll tick (microjoules).
+pub const POWER_TEST_DRAM_INCREMENT_UJ: u64 = 5_000;
+/// Power poller frequency used in tests (Hz).
+pub const POWER_TEST_POLL_HZ: u32 = 10;
+
+impl PowerTestCpu {
+    fn new(cpu_increment_uj: u64, dram_increment_uj: u64) -> Self {
+        Self {
+            cpu_energy_uj: 0,
+            dram_energy_uj: 0,
+            cpu_increment_uj,
+            dram_increment_uj,
+        }
+    }
+}
+
+impl CpuManager for PowerTestCpu {
+    fn device_count() -> Result<usize, ZeusdError> {
+        Ok(1)
+    }
+
+    fn get_available_fields(
+        index: usize,
+    ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError> {
+        Ok((
+            Arc::new(PackageInfo {
+                index,
+                name: "package-0".to_string(),
+                energy_uj_path: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
+                ),
+                max_energy_uj: 1_000_000,
+                num_wraparounds: RwLock::new(0),
+            }),
+            Some(Arc::new(PackageInfo {
+                index,
+                name: "dram".to_string(),
+                energy_uj_path: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
+                ),
+                max_energy_uj: 1_000_000,
+                num_wraparounds: RwLock::new(0),
+            })),
+        ))
+    }
+
+    fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
+        let val = self.cpu_energy_uj;
+        self.cpu_energy_uj += self.cpu_increment_uj;
+        Ok(val)
+    }
+
+    fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
+        let val = self.dram_energy_uj;
+        self.dram_energy_uj += self.dram_increment_uj;
+        Ok(val)
     }
 
     fn stop_monitoring(&mut self) {}
@@ -281,10 +363,35 @@ impl TestApp {
         let (cpu_test_tasks, cpu_test_injectors) =
             start_cpu_test_tasks().expect("Failed to start cpu test tasks");
 
+        // Create test power pollers.
+        let test_power_gpus: Vec<(usize, TestGpu)> = (0..NUM_GPUS as usize)
+            .map(|i| (i, TestGpu::init().unwrap().0))
+            .collect();
+        let gpu_power_poller = GpuPowerPoller::start(test_power_gpus, 10);
+        let gpu_power_broadcast = gpu_power_poller.broadcast();
+
+        let cpu_power_cpus: Vec<(usize, PowerTestCpu)> = (0..NUM_CPUS)
+            .map(|i| {
+                (
+                    i,
+                    PowerTestCpu::new(POWER_TEST_CPU_INCREMENT_UJ, POWER_TEST_DRAM_INCREMENT_UJ),
+                )
+            })
+            .collect();
+        let cpu_power_poller = CpuPowerPoller::start(cpu_power_cpus, POWER_TEST_POLL_HZ);
+        let cpu_power_broadcast = cpu_power_poller.broadcast();
+
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
-        let server = start_server_tcp(listener, gpu_test_tasks, cpu_test_tasks, 2)
-            .expect("Failed to start server");
+        let server = start_server_tcp(
+            listener,
+            gpu_test_tasks,
+            cpu_test_tasks,
+            gpu_power_broadcast,
+            cpu_power_broadcast,
+            2,
+        )
+        .expect("Failed to start server");
         let _ = tokio::spawn(server);
 
         TestApp {
