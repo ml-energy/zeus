@@ -95,6 +95,49 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
     This is usually what you want, except when using more advanced device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX to partition CPUs into more pieces).
     In such cases, you probably want to opt out from using this function and handle synchronization manually at the appropriate granularity.
 
+## Distributed power measurement
+
+[`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient] streams live GPU and CPU power readings from one or more remote [`zeusd`](https://crates.io/crates/zeusd) instances over SSE (Server-Sent Events).
+This is useful for monitoring power across multiple nodes in a cluster, for example during datacenter-scale power simulations or multi-node training jobs.
+
+Each zeusd instance is described by a [`ZeusdServerConfig`][zeus.monitor.power_streaming.ZeusdServerConfig], which specifies the host, port, and optionally which GPU/CPU indices to monitor.
+Use `collect_gpu` and `collect_cpu` to control which device types to stream from each server (GPU streaming is enabled by default).
+
+```python
+from zeus.monitor.power_streaming import PowerStreamingClient, ZeusdServerConfig
+
+# SSE connections start immediately on construction.
+client = PowerStreamingClient(
+    servers=[
+        ZeusdServerConfig(
+            host="node1", port=4938,
+            gpu_indices=[0, 1, 2, 3],
+            collect_cpu=True,       # also stream CPU power
+            cpu_indices=[0],        # only CPU package 0
+        ),
+        ZeusdServerConfig(host="node2", port=4938),  # GPU-only (default)
+    ],
+)
+
+# Latest readings from all endpoints, keyed by "host:port".
+readings = client.get_power()
+for key, pr in readings.items():
+    print(f"{key}: timestamp={pr.timestamp_s:.3f}s")
+    print(f"  GPU power: {pr.gpu_power_w}")
+    for cpu_idx, cpu_reading in pr.cpu_power_w.items():
+        print(f"  CPU {cpu_idx}: {cpu_reading.cpu_w:.1f} W, DRAM: {cpu_reading.dram_w}")
+
+client.stop()
+```
+
+[`get_power`][zeus.monitor.power_streaming.PowerStreamingClient.get_power] returns a dict mapping each `"host:port"` key to a [`PowerReadings`][zeus.monitor.power_streaming.PowerReadings] object containing a Unix timestamp, per-GPU power in watts, and per-CPU [`CpuPowerReading`][zeus.monitor.power_streaming.CpuPowerReading] objects (with `cpu_w` and optional `dram_w` fields, both in watts).
+
+The client spawns one background thread per device type per zeusd endpoint on construction.
+Each thread holds an SSE connection and automatically reconnects on disconnection.
+When `collect_cpu=True`, the client probes the zeusd one-shot CPU power endpoint on init; if RAPL is not available on that server, a warning is logged and CPU streaming is skipped.
+Call `stop()` when done to cleanly shut down background threads.
+zeusd uses demand-driven polling -- power is only read from the hardware while at least one client is connected, so idle endpoints consume no resources.
+
 ## Hardware Support
 
 For GPUs, we currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.1 or later).

@@ -184,8 +184,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
                     Ok(energy_uj) => {
                         if let Some(last_energy) = state.last_cpu_energy_uj {
                             let delta_uj = energy_uj.saturating_sub(last_energy);
-                            let power_uw = delta_uj as f64 / (period_us as f64 / 1_000_000.0);
-                            let power_mw = (power_uw / 1000.0) as u32;
+                            let power_mw = (delta_uj * 1000 / period_us) as u32;
                             if power_mw != state.last_cpu_power_mw {
                                 changed = true;
                             }
@@ -210,8 +209,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
                         Ok(energy_uj) => {
                             if let Some(last_energy) = state.last_dram_energy_uj {
                                 let delta_uj = energy_uj.saturating_sub(last_energy);
-                                let power_uw = delta_uj as f64 / (period_us as f64 / 1_000_000.0);
-                                let power_mw = (power_uw / 1000.0) as u32;
+                                let power_mw = (delta_uj * 1000 / period_us) as u32;
                                 if state.last_dram_power_mw != Some(power_mw) {
                                     changed = true;
                                 }
