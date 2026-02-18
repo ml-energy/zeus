@@ -204,10 +204,9 @@ class PowerStreamingClient:
                     self._threads.append(t)
                     logger.info("Started CPU power streaming thread for %s", server.key)
                 else:
-                    logger.warning(
-                        "CPU power streaming requested for %s but RAPL is not "
+                    raise ValueError(
+                        f"CPU power streaming requested for {server.key} but RAPL is not "
                         "available on that server; skipping CPU streaming",
-                        server.key,
                     )
 
     def stop(self) -> None:
@@ -372,9 +371,11 @@ class PowerStreamingClient:
     def _gpu_stream_loop(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
         """Background thread: stream GPU power from a single server."""
         base_url = self._url(server, "/gpu/power/stream")
+        # User specified specific indices to stream
         if server.gpu_indices is not None:
             ids_param = ",".join(str(i) for i in server.gpu_indices)
             url = f"{base_url}?gpu_ids={ids_param}"
+        # User wants all available indices
         else:
             url = base_url
         self._stream_loop(url, server, self._process_gpu_event, "GPU")
@@ -382,9 +383,11 @@ class PowerStreamingClient:
     def _cpu_stream_loop(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
         """Background thread: stream CPU power from a single server."""
         base_url = self._url(server, "/cpu/power/stream")
+        # User specified specific indices to stream
         if server.cpu_indices is not None:
             ids_param = ",".join(str(i) for i in server.cpu_indices)
             url = f"{base_url}?cpu_ids={ids_param}"
+        # User wants all available indices
         else:
             url = base_url
         self._stream_loop(url, server, self._process_cpu_event, "CPU")
