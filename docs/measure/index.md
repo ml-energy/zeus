@@ -100,22 +100,30 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
 [`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient] streams live GPU and CPU power readings from one or more remote [`zeusd`](https://crates.io/crates/zeusd) instances over SSE (Server-Sent Events).
 This is useful for monitoring power across multiple nodes in a cluster, for example during datacenter-scale power simulations or multi-node training jobs.
 
-Each zeusd instance is described by a [`ZeusdServerConfig`][zeus.monitor.power_streaming.ZeusdServerConfig], which specifies the host, port, and optionally which GPU/CPU indices to monitor.
-Use `collect_gpu` and `collect_cpu` to control which device types to stream from each server (GPU streaming is enabled by default).
+Each zeusd instance is described by a [`ZeusdTcpConfig`][zeus.monitor.power_streaming.ZeusdTcpConfig] (for TCP connections) or [`ZeusdUdsConfig`][zeus.monitor.power_streaming.ZeusdUdsConfig] (for Unix domain sockets), which specifies the endpoint and optionally which GPU/CPU indices to monitor.
+Both `gpu_indices` and `cpu_indices` follow the same convention as [`ZeusMonitor`][zeus.monitor.ZeusMonitor]:
+
+- `None` (default): Stream all available devices.
+- A list of indices (e.g., `[0, 1]`): Stream only those devices.
+- An empty list (`[]`): Skip streaming for that device type entirely.
 
 ```python
-from zeus.monitor.power_streaming import PowerStreamingClient, ZeusdServerConfig
+from zeus.monitor.power_streaming import (
+    PowerStreamingClient,
+    ZeusdTcpConfig,
+    ZeusdUdsConfig,
+)
 
 # SSE connections start immediately on construction.
 client = PowerStreamingClient(
     servers=[
-        ZeusdServerConfig(
+        ZeusdTcpConfig(
             host="node1", port=4938,
             gpu_indices=[0, 1, 2, 3],
-            collect_cpu=True,       # also stream CPU power
-            cpu_indices=[0],        # only CPU package 0
+            cpu_indices=[0],        # stream only CPU package 0
         ),
-        ZeusdServerConfig(host="node2", port=4938),  # GPU-only (default)
+        ZeusdTcpConfig(host="node2", port=4938),  # all GPUs + all CPUs
+        ZeusdUdsConfig(socket_path="/var/run/zeusd.sock"),  # local UDS
     ],
 )
 
@@ -134,7 +142,7 @@ client.stop()
 
 The client spawns one background thread per device type per zeusd endpoint on construction.
 Each thread holds an SSE connection and automatically reconnects on disconnection.
-When `collect_cpu=True`, the client probes the zeusd one-shot CPU power endpoint on init; if RAPL is not available on that server, a warning is logged and CPU streaming is skipped.
+Unless `cpu_indices` is set to `[]`, the client probes the zeusd one-shot CPU power endpoint on init; if RAPL is not available on that server, a warning is logged and CPU streaming is skipped.
 Call `stop()` when done to cleanly shut down background threads.
 zeusd uses demand-driven polling -- power is only read from the hardware while at least one client is connected, so idle endpoints consume no resources.
 
