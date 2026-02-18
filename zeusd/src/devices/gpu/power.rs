@@ -27,11 +27,11 @@ pub struct GpuPowerSnapshot {
 }
 
 /// RAII guard that decrements the subscriber count on drop.
-pub struct SubscriberGuard {
+pub struct GpuSubscriberGuard {
     count: Arc<AtomicUsize>,
 }
 
-impl Drop for SubscriberGuard {
+impl Drop for GpuSubscriberGuard {
     fn drop(&mut self) {
         self.count.fetch_sub(1, Ordering::Relaxed);
     }
@@ -63,10 +63,10 @@ impl GpuPowerBroadcast {
     /// Register a subscriber, waking the poller if it was sleeping.
     ///
     /// Returns an RAII guard that decrements the count on drop.
-    pub fn add_subscriber(&self) -> SubscriberGuard {
+    pub fn add_subscriber(&self) -> GpuSubscriberGuard {
         self.subscriber_count.fetch_add(1, Ordering::Relaxed);
         self.wake.notify_one();
-        SubscriberGuard {
+        GpuSubscriberGuard {
             count: self.subscriber_count.clone(),
         }
     }

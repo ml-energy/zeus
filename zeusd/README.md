@@ -76,16 +76,16 @@ curl "http://localhost:4938/cpu/power?cpu_ids=0"
 On the Python side, use `PowerStreamingClient` to connect to one or more `zeusd` instances:
 
 ```python
-from zeus.monitor.power_streaming import PowerStreamingClient, ZeusdServerConfig
+from zeus.monitor.power_streaming import PowerStreamingClient, ZeusdTcpConfig
 
 client = PowerStreamingClient(
     servers=[
-        ZeusdServerConfig(
+        ZeusdTcpConfig(
             host="node1", port=4938,
             gpu_indices=[0, 1, 2, 3],
             cpu_indices=[0],
         ),
-        ZeusdServerConfig(host="node2", port=4938),
+        ZeusdTcpConfig(host="node2", port=4938),
     ],
 )
 readings = client.get_power()

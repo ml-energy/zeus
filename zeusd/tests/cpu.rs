@@ -176,9 +176,13 @@ async fn test_supports_dram_energy() {
 
 #[tokio::test]
 async fn test_cpu_power_oneshot() {
-    let _app = TestApp::start().await;
+    use crate::helpers::{
+        POWER_TEST_CPU_INCREMENT_UJ, POWER_TEST_DRAM_INCREMENT_UJ, POWER_TEST_POLL_HZ,
+    };
+
+    let app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/cpu/power", _app.port);
+    let url = format!("http://127.0.0.1:{}/cpu/power", app.port);
     let resp = client
         .get(&url)
         .send()
@@ -186,8 +190,23 @@ async fn test_cpu_power_oneshot() {
         .expect("Failed to send request");
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
-    assert!(body["power_mw"].is_object());
+
     assert!(body["timestamp_ms"].is_number());
+    assert!(body["timestamp_ms"].as_u64().unwrap() > 0);
+
+    let power_mw = &body["power_mw"];
+    assert!(power_mw.is_object());
+
+    // CPU 0 should have deterministic power based on the test constants.
+    let cpu0 = &power_mw["0"];
+    assert!(cpu0.is_object(), "Expected CPU 0 power data, got: {body}");
+
+    let period_us = 1_000_000u64 / POWER_TEST_POLL_HZ as u64;
+    let expected_cpu_mw = POWER_TEST_CPU_INCREMENT_UJ * 1000 / period_us;
+    let expected_dram_mw = POWER_TEST_DRAM_INCREMENT_UJ * 1000 / period_us;
+
+    assert_eq!(cpu0["cpu_mw"].as_u64().unwrap(), expected_cpu_mw);
+    assert_eq!(cpu0["dram_mw"].as_u64().unwrap(), expected_dram_mw);
 }
 
 #[tokio::test]
