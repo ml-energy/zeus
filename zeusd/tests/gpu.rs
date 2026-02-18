@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::task::JoinSet;
-use zeusd::devices::gpu::power::GpuPowerPoller;
+use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::GpuManager;
 use zeusd::error::ZeusdError;
 use zeusd::routes::gpu::{
@@ -900,7 +900,7 @@ async fn test_gpu_power_lazy_polling() {
     let gpu = PollCountingGpu {
         poll_count: poll_count.clone(),
     };
-    let poller = GpuPowerPoller::start(vec![(0, gpu)], 100);
+    let poller = start_gpu_poller(vec![(0, gpu)], 100);
     let broadcast = poller.broadcast();
 
     // No subscribers: poller should be asleep.

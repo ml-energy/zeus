@@ -30,7 +30,7 @@ impl From<GetIndexEnergy> for CpuCommand {
 
 #[actix_web::post("/{cpu_id}/get_index_energy")]
 #[tracing::instrument(
-    skip(request, _device_tasks),
+    skip(request, device_tasks),
     fields(
         cpu_id = %cpu_id,
         cpu = %request.cpu,
@@ -40,14 +40,14 @@ impl From<GetIndexEnergy> for CpuCommand {
 async fn get_index_energy_handler(
     cpu_id: web::Path<usize>,
     request: web::Json<GetIndexEnergy>,
-    _device_tasks: web::Data<CpuManagementTasks>,
+    device_tasks: web::Data<CpuManagementTasks>,
 ) -> Result<HttpResponse, ZeusdError> {
     let now = Instant::now();
     tracing::info!("Received request");
     let cpu_id = cpu_id.into_inner();
     let request = request.into_inner();
 
-    let measurement = _device_tasks
+    let measurement = device_tasks
         .send_command_blocking(cpu_id, request.into(), now)
         .await?;
 
@@ -56,20 +56,20 @@ async fn get_index_energy_handler(
 
 #[actix_web::get("/{cpu_id}/supports_dram_energy")]
 #[tracing::instrument(
-    skip(_device_tasks),
+    skip(device_tasks),
     fields(
         cpu_id = %cpu_id,
     )
 )]
 async fn supports_dram_energy_handler(
     cpu_id: web::Path<usize>,
-    _device_tasks: web::Data<CpuManagementTasks>,
+    device_tasks: web::Data<CpuManagementTasks>,
 ) -> Result<HttpResponse, ZeusdError> {
     let now = Instant::now();
     tracing::info!("Received request");
     let cpu_id = cpu_id.into_inner();
 
-    let answer = _device_tasks
+    let answer = device_tasks
         .send_command_blocking(cpu_id, CpuCommand::SupportsDramEnergy, now)
         .await?;
 
@@ -81,14 +81,6 @@ async fn supports_dram_energy_handler(
 pub struct CpuPowerQuery {
     /// Comma-separated list of CPU indices. If omitted, all CPUs are included.
     pub cpu_ids: Option<String>,
-}
-
-fn parse_cpu_ids(raw: &Option<String>) -> Option<Vec<usize>> {
-    raw.as_ref().map(|s| {
-        s.split(',')
-            .filter_map(|part| part.trim().parse().ok())
-            .collect()
-    })
 }
 
 fn filter_cpu_snapshot(
@@ -120,7 +112,7 @@ async fn get_cpu_power_handler(
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
     tracing::info!("Received request");
-    let cpu_ids = parse_cpu_ids(&query.cpu_ids);
+    let cpu_ids = super::parse_device_ids(&query.cpu_ids);
     if let Some(ref ids) = cpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
             return HttpResponse::BadRequest().json(serde_json::json!({
@@ -151,7 +143,7 @@ async fn cpu_power_stream_handler(
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
     tracing::info!("Received request");
-    let cpu_ids = parse_cpu_ids(&query.cpu_ids);
+    let cpu_ids = super::parse_device_ids(&query.cpu_ids);
     if let Some(ref ids) = cpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
             return HttpResponse::BadRequest().json(serde_json::json!({

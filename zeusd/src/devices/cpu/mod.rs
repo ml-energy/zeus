@@ -1,15 +1,5 @@
-// RAPL CPU
-// Real RAPL interface.
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-pub use linux::RaplCpu;
-
-// Fake Rapl interface for dev and testing on macOS.
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(target_os = "macos")]
-pub use macos::RaplCpu;
+mod rapl;
+pub use rapl::RaplCpu;
 
 pub mod power;
 
@@ -111,7 +101,7 @@ impl CpuManagementTasks {
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
         self.senders[cpu_id]
             .send((command, Some(tx), request_start_time, Span::current()))
-            .unwrap();
+            .map_err(ZeusdError::from)?;
         match rx.recv().await {
             Some(result) => result,
             None => Err(ZeusdError::CpuManagementTaskTerminatedError(cpu_id)),
@@ -128,7 +118,7 @@ impl CpuManagementTasks {
                     Instant::now(),
                     Span::current(),
                 ))
-                .unwrap();
+                .map_err(ZeusdError::from)?;
             match rx.recv().await {
                 Some(_) => {}
                 None => return Err(ZeusdError::CpuManagementTaskTerminatedError(index)),

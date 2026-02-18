@@ -6,17 +6,17 @@
 //! Polling is demand-driven: the task sleeps when no subscribers are
 //! connected and wakes when the first subscriber arrives.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tokio::sync::{watch, Notify};
-use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration};
 
 use crate::devices::cpu::CpuManager;
+use crate::power_streaming::{PowerBroadcast, PowerPoller};
 
 /// Per-CPU power reading (package + optional DRAM).
 #[derive(Clone, Debug, Serialize)]
@@ -36,112 +36,25 @@ pub struct CpuPowerSnapshot {
     pub power_mw: BTreeMap<usize, CpuDramPower>,
 }
 
-/// RAII guard that decrements the subscriber count on drop.
-pub struct CpuSubscriberGuard {
-    count: Arc<AtomicUsize>,
-}
+/// Broadcast handle for CPU power snapshots.
+pub type CpuPowerBroadcast = PowerBroadcast<CpuPowerSnapshot>;
 
-impl Drop for CpuSubscriberGuard {
-    fn drop(&mut self) {
-        self.count.fetch_sub(1, Ordering::Relaxed);
-    }
-}
+/// Background poller for CPU power.
+pub type CpuPowerPoller = PowerPoller<CpuPowerSnapshot>;
 
-/// Shared handle for subscribing to CPU power snapshots.
-#[derive(Clone)]
-pub struct CpuPowerBroadcast {
-    rx: watch::Receiver<CpuPowerSnapshot>,
-    subscriber_count: Arc<AtomicUsize>,
-    wake: Arc<Notify>,
-    /// Set of CPU indices being monitored.
-    valid_ids: Arc<BTreeSet<usize>>,
-}
-
-impl CpuPowerBroadcast {
-    /// Get the latest power snapshot without waiting for a change.
-    pub fn latest(&self) -> CpuPowerSnapshot {
-        self.rx.borrow().clone()
-    }
-
-    /// Create a new watch receiver for streaming.
-    pub fn subscribe(&self) -> watch::Receiver<CpuPowerSnapshot> {
-        self.rx.clone()
-    }
-
-    /// Register a subscriber, waking the poller if it was sleeping.
-    ///
-    /// Returns an RAII guard that decrements the count on drop.
-    pub fn add_subscriber(&self) -> CpuSubscriberGuard {
-        self.subscriber_count.fetch_add(1, Ordering::Relaxed);
-        self.wake.notify_one();
-        CpuSubscriberGuard {
-            count: self.subscriber_count.clone(),
-        }
-    }
-
-    /// Validate that all requested CPU indices are being monitored.
-    ///
-    /// Returns `Ok(())` if all indices are valid, or `Err` with the
-    /// set of unknown indices.
-    pub fn validate_ids(&self, ids: &[usize]) -> Result<(), Vec<usize>> {
-        let unknown: Vec<usize> = ids
-            .iter()
-            .filter(|id| !self.valid_ids.contains(id))
-            .copied()
-            .collect();
-        if unknown.is_empty() {
-            Ok(())
-        } else {
-            Err(unknown)
-        }
-    }
-
-    /// Get the set of valid CPU indices.
-    pub fn valid_ids(&self) -> &BTreeSet<usize> {
-        &self.valid_ids
-    }
-}
-
-/// Background task that polls CPU RAPL counters at a configured frequency,
-/// computes instantaneous power, and broadcasts via a watch channel.
-pub struct CpuPowerPoller {
-    broadcast: CpuPowerBroadcast,
-    _handle: JoinHandle<()>,
-}
-
-impl CpuPowerPoller {
-    /// Start the CPU power polling background task.
-    ///
-    /// Each CPU must implement `CpuManager`. The poller reads cumulative
-    /// energy counters and computes instantaneous power from deltas.
-    /// Polling is demand-driven: sleeps when no subscribers are connected.
-    pub fn start<T: CpuManager + Send + 'static>(cpus: Vec<(usize, T)>, poll_hz: u32) -> Self {
-        let valid_ids: BTreeSet<usize> = cpus.iter().map(|(idx, _)| *idx).collect();
-        let (tx, rx) = watch::channel(CpuPowerSnapshot::default());
-        let subscriber_count = Arc::new(AtomicUsize::new(0));
-        let wake = Arc::new(Notify::new());
-        let handle = tokio::spawn(cpu_power_poll_task(
-            cpus,
-            tx,
-            poll_hz,
-            subscriber_count.clone(),
-            wake.clone(),
-        ));
-        Self {
-            broadcast: CpuPowerBroadcast {
-                rx,
-                subscriber_count,
-                wake,
-                valid_ids: Arc::new(valid_ids),
-            },
-            _handle: handle,
-        }
-    }
-
-    /// Get the broadcast handle for sharing with route handlers.
-    pub fn broadcast(&self) -> CpuPowerBroadcast {
-        self.broadcast.clone()
-    }
+/// Start the CPU power polling background task.
+///
+/// Each CPU must implement `CpuManager`. The poller reads cumulative
+/// energy counters and computes instantaneous power from deltas.
+/// Polling is demand-driven: sleeps when no subscribers are connected.
+pub fn start_cpu_poller<T: CpuManager + Send + 'static>(
+    cpus: Vec<(usize, T)>,
+    poll_hz: u32,
+) -> CpuPowerPoller {
+    let valid_ids = cpus.iter().map(|(idx, _)| *idx).collect();
+    PowerPoller::start(valid_ids, |tx, subscriber_count, wake| {
+        cpu_power_poll_task(cpus, tx, poll_hz, subscriber_count, wake)
+    })
 }
 
 /// Per-CPU energy tracking state for computing power from energy deltas.

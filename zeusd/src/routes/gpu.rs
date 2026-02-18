@@ -128,14 +128,6 @@ pub struct PowerQuery {
     pub gpu_ids: Option<String>,
 }
 
-fn parse_gpu_ids(raw: &Option<String>) -> Option<Vec<usize>> {
-    raw.as_ref().map(|s| {
-        s.split(',')
-            .filter_map(|part| part.trim().parse().ok())
-            .collect()
-    })
-}
-
 fn filter_snapshot(snapshot: &GpuPowerSnapshot, gpu_ids: &Option<Vec<usize>>) -> GpuPowerSnapshot {
     match gpu_ids {
         None => snapshot.clone(),
@@ -163,7 +155,7 @@ async fn get_power_handler(
     broadcast: web::Data<GpuPowerBroadcast>,
 ) -> HttpResponse {
     tracing::info!("Received request");
-    let gpu_ids = parse_gpu_ids(&query.gpu_ids);
+    let gpu_ids = super::parse_device_ids(&query.gpu_ids);
     if let Some(ref ids) = gpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
             return HttpResponse::BadRequest().json(serde_json::json!({
@@ -197,7 +189,7 @@ async fn power_stream_handler(
     broadcast: web::Data<GpuPowerBroadcast>,
 ) -> HttpResponse {
     tracing::info!("Received request");
-    let gpu_ids = parse_gpu_ids(&query.gpu_ids);
+    let gpu_ids = super::parse_device_ids(&query.gpu_ids);
     if let Some(ref ids) = gpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
             return HttpResponse::BadRequest().json(serde_json::json!({

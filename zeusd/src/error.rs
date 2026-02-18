@@ -11,6 +11,7 @@ use actix_web::ResponseError;
 use nvml_wrapper::error::NvmlError;
 use tokio::sync::mpsc::error::SendError;
 
+use crate::devices::cpu::CpuCommandRequest;
 use crate::devices::gpu::GpuCommandRequest;
 
 #[derive(thiserror::Error, Debug)]
@@ -23,6 +24,8 @@ pub enum ZeusdError {
     NvmlError(#[from] NvmlError),
     #[error("GPU command send error: {0}")]
     GpuCommandSendError(#[from] SendError<GpuCommandRequest>),
+    #[error("CPU command send error: {0}")]
+    CpuCommandSendError(#[from] SendError<CpuCommandRequest>),
     #[error("Management task for GPU {0} unexpectedly terminated while handling the request.")]
     GpuManagementTaskTerminatedError(usize),
     #[error("Management task for CPU {0} unexpectedly terminated while handling the request.")]
@@ -45,6 +48,7 @@ impl ResponseError for ZeusdError {
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ZeusdError::GpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::GpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuInitializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
