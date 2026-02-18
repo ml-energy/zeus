@@ -14,7 +14,9 @@ hide:
 ---
 **Project News** ⚡ 
 
-- \[2025/05\] We shared our experience and design philosophy for the [ML.ENERGY leaderboard](https://ml.energy/leaderboard){.external} in [this paper](https://arxiv.org/abs/2505.06371){.external}.
+- \[2025/12\] With NVIDIA, Google, and Meta, we led a NeurIPS 25 tutorial on [Energy and Power as First-Class ML Design Metrics](https://ml.energy/tutorials/neurips25/){.external}!
+- \[2025/12\] [The ML.ENERGY leaderboard](https://ml.energy/leaderboard){.external} got a major upgrade to v3. Read our in-depth [technical analysis blog post](https://ml.energy/blog/measurement/energy/diagnosing-inference-energy-consumption-with-the-mlenergy-leaderboard-v30/){.external}.
+- \[2025/09\] We shared our experience and design philosophy for [The ML.ENERGY Benchmark](https://github.com/ml-energy/benchmark){.external} in our [NeurIPS 25 D&B Spotlight paper](https://neurips.cc/virtual/2025/loc/san-diego/poster/121781){.external}.
 - \[2025/05\] Zeus now supports CPU, DRAM, AMD GPU, Apple Silicon, and NVIDIA Jetson platform energy measurement!
 - \[2024/11\] Perseus, an optimizer for large model training, appeared at SOSP'24! [Paper](https://dl.acm.org/doi/10.1145/3694715.3695970) | [Blog](https://ml.energy/zeus/research_overview/perseus) | [Optimizer](https://ml.energy/zeus/optimize/pipeline_frequency_optimizer)
 - \[2024/05\] Zeus is now a PyTorch ecosystem project. Read the PyTorch blog post [here](https://pytorch.org/blog/zeus/){.external}!
