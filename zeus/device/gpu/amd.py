@@ -13,7 +13,7 @@ from functools import lru_cache
 try:
     # `amdsmi` prints to stdout on import when libamd_smi.so is not found.
     with contextlib.redirect_stdout(None):
-        import amdsmi  # type: ignore
+        import amdsmi
 # must catch all exceptions, since ImportError is not the only exception that can be raised (ex. OSError on version mismatch).
 # Specific exceptions are handled when import and initialization are retested in `amdsmi_is_available`
 except Exception:
@@ -29,7 +29,7 @@ except Exception:
             """
             raise RuntimeError(f"amdsmi is not available and amdsmi.{name} shouldn't have been called. This is a bug.")
 
-    amdsmi = MockAMDSMI()
+    amdsmi = MockAMDSMI()  # ty: ignore[invalid-assignment]
 
 import zeus.device.gpu.common as gpu_common
 
@@ -42,7 +42,7 @@ def amdsmi_is_available() -> bool:
     try:
         # `amdsmi` prints to stdout on import when libamd_smi.so is not found.
         with contextlib.redirect_stdout(None):
-            import amdsmi  # type: ignore
+            import amdsmi
     except ImportError:
         logger.info("amdsmi is not available.")
         return False

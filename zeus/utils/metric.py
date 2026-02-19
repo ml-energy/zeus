@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
-from typing import cast
+
 
 import pandas as pd
 from sklearn.metrics import auc
@@ -49,7 +49,7 @@ def energy(
         start: Start time of the window to consider.
         end: End time of the window to consider.
     """
-    df = cast(pd.DataFrame, pd.read_csv(logfile, engine="python", skipfooter=1))
+    df = pd.read_csv(logfile, engine="python", skipfooter=1)
     df["Time"] = pd.to_datetime(df["Time"])
     start_timestamp = df.iloc[0]["Time"]
     end_timestamp = df.iloc[-1]["Time"]
@@ -87,7 +87,7 @@ def avg_power(
         ValueError: From `sklearn.metrics.auc`, when the duration of the
             profiling window is too small.
     """
-    df = cast(pd.DataFrame, pd.read_csv(logfile, engine="python", skipfooter=1))
+    df = pd.read_csv(logfile, engine="python", skipfooter=1)
     df["Time"] = pd.to_datetime(df["Time"])
     if start is not None:
         df = df.loc[df["Time"] >= df.iloc[0]["Time"] + timedelta(seconds=start)]

@@ -467,7 +467,6 @@ class GlobalPowerLimitOptimizer(Callback):
 if TYPE_CHECKING:
     from transformers.training_args import TrainingArguments
     from transformers.trainer_callback import TrainerState, TrainerControl
-    from transformers.modeling_utils import PreTrainedModel
 
 try:
     from transformers.trainer_callback import TrainerCallback
@@ -475,10 +474,10 @@ try:
     transformers_available = True
 except ModuleNotFoundError:
     transformers_available = False
-    TrainerCallback = object  # Fallback base class
+    TrainerCallback = object  # ty: ignore[invalid-assignment]
 
 
-class HFGlobalPowerLimitOptimizer(TrainerCallback):  # type: ignore
+class HFGlobalPowerLimitOptimizer(TrainerCallback):
     """[Wrapped for Hugging Face Trainer Callback] Optimizer for the power limit knob.
 
     This optimizer uses the JIT profiling log to determine the optimal power limit.
@@ -533,7 +532,6 @@ class HFGlobalPowerLimitOptimizer(TrainerCallback):  # type: ignore
         args: TrainingArguments,
         state: TrainerState,
         control: TrainerControl,
-        model: PreTrainedModel,
         **kwargs,
     ) -> None:
         """Mark the end of a training epoch."""
@@ -544,7 +542,6 @@ class HFGlobalPowerLimitOptimizer(TrainerCallback):  # type: ignore
         args: TrainingArguments,
         state: TrainerState,
         control: TrainerControl,
-        model: PreTrainedModel,
         **kwargs,
     ) -> None:
         """Mark the beginning of a training step."""

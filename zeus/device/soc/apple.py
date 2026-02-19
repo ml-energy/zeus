@@ -117,7 +117,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
     @classmethod
     def from_metrics(
         cls,
-        metrics: zeus_apple_silicon.AppleEnergyMetrics,  # type: ignore
+        metrics: zeus_apple_silicon.AppleEnergyMetrics,
     ) -> AppleSiliconMeasurement:
         """Return an AppleSiliconMeasurement object based on an AppleEnergyMetrics object."""
         return cls(
@@ -138,7 +138,7 @@ class AppleSilicon(SoC):
 
     def __init__(self) -> None:
         """Initialize an instance of an Apple Silicon energy monitor."""
-        self._monitor: zeus_apple_silicon.AppleEnergyMonitor  # type: ignore
+        self._monitor: zeus_apple_silicon.AppleEnergyMonitor
         self.available_metrics: set[str] | None = None
 
         try:

@@ -56,7 +56,7 @@ def _handle_nvml_errors(func):
             return func(*args, **kwargs)
         except pynvml.NVMLError as e:
             exception_class = NVIDIAGPU._exception_map.get(
-                e.value,  # pyright: ignore[reportAttributeAccessIssue]
+                e.value,  # ty: ignore[unresolved-attribute]
                 gpu_common.ZeusGPUUnknownError,
             )
             raise exception_class(str(e)) from e
@@ -78,7 +78,7 @@ class NVIDIAGPU(gpu_common.GPU):
             c2c_mode_info = pynvml.nvmlDeviceGetC2cModeInfoV(self.handle)
             self._is_grace_hopper = c2c_mode_info.isC2cEnabled
         except pynvml.NVMLError as e:
-            e_value = e.value  # pyright: ignore[reportAttributeAccessIssue]
+            e_value = e.value  # ty: ignore[unresolved-attribute]
             if e_value != pynvml.NVML_ERROR_NOT_SUPPORTED:
                 logger.warning(
                     "Attempted to check whether the current chip is a Grace Hopper chip "
@@ -274,7 +274,7 @@ class NVIDIAGPU(gpu_common.GPU):
     def get_gpu_temperature(self) -> int:
         """Return the current GPU temperature. Units: Celsius."""
         temperature = pynvml.nvmlDeviceGetTemperatureV(self.handle, pynvml.NVML_TEMPERATURE_GPU)
-        return temperature  # type: ignore
+        return temperature
 
 
 class ZeusdNVIDIAGPU(NVIDIAGPU):
@@ -435,11 +435,11 @@ class NVIDIAGPUs(gpu_common.GPUs):
                 self._ensure_homogeneous()
         except pynvml.NVMLError as e:
             exception_class = NVIDIAGPU._exception_map.get(
-                e.value,  # pyright: ignore[reportAttributeAccessIssue]
+                e.value,  # ty: ignore[unresolved-attribute]
                 gpu_common.ZeusBaseGPUError,
             )
             raise exception_class(
-                e.msg  # pyright: ignore[reportAttributeAccessIssue]
+                e.msg  # ty: ignore[unresolved-attribute]
             ) from e
 
     @property
