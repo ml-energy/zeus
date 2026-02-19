@@ -68,7 +68,7 @@ class PipelineFrequencyOptimizer(Callback):
             job_metadata: An optional arbitrary string that describes the job. This will
                 be appended to the job ID if given. Typically for logging purposes.
         """
-        if not dist.is_initialized():
+        if not dist.is_initialized():  # ty: ignore[possibly-missing-attribute]
             raise RuntimeError("Instantiate `PipelineFrequencyOptimizer` after `init_process_group`.")
 
         self.server_url = server_url
@@ -100,7 +100,7 @@ class PipelineFrequencyOptimizer(Callback):
 
         # Rank 0 broadcasts the job ID across all ranks.
         objects = [job_id]
-        dist.broadcast_object_list(objects, src=0)
+        dist.broadcast_object_list(objects, src=0)  # ty: ignore[possibly-missing-attribute]
         self.job_id = objects[0]
         if self.job_id is None:
             raise RuntimeError("Failed to broadcast job ID to all ranks")

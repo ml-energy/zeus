@@ -35,7 +35,7 @@ class CreateTrialBase(BatchSizeBase):
     start_timestamp: datetime = Field(default_factory=datetime.now)
     status: TrialStatus = Field(default=TrialStatus.Dispatched, const=True)
 
-    class Config:  # type: ignore
+    class Config:
         """Model configuration.
 
         Make it immutable after it's created.
@@ -52,7 +52,7 @@ class CreateTrial(CreateTrialBase):
 
     trial_number: int = Field(gt=0)
 
-    class Config:  # type: ignore
+    class Config:
         """Model configuration.
 
         Make it immutable after it's created.
@@ -78,7 +78,7 @@ class CreateExplorationTrial(CreateTrialBase):
 
     type: TrialType = Field(default=TrialType.Exploration, const=True)
 
-    class Config:  # type: ignore
+    class Config:
         """Model configuration.
 
         Make it immutable after it's created.
@@ -92,7 +92,7 @@ class CreateMabTrial(CreateTrialBase):
 
     type: TrialType = Field(default=TrialType.MAB, const=True)
 
-    class Config:  # type: ignore
+    class Config:
         """Model configuration.
 
         Make it immutable after it's created.
@@ -106,7 +106,7 @@ class CreateConcurrentTrial(CreateTrialBase):
 
     type: TrialType = Field(default=TrialType.Concurrent, const=True)
 
-    class Config:  # type: ignore
+    class Config:
         """Model configuration.
 
         Make it immutable after it's created.
@@ -125,7 +125,7 @@ class UpdateTrial(BatchSizeBase):
     energy: Optional[float] = Field(default=None, ge=0)
     converged: Optional[bool] = None
 
-    class Config:  # type: ignore
+    class Config:
         """Model configuration.
 
         Make it immutable after it's created.

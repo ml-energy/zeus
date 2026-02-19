@@ -123,6 +123,7 @@ class ReplayZeusMonitor(ZeusMonitor):
             )
 
         # Read the next line from the log file.
+        assert self.log_file is not None
         line = self.log_file.readline()
         if not line:
             raise RuntimeError("No more lines in the log file.")

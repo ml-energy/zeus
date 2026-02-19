@@ -59,17 +59,17 @@ if logging.getLevelName(settings.log_level) <= logging.DEBUG:
     app.router.route_class = LoggingRoute
 
 
-@app.on_event("startup")
+@app.on_event("startup")  # ty: ignore[deprecated]
 async def startup_hook():
     """Startup hook."""
-    logger.info("Using scheduler `%s`", settings.scheduler.__name__)
+    logger.info("Using scheduler `%s`", settings.scheduler.__name__)  # ty: ignore[unresolved-attribute]
     init_global_job_manager(settings)
 
 
 @app.post(REGISTER_JOB_URL, response_model=str)
 async def register_job(job_info: JobInfo, job_manager: JobManager = Depends(get_global_job_manager)) -> str:
     """Register the training job's information in the server."""
-    job_info.set_job_id(scheduler_name=settings.scheduler.__name__)
+    job_info.set_job_id(scheduler_name=settings.scheduler.__name__)  # ty: ignore[unresolved-attribute]
     job_manager.register_job(job_info)
     return job_info.job_id
 
