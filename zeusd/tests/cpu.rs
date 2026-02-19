@@ -1,8 +1,8 @@
 mod helpers;
 
-use zeusd::devices::cpu::DramAvailabilityResponse;
+use std::collections::HashMap;
 use zeusd::devices::cpu::RaplResponse;
-use zeusd::routes::cpu::GetIndexEnergy;
+use zeusd::routes::cpu::GetCumulativeEnergy;
 
 use crate::helpers::{TestApp, ZeusdRequest};
 
@@ -14,18 +14,18 @@ async fn test_only_cpu_measuremnt() {
 
     for expected in measurements {
         let resp = app
-            .send(
-                0,
-                GetIndexEnergy {
-                    cpu: true,
-                    dram: false,
-                },
-            )
+            .send(GetCumulativeEnergy {
+                cpu_ids: "0".to_string(),
+                cpu: true,
+                dram: false,
+            })
             .await
             .expect("Failed to send request");
         assert_eq!(resp.status(), 200);
-        let rapl_response: RaplResponse = serde_json::from_str(&resp.text().await.unwrap())
-            .expect("Failed to deserialize response body");
+        let response_map: HashMap<String, RaplResponse> =
+            serde_json::from_str(&resp.text().await.unwrap())
+                .expect("Failed to deserialize response body");
+        let rapl_response = response_map.get("0").expect("Missing CPU 0 in response");
         assert_eq!(rapl_response.cpu_energy_uj.unwrap(), expected);
         assert_eq!(rapl_response.dram_energy_uj, None);
     }
@@ -39,18 +39,18 @@ async fn test_only_dram_measuremnt() {
 
     for expected in measurements {
         let resp = app
-            .send(
-                0,
-                GetIndexEnergy {
-                    cpu: false,
-                    dram: true,
-                },
-            )
+            .send(GetCumulativeEnergy {
+                cpu_ids: "0".to_string(),
+                cpu: false,
+                dram: true,
+            })
             .await
             .expect("Failed to send request");
         assert_eq!(resp.status(), 200);
-        let rapl_response: RaplResponse = serde_json::from_str(&resp.text().await.unwrap())
-            .expect("Failed to deserialiez response body");
+        let response_map: HashMap<String, RaplResponse> =
+            serde_json::from_str(&resp.text().await.unwrap())
+                .expect("Failed to deserialize response body");
+        let rapl_response = response_map.get("0").expect("Missing CPU 0 in response");
         assert_eq!(rapl_response.cpu_energy_uj, None);
         assert_eq!(rapl_response.dram_energy_uj.unwrap(), expected);
     }
@@ -65,18 +65,18 @@ async fn test_both_measuremnt() {
 
     for expected in measurements {
         let resp = app
-            .send(
-                0,
-                GetIndexEnergy {
-                    cpu: true,
-                    dram: true,
-                },
-            )
+            .send(GetCumulativeEnergy {
+                cpu_ids: "0".to_string(),
+                cpu: true,
+                dram: true,
+            })
             .await
             .expect("Failed to send request");
         assert_eq!(resp.status(), 200);
-        let rapl_response: RaplResponse = serde_json::from_str(&resp.text().await.unwrap())
-            .expect("Failed to deserialiez response body");
+        let response_map: HashMap<String, RaplResponse> =
+            serde_json::from_str(&resp.text().await.unwrap())
+                .expect("Failed to deserialize response body");
+        let rapl_response = response_map.get("0").expect("Missing CPU 0 in response");
         assert_eq!(rapl_response.cpu_energy_uj.unwrap(), expected);
         assert_eq!(rapl_response.dram_energy_uj.unwrap(), expected);
     }
@@ -87,91 +87,66 @@ async fn test_invalid_requests() {
     let app = TestApp::start().await;
 
     let client = reqwest::Client::new();
-    let url = GetIndexEnergy::build_url(&app, 0);
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "cpu": true, // Missing dram field
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
 
-    let url = GetIndexEnergy::build_url(&app, 0);
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "dram": true, // Missing cpu field
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
-
-    let url = GetIndexEnergy::build_url(&app, 0);
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "cpu": "true", //Invalid type
-                "dram": true,
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
-
-    let url = GetIndexEnergy::build_url(&app, 2); // Out of index CPU
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "cp": true, // Invalid field name
-                "dram": true,
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
-
-    let url = GetIndexEnergy::build_url(&app, 2); // Out of index CPU
-    let resp = client
-        .post(url)
-        .json(&serde_json::json!(
-            {
-                "cpu": true,
-                "dram": true,
-            }
-        ))
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 400);
-}
-
-#[tokio::test]
-async fn test_supports_dram_energy() {
-    let app = TestApp::start().await;
-    let url = format!("http://127.0.0.1:{}/cpu/0/supports_dram_energy", app.port);
-    let client = reqwest::Client::new();
-
+    // Missing dram field
+    let url = format!(
+        "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=0&cpu=true",
+        app.port
+    );
     let resp = client
         .get(url)
         .send()
         .await
         .expect("Failed to send request");
-    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.status(), 400);
 
-    let dram_response: DramAvailabilityResponse = serde_json::from_str(&resp.text().await.unwrap())
-        .expect("Failed to deserialize response body");
-    assert!(dram_response.dram_available);
+    // Missing cpu field
+    let url = format!(
+        "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=0&dram=true",
+        app.port
+    );
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 400);
+
+    // Invalid type
+    let url = format!(
+        "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=0&cpu=notabool&dram=true",
+        app.port
+    );
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 400);
+
+    // Invalid field name + out of index CPU
+    let url = format!(
+        "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=2&cp=true&dram=true",
+        app.port
+    );
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 400);
+
+    // Out of index CPU
+    let url = format!(
+        "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=2&cpu=true&dram=true",
+        app.port
+    );
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 400);
 }
 
 #[tokio::test]
@@ -182,7 +157,7 @@ async fn test_cpu_power_oneshot() {
 
     let app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/cpu/power", app.port);
+    let url = format!("http://127.0.0.1:{}/cpu/get_power", app.port);
     let resp = client
         .get(&url)
         .send()
@@ -213,7 +188,7 @@ async fn test_cpu_power_oneshot() {
 async fn test_cpu_power_stream_receives_events() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/cpu/power/stream", _app.port);
+    let url = format!("http://127.0.0.1:{}/cpu/stream_power", _app.port);
     let resp = client
         .get(&url)
         .send()
@@ -228,4 +203,28 @@ async fn test_cpu_power_stream_receives_events() {
             .unwrap(),
         "text/event-stream"
     );
+}
+
+#[tokio::test]
+async fn test_deny_unknown_query_fields() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+
+    // cpu/get_power with gpu_ids (wrong query field) should be rejected.
+    let url = format!("http://127.0.0.1:{}/cpu/get_power?gpu_ids=0", app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 400);
+
+    // gpu/get_power with cpu_ids (wrong query field) should be rejected.
+    let url = format!("http://127.0.0.1:{}/gpu/get_power?cpu_ids=0", app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 400);
 }

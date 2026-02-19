@@ -5,17 +5,17 @@
 //! demand-driven: the task sleeps when no subscribers are connected and wakes
 //! when the first subscriber arrives.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tokio::sync::{watch, Notify};
-use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration};
 
 use crate::devices::gpu::GpuManager;
+use crate::power_streaming::{PowerBroadcast, PowerPoller};
 
 /// A snapshot of GPU power readings across all monitored GPUs.
 #[derive(Clone, Debug, Default, Serialize)]
@@ -26,114 +26,25 @@ pub struct GpuPowerSnapshot {
     pub power_mw: BTreeMap<usize, u32>,
 }
 
-/// RAII guard that decrements the subscriber count on drop.
-pub struct GpuSubscriberGuard {
-    count: Arc<AtomicUsize>,
-}
+/// Broadcast handle for GPU power snapshots.
+pub type GpuPowerBroadcast = PowerBroadcast<GpuPowerSnapshot>;
 
-impl Drop for GpuSubscriberGuard {
-    fn drop(&mut self) {
-        self.count.fetch_sub(1, Ordering::Relaxed);
-    }
-}
+/// Background poller for GPU power.
+pub type GpuPowerPoller = PowerPoller<GpuPowerSnapshot>;
 
-/// Shared handle for subscribing to GPU power snapshots.
+/// Start the GPU power polling background task.
 ///
-/// Stored as actix-web app data. Cloning creates a new watch subscriber.
-#[derive(Clone)]
-pub struct GpuPowerBroadcast {
-    rx: watch::Receiver<GpuPowerSnapshot>,
-    subscriber_count: Arc<AtomicUsize>,
-    wake: Arc<Notify>,
-    /// Set of GPU indices being monitored.
-    valid_ids: Arc<BTreeSet<usize>>,
-}
-
-impl GpuPowerBroadcast {
-    /// Get the latest power snapshot without waiting for a change.
-    pub fn latest(&self) -> GpuPowerSnapshot {
-        self.rx.borrow().clone()
-    }
-
-    /// Create a new watch receiver for streaming.
-    pub fn subscribe(&self) -> watch::Receiver<GpuPowerSnapshot> {
-        self.rx.clone()
-    }
-
-    /// Register a subscriber, waking the poller if it was sleeping.
-    ///
-    /// Returns an RAII guard that decrements the count on drop.
-    pub fn add_subscriber(&self) -> GpuSubscriberGuard {
-        self.subscriber_count.fetch_add(1, Ordering::Relaxed);
-        self.wake.notify_one();
-        GpuSubscriberGuard {
-            count: self.subscriber_count.clone(),
-        }
-    }
-
-    /// Validate that all requested GPU indices are being monitored.
-    ///
-    /// Returns `Ok(())` if all indices are valid, or `Err` with the
-    /// set of unknown indices.
-    pub fn validate_ids(&self, ids: &[usize]) -> Result<(), Vec<usize>> {
-        let unknown: Vec<usize> = ids
-            .iter()
-            .filter(|id| !self.valid_ids.contains(id))
-            .copied()
-            .collect();
-        if unknown.is_empty() {
-            Ok(())
-        } else {
-            Err(unknown)
-        }
-    }
-
-    /// Get the set of valid GPU indices.
-    pub fn valid_ids(&self) -> &BTreeSet<usize> {
-        &self.valid_ids
-    }
-}
-
-/// Background task that polls GPU power at a configured frequency and
-/// broadcasts snapshots via a tokio watch channel.
-pub struct GpuPowerPoller {
-    broadcast: GpuPowerBroadcast,
-    _handle: JoinHandle<()>,
-}
-
-impl GpuPowerPoller {
-    /// Start the power polling background task.
-    ///
-    /// Creates a dedicated tokio task that reads power from each GPU at
-    /// `poll_hz` frequency when subscribers are present. The task sleeps
-    /// when no subscribers are connected.
-    pub fn start<T: GpuManager + Send + 'static>(gpus: Vec<(usize, T)>, poll_hz: u32) -> Self {
-        let valid_ids: BTreeSet<usize> = gpus.iter().map(|(idx, _)| *idx).collect();
-        let (tx, rx) = watch::channel(GpuPowerSnapshot::default());
-        let subscriber_count = Arc::new(AtomicUsize::new(0));
-        let wake = Arc::new(Notify::new());
-        let handle = tokio::spawn(gpu_power_poll_task(
-            gpus,
-            tx,
-            poll_hz,
-            subscriber_count.clone(),
-            wake.clone(),
-        ));
-        Self {
-            broadcast: GpuPowerBroadcast {
-                rx,
-                subscriber_count,
-                wake,
-                valid_ids: Arc::new(valid_ids),
-            },
-            _handle: handle,
-        }
-    }
-
-    /// Get the broadcast handle for sharing with route handlers.
-    pub fn broadcast(&self) -> GpuPowerBroadcast {
-        self.broadcast.clone()
-    }
+/// Creates a dedicated tokio task that reads power from each GPU at
+/// `poll_hz` frequency when subscribers are present. The task sleeps
+/// when no subscribers are connected.
+pub fn start_gpu_poller<T: GpuManager + Send + 'static>(
+    gpus: Vec<(usize, T)>,
+    poll_hz: u32,
+) -> GpuPowerPoller {
+    let valid_ids = gpus.iter().map(|(idx, _)| *idx).collect();
+    PowerPoller::start(valid_ids, |tx, subscriber_count, wake| {
+        gpu_power_poll_task(gpus, tx, poll_hz, subscriber_count, wake)
+    })
 }
 
 async fn gpu_power_poll_task<T: GpuManager>(

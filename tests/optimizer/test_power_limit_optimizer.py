@@ -127,6 +127,10 @@ def test_power_limit_optimizer(
     # Mock away the atexit hook, which raises an NVML error when testing finishes.
     mocker.patch("zeus.optimizer.power_limit.atexit", autospec=True)
 
+    # Disable missing `SYS_ADMIN` capability warning during testing.
+    for gpu in get_gpus().gpus:
+        gpu._disable_sys_admin_warning = True
+
     monitor = ReplayZeusMonitor(
         log_file=replay_log.log_file,
         ignore_sync_execution=True,

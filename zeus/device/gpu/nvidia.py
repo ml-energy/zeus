@@ -304,7 +304,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         self.zeusd_sock_path = zeusd_sock_path
 
         self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
-        self._url_prefix = f"http://zeusd/gpu/{gpu_index}"
+        self._gpu_index = gpu_index
 
     @property
     def supports_nonblocking_setters(self) -> bool:
@@ -318,8 +318,12 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
             return
 
         resp = self._client.post(
-            self._url_prefix + "/set_power_limit",
-            json=dict(power_limit_mw=power_limit_mw, block=block),
+            "http://zeusd/gpu/set_power_limit",
+            params={
+                "gpu_ids": str(self._gpu_index),
+                "power_limit_mw": str(power_limit_mw),
+                "block": "true" if block else "false",
+            },
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set power management limit: {resp.text}")
@@ -336,8 +340,12 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         resp = self._client.post(
-            self._url_prefix + "/set_persistence_mode",
-            json=dict(enabled=enabled, block=block),
+            "http://zeusd/gpu/set_persistence_mode",
+            params={
+                "gpu_ids": str(self._gpu_index),
+                "enabled": "true" if enabled else "false",
+                "block": "true" if block else "false",
+            },
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set persistence mode: {resp.text}")
@@ -346,8 +354,13 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
         resp = self._client.post(
-            self._url_prefix + "/set_mem_locked_clocks",
-            json=dict(min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block),
+            "http://zeusd/gpu/set_mem_locked_clocks",
+            params={
+                "gpu_ids": str(self._gpu_index),
+                "min_clock_mhz": str(min_clock_mhz),
+                "max_clock_mhz": str(max_clock_mhz),
+                "block": "true" if block else "false",
+            },
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set memory locked clocks: {resp.text}")
@@ -355,22 +368,39 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
 
     def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
-        resp = self._client.post(self._url_prefix + "/reset_mem_locked_clocks", json=dict(block=block))
+        resp = self._client.post(
+            "http://zeusd/gpu/reset_mem_locked_clocks",
+            params={
+                "gpu_ids": str(self._gpu_index),
+                "block": "true" if block else "false",
+            },
+        )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to reset memory locked clocks: {resp.text}")
 
     def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         resp = self._client.post(
-            self._url_prefix + "/set_gpu_locked_clocks",
-            json=dict(min_clock_mhz=min_clock_mhz, max_clock_mhz=max_clock_mhz, block=block),
+            "http://zeusd/gpu/set_gpu_locked_clocks",
+            params={
+                "gpu_ids": str(self._gpu_index),
+                "min_clock_mhz": str(min_clock_mhz),
+                "max_clock_mhz": str(max_clock_mhz),
+                "block": "true" if block else "false",
+            },
         )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to set GPU locked clocks: {resp.text}")
 
     def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
-        resp = self._client.post(self._url_prefix + "/reset_gpu_locked_clocks", json=dict(block=block))
+        resp = self._client.post(
+            "http://zeusd/gpu/reset_gpu_locked_clocks",
+            params={
+                "gpu_ids": str(self._gpu_index),
+                "block": "true" if block else "false",
+            },
+        )
         if resp.status_code != 200:
             raise ZeusdError(f"Failed to reset GPU locked clocks: {resp.text}")
 

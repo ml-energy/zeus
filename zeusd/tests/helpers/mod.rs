@@ -9,13 +9,14 @@ use paste::paste;
 use std::future::Future;
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use zeusd::devices::cpu::power::CpuPowerPoller;
+use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
-use zeusd::devices::gpu::power::GpuPowerPoller;
+use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
+use zeusd::routes::DiscoveryInfo;
 use zeusd::startup::{init_tracing, start_server_tcp};
 
 pub static NUM_GPUS: u32 = 4;
@@ -126,6 +127,10 @@ impl GpuManager for TestGpu {
     fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
         Ok(150_000)
     }
+
+    fn get_total_energy_consumption(&mut self) -> Result<u64, ZeusdError> {
+        Ok(500_000)
+    }
 }
 
 pub struct TestCpu {
@@ -171,7 +176,6 @@ impl CpuManager for TestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
                 ),
                 max_energy_uj: 1000000,
-                num_wraparounds: RwLock::new(0),
             }),
             Some(Arc::new(PackageInfo {
                 index: _index,
@@ -180,7 +184,6 @@ impl CpuManager for TestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
                 ),
                 max_energy_uj: 1000000,
-                num_wraparounds: RwLock::new(0),
             })),
         ))
     }
@@ -192,8 +195,6 @@ impl CpuManager for TestCpu {
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
         Ok(self.dram.try_recv().ok().unwrap())
     }
-
-    fn stop_monitoring(&mut self) {}
 
     fn is_dram_available(&self) -> bool {
         true
@@ -243,7 +244,6 @@ impl CpuManager for PowerTestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
                 ),
                 max_energy_uj: 1_000_000,
-                num_wraparounds: RwLock::new(0),
             }),
             Some(Arc::new(PackageInfo {
                 index,
@@ -252,7 +252,6 @@ impl CpuManager for PowerTestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
                 ),
                 max_energy_uj: 1_000_000,
-                num_wraparounds: RwLock::new(0),
             })),
         ))
     }
@@ -268,8 +267,6 @@ impl CpuManager for PowerTestCpu {
         self.dram_energy_uj += self.dram_increment_uj;
         Ok(val)
     }
-
-    fn stop_monitoring(&mut self) {}
 
     fn is_dram_available(&self) -> bool {
         true
@@ -302,19 +299,22 @@ pub fn start_cpu_test_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<TestCpu
     Ok((tasks, injectors))
 }
 
-/// A helper trait for building URLs to send requests to.
+/// A helper trait for building URLs and configuring HTTP method for test requests.
 pub trait ZeusdRequest: serde::Serialize {
-    fn build_url(app: &TestApp, gpu_id: u32) -> String;
+    fn build_url(app: &TestApp) -> String;
+    fn http_method() -> reqwest::Method {
+        reqwest::Method::POST
+    }
 }
 
 macro_rules! impl_zeusd_request_gpu {
     ($api:ident) => {
         paste! {
             impl ZeusdRequest for zeusd::routes::gpu::[<$api:camel>] {
-                fn build_url(app: &TestApp, gpu_id: u32) -> String {
+                fn build_url(app: &TestApp) -> String {
                     format!(
-                        "http://127.0.0.1:{}/gpu/{}/{}",
-                        app.port, gpu_id, stringify!([<$api:snake>]),
+                        "http://127.0.0.1:{}/gpu/{}",
+                        app.port, stringify!([<$api:snake>]),
                     )
                 }
             }
@@ -326,11 +326,14 @@ macro_rules! impl_zeusd_request_cpu {
     ($api:ident) => {
         paste! {
             impl ZeusdRequest for zeusd::routes::cpu::[<$api:camel>] {
-                fn build_url(app: &TestApp, cpu_id: u32) -> String {
+                fn build_url(app: &TestApp) -> String {
                     format!(
-                        "http://127.0.0.1:{}/cpu/{}/{}",
-                        app.port, cpu_id, stringify!([<$api:snake>]),
+                        "http://127.0.0.1:{}/cpu/{}",
+                        app.port, stringify!([<$api:snake>]),
                     )
+                }
+                fn http_method() -> reqwest::Method {
+                    reqwest::Method::GET
                 }
             }
         }
@@ -343,7 +346,7 @@ impl_zeusd_request_gpu!(ResetGpuLockedClocks);
 impl_zeusd_request_gpu!(SetMemLockedClocks);
 impl_zeusd_request_gpu!(ResetMemLockedClocks);
 
-impl_zeusd_request_cpu!(GetIndexEnergy);
+impl_zeusd_request_cpu!(GetCumulativeEnergy);
 
 /// A test application that starts a server over TCP and provides helper methods
 /// for sending requests and fetching what happened to the fake GPUs.
@@ -367,7 +370,7 @@ impl TestApp {
         let test_power_gpus: Vec<(usize, TestGpu)> = (0..NUM_GPUS as usize)
             .map(|i| (i, TestGpu::init().unwrap().0))
             .collect();
-        let gpu_power_poller = GpuPowerPoller::start(test_power_gpus, 10);
+        let gpu_power_poller = start_gpu_poller(test_power_gpus, 10);
         let gpu_power_broadcast = gpu_power_poller.broadcast();
 
         let cpu_power_cpus: Vec<(usize, PowerTestCpu)> = (0..NUM_CPUS)
@@ -378,8 +381,14 @@ impl TestApp {
                 )
             })
             .collect();
-        let cpu_power_poller = CpuPowerPoller::start(cpu_power_cpus, POWER_TEST_POLL_HZ);
+        let cpu_power_poller = start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ);
         let cpu_power_broadcast = cpu_power_poller.broadcast();
+
+        let discovery_info = DiscoveryInfo {
+            gpu_ids: (0..gpu_test_tasks.device_count()).collect(),
+            cpu_ids: (0..cpu_test_tasks.device_count()).collect(),
+            dram_available: vec![true; cpu_test_tasks.device_count()],
+        };
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
@@ -389,6 +398,7 @@ impl TestApp {
             cpu_test_tasks,
             gpu_power_broadcast,
             cpu_power_broadcast,
+            discovery_info,
             2,
         )
         .expect("Failed to start server");
@@ -403,13 +413,13 @@ impl TestApp {
 
     pub fn send<T: ZeusdRequest>(
         &mut self,
-        gpu_id: u32,
         payload: T,
     ) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
         let client = reqwest::Client::new();
-        let url = T::build_url(self, gpu_id);
+        let url = T::build_url(self);
+        let method = T::http_method();
 
-        client.post(url).json(&payload).send()
+        client.request(method, url).query(&payload).send()
     }
 
     pub fn persistence_mode_history_for_gpu(&mut self, gpu_id: usize) -> Vec<bool> {

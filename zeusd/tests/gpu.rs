@@ -1,10 +1,11 @@
 mod helpers;
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::task::JoinSet;
-use zeusd::devices::gpu::power::GpuPowerPoller;
+use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::GpuManager;
 use zeusd::error::ZeusdError;
 use zeusd::routes::gpu::{
@@ -19,13 +20,11 @@ async fn test_set_persistence_mode_single() {
     let mut app = TestApp::start().await;
 
     let resp = app
-        .send(
-            0,
-            SetPersistenceMode {
-                enabled: true,
-                block: true,
-            },
-        )
+        .send(SetPersistenceMode {
+            gpu_ids: "0".to_string(),
+            enabled: true,
+            block: true,
+        })
         .await
         .expect("Failed to send request");
 
@@ -42,13 +41,11 @@ async fn test_set_persistence_mode_multiple() {
     let num_requests = 10;
     for i in 0..num_requests {
         let resp = app
-            .send(
-                i % 4,
-                SetPersistenceMode {
-                    enabled: (i / 4) % 2 == 0,
-                    block: true,
-                },
-            )
+            .send(SetPersistenceMode {
+                gpu_ids: (i % 4).to_string(),
+                enabled: (i / 4) % 2 == 0,
+                block: true,
+            })
             .await
             .expect("Failed to send request");
 
@@ -72,54 +69,48 @@ async fn test_set_persistence_mode_invalid() {
     let app = TestApp::start().await;
 
     let client = reqwest::Client::new();
-    let url = SetPersistenceMode::build_url(&app, 0);
+    // Wrong field name in query params
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_persistence_mode?gpu_ids=0&disabled=false&block=true",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "disabled": false,  // Wrong field name
-                "block": true
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
-    assert!(resp
-        .text()
-        .await
-        .expect("Failed to read response")
-        .contains("missing field"));
+    let text = resp.text().await.expect("Failed to read response");
+    assert!(
+        text.contains("unknown field"),
+        "Expected 'unknown field' error, got: {text}"
+    );
 
-    let url = SetPersistenceMode::build_url(&app, 0);
+    // Invalid type for enabled (query param booleans must be "true" or "false")
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_persistence_mode?gpu_ids=0&enabled=1&block=true",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "enabled": 1,  // Invalid type
-                "block": true
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
-    assert!(resp
-        .text()
-        .await
-        .expect("Failed to read response")
-        .contains("invalid type"));
+    let text = resp.text().await.expect("Failed to read response");
+    assert!(
+        text.contains("not `true` or `false`") || text.contains("invalid"),
+        "Expected boolean parse error, got: {text}"
+    );
 
     for block in [true, false] {
-        let url = SetPersistenceMode::build_url(&app, 5); // Invalid GPU ID
+        // Invalid GPU ID
+        let url = format!(
+            "http://127.0.0.1:{}/gpu/set_persistence_mode?gpu_ids=5&enabled=true&block={}",
+            app.port, block
+        );
         let resp = client
             .post(url)
-            .json(&serde_json::json!(
-                {
-                    "enabled": true,
-                    "block": block
-                }
-            ))
             .send()
             .await
             .expect("Failed to send request");
@@ -133,13 +124,11 @@ async fn test_set_persistence_mode_bulk() {
 
     let mut set = JoinSet::new();
     for i in 0..10 {
-        set.spawn(app.send(
-            0,
-            SetPersistenceMode {
-                enabled: i % 3 == 0,
-                block: false,
-            },
-        ));
+        set.spawn(app.send(SetPersistenceMode {
+            gpu_ids: "0".to_string(),
+            enabled: i % 3 == 0,
+            block: false,
+        }));
     }
     let mut responses = Vec::with_capacity(10);
     for _ in 0..10 {
@@ -157,13 +146,11 @@ async fn test_set_persistence_mode_bulk() {
 
     // After this blocking request finishes, all non-blocking ones should have completed.
     assert_eq!(
-        app.send(
-            0,
-            SetPersistenceMode {
-                enabled: false,
-                block: true,
-            },
-        )
+        app.send(SetPersistenceMode {
+            gpu_ids: "0".to_string(),
+            enabled: false,
+            block: true,
+        })
         .await
         .expect("Failed to send request")
         .status(),
@@ -181,13 +168,11 @@ async fn test_set_power_limit_single() {
     let mut app = TestApp::start().await;
 
     let resp = app
-        .send(
-            0,
-            SetPowerLimit {
-                power_limit_mw: 100_000,
-                block: true,
-            },
-        )
+        .send(SetPowerLimit {
+            gpu_ids: "0".to_string(),
+            power_limit_mw: 100_000,
+            block: true,
+        })
         .await
         .expect("Failed to send request");
 
@@ -204,13 +189,11 @@ async fn test_set_power_limit_multiple() {
     let num_requests = 10;
     for i in 0..num_requests {
         let resp = app
-            .send(
-                i % 4,
-                SetPowerLimit {
-                    power_limit_mw: 100_000 + i * 10_000,
-                    block: true,
-                },
-            )
+            .send(SetPowerLimit {
+                gpu_ids: (i % 4).to_string(),
+                power_limit_mw: 100_000 + i * 10_000,
+                block: true,
+            })
             .await
             .expect("Failed to send request");
 
@@ -233,44 +216,39 @@ async fn test_set_power_limit_multiple() {
 async fn test_set_power_limit_invalid() {
     let mut app = TestApp::start().await;
 
-    // Valid requests with invalid power limits
+    // Valid requests with invalid power limits (blocking).
+    // With the new batch response, errors are returned as JSON with an "errors" key.
     let resp = app
-        .send(
-            0,
-            SetPowerLimit {
-                power_limit_mw: 99_000,
-                block: true,
-            },
-        )
+        .send(SetPowerLimit {
+            gpu_ids: "0".to_string(),
+            power_limit_mw: 99_000,
+            block: true,
+        })
         .await
         .expect("Failed to send request");
 
-    assert_eq!(resp.status(), 400);
+    assert_eq!(resp.status(), 500);
 
     let resp = app
-        .send(
-            0,
-            SetPowerLimit {
-                power_limit_mw: 330_000,
-                block: true,
-            },
-        )
+        .send(SetPowerLimit {
+            gpu_ids: "0".to_string(),
+            power_limit_mw: 330_000,
+            block: true,
+        })
         .await
         .expect("Failed to send request");
 
-    assert_eq!(resp.status(), 400);
+    assert_eq!(resp.status(), 500);
     let text = resp.text().await.expect("Failed to read response");
     assert!(text.contains("NVML error"));
     assert!(text.contains("invalid"));
 
     let resp = app
-        .send(
-            0,
-            SetPowerLimit {
-                power_limit_mw: 10_000,
-                block: false,
-            },
-        )
+        .send(SetPowerLimit {
+            gpu_ids: "0".to_string(),
+            power_limit_mw: 10_000,
+            block: false,
+        })
         .await
         .expect("Failed to send request");
 
@@ -281,36 +259,31 @@ async fn test_set_power_limit_invalid() {
 
     // Invalid request with missing fields
     let client = reqwest::Client::new();
-    let url = SetPowerLimit::build_url(&app, 0);
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_power_limit?gpu_ids=0&power_limit_wwww=100000&block=true",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "power_limit_wwww": 100_000,
-                "block": true
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
 
     assert_eq!(resp.status(), 400);
-    assert!(resp
-        .text()
-        .await
-        .expect("Failed to read response")
-        .contains("missing field"));
+    let text = resp.text().await.expect("Failed to read response");
+    assert!(
+        text.contains("missing field") || text.contains("unknown field"),
+        "Expected 'missing field' or 'unknown field' error, got: {text}"
+    );
 
     for block in [true, false] {
-        let url = SetPowerLimit::build_url(&app, 5); // Invalid GPU ID
+        // Invalid GPU ID
+        let url = format!(
+            "http://127.0.0.1:{}/gpu/set_power_limit?gpu_ids=5&power_limit_mw=100000&block={}",
+            app.port, block
+        );
         let resp = client
             .post(url)
-            .json(&serde_json::json!(
-                {
-                    "power_limit_mw": 100_000,
-                    "block": block
-                }
-            ))
             .send()
             .await
             .expect("Failed to send request");
@@ -324,13 +297,11 @@ async fn test_set_power_limit_bulk() {
 
     let mut set = JoinSet::new();
     for i in 0..10 {
-        set.spawn(app.send(
-            0,
-            SetPowerLimit {
-                power_limit_mw: 100_000 + i * 10_000,
-                block: false,
-            },
-        ));
+        set.spawn(app.send(SetPowerLimit {
+            gpu_ids: "0".to_string(),
+            power_limit_mw: 100_000 + i * 10_000,
+            block: false,
+        }));
     }
     let mut responses = Vec::with_capacity(10);
     for _ in 0..10 {
@@ -347,18 +318,17 @@ async fn test_set_power_limit_bulk() {
     }
 
     // After this blocking request finishes, all non-blocking ones should have completed.
+    // 350_000 exceeds the valid range -> error (now 500 with batch error format).
     assert_eq!(
-        app.send(
-            0,
-            SetPowerLimit {
-                power_limit_mw: 350_000,
-                block: true,
-            },
-        )
+        app.send(SetPowerLimit {
+            gpu_ids: "0".to_string(),
+            power_limit_mw: 350_000,
+            block: true,
+        })
         .await
         .expect("Failed to send request")
         .status(),
-        400
+        500
     );
 
     let history = app.power_limit_history_for_gpu(0);
@@ -376,14 +346,12 @@ async fn test_gpu_locked_clocks_single() {
     let mut app = TestApp::start().await;
 
     let resp = app
-        .send(
-            0,
-            SetGpuLockedClocks {
-                min_clock_mhz: 1000,
-                max_clock_mhz: 2000,
-                block: true,
-            },
-        )
+        .send(SetGpuLockedClocks {
+            gpu_ids: "0".to_string(),
+            min_clock_mhz: 1000,
+            max_clock_mhz: 2000,
+            block: true,
+        })
         .await
         .expect("Failed to send request");
 
@@ -400,14 +368,12 @@ async fn test_gpu_locked_clocks_multiple() {
     let num_requests = 10;
     for i in 0..num_requests {
         let resp = app
-            .send(
-                i % 4,
-                SetGpuLockedClocks {
-                    min_clock_mhz: 1000 + i * 100,
-                    max_clock_mhz: 2000 + i * 100,
-                    block: true,
-                },
-            )
+            .send(SetGpuLockedClocks {
+                gpu_ids: (i % 4).to_string(),
+                min_clock_mhz: 1000 + i * 100,
+                max_clock_mhz: 2000 + i * 100,
+                block: true,
+            })
             .await
             .expect("Failed to send request");
 
@@ -416,10 +382,13 @@ async fn test_gpu_locked_clocks_multiple() {
 
     // Reset the clocks for GPU 2
     assert_eq!(
-        app.send(2, ResetGpuLockedClocks { block: true })
-            .await
-            .expect("Failed to send request")
-            .status(),
+        app.send(ResetGpuLockedClocks {
+            gpu_ids: "2".to_string(),
+            block: true,
+        })
+        .await
+        .expect("Failed to send request")
+        .status(),
         200
     );
 
@@ -446,36 +415,30 @@ async fn test_gpu_locked_clocks_invalid() {
     let app = TestApp::start().await;
 
     let client = reqwest::Client::new();
-    let url = SetGpuLockedClocks::build_url(&app, 0);
+    // Wrong field name
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_gpu_locked_clocks?gpu_ids=0&min_clock_mhz=1000&max_clock_khz=1100&block=true",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "min_clock_mhz": 1000,
-                "max_clock_khz": 1100,  // Wrong field name
-                "block": true
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
-    assert!(resp
-        .text()
-        .await
-        .expect("Failed to read response")
-        .contains("missing field"));
+    let text = resp.text().await.expect("Failed to read response");
+    assert!(
+        text.contains("missing field") || text.contains("unknown field"),
+        "Expected 'missing field' or 'unknown field' error, got: {text}"
+    );
 
-    let url = SetGpuLockedClocks::build_url(&app, 0);
+    // Invalid type
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_gpu_locked_clocks?gpu_ids=0&min_clock_mhz=1000&max_clock_mhz=abc&block=true",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "min_clock_mhz": 1000,
-                "max_clock_mhz": "1100",  // Invalid type
-                "block": true
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
@@ -484,35 +447,33 @@ async fn test_gpu_locked_clocks_invalid() {
         .text()
         .await
         .expect("Failed to read response")
-        .contains("invalid type"));
+        .contains("invalid"));
 
-    let url = ResetGpuLockedClocks::build_url(&app, 0);
+    // Wrong field name for reset
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/reset_gpu_locked_clocks?gpu_ids=0&lego=false",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "lego": false  // Wrong field name
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
-    assert!(resp
-        .text()
-        .await
-        .expect("Failed to read response")
-        .contains("missing field"));
+    let text = resp.text().await.expect("Failed to read response");
+    assert!(
+        text.contains("missing field") || text.contains("unknown field"),
+        "Expected 'missing field' or 'unknown field' error, got: {text}"
+    );
 
     for block in [true, false] {
-        let url = ResetGpuLockedClocks::build_url(&app, 5); // Invalid GPU ID
+        // Invalid GPU ID
+        let url = format!(
+            "http://127.0.0.1:{}/gpu/reset_gpu_locked_clocks?gpu_ids=5&block={}",
+            app.port, block
+        );
         let resp = client
             .post(url)
-            .json(&serde_json::json!(
-                {
-                    "block": block
-                }
-            ))
             .send()
             .await
             .expect("Failed to send request");
@@ -526,14 +487,12 @@ async fn test_gpu_locked_clocks_bulk() {
 
     let mut set = JoinSet::new();
     for i in 0..10 {
-        set.spawn(app.send(
-            0,
-            SetGpuLockedClocks {
-                min_clock_mhz: 1000 + i * 100,
-                max_clock_mhz: 2000 + i * 100,
-                block: false,
-            },
-        ));
+        set.spawn(app.send(SetGpuLockedClocks {
+            gpu_ids: "0".to_string(),
+            min_clock_mhz: 1000 + i * 100,
+            max_clock_mhz: 2000 + i * 100,
+            block: false,
+        }));
     }
     let mut responses = Vec::with_capacity(10);
     for _ in 0..10 {
@@ -551,14 +510,12 @@ async fn test_gpu_locked_clocks_bulk() {
 
     // After this blocking request finishes, all non-blocking ones should have completed.
     assert_eq!(
-        app.send(
-            0,
-            SetGpuLockedClocks {
-                min_clock_mhz: 2000,
-                max_clock_mhz: 3000,
-                block: true,
-            },
-        )
+        app.send(SetGpuLockedClocks {
+            gpu_ids: "0".to_string(),
+            min_clock_mhz: 2000,
+            max_clock_mhz: 3000,
+            block: true,
+        })
         .await
         .expect("Failed to send request")
         .status(),
@@ -580,14 +537,12 @@ async fn test_mem_locked_clocks_single() {
     let mut app = TestApp::start().await;
 
     let resp = app
-        .send(
-            0,
-            SetMemLockedClocks {
-                min_clock_mhz: 1000,
-                max_clock_mhz: 2000,
-                block: true,
-            },
-        )
+        .send(SetMemLockedClocks {
+            gpu_ids: "0".to_string(),
+            min_clock_mhz: 1000,
+            max_clock_mhz: 2000,
+            block: true,
+        })
         .await
         .expect("Failed to send request");
 
@@ -604,14 +559,12 @@ async fn test_mem_locked_clocks_multiple() {
     let num_requests = 10;
     for i in 0..num_requests {
         let resp = app
-            .send(
-                i % 4,
-                SetMemLockedClocks {
-                    min_clock_mhz: 1000 + i * 100,
-                    max_clock_mhz: 2000 + i * 100,
-                    block: true,
-                },
-            )
+            .send(SetMemLockedClocks {
+                gpu_ids: (i % 4).to_string(),
+                min_clock_mhz: 1000 + i * 100,
+                max_clock_mhz: 2000 + i * 100,
+                block: true,
+            })
             .await
             .expect("Failed to send request");
 
@@ -620,10 +573,13 @@ async fn test_mem_locked_clocks_multiple() {
 
     // Reset the clocks for GPU 2
     assert_eq!(
-        app.send(2, ResetMemLockedClocks { block: true })
-            .await
-            .expect("Failed to send request")
-            .status(),
+        app.send(ResetMemLockedClocks {
+            gpu_ids: "2".to_string(),
+            block: true,
+        })
+        .await
+        .expect("Failed to send request")
+        .status(),
         200
     );
 
@@ -650,36 +606,30 @@ async fn test_mem_locked_clocks_invalid() {
     let app = TestApp::start().await;
 
     let client = reqwest::Client::new();
-    let url = SetMemLockedClocks::build_url(&app, 0);
+    // Wrong field name
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_mem_locked_clocks?gpu_ids=0&min_clock_mhz=1000&max_clock_khz=1100&block=true",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "min_clock_mhz": 1000,
-                "max_clock_khz": 1100,  // Wrong field name
-                "block": true
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
-    assert!(resp
-        .text()
-        .await
-        .expect("Failed to read response")
-        .contains("missing field"));
+    let text = resp.text().await.expect("Failed to read response");
+    assert!(
+        text.contains("missing field") || text.contains("unknown field"),
+        "Expected 'missing field' or 'unknown field' error, got: {text}"
+    );
 
-    let url = SetMemLockedClocks::build_url(&app, 0);
+    // Invalid type
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_mem_locked_clocks?gpu_ids=0&min_clock_mhz=1000&max_clock_mhz=abc&block=true",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "min_clock_mhz": 1000,
-                "max_clock_mhz": "1100",  // Invalid type
-                "block": true
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
@@ -688,35 +638,33 @@ async fn test_mem_locked_clocks_invalid() {
         .text()
         .await
         .expect("Failed to read response")
-        .contains("invalid type"));
+        .contains("invalid"));
 
-    let url = ResetMemLockedClocks::build_url(&app, 0);
+    // Wrong field name for reset
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/reset_mem_locked_clocks?gpu_ids=0&lego=false",
+        app.port
+    );
     let resp = client
         .post(url)
-        .json(&serde_json::json!(
-            {
-                "lego": false  // Wrong field name
-            }
-        ))
         .send()
         .await
         .expect("Failed to send request");
     assert_eq!(resp.status(), 400);
-    assert!(resp
-        .text()
-        .await
-        .expect("Failed to read response")
-        .contains("missing field"));
+    let text = resp.text().await.expect("Failed to read response");
+    assert!(
+        text.contains("missing field") || text.contains("unknown field"),
+        "Expected 'missing field' or 'unknown field' error, got: {text}"
+    );
 
     for block in [true, false] {
-        let url = ResetMemLockedClocks::build_url(&app, 5); // Invalid GPU ID
+        // Invalid GPU ID
+        let url = format!(
+            "http://127.0.0.1:{}/gpu/reset_mem_locked_clocks?gpu_ids=5&block={}",
+            app.port, block
+        );
         let resp = client
             .post(url)
-            .json(&serde_json::json!(
-                {
-                    "block": block
-                }
-            ))
             .send()
             .await
             .expect("Failed to send request");
@@ -730,14 +678,12 @@ async fn test_mem_locked_clocks_bulk() {
 
     let mut set = JoinSet::new();
     for i in 0..10 {
-        set.spawn(app.send(
-            0,
-            SetMemLockedClocks {
-                min_clock_mhz: 1000 + i * 100,
-                max_clock_mhz: 2000 + i * 100,
-                block: false,
-            },
-        ));
+        set.spawn(app.send(SetMemLockedClocks {
+            gpu_ids: "0".to_string(),
+            min_clock_mhz: 1000 + i * 100,
+            max_clock_mhz: 2000 + i * 100,
+            block: false,
+        }));
     }
     let mut responses = Vec::with_capacity(10);
     for _ in 0..10 {
@@ -755,14 +701,12 @@ async fn test_mem_locked_clocks_bulk() {
 
     // After this blocking request finishes, all non-blocking ones should have completed.
     assert_eq!(
-        app.send(
-            0,
-            SetMemLockedClocks {
-                min_clock_mhz: 2000,
-                max_clock_mhz: 3000,
-                block: true,
-            },
-        )
+        app.send(SetMemLockedClocks {
+            gpu_ids: "0".to_string(),
+            min_clock_mhz: 2000,
+            max_clock_mhz: 3000,
+            block: true,
+        })
         .await
         .expect("Failed to send request")
         .status(),
@@ -780,10 +724,48 @@ async fn test_mem_locked_clocks_bulk() {
 }
 
 #[tokio::test]
+async fn test_gpu_cumulative_energy() {
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+
+    // Single GPU
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/get_cumulative_energy?gpu_ids=0",
+        _app.port
+    );
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: HashMap<String, serde_json::Value> = resp.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["0"]["energy_mj"], 500_000);
+
+    // All GPUs (omit gpu_ids)
+    let url = format!("http://127.0.0.1:{}/gpu/get_cumulative_energy", _app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: HashMap<String, serde_json::Value> = resp.json().await.expect("Failed to parse JSON");
+    for i in 0..NUM_GPUS {
+        assert!(
+            body.contains_key(&i.to_string()),
+            "Missing GPU {} in response",
+            i
+        );
+        assert_eq!(body[&i.to_string()]["energy_mj"], 500_000);
+    }
+}
+
+#[tokio::test]
 async fn test_gpu_power_oneshot() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/gpu/power", _app.port);
+    let url = format!("http://127.0.0.1:{}/gpu/get_power", _app.port);
     let resp = client
         .get(&url)
         .send()
@@ -799,7 +781,7 @@ async fn test_gpu_power_oneshot() {
 async fn test_gpu_power_oneshot_filtered() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/gpu/power?gpu_ids=0,2", _app.port);
+    let url = format!("http://127.0.0.1:{}/gpu/get_power?gpu_ids=0,2", _app.port);
     let resp = client
         .get(&url)
         .send()
@@ -820,7 +802,7 @@ async fn test_gpu_power_oneshot_filtered() {
 async fn test_gpu_power_oneshot_has_all_gpus() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/gpu/power", _app.port);
+    let url = format!("http://127.0.0.1:{}/gpu/get_power", _app.port);
     let resp = client
         .get(&url)
         .send()
@@ -844,7 +826,7 @@ async fn test_gpu_power_oneshot_has_all_gpus() {
 async fn test_gpu_power_stream_receives_events() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/gpu/power/stream", _app.port);
+    let url = format!("http://127.0.0.1:{}/gpu/stream_power", _app.port);
     let resp = client
         .get(&url)
         .send()
@@ -892,6 +874,9 @@ impl GpuManager for PollCountingGpu {
         self.poll_count.fetch_add(1, Ordering::Relaxed);
         Ok(150_000)
     }
+    fn get_total_energy_consumption(&mut self) -> Result<u64, ZeusdError> {
+        Ok(500_000)
+    }
 }
 
 #[tokio::test]
@@ -900,7 +885,7 @@ async fn test_gpu_power_lazy_polling() {
     let gpu = PollCountingGpu {
         poll_count: poll_count.clone(),
     };
-    let poller = GpuPowerPoller::start(vec![(0, gpu)], 100);
+    let poller = start_gpu_poller(vec![(0, gpu)], 100);
     let broadcast = poller.broadcast();
 
     // No subscribers: poller should be asleep.
@@ -930,4 +915,27 @@ async fn test_gpu_power_lazy_polling() {
         count_after_drop, count_later,
         "Poller should stop polling after the last subscriber disconnects"
     );
+}
+
+#[tokio::test]
+async fn test_discover_endpoint() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/discover", app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let gpu_ids = body["gpu_ids"].as_array().expect("gpu_ids should be array");
+    assert_eq!(gpu_ids.len(), NUM_GPUS as usize);
+    let cpu_ids = body["cpu_ids"].as_array().expect("cpu_ids should be array");
+    assert_eq!(cpu_ids.len(), 1);
+    let dram_available = body["dram_available"]
+        .as_array()
+        .expect("dram_available should be array");
+    assert_eq!(dram_available.len(), 1);
+    assert!(dram_available[0].as_bool().unwrap());
 }
