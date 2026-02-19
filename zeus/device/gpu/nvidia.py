@@ -435,12 +435,10 @@ class NVIDIAGPUs(gpu_common.GPUs):
                 self._ensure_homogeneous()
         except pynvml.NVMLError as e:
             exception_class = NVIDIAGPU._exception_map.get(
-                e.value,  # ty: ignore[unresolved-attribute]
+                e.value,  # type: ignore
                 gpu_common.ZeusBaseGPUError,
             )
-            raise exception_class(
-                e.msg  # ty: ignore[unresolved-attribute]
-            ) from e
+            raise exception_class(str(e)) from e
 
     @property
     def gpus(self) -> Sequence[NVIDIAGPU]:
