@@ -109,14 +109,14 @@ pub enum CpuCommand {
 
 /// Tokio background task that handles requests to each CPU.
 ///
-/// Between commands, a periodic keepalive reads the energy counters every 5
-/// minutes so that RAPL counter wraparounds are detected even during idle
+/// Between commands, a periodic keepalive reads the energy counters every 30
+/// seconds so that RAPL counter wraparounds are detected even during idle
 /// periods when no client is actively querying energy.
 async fn cpu_management_task<T: CpuManager>(
     mut cpu: T,
     mut rx: UnboundedReceiver<CpuCommandRequest>,
 ) {
-    let mut keepalive = interval(Duration::from_secs(300));
+    let mut keepalive = interval(Duration::from_secs(30));
     // The first tick completes immediately; consume it so we don't
     // do a spurious keepalive read right at startup.
     keepalive.tick().await;
