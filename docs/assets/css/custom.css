@@ -4,6 +4,16 @@ div.doc-contents:not(.first) {
   border-left: .1rem solid var(--md-typeset-table-color);
 }
 
+/* Announcement banner */
+.md-banner {
+  text-align: center;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color);
+}
+.md-banner a {
+  color: var(--md-primary-fg-color);
+}
+
 /* Mark external links as such. */
 a.autorefs-external::after, a.external::after {
   /* https://primer.style/octicons/arrow-up-right-24 */
