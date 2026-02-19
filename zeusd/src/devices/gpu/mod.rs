@@ -223,16 +223,17 @@ impl GpuCommand {
         match *self {
             Self::SetPersistenceMode { enabled } => {
                 let result = device.set_persistence_mode(enabled);
-                let action = if enabled { "enabled" } else { "disabled" };
+                let (action, verb) = if enabled {
+                    ("enabled", "enable")
+                } else {
+                    ("disabled", "disable")
+                };
                 log_command_result(
                     &result,
                     request_arrival_time,
                     command_start_time,
                     &format!("Persistence mode {action}"),
-                    &format!(
-                        "Cannot {action_verb} persistence mode",
-                        action_verb = if enabled { "enable" } else { "disable" }
-                    ),
+                    &format!("Cannot {verb} persistence mode"),
                 );
                 result.map(|_| GpuResponse::Ok)
             }

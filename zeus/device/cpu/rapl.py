@@ -303,6 +303,11 @@ class ZeusdRAPLCPU(RAPLCPU):
             idx = cpu_ids.index(self.cpu_index)
         except ValueError as e:
             raise ZeusdError(f"CPU {self.cpu_index} not found in discovery response (available: {cpu_ids})") from e
+        if len(cpu_ids) != len(dram_available):
+            raise ZeusdError(
+                f"Discovery response has mismatched lengths: "
+                f"{len(cpu_ids)} cpu_ids vs {len(dram_available)} dram_available entries"
+            )
         return dram_available[idx]
 
     def get_total_energy_consumption(self) -> CpuDramMeasurement:
@@ -322,7 +327,10 @@ class ZeusdRAPLCPU(RAPLCPU):
         cpu_data = data.get(str(self.cpu_index))
         if cpu_data is None:
             raise ZeusdError(f"CPU {self.cpu_index} not found in response")
-        cpu_mj = cpu_data["cpu_energy_uj"] / 1000
+        cpu_uj = cpu_data.get("cpu_energy_uj")
+        if cpu_uj is None:
+            raise ZeusdError(f"CPU {self.cpu_index}: cpu_energy_uj is null in response")
+        cpu_mj = cpu_uj / 1000
 
         dram_mj = None
         dram_uj = cpu_data.get("dram_energy_uj")
