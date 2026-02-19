@@ -4,7 +4,7 @@ pub mod cpu;
 pub mod gpu;
 
 pub use cpu::cpu_routes;
-pub use gpu::gpu_routes;
+pub use gpu::{gpu_control_routes, gpu_read_routes};
 
 use actix_web::{web, HttpResponse};
 use serde::Serialize;

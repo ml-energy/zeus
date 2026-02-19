@@ -400,6 +400,7 @@ impl TestApp {
             cpu_power_broadcast,
             discovery_info,
             2,
+            false,
         )
         .expect("Failed to start server");
         let _ = tokio::spawn(server);

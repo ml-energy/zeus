@@ -102,6 +102,22 @@ client.stop()
 
 See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/measure/#distributed-power-measurement-and-aggregation) section in our documentation for more details.
 
+### Monitor-only
+
+When `--monitor-only` is passed, all GPU control (write) endpoints are disabled and only the following read-only endpoints are exposed:
+
+- `GET /discover`
+- `GET /gpu/get_cumulative_energy`
+- `GET /gpu/get_power`
+- `GET /gpu/stream_power`
+- `GET /cpu/get_cumulative_energy`
+- `GET /cpu/get_power`
+- `GET /cpu/stream_power`
+
+```sh
+sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938 --monitor-only
+```
+
 ## API Reference
 
 ### Discovery
@@ -292,6 +308,9 @@ Options:
           CPU RAPL power polling frequency in Hz for the streaming endpoint
 
           [default: 10]
+
+      --monitor-only
+          If set, only expose read-only monitoring endpoints (power get/stream, cumulative energy, discovery) and disable all GPU control APIs (set power limit, set frequency, persistence mode, etc.)
 
   -h, --help
           Print help (see a summary with '-h')
