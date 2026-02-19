@@ -52,7 +52,7 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          import:
+          inventories:
             - https://pytorch.org/docs/stable/objects.inv
             - https://huggingface.co/docs/transformers/master/en/objects.inv
             - https://huggingface.co/docs/trl/main/en/objects.inv

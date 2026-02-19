@@ -50,11 +50,7 @@ If you find Zeus relevant to your research, please consider citing:
 }
 ```
 
-## Contact
-
-Jae-Won Chung (jwnchung@umich.edu)
-
-## Newsletter
+---
 
 <div align="center">
 <i>

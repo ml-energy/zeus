@@ -9,7 +9,7 @@
 Zeus makes it very easy to measure time, power, and energy both programmatically in Python and also on the command line.
 Measuring power and energy is also very low overhead, typically taking less than 10 ms for each call.
 
-## Programmatic measurement
+## Programmatic Measurement
 
 ### Time and energy consumption of a chunk of code
 
@@ -95,7 +95,7 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
     This is usually what you want, except when using more advanced device partitioning (e.g., using `--xla_force_host_platform_device_count` in JAX to partition CPUs into more pieces).
     In such cases, you probably want to opt out from using this function and handle synchronization manually at the appropriate granularity.
 
-## Distributed power measurement and aggregation
+## Distributed Power Measurement and Aggregation
 
 [`ZeusMonitor`][zeus.monitor.ZeusMonitor] is local to a single machine, but sometimes, you may want to monitor power across multiple nodes in a cluster.
 In this case, you can run the Zeus daemon ([zeusd](https://crates.io/crates/zeusd)) on each machine and stream power readings over SSE (Server-Sent Events) to a central client ([`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient]) for real-time monitoring and aggregation.
@@ -169,7 +169,7 @@ To check CPU/GPU/DRAM measurement support, refer to [Verifying installation](../
 
 Energy measurement for Apple Silicon and Jetson Platforms is supported as well. For more information, refer to [Apple Silicon](#apple-silicon) and [Jetson Platforms](#jetson-platforms).
 
-### [`get_gpus`][zeus.device.get_gpus] and [`get_cpus`][zeus.device.get_cpus]
+### Generic device interfaces
 
 The [`get_gpus`][zeus.device.get_gpus] function returns a [`GPUs`][zeus.device.gpu.GPUs] object, which can be either an [`NVIDIAGPUs`][zeus.device.gpu.NVIDIAGPUs] or [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object depending on the availability of `nvml` or `amdsmi`. Each [`GPUs`][zeus.device.gpu.GPUs] object contains one or more [`GPU`][zeus.device.gpu.common.GPU] instances, which are specifically [`NVIDIAGPU`][zeus.device.gpu.nvidia.NVIDIAGPU] or [`AMDGPU`][zeus.device.gpu.amd.AMDGPU] objects.
 
@@ -177,33 +177,32 @@ These [`GPU`][zeus.device.gpu.common.GPU] objects directly call respective `nvml
 - [`NVIDIAGPU.get_name`][zeus.device.gpu.nvidia.NVIDIAGPU.get_name] calls `pynvml.nvmlDeviceGetName`.
 - [`AMDGPU.get_name`][zeus.device.gpu.amd.AMDGPU.get_name] calls `amdsmi.amdsmi_get_gpu_asic_info`.
 
-[`get_cpus`][zeus.device.get_cpus] is similar to [`get_gpus`][zeus.device.get_gpus], but rather abstracts over CPU vendors.
+[`get_cpus`][zeus.device.get_cpus] is similar to [`get_gpus`][zeus.device.get_gpus], but rather abstracts over CPU vendors; [`get_soc`][zeus.device.get_soc] abstracts over SoC platforms (currently Apple Silicon and Jetson).
 
-### Limitations of AMD GPU support
+### AMD GPU
 
-#### AMD GPUs Initialization
-`amdsmi.amdsmi_get_energy_count` sometimes returns invalid values on certain GPUs or ROCm versions (e.g., MI100 on ROCm 6.2). See [ROCm issue #38](https://github.com/ROCm/amdsmi/issues/38) for more details. During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, we call `amdsmi.amdsmi_get_energy_count` twice for each GPU, with a 0.5-second delay between calls. This difference is compared to power measurements to determine if `amdsmi.amdsmi_get_energy_count` is stable and reliable. Initialization takes 0.5 seconds regardless of the number of AMD GPUs.
+#### Initialization
+`amdsmi.amdsmi_get_energy_count` sometimes returns invalid values on **older** GPU models or ROCm versions (e.g., MI100 on ROCm 6.2). See [ROCm issue #38](https://github.com/ROCm/amdsmi/issues/38) for more details. During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, we call `amdsmi.amdsmi_get_energy_count` twice for each GPU, with a 0.5-second delay between calls. This difference is compared to power measurements to determine if `amdsmi.amdsmi_get_energy_count` is stable and reliable. Initialization takes 0.5 seconds regardless of the number of AMD GPUs.
 
 `amdsmi.amdsmi_get_power_info` provides "average_socket_power" and "current_socket_power" fields, but the "current_socket_power" field is sometimes not supported and returns "N/A." During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, this method is checked, and if "N/A" is returned, the [`AMDGPU.get_instant_power_usage`][zeus.device.gpu.amd.AMDGPU.get_instant_power_usage] method is disabled. Instead, [`AMDGPU.get_average_power_usage`][zeus.device.gpu.amd.AMDGPU.get_average_power_usage] needs to be used.
 
-#### Supported AMD SMI Versions
-Only ROCm >= 6.1 is supported, as the AMDSMI APIs for power and energy return wrong values. For more information, see [ROCm issue #22](https://github.com/ROCm/amdsmi/issues/22). Ensure your `amdsmi` and ROCm versions are up to date.
+#### ROCm and AMDSMI Versions
+Only ROCm >= 6.1 is supported, as the AMDSMI APIs for power and energy return wrong values. For more information, see [AMDSMI issue #22](https://github.com/ROCm/amdsmi/issues/22). Ensure your `amdsmi` and ROCm versions are up-to-date.
 
-### Note on NUMA CPUs
+### NUMA CPUs
 
 If you have more than one CPU sockets, for instance, running our [environment validation script](../getting_started/index.md#verifying-installation) will show two RAPL devices.
 To only measure the energy consumption of the CPU used by the current Python process, you can use the [`get_current_cpu_index`][zeus.device.cpu.get_current_cpu_index] helper function to retrieve the CPU index where the specified process ID is running and pass in only that index to the `cpu_indices` argument.
 
 ### Apple Silicon
 
-To enable Apple Silicon energy monitoring, you must have the optional `zeus-apple-silicon` dependency installed.
+To enable Apple Silicon energy monitoring, you need the optional [`zeus-apple-silicon`](https://github.com/ml-energy/zeus-apple-silicon) dependency installed in the `apple` extra. You can install it with:
 
-If you're installing Zeus for the first time, you can have this dependency installed automatically with
-`pip install 'zeus[apple]'`. You can also install this dependency manually by running `pip install zeus-apple-silicon`. This dependency is maintained in a separate codebase, and you can find more information about it [here](https://github.com/ml-energy/zeus-apple-silicon).
+```bash
+pip install zeus[apple]
+```
 
-**Note**: if you do not have an Apple Silicon processor, are not running macOS, or do not have the above dependency installed, the Zeus monitor will skip measuring energy for Apple Silicon.
-
-Once the dependency is installed, you can conduct measurement as normal with the Zeus monitor ([Programmatic measurement](#programmatic-measurement)), and metrics for Apple Silicon will be included in a field called `soc_energy` within the [`Measurement`][zeus.monitor.energy.Measurement] object reported by [`end_window`][zeus.monitor.ZeusMonitor.end_window]. For example:
+Once installed, you can conduct measurement as normal with the `ZeusMonitor` ([Programmatic measurement](#programmatic-measurement)), and metrics for Apple Silicon will be included in a field called `soc_energy` within the [`Measurement`][zeus.monitor.energy.Measurement] object reported by [`end_window`][zeus.monitor.ZeusMonitor.end_window]. For example:
 
 ```python
 # ...
