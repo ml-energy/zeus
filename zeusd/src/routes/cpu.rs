@@ -6,8 +6,6 @@ use std::time::Instant;
 use actix_web::web::Bytes;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
-use tokio::time::Duration;
-use tokio_stream::wrappers::WatchStream;
 use tokio_stream::StreamExt;
 
 use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerSnapshot};
@@ -151,10 +149,7 @@ async fn get_cpu_power_handler(
         }
     }
     let _guard = broadcast.add_subscriber();
-    let mut rx = broadcast.subscribe();
-    rx.borrow_and_update();
-    let _ = tokio::time::timeout(Duration::from_millis(200), rx.changed()).await;
-    let snapshot = rx.borrow().clone();
+    let snapshot = broadcast.wait_for_fresh().await.unwrap_or_default();
     let filtered = filter_cpu_snapshot(&snapshot, &cpu_ids);
     HttpResponse::Ok().json(filtered)
 }
@@ -182,9 +177,7 @@ async fn cpu_power_stream_handler(
         }
     }
     let guard = broadcast.add_subscriber();
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let rx = broadcast.subscribe();
-    let stream = WatchStream::new(rx).map(move |snapshot| {
+    let stream = broadcast.stream().map(move |snapshot| {
         let _ = &guard;
         let filtered = filter_cpu_snapshot(&snapshot, &cpu_ids);
         let json = serde_json::to_string(&filtered).unwrap_or_default();

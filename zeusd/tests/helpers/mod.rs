@@ -9,7 +9,7 @@ use paste::paste;
 use std::future::Future;
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
@@ -176,7 +176,6 @@ impl CpuManager for TestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
                 ),
                 max_energy_uj: 1000000,
-                num_wraparounds: RwLock::new(0),
             }),
             Some(Arc::new(PackageInfo {
                 index: _index,
@@ -185,7 +184,6 @@ impl CpuManager for TestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
                 ),
                 max_energy_uj: 1000000,
-                num_wraparounds: RwLock::new(0),
             })),
         ))
     }
@@ -197,8 +195,6 @@ impl CpuManager for TestCpu {
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
         Ok(self.dram.try_recv().ok().unwrap())
     }
-
-    fn stop_monitoring(&mut self) {}
 
     fn is_dram_available(&self) -> bool {
         true
@@ -248,7 +244,6 @@ impl CpuManager for PowerTestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
                 ),
                 max_energy_uj: 1_000_000,
-                num_wraparounds: RwLock::new(0),
             }),
             Some(Arc::new(PackageInfo {
                 index,
@@ -257,7 +252,6 @@ impl CpuManager for PowerTestCpu {
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
                 ),
                 max_energy_uj: 1_000_000,
-                num_wraparounds: RwLock::new(0),
             })),
         ))
     }
@@ -273,8 +267,6 @@ impl CpuManager for PowerTestCpu {
         self.dram_energy_uj += self.dram_increment_uj;
         Ok(val)
     }
-
-    fn stop_monitoring(&mut self) {}
 
     fn is_dram_available(&self) -> bool {
         true

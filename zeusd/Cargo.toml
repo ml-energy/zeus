@@ -38,3 +38,4 @@ futures = "0.3"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tempfile = "3"

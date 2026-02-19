@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 use tokio::sync::{watch, Notify};
 use tokio::task::JoinHandle;
+use tokio_stream::wrappers::WatchStream;
+use tokio_stream::Stream;
 
 /// RAII guard that decrements the subscriber count on drop.
 pub struct SubscriberGuard {
@@ -29,7 +31,7 @@ impl Drop for SubscriberGuard {
 ///
 /// Stored as actix-web app data. Cloning creates a new watch subscriber.
 #[derive(Clone)]
-pub struct PowerBroadcast<T: Clone + Default> {
+pub struct PowerBroadcast<T: Clone + Default + Send + Sync + 'static> {
     rx: watch::Receiver<T>,
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
@@ -37,17 +39,7 @@ pub struct PowerBroadcast<T: Clone + Default> {
     valid_ids: Arc<BTreeSet<usize>>,
 }
 
-impl<T: Clone + Default> PowerBroadcast<T> {
-    /// Get the latest power snapshot without waiting for a change.
-    pub fn latest(&self) -> T {
-        self.rx.borrow().clone()
-    }
-
-    /// Create a new watch receiver for streaming.
-    pub fn subscribe(&self) -> watch::Receiver<T> {
-        self.rx.clone()
-    }
-
+impl<T: Clone + Default + Send + Sync + 'static> PowerBroadcast<T> {
     /// Register a subscriber, waking the poller if it was sleeping.
     ///
     /// Returns an RAII guard that decrements the count on drop.
@@ -57,6 +49,29 @@ impl<T: Clone + Default> PowerBroadcast<T> {
         SubscriberGuard {
             count: self.subscriber_count.clone(),
         }
+    }
+
+    /// Wait for a fresh snapshot from the poller.
+    ///
+    /// Blocks until the poller broadcasts a new value (ignoring any stale
+    /// or default value already in the channel). Returns `None` only if
+    /// the poller task has terminated.
+    pub async fn wait_for_fresh(&self) -> Option<T> {
+        let mut rx = self.rx.clone();
+        rx.borrow_and_update();
+        if rx.changed().await.is_ok() {
+            Some(rx.borrow().clone())
+        } else {
+            None
+        }
+    }
+
+    /// Create a stream that yields only fresh snapshots from the poller.
+    ///
+    /// Skips any stale or default value already in the channel; the first
+    /// item is the next value the poller broadcasts after this call.
+    pub fn stream(&self) -> impl Stream<Item = T> {
+        WatchStream::from_changes(self.rx.clone())
     }
 
     /// Validate that all requested device indices are being monitored.

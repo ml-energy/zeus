@@ -1,14 +1,10 @@
 //! CPU power measurement with RAPL. Only supported on Linux.
 
-use once_cell::sync::OnceCell;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::string::String;
-use std::sync::{Arc, RwLock};
-use tokio::io::AsyncReadExt;
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use std::sync::Arc;
 
 use crate::devices::cpu::{CpuManager, PackageInfo};
 use crate::error::ZeusdError;
@@ -17,25 +13,25 @@ use crate::error::ZeusdError;
 //       sysfs mounts under places like `/zeus_sys`.
 static RAPL_DIR: &str = "/sys/class/powercap/intel-rapl";
 
-// Assuming a maximum power draw of 1000 Watts when we are polling every 0.1 seconds, the maximum
-// amount the RAPL counter would increase (1000 * 1e6 * 0.1)
-static RAPL_COUNTER_MAX_INCREASE: u64 = 1000 * 100000;
-
 pub struct RaplCpu {
     cpu: Arc<PackageInfo>,
     dram: Option<Arc<PackageInfo>>,
-    cpu_monitoring_task: OnceCell<JoinHandle<Result<(), ZeusdError>>>,
-    dram_monitoring_task: OnceCell<JoinHandle<Result<(), ZeusdError>>>,
+    last_cpu_raw_uj: Option<u64>,
+    cpu_wraparound_count: u64,
+    last_dram_raw_uj: Option<u64>,
+    dram_wraparound_count: u64,
 }
 
 impl RaplCpu {
-    pub fn init(_index: usize) -> Result<Self, ZeusdError> {
-        let fields = RaplCpu::get_available_fields(_index)?;
+    pub fn init(index: usize) -> Result<Self, ZeusdError> {
+        let fields = RaplCpu::get_available_fields(index)?;
         Ok(Self {
             cpu: fields.0,
             dram: fields.1,
-            cpu_monitoring_task: OnceCell::new(),
-            dram_monitoring_task: OnceCell::new(),
+            last_cpu_raw_uj: None,
+            cpu_wraparound_count: 0,
+            last_dram_raw_uj: None,
+            dram_wraparound_count: 0,
         })
     }
 }
@@ -51,16 +47,13 @@ impl PackageInfo {
         }
 
         let cpu_name = fs::read_to_string(&cpu_name_path)?.trim_end().to_string();
-        // Try reding from energy_uj file
         read_u64(&cpu_energy_path)?;
         let cpu_max_energy = read_u64(&cpu_max_energy_path)?;
-        let wraparound_counter = RwLock::new(0);
         Ok(PackageInfo {
             index,
             name: cpu_name,
             energy_uj_path: cpu_energy_path,
             max_energy_uj: cpu_max_energy,
-            num_wraparounds: wraparound_counter,
         })
     }
 }
@@ -127,73 +120,29 @@ impl CpuManager for RaplCpu {
     }
 
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
-        // Assume that RAPL counter will not wrap around twice during a request to poll energy. The
-        // number of wrap arounds is polled twice to handle the case where the counter wraps around
-        // a request. If this happens, `measurement` has to be updated as to not return an
-        // unexpectedly large energy value.
-
-        let handle = self
-            .cpu_monitoring_task
-            .get_or_init(|| tokio::spawn(monitor_rapl(Arc::clone(&self.cpu))));
-        if handle.is_finished() {
-            return Err(ZeusdError::CpuManagementTaskTerminatedError(self.cpu.index));
+        let raw = read_u64(&self.cpu.energy_uj_path)?;
+        if let Some(last_raw) = self.last_cpu_raw_uj {
+            if raw < last_raw {
+                self.cpu_wraparound_count += 1;
+            }
         }
-
-        let num_wraparounds_before = *self
-            .cpu
-            .num_wraparounds
-            .read()
-            .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(self.cpu.index))?;
-        let mut measurement = read_u64(&self.cpu.energy_uj_path)?;
-        let num_wraparounds = *self
-            .cpu
-            .num_wraparounds
-            .read()
-            .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(self.cpu.index))?;
-        if num_wraparounds != num_wraparounds_before {
-            // Wraparound has happened after measurement, take measurement again
-            measurement = read_u64(&self.cpu.energy_uj_path)?;
-        }
-
-        Ok(measurement + num_wraparounds * self.cpu.max_energy_uj)
+        self.last_cpu_raw_uj = Some(raw);
+        Ok(raw + self.cpu_wraparound_count * self.cpu.max_energy_uj)
     }
 
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
         match &self.dram {
             None => Err(ZeusdError::CpuManagementTaskTerminatedError(self.cpu.index)),
             Some(dram) => {
-                let handle = self
-                    .dram_monitoring_task
-                    .get_or_init(|| tokio::spawn(monitor_rapl(Arc::clone(dram))));
-                if handle.is_finished() {
-                    return Err(ZeusdError::CpuManagementTaskTerminatedError(dram.index));
+                let raw = read_u64(&dram.energy_uj_path)?;
+                if let Some(last_raw) = self.last_dram_raw_uj {
+                    if raw < last_raw {
+                        self.dram_wraparound_count += 1;
+                    }
                 }
-
-                let num_wraparounds_before = *dram
-                    .num_wraparounds
-                    .read()
-                    .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(dram.index))?;
-                let mut measurement = read_u64(&dram.energy_uj_path)?;
-                let num_wraparounds = *dram
-                    .num_wraparounds
-                    .read()
-                    .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(dram.index))?;
-                if num_wraparounds != num_wraparounds_before {
-                    // Wraparound has happened after measurement, take measurement again
-                    measurement = read_u64(&dram.energy_uj_path)?;
-                }
-
-                Ok(measurement + num_wraparounds * dram.max_energy_uj)
+                self.last_dram_raw_uj = Some(raw);
+                Ok(raw + self.dram_wraparound_count * dram.max_energy_uj)
             }
-        }
-    }
-
-    fn stop_monitoring(&mut self) {
-        if let Some(handle) = self.cpu_monitoring_task.take() {
-            handle.abort();
-        }
-        if let Some(handle) = self.dram_monitoring_task.take() {
-            handle.abort();
         }
     }
 
@@ -211,38 +160,224 @@ fn read_u64(path: &PathBuf) -> anyhow::Result<u64, std::io::Error> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
-async fn read_u64_async(path: &PathBuf) -> Result<u64, std::io::Error> {
-    let mut file = tokio::fs::File::open(path).await?;
-    let mut buf = String::new();
-    file.read_to_string(&mut buf).await?;
-    buf.trim()
-        .parse()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
 
-async fn monitor_rapl(rapl_file: Arc<PackageInfo>) -> Result<(), ZeusdError> {
-    let mut last_energy_uj = read_u64_async(&rapl_file.energy_uj_path).await?;
-    tracing::info!(
-        "Monitoring started for {}",
-        rapl_file.energy_uj_path.display()
-    );
-    loop {
-        let current_energy_uj = read_u64_async(&rapl_file.energy_uj_path).await?;
+    /// Write a u64 value to a file, simulating a RAPL energy counter.
+    fn write_energy(path: &Path, value: u64) {
+        fs::write(path, format!("{value}\n")).unwrap();
+    }
 
-        if current_energy_uj < last_energy_uj {
-            let mut wraparound_guard = rapl_file
-                .num_wraparounds
-                .write()
-                .map_err(|_| ZeusdError::CpuManagementTaskTerminatedError(rapl_file.index))?;
-            *wraparound_guard += 1;
-        }
-        last_energy_uj = current_energy_uj;
-        let sleep_time = if rapl_file.max_energy_uj - current_energy_uj < RAPL_COUNTER_MAX_INCREASE
-        {
-            100
+    /// Create a RaplCpu backed by temp files with the given max_energy_uj.
+    /// Returns the RaplCpu and the path to the CPU energy file.
+    /// If `with_dram` is true, also creates a DRAM energy file.
+    fn make_test_cpu(
+        dir: &Path,
+        max_energy_uj: u64,
+        with_dram: bool,
+    ) -> (RaplCpu, PathBuf, Option<PathBuf>) {
+        let cpu_energy_path = dir.join("cpu_energy_uj");
+        write_energy(&cpu_energy_path, 0);
+
+        let cpu_info = Arc::new(PackageInfo {
+            index: 0,
+            name: "package-0".to_string(),
+            energy_uj_path: cpu_energy_path.clone(),
+            max_energy_uj,
+        });
+
+        let (dram, dram_path) = if with_dram {
+            let dram_energy_path = dir.join("dram_energy_uj");
+            write_energy(&dram_energy_path, 0);
+            let dram_info = Arc::new(PackageInfo {
+                index: 0,
+                name: "dram".to_string(),
+                energy_uj_path: dram_energy_path.clone(),
+                max_energy_uj,
+            });
+            (Some(dram_info), Some(dram_energy_path))
         } else {
-            1000
+            (None, None)
         };
-        sleep(Duration::from_millis(sleep_time)).await;
+
+        let cpu = RaplCpu {
+            cpu: cpu_info,
+            dram,
+            last_cpu_raw_uj: None,
+            cpu_wraparound_count: 0,
+            last_dram_raw_uj: None,
+            dram_wraparound_count: 0,
+        };
+
+        (cpu, cpu_energy_path, dram_path)
+    }
+
+    #[test]
+    fn monotonic_increase_no_wraparound() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (mut cpu, path, _) = make_test_cpu(tmp.path(), 1_000_000, false);
+
+        let values = [100, 500, 1_000, 50_000, 999_999];
+        for &v in &values {
+            write_energy(&path, v);
+            assert_eq!(cpu.get_cpu_energy().unwrap(), v);
+        }
+    }
+
+    #[test]
+    fn single_wraparound() {
+        let tmp = tempfile::tempdir().unwrap();
+        let max = 1_000_000;
+        let (mut cpu, path, _) = make_test_cpu(tmp.path(), max, false);
+
+        // Counter climbs to near max.
+        write_energy(&path, 900_000);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 900_000);
+
+        // Counter wraps around.
+        write_energy(&path, 100);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 100 + max);
+
+        // Continues increasing after wraparound.
+        write_energy(&path, 5_000);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 5_000 + max);
+    }
+
+    #[test]
+    fn multiple_wraparounds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let max = 1_000;
+        let (mut cpu, path, _) = make_test_cpu(tmp.path(), max, false);
+
+        write_energy(&path, 800);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 800);
+
+        // First wraparound.
+        write_energy(&path, 200);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 200 + max);
+
+        write_energy(&path, 900);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 900 + max);
+
+        // Second wraparound.
+        write_energy(&path, 50);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 50 + 2 * max);
+
+        // Third wraparound.
+        write_energy(&path, 30);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 30 + 3 * max);
+    }
+
+    #[test]
+    fn wraparound_to_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        let max = 1_000_000;
+        let (mut cpu, path, _) = make_test_cpu(tmp.path(), max, false);
+
+        write_energy(&path, 500_000);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 500_000);
+
+        // Wraps to exactly 0.
+        write_energy(&path, 0);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), max);
+    }
+
+    #[test]
+    fn first_call_establishes_baseline() {
+        let tmp = tempfile::tempdir().unwrap();
+        let max = 1_000_000;
+        let (mut cpu, path, _) = make_test_cpu(tmp.path(), max, false);
+
+        // First call with a non-zero starting value — no wraparound offset.
+        write_energy(&path, 42_000);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 42_000);
+
+        // Second call still higher — still no offset.
+        write_energy(&path, 100_000);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 100_000);
+    }
+
+    #[test]
+    fn dram_wraparound() {
+        let tmp = tempfile::tempdir().unwrap();
+        let max = 500_000;
+        let (mut cpu, _, dram_path) = make_test_cpu(tmp.path(), max, true);
+        let dram_path = dram_path.unwrap();
+
+        write_energy(&dram_path, 400_000);
+        assert_eq!(cpu.get_dram_energy().unwrap(), 400_000);
+
+        // DRAM wraps around.
+        write_energy(&dram_path, 1_000);
+        assert_eq!(cpu.get_dram_energy().unwrap(), 1_000 + max);
+
+        // Continues after wraparound.
+        write_energy(&dram_path, 200_000);
+        assert_eq!(cpu.get_dram_energy().unwrap(), 200_000 + max);
+    }
+
+    #[test]
+    fn cpu_and_dram_wraparound_independently() {
+        let tmp = tempfile::tempdir().unwrap();
+        let max = 1_000;
+        let (mut cpu, cpu_path, dram_path) = make_test_cpu(tmp.path(), max, true);
+        let dram_path = dram_path.unwrap();
+
+        // Both start high.
+        write_energy(&cpu_path, 800);
+        write_energy(&dram_path, 600);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 800);
+        assert_eq!(cpu.get_dram_energy().unwrap(), 600);
+
+        // Only CPU wraps.
+        write_energy(&cpu_path, 100);
+        write_energy(&dram_path, 900);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 100 + max);
+        assert_eq!(cpu.get_dram_energy().unwrap(), 900);
+
+        // Only DRAM wraps.
+        write_energy(&cpu_path, 500);
+        write_energy(&dram_path, 200);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 500 + max);
+        assert_eq!(cpu.get_dram_energy().unwrap(), 200 + max);
+
+        // Both wrap.
+        write_energy(&cpu_path, 50);
+        write_energy(&dram_path, 50);
+        assert_eq!(cpu.get_cpu_energy().unwrap(), 50 + 2 * max);
+        assert_eq!(cpu.get_dram_energy().unwrap(), 50 + 2 * max);
+    }
+
+    #[test]
+    fn dram_not_available_returns_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (mut cpu, _, _) = make_test_cpu(tmp.path(), 1_000_000, false);
+
+        assert!(cpu.get_dram_energy().is_err());
+    }
+
+    #[test]
+    fn compensated_values_are_monotonic_under_rapid_wraparounds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let max = 100;
+        let (mut cpu, path, _) = make_test_cpu(tmp.path(), max, false);
+
+        // Simulate many rapid wraparounds with a small max_energy_uj.
+        // The raw counter cycles: 0 → 80 → 30 → 90 → 10 → 70 → ...
+        let raw_sequence = [80, 30, 90, 10, 70, 20, 60, 5, 95, 0];
+        write_energy(&path, raw_sequence[0]);
+        let mut last_compensated = cpu.get_cpu_energy().unwrap();
+
+        for &raw in &raw_sequence[1..] {
+            write_energy(&path, raw);
+            let compensated = cpu.get_cpu_energy().unwrap();
+            assert!(
+                compensated >= last_compensated,
+                "Compensated energy decreased: {last_compensated} -> {compensated} (raw={raw})",
+            );
+            last_compensated = compensated;
+        }
     }
 }

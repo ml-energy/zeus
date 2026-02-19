@@ -6,9 +6,9 @@ pub mod power;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
 use std::time::Instant;
 use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
+use tokio::time::{interval, Duration};
 use tracing::Span;
 
 use crate::error::ZeusdError;
@@ -18,7 +18,6 @@ pub struct PackageInfo {
     pub name: String,
     pub energy_uj_path: PathBuf,
     pub max_energy_uj: u64,
-    pub num_wraparounds: RwLock<u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,14 +36,11 @@ pub trait CpuManager {
     fn get_available_fields(
         index: usize,
     ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError>;
-    // Get the cumulative Rapl count value of the CPU after compensating for wraparounds.
+    /// Get the cumulative energy counter value of the CPU after compensating for wraparounds.
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError>;
-    // Get the cumulative Rapl count value of the DRAM after compensating for wraparounds if it is
-    // available.
+    /// Get the cumulative energy counter value of the DRAM after compensating for wraparounds.
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError>;
-    // Abort the monitoring tasks for CPU and DRAM if the tasks have been started.
-    fn stop_monitoring(&mut self);
-    // Check if DRAM is available.
+    /// Check if DRAM is available.
     fn is_dram_available(&self) -> bool;
 }
 
@@ -102,25 +98,6 @@ impl CpuManagementTasks {
             None => Err(ZeusdError::CpuManagementTaskTerminatedError(cpu_id)),
         }
     }
-
-    pub async fn stop_monitoring(&self) -> Result<(), ZeusdError> {
-        for (index, sender) in self.senders.iter().enumerate() {
-            let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-            sender
-                .send((
-                    CpuCommand::StopMonitoring,
-                    Some(tx),
-                    Instant::now(),
-                    Span::current(),
-                ))
-                .map_err(ZeusdError::from)?;
-            match rx.recv().await {
-                Some(_) => {}
-                None => return Err(ZeusdError::CpuManagementTaskTerminatedError(index)),
-            }
-        }
-        Ok(())
-    }
 }
 
 /// A CPU command that can be executed on a CPU.
@@ -128,25 +105,40 @@ impl CpuManagementTasks {
 pub enum CpuCommand {
     /// Get the CPU and DRAM energy measurement for the CPU index.
     GetIndexEnergy { cpu: bool, dram: bool },
-    /// Stop the monitoring task for CPU and DRAM if they have been started.
-    StopMonitoring,
 }
 
 /// Tokio background task that handles requests to each CPU.
-/// NOTE: Currently, this serializes the handling of request to a single CPU, which is
-///       largely unnecessary as the requests are simply reading energy counters.
-///       This is subject to refactoring if it is to become a bottleneck.
+///
+/// Between commands, a periodic keepalive reads the energy counters every 5
+/// minutes so that RAPL counter wraparounds are detected even during idle
+/// periods when no client is actively querying energy.
 async fn cpu_management_task<T: CpuManager>(
     mut cpu: T,
     mut rx: UnboundedReceiver<CpuCommandRequest>,
 ) {
-    while let Some((command, response, start_time, span)) = rx.recv().await {
-        let _span_guard = span.enter();
-        let result = command.execute(&mut cpu, start_time);
-        if let Some(response) = response {
-            if response.send(result).await.is_err() {
-                tracing::error!("Failed to send response to caller");
+    let mut keepalive = interval(Duration::from_secs(300));
+    // The first tick completes immediately; consume it so we don't
+    // do a spurious keepalive read right at startup.
+    keepalive.tick().await;
+
+    loop {
+        tokio::select! {
+            Some((command, response, start_time, span)) = rx.recv() => {
+                let _span_guard = span.enter();
+                let result = command.execute(&mut cpu, start_time);
+                if let Some(response) = response {
+                    if response.send(result).await.is_err() {
+                        tracing::error!("Failed to send response to caller");
+                    }
+                }
             }
+            _ = keepalive.tick() => {
+                let _ = cpu.get_cpu_energy();
+                if cpu.is_dram_available() {
+                    let _ = cpu.get_dram_energy();
+                }
+            }
+            else => break,
         }
     }
 }
@@ -175,13 +167,6 @@ impl CpuCommand {
                 Ok(RaplResponse {
                     cpu_energy_uj,
                     dram_energy_uj,
-                })
-            }
-            Self::StopMonitoring => {
-                device.stop_monitoring();
-                Ok(RaplResponse {
-                    cpu_energy_uj: Some(0),
-                    dram_energy_uj: Some(0),
                 })
             }
         }
