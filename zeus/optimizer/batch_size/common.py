@@ -108,7 +108,7 @@ class JobSpec(JobParams):
     Refer to [`JobParams`][zeus.optimizer.batch_size.common.JobParams] for other attributes.
     """
 
-    job_id: Optional[str]  # pyright: ignore[reportIncompatibleVariableOverride]
+    job_id: Optional[str]
 
     @root_validator(skip_on_failure=True)
     def _check_job_id(cls, values: dict[str, Any]) -> dict[str, Any]:
