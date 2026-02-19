@@ -48,6 +48,12 @@ pub struct Config {
     /// CPU RAPL power polling frequency in Hz for the streaming endpoint.
     #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
+
+    /// If set, only expose read-only monitoring endpoints (power get/stream,
+    /// cumulative energy, discovery) and disable all GPU control APIs
+    /// (set power limit, set frequency, persistence mode, etc.).
+    #[clap(long, default_value = "false")]
+    pub monitor_only: bool,
 }
 
 impl Config {

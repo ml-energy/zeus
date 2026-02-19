@@ -17,8 +17,7 @@ use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
 use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcast, GpuPowerPoller};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::cpu_routes;
-use crate::routes::gpu_routes;
-use crate::routes::{discovery_routes, DiscoveryInfo};
+use crate::routes::{discovery_routes, gpu_control_routes, gpu_read_routes, DiscoveryInfo};
 
 /// Initialize tracing with the given where to write logs to.
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
@@ -127,12 +126,20 @@ pub fn ensure_root() -> anyhow::Result<()> {
 
 /// Build an `HttpServer` with all routes and shared application state.
 macro_rules! configure_server {
-    ($gpu_tasks:expr, $cpu_tasks:expr, $gpu_power:expr, $cpu_power:expr, $discovery:expr, $workers:expr) => {
+    ($gpu_tasks:expr, $cpu_tasks:expr, $gpu_power:expr, $cpu_power:expr, $discovery:expr, $workers:expr, $monitor_only:expr) => {
         HttpServer::new(move || {
+            let monitor_only: bool = $monitor_only;
+            let gpu_scope = if monitor_only {
+                web::scope("/gpu").configure(gpu_read_routes)
+            } else {
+                web::scope("/gpu")
+                    .configure(gpu_read_routes)
+                    .configure(gpu_control_routes)
+            };
             App::new()
                 .wrap(tracing_actix_web::TracingLogger::default())
                 .configure(discovery_routes)
-                .service(web::scope("/gpu").configure(gpu_routes))
+                .service(gpu_scope)
                 .service(web::scope("/cpu").configure(cpu_routes))
                 .app_data(web::Data::new($gpu_tasks.clone()))
                 .app_data(web::Data::new($cpu_tasks.clone()))
@@ -145,6 +152,7 @@ macro_rules! configure_server {
 }
 
 /// Set up routing and start the server on a unix domain socket.
+#[allow(clippy::too_many_arguments)]
 pub fn start_server_uds(
     listener: UnixListener,
     gpu_device_tasks: GpuManagementTasks,
@@ -153,6 +161,7 @@ pub fn start_server_uds(
     cpu_power_broadcast: CpuPowerBroadcast,
     discovery_info: DiscoveryInfo,
     num_workers: usize,
+    monitor_only: bool,
 ) -> std::io::Result<Server> {
     Ok(configure_server!(
         gpu_device_tasks,
@@ -160,13 +169,15 @@ pub fn start_server_uds(
         gpu_power_broadcast,
         cpu_power_broadcast,
         discovery_info,
-        num_workers
+        num_workers,
+        monitor_only
     )
     .listen_uds(listener)?
     .run())
 }
 
 /// Set up routing and start the server over TCP.
+#[allow(clippy::too_many_arguments)]
 pub fn start_server_tcp(
     listener: TcpListener,
     gpu_device_tasks: GpuManagementTasks,
@@ -175,6 +186,7 @@ pub fn start_server_tcp(
     cpu_power_broadcast: CpuPowerBroadcast,
     discovery_info: DiscoveryInfo,
     num_workers: usize,
+    monitor_only: bool,
 ) -> std::io::Result<Server> {
     Ok(configure_server!(
         gpu_device_tasks,
@@ -182,7 +194,8 @@ pub fn start_server_tcp(
         gpu_power_broadcast,
         cpu_power_broadcast,
         discovery_info,
-        num_workers
+        num_workers,
+        monitor_only
     )
     .listen(listener)?
     .run())

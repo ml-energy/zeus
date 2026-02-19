@@ -337,15 +337,19 @@ async fn stream_power_handler(
         .streaming(stream)
 }
 
-/// Register GPU routes with the Actix web server.
-pub fn gpu_routes(cfg: &mut web::ServiceConfig) {
+/// Register read-only GPU monitoring routes.
+pub fn gpu_read_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(get_cumulative_energy_handler)
+        .service(get_power_handler)
+        .service(stream_power_handler);
+}
+
+/// Register GPU control (write) routes.
+pub fn gpu_control_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(set_persistence_mode_handler)
         .service(set_power_limit_handler)
         .service(set_gpu_locked_clocks_handler)
         .service(reset_gpu_locked_clocks_handler)
         .service(set_mem_locked_clocks_handler)
-        .service(reset_mem_locked_clocks_handler)
-        .service(get_cumulative_energy_handler)
-        .service(get_power_handler)
-        .service(stream_power_handler);
+        .service(reset_mem_locked_clocks_handler);
 }

@@ -35,6 +35,10 @@ async fn main() -> anyhow::Result<()> {
     };
     tracing::info!("Discovery: {:?}", serde_json::to_string(&discovery_info)?);
 
+    if config.monitor_only {
+        tracing::info!("Running in monitor-only mode: GPU control APIs are disabled.");
+    }
+
     let num_workers = config.num_workers.unwrap_or_else(|| {
         std::thread::available_parallelism()
             .expect("Failed to get number of logical CPUs")
@@ -53,11 +57,12 @@ async fn main() -> anyhow::Result<()> {
             start_server_uds(
                 listener,
                 gpu_device_tasks,
-                cpu_device_tasks.clone(),
+                cpu_device_tasks,
                 gpu_power_broadcast,
                 cpu_power_broadcast,
                 discovery_info,
                 num_workers,
+                config.monitor_only,
             )?
             .await?;
         }
@@ -68,11 +73,12 @@ async fn main() -> anyhow::Result<()> {
             start_server_tcp(
                 listener,
                 gpu_device_tasks,
-                cpu_device_tasks.clone(),
+                cpu_device_tasks,
                 gpu_power_broadcast,
                 cpu_power_broadcast,
                 discovery_info,
                 num_workers,
+                config.monitor_only,
             )?
             .await?;
         }
