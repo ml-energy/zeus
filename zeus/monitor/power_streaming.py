@@ -36,7 +36,9 @@ from __future__ import annotations
 
 import json
 import logging
+import statistics
 import threading
+import time
 import typing
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -171,15 +173,22 @@ class PowerStreamingClient:
         self._servers = list(servers)
         self._reconnect_delay = reconnect_delay_s
 
+        keys = [s.key for s in self._servers]
+        duplicates = [k for k in keys if keys.count(k) > 1]
+        if duplicates:
+            raise ValueError(f"Duplicate server keys: {sorted(set(duplicates))}")
+
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
         self._readings: dict[str, PowerReadings] = {}
+        self._clock_offsets: dict[str, float] = {}
 
         self._threads: list[threading.Thread] = []
         self._stop_event = threading.Event()
 
         for server in self._servers:
             self._check_server_reachable(server)
+            self._clock_offsets[server.key] = self._estimate_clock_offset(server)
 
             if server.gpu_indices is None or server.gpu_indices:
                 t = threading.Thread(
@@ -368,6 +377,46 @@ class PowerStreamingClient:
             logger.warning("Failed to probe discovery endpoint on %s", server.key, exc_info=True)
             return False
 
+    def _estimate_clock_offset(
+        self,
+        server: ZeusdTcpConfig | ZeusdUdsConfig,
+        num_samples: int = 5,
+    ) -> float:
+        """Estimate the clock offset between this client and the daemon.
+
+        Performs `num_samples` round-trips to `GET /time` on the daemon,
+        computes `client_midpoint - daemon_time` for each, and returns the
+        median offset in seconds. A positive offset means the daemon clock
+        is behind the client clock.
+
+        Args:
+            server: The server to probe.
+            num_samples: Number of round-trips for robustness.
+
+        Returns:
+            Estimated clock offset in seconds. Add this to daemon
+            timestamps to align them with client time.
+        """
+        url = self._url(server, "/time")
+        offsets: list[float] = []
+        with self._make_http_client(server, timeout=5.0) as client:
+            for _ in range(num_samples):
+                t1 = time.time()
+                response = client.get(url)
+                t2 = time.time()
+                response.raise_for_status()
+                daemon_time_s = response.json()["timestamp_ms"] / 1000.0
+                client_midpoint_s = (t1 + t2) / 2.0
+                offsets.append(client_midpoint_s - daemon_time_s)
+        offset = statistics.median(offsets)
+        logger.info(
+            "Clock offset for %s: %.4f s (median of %d samples)",
+            server.key,
+            offset,
+            num_samples,
+        )
+        return offset
+
     def _gpu_stream_loop(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
         """Background thread: stream GPU power from a single server."""
         base_url = self._url(server, "/gpu/stream_power")
@@ -457,6 +506,7 @@ class PowerStreamingClient:
 
                 power_mw = data.get("power_mw", {})
                 timestamp_ms = data.get("timestamp_ms", 0)
+                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[key]
 
                 gpu_power_w: dict[int, float] = {}
                 for gpu_id_str, mw in power_mw.items():
@@ -466,10 +516,10 @@ class PowerStreamingClient:
                     existing = self._readings.get(key)
                     if existing is not None:
                         existing.gpu_power_w = gpu_power_w
-                        existing.timestamp_s = max(existing.timestamp_s, timestamp_ms / 1000.0)
+                        existing.timestamp_s = max(existing.timestamp_s, timestamp_s)
                     else:
                         self._readings[key] = PowerReadings(
-                            timestamp_s=timestamp_ms / 1000.0,
+                            timestamp_s=timestamp_s,
                             gpu_power_w=gpu_power_w,
                         )
                     self._condition.notify_all()
@@ -490,6 +540,7 @@ class PowerStreamingClient:
 
                 power_mw = data.get("power_mw", {})
                 timestamp_ms = data.get("timestamp_ms", 0)
+                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[key]
 
                 cpu_power_w: dict[int, CpuPowerReading] = {}
                 for cpu_id_str, readings in power_mw.items():
@@ -504,10 +555,10 @@ class PowerStreamingClient:
                     existing = self._readings.get(key)
                     if existing is not None:
                         existing.cpu_power_w = cpu_power_w
-                        existing.timestamp_s = max(existing.timestamp_s, timestamp_ms / 1000.0)
+                        existing.timestamp_s = max(existing.timestamp_s, timestamp_s)
                     else:
                         self._readings[key] = PowerReadings(
-                            timestamp_s=timestamp_ms / 1000.0,
+                            timestamp_s=timestamp_s,
                             cpu_power_w=cpu_power_w,
                         )
                     self._condition.notify_all()
