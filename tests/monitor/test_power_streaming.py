@@ -23,6 +23,7 @@ def _make_client() -> PowerStreamingClient:
     client._lock = threading.Lock()
     client._condition = threading.Condition(client._lock)
     client._readings = {}
+    client._clock_offsets = {}
     client._threads = []
     client._stop_event = threading.Event()
     return client
@@ -285,3 +286,62 @@ class TestGetPower:
         readings = client.get_power()
         assert readings["node1:4938"].cpu_power_w[0].cpu_w == 45.0
         assert readings["node1:4938"].cpu_power_w[0].dram_w == 12.5
+
+
+class TestClockOffset:
+    def test_gpu_event_applies_offset(self) -> None:
+        """_process_gpu_event adjusts timestamp by the clock offset."""
+        client = _make_client()
+        client._clock_offsets["node1:4938"] = 2.0
+
+        client._process_gpu_event(
+            'data: {"power_mw": {"0": 150000}, "timestamp_ms": 1000000}',
+            "node1:4938",
+        )
+
+        readings = client._readings["node1:4938"]
+        assert readings.timestamp_s == pytest.approx(1002.0)
+        assert readings.gpu_power_w[0] == 150.0
+
+    def test_cpu_event_applies_offset(self) -> None:
+        """_process_cpu_event adjusts timestamp by the clock offset."""
+        client = _make_client()
+        client._clock_offsets["node1:4938"] = -1.5
+
+        client._process_cpu_event(
+            'data: {"power_mw": {"0": {"cpu_mw": 45000, "dram_mw": 12000}}, "timestamp_ms": 2000000}',
+            "node1:4938",
+        )
+
+        readings = client._readings["node1:4938"]
+        assert readings.timestamp_s == pytest.approx(1998.5)
+        assert readings.cpu_power_w[0].cpu_w == 45.0
+        assert readings.cpu_power_w[0].dram_w == 12.0
+
+    def test_zero_offset_preserves_timestamp(self) -> None:
+        """With zero offset, timestamps are unchanged."""
+        client = _make_client()
+        client._clock_offsets["node1:4938"] = 0.0
+
+        client._process_gpu_event(
+            'data: {"power_mw": {"0": 200000}, "timestamp_ms": 5000000}',
+            "node1:4938",
+        )
+
+        assert client._readings["node1:4938"].timestamp_s == pytest.approx(5000.0)
+
+    def test_max_timestamp_uses_adjusted_values(self) -> None:
+        """When multiple events arrive, max() operates on offset-adjusted timestamps."""
+        client = _make_client()
+        client._clock_offsets["node1:4938"] = 10.0
+
+        client._process_gpu_event(
+            'data: {"power_mw": {"0": 100000}, "timestamp_ms": 1000}',
+            "node1:4938",
+        )
+        client._process_gpu_event(
+            'data: {"power_mw": {"0": 200000}, "timestamp_ms": 2000}',
+            "node1:4938",
+        )
+
+        assert client._readings["node1:4938"].timestamp_s == pytest.approx(12.0)

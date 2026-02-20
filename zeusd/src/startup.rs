@@ -17,7 +17,7 @@ use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
 use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcast, GpuPowerPoller};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::cpu_routes;
-use crate::routes::{discovery_routes, gpu_control_routes, gpu_read_routes, DiscoveryInfo};
+use crate::routes::{gpu_control_routes, gpu_read_routes, server_routes, DiscoveryInfo};
 
 /// Initialize tracing with the given where to write logs to.
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
@@ -138,7 +138,7 @@ macro_rules! configure_server {
             };
             App::new()
                 .wrap(tracing_actix_web::TracingLogger::default())
-                .configure(discovery_routes)
+                .configure(server_routes)
                 .service(gpu_scope)
                 .service(web::scope("/cpu").configure(cpu_routes))
                 .app_data(web::Data::new($gpu_tasks.clone()))
