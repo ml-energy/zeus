@@ -2,6 +2,7 @@
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use std::collections::HashSet;
 use std::fs;
 use std::net::TcpListener;
 use std::os::unix::fs::{chown, PermissionsExt};
@@ -12,6 +13,7 @@ use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
+use crate::config::ApiGroup;
 use crate::devices::cpu::power::{start_cpu_poller, CpuPowerBroadcast, CpuPowerPoller};
 use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
 use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcast, GpuPowerPoller};
@@ -112,91 +114,111 @@ pub fn start_cpu_power_poller(poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
     Ok(start_cpu_poller(cpus, poll_hz))
 }
 
-/// Ensure the daemon is running as root.
-pub fn ensure_root() -> anyhow::Result<()> {
-    if !nix::unistd::geteuid().is_root() {
-        tracing::error!(
-            "Zeusd must be run as root to be able to change GPU settings. \
-            If you're sure you want to run as non-root, use --allow-unprivileged."
-        );
-        anyhow::bail!("Zeusd must be run as root");
+/// Check that the daemon has sufficient privileges for the requested API groups.
+///
+/// For each enabled group that requires root, verifies that the effective
+/// user ID is 0. Returns an error naming the offending group if not.
+pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
+    let is_root = nix::unistd::geteuid().is_root();
+    for &group in enabled_groups {
+        if group.requires_root() && !is_root {
+            tracing::error!(
+                "API group '{}' requires root privileges. \
+                 Either run as root or remove it from --enable.",
+                group,
+            );
+            anyhow::bail!(
+                "API group '{}' requires root but Zeusd is not running as root",
+                group,
+            );
+        }
     }
     Ok(())
 }
 
-/// Build an `HttpServer` with all routes and shared application state.
+/// The set of enabled API groups, used as shared application state.
+#[derive(Clone, Debug)]
+pub struct EnabledGroups(pub HashSet<ApiGroup>);
+
+/// Shared server state bundling all optional device handles and discovery info.
+///
+/// Fields are `Option` because devices are only initialized when their
+/// corresponding API groups are enabled.
+#[derive(Clone)]
+pub struct ServerState {
+    pub gpu_device_tasks: Option<GpuManagementTasks>,
+    pub cpu_device_tasks: Option<CpuManagementTasks>,
+    pub gpu_power_broadcast: Option<GpuPowerBroadcast>,
+    pub cpu_power_broadcast: Option<CpuPowerBroadcast>,
+    pub discovery_info: DiscoveryInfo,
+    pub enabled_groups: EnabledGroups,
+}
+
+/// Build an `HttpServer` with routes and app data based on enabled API groups.
 macro_rules! configure_server {
-    ($gpu_tasks:expr, $cpu_tasks:expr, $gpu_power:expr, $cpu_power:expr, $discovery:expr, $workers:expr, $monitor_only:expr) => {
+    ($state:expr, $workers:expr) => {
         HttpServer::new(move || {
-            let monitor_only: bool = $monitor_only;
-            let gpu_scope = if monitor_only {
-                web::scope("/gpu").configure(gpu_read_routes)
-            } else {
-                web::scope("/gpu")
-                    .configure(gpu_read_routes)
-                    .configure(gpu_control_routes)
-            };
-            App::new()
+            let state = $state.clone();
+            let enabled = &state.enabled_groups.0;
+
+            let mut app = App::new()
                 .wrap(tracing_actix_web::TracingLogger::default())
                 .configure(server_routes)
-                .service(gpu_scope)
-                .service(web::scope("/cpu").configure(cpu_routes))
-                .app_data(web::Data::new($gpu_tasks.clone()))
-                .app_data(web::Data::new($cpu_tasks.clone()))
-                .app_data(web::Data::new($gpu_power.clone()))
-                .app_data(web::Data::new($cpu_power.clone()))
-                .app_data(web::Data::new($discovery.clone()))
+                .app_data(web::Data::new(state.discovery_info.clone()));
+
+            // GPU routes: conditionally register read and/or control routes.
+            if enabled.contains(&ApiGroup::GpuRead) || enabled.contains(&ApiGroup::GpuControl) {
+                let mut gpu_scope = web::scope("/gpu");
+                if enabled.contains(&ApiGroup::GpuRead) {
+                    gpu_scope = gpu_scope.configure(gpu_read_routes);
+                }
+                if enabled.contains(&ApiGroup::GpuControl) {
+                    gpu_scope = gpu_scope.configure(gpu_control_routes);
+                }
+                app = app.service(gpu_scope);
+            }
+            if let Some(ref tasks) = state.gpu_device_tasks {
+                app = app.app_data(web::Data::new(tasks.clone()));
+            }
+            if let Some(ref broadcast) = state.gpu_power_broadcast {
+                app = app.app_data(web::Data::new(broadcast.clone()));
+            }
+
+            // CPU routes: only if cpu-read is enabled.
+            if enabled.contains(&ApiGroup::CpuRead) {
+                app = app.service(web::scope("/cpu").configure(cpu_routes));
+            }
+            if let Some(ref tasks) = state.cpu_device_tasks {
+                app = app.app_data(web::Data::new(tasks.clone()));
+            }
+            if let Some(ref broadcast) = state.cpu_power_broadcast {
+                app = app.app_data(web::Data::new(broadcast.clone()));
+            }
+
+            app
         })
         .workers($workers)
     };
 }
 
 /// Set up routing and start the server on a unix domain socket.
-#[allow(clippy::too_many_arguments)]
 pub fn start_server_uds(
     listener: UnixListener,
-    gpu_device_tasks: GpuManagementTasks,
-    cpu_device_tasks: CpuManagementTasks,
-    gpu_power_broadcast: GpuPowerBroadcast,
-    cpu_power_broadcast: CpuPowerBroadcast,
-    discovery_info: DiscoveryInfo,
+    state: ServerState,
     num_workers: usize,
-    monitor_only: bool,
 ) -> std::io::Result<Server> {
-    Ok(configure_server!(
-        gpu_device_tasks,
-        cpu_device_tasks,
-        gpu_power_broadcast,
-        cpu_power_broadcast,
-        discovery_info,
-        num_workers,
-        monitor_only
-    )
-    .listen_uds(listener)?
-    .run())
+    Ok(configure_server!(state, num_workers)
+        .listen_uds(listener)?
+        .run())
 }
 
 /// Set up routing and start the server over TCP.
-#[allow(clippy::too_many_arguments)]
 pub fn start_server_tcp(
     listener: TcpListener,
-    gpu_device_tasks: GpuManagementTasks,
-    cpu_device_tasks: CpuManagementTasks,
-    gpu_power_broadcast: GpuPowerBroadcast,
-    cpu_power_broadcast: CpuPowerBroadcast,
-    discovery_info: DiscoveryInfo,
+    state: ServerState,
     num_workers: usize,
-    monitor_only: bool,
 ) -> std::io::Result<Server> {
-    Ok(configure_server!(
-        gpu_device_tasks,
-        cpu_device_tasks,
-        gpu_power_broadcast,
-        cpu_power_broadcast,
-        discovery_info,
-        num_workers,
-        monitor_only
-    )
-    .listen(listener)?
-    .run())
+    Ok(configure_server!(state, num_workers)
+        .listen(listener)?
+        .run())
 }

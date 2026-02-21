@@ -6,18 +6,20 @@
 use nvml_wrapper::error::NvmlError;
 use once_cell::sync::Lazy;
 use paste::paste;
+use std::collections::HashSet;
 use std::future::Future;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use zeusd::config::ApiGroup;
 use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
 use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
 use zeusd::routes::DiscoveryInfo;
-use zeusd::startup::{init_tracing, start_server_tcp};
+use zeusd::startup::{init_tracing, start_server_tcp, EnabledGroups, ServerState};
 
 pub static NUM_GPUS: u32 = 4;
 
@@ -357,52 +359,90 @@ pub struct TestApp {
 }
 
 impl TestApp {
+    /// Start a test server with all API groups enabled.
     pub async fn start() -> Self {
+        Self::start_with_groups(&[ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead]).await
+    }
+
+    /// Start a test server with the specified API groups enabled.
+    pub async fn start_with_groups(groups: &[ApiGroup]) -> Self {
         Lazy::force(&TRACING);
 
-        let (gpu_test_tasks, test_gpu_observers) =
-            start_gpu_test_tasks().expect("Failed to start gpu test tasks");
+        let enabled_groups = EnabledGroups(groups.iter().cloned().collect::<HashSet<_>>());
+        let needs_gpu =
+            groups.contains(&ApiGroup::GpuControl) || groups.contains(&ApiGroup::GpuRead);
+        let needs_gpu_poller = groups.contains(&ApiGroup::GpuRead);
+        let needs_cpu = groups.contains(&ApiGroup::CpuRead);
 
-        let (cpu_test_tasks, cpu_test_injectors) =
-            start_cpu_test_tasks().expect("Failed to start cpu test tasks");
+        // Conditionally start GPU tasks.
+        let (gpu_test_tasks, test_gpu_observers, gpu_count) = if needs_gpu {
+            let (tasks, observers) =
+                start_gpu_test_tasks().expect("Failed to start gpu test tasks");
+            let count = tasks.device_count();
+            (Some(tasks), observers, count)
+        } else {
+            (None, Vec::new(), 0)
+        };
 
-        // Create test power pollers.
-        let test_power_gpus: Vec<(usize, TestGpu)> = (0..NUM_GPUS as usize)
-            .map(|i| (i, TestGpu::init().unwrap().0))
-            .collect();
-        let gpu_power_poller = start_gpu_poller(test_power_gpus, 10);
-        let gpu_power_broadcast = gpu_power_poller.broadcast();
+        // Conditionally start GPU power poller.
+        let gpu_power_broadcast = if needs_gpu_poller {
+            let test_power_gpus: Vec<(usize, TestGpu)> = (0..NUM_GPUS as usize)
+                .map(|i| (i, TestGpu::init().unwrap().0))
+                .collect();
+            let gpu_power_poller = start_gpu_poller(test_power_gpus, 10);
+            Some(gpu_power_poller.broadcast())
+        } else {
+            None
+        };
 
-        let cpu_power_cpus: Vec<(usize, PowerTestCpu)> = (0..NUM_CPUS)
-            .map(|i| {
-                (
-                    i,
-                    PowerTestCpu::new(POWER_TEST_CPU_INCREMENT_UJ, POWER_TEST_DRAM_INCREMENT_UJ),
-                )
-            })
-            .collect();
-        let cpu_power_poller = start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ);
-        let cpu_power_broadcast = cpu_power_poller.broadcast();
+        // Conditionally start CPU tasks.
+        let (cpu_test_tasks, cpu_test_injectors, cpu_count, dram_available) = if needs_cpu {
+            let (tasks, injectors) =
+                start_cpu_test_tasks().expect("Failed to start cpu test tasks");
+            let count = tasks.device_count();
+            (Some(tasks), injectors, count, vec![true; count])
+        } else {
+            (None, Vec::new(), 0, vec![])
+        };
+
+        // Conditionally start CPU power poller.
+        let cpu_power_broadcast = if needs_cpu {
+            let cpu_power_cpus: Vec<(usize, PowerTestCpu)> = (0..NUM_CPUS)
+                .map(|i| {
+                    (
+                        i,
+                        PowerTestCpu::new(
+                            POWER_TEST_CPU_INCREMENT_UJ,
+                            POWER_TEST_DRAM_INCREMENT_UJ,
+                        ),
+                    )
+                })
+                .collect();
+            let cpu_power_poller = start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ);
+            Some(cpu_power_poller.broadcast())
+        } else {
+            None
+        };
 
         let discovery_info = DiscoveryInfo {
-            gpu_ids: (0..gpu_test_tasks.device_count()).collect(),
-            cpu_ids: (0..cpu_test_tasks.device_count()).collect(),
-            dram_available: vec![true; cpu_test_tasks.device_count()],
+            gpu_ids: (0..gpu_count).collect(),
+            cpu_ids: (0..cpu_count).collect(),
+            dram_available,
+            enabled_api_groups: groups.iter().map(|g| g.to_string()).collect(),
+        };
+
+        let state = ServerState {
+            gpu_device_tasks: gpu_test_tasks,
+            cpu_device_tasks: cpu_test_tasks,
+            gpu_power_broadcast,
+            cpu_power_broadcast,
+            discovery_info,
+            enabled_groups,
         };
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
-        let server = start_server_tcp(
-            listener,
-            gpu_test_tasks,
-            cpu_test_tasks,
-            gpu_power_broadcast,
-            cpu_power_broadcast,
-            discovery_info,
-            2,
-            false,
-        )
-        .expect("Failed to start server");
+        let server = start_server_tcp(listener, state, 2).expect("Failed to start server");
         let _ = tokio::spawn(server);
 
         TestApp {
