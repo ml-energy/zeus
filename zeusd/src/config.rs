@@ -3,9 +3,66 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
 
-/// The Zeus daemon runs with elevated provileges and communicates with
-/// unprivileged Zeus clients to allow them to interact with and control
-/// compute devices on the node.
+/// API groups that can be independently enabled or disabled.
+///
+/// Each group maps to a set of HTTP endpoints. Groups that require root
+/// will cause the daemon to exit at startup if it is not running as root.
+///
+/// Available groups:
+///   - `gpu-control`: GPU control operations (set power limit, locked clocks,
+///     persistence mode). Requires root.
+///     - `POST /gpu/set_persistence_mode`
+///     - `POST /gpu/set_power_limit`
+///     - `POST /gpu/set_gpu_locked_clocks`
+///     - `POST /gpu/reset_gpu_locked_clocks`
+///     - `POST /gpu/set_mem_locked_clocks`
+///     - `POST /gpu/reset_mem_locked_clocks`
+///   - `gpu-read`: GPU monitoring (power readings, energy consumption).
+///     Does not require root.
+///     - `GET /gpu/get_power`
+///     - `GET /gpu/stream_power`
+///     - `GET /gpu/get_cumulative_energy`
+///   - `cpu-read`: CPU RAPL monitoring (energy, power readings). Requires root.
+///     - `GET /cpu/get_cumulative_energy`
+///     - `GET /cpu/get_power`
+///     - `GET /cpu/stream_power`
+///
+/// The following endpoints are always available regardless of enabled groups:
+///   - `GET /discover`
+///   - `GET /time`
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ValueEnum)]
+pub enum ApiGroup {
+    /// GPU control operations (set power limit, clocks, persistence mode).
+    /// Requires root.
+    GpuControl,
+    /// GPU read operations (power reading, energy consumption).
+    GpuRead,
+    /// CPU RAPL read operations (energy, power).
+    /// Requires root.
+    CpuRead,
+}
+
+impl ApiGroup {
+    /// Whether this API group requires root privileges.
+    pub fn requires_root(&self) -> bool {
+        matches!(self, ApiGroup::GpuControl | ApiGroup::CpuRead)
+    }
+}
+
+impl std::fmt::Display for ApiGroup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ApiGroup::GpuControl => write!(f, "gpu-control"),
+            ApiGroup::GpuRead => write!(f, "gpu-read"),
+            ApiGroup::CpuRead => write!(f, "cpu-read"),
+        }
+    }
+}
+
+/// The Zeus daemon manages and monitors compute devices on the node.
+/// When running as root with all API groups enabled, it exposes both
+/// monitoring and control APIs. Use `--enable` to select which API
+/// groups to activate.
 #[derive(Parser, Debug)]
 #[command(version)]
 pub struct Config {
@@ -33,10 +90,6 @@ pub struct Config {
     #[clap(long, default_value = "127.0.0.1:4938")]
     pub tcp_bind_address: String,
 
-    /// If set, Zeusd will not complain about running as non-root.
-    #[clap(long, default_value = "false")]
-    pub allow_unprivileged: bool,
-
     /// Number of worker threads to use. Default is the number of logical CPUs.
     #[clap(long)]
     pub num_workers: Option<usize>,
@@ -49,11 +102,15 @@ pub struct Config {
     #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
 
-    /// If set, only expose read-only monitoring endpoints (power get/stream,
-    /// cumulative energy, discovery) and disable all GPU control APIs
-    /// (set power limit, set frequency, persistence mode, etc.).
-    #[clap(long, default_value = "false")]
-    pub monitor_only: bool,
+    /// API groups to enable. Each group exposes a set of HTTP endpoints.
+    /// Groups that require root will cause the daemon to exit at startup
+    /// if it is not running as root.
+    #[clap(
+        long,
+        value_delimiter = ',',
+        default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
+    )]
+    pub enable: Vec<ApiGroup>,
 }
 
 impl Config {
@@ -61,6 +118,21 @@ impl Config {
     pub fn socket_permissions(&self) -> anyhow::Result<u32> {
         u32::from_str_radix(&self.socket_permissions, 8)
             .context("Failed to parse socket permissions")
+    }
+
+    /// Whether the given API group is enabled.
+    pub fn is_enabled(&self, group: ApiGroup) -> bool {
+        self.enable.contains(&group)
+    }
+
+    /// Whether any GPU API group is enabled (requiring NVML initialization).
+    pub fn needs_gpu(&self) -> bool {
+        self.is_enabled(ApiGroup::GpuControl) || self.is_enabled(ApiGroup::GpuRead)
+    }
+
+    /// Whether any CPU API group is enabled (requiring RAPL initialization).
+    pub fn needs_cpu(&self) -> bool {
+        self.is_enabled(ApiGroup::CpuRead)
     }
 }
 

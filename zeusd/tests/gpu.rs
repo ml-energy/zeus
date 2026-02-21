@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::task::JoinSet;
+use zeusd::config::ApiGroup;
 use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::GpuManager;
 use zeusd::error::ZeusdError;
@@ -938,4 +939,141 @@ async fn test_discover_endpoint() {
         .expect("dram_available should be array");
     assert_eq!(dram_available.len(), 1);
     assert!(dram_available[0].as_bool().unwrap());
+    let groups = body["enabled_api_groups"]
+        .as_array()
+        .expect("enabled_api_groups should be array");
+    assert_eq!(groups.len(), 3);
+}
+
+#[tokio::test]
+async fn test_gpu_read_only_mode() {
+    let app = TestApp::start_with_groups(&[ApiGroup::GpuRead]).await;
+    let client = reqwest::Client::new();
+
+    // GPU read endpoints should work.
+    let url = format!("http://127.0.0.1:{}/gpu/get_power", app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/get_cumulative_energy?gpu_ids=0",
+        app.port
+    );
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+
+    // GPU control endpoints should return 404 (not registered).
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_power_limit?gpu_ids=0&power_limit_mw=200000&block=true",
+        app.port
+    );
+    let resp = client
+        .post(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 404);
+
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_persistence_mode?gpu_ids=0&enabled=true&block=true",
+        app.port
+    );
+    let resp = client
+        .post(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 404);
+
+    // CPU endpoints should return 404.
+    let url = format!(
+        "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=0&cpu=true&dram=false",
+        app.port
+    );
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 404);
+
+    // Discover should still work and report enabled groups.
+    let url = format!("http://127.0.0.1:{}/discover", app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let groups = body["enabled_api_groups"]
+        .as_array()
+        .expect("enabled_api_groups should be array");
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].as_str().unwrap(), "gpu-read");
+    // GPUs should still be discovered.
+    let gpu_ids = body["gpu_ids"].as_array().expect("gpu_ids should be array");
+    assert_eq!(gpu_ids.len(), NUM_GPUS as usize);
+    // No CPUs should be discovered.
+    let cpu_ids = body["cpu_ids"].as_array().expect("cpu_ids should be array");
+    assert_eq!(cpu_ids.len(), 0);
+}
+
+#[tokio::test]
+async fn test_gpu_control_only_mode() {
+    let app = TestApp::start_with_groups(&[ApiGroup::GpuControl]).await;
+    let client = reqwest::Client::new();
+
+    // GPU control endpoints should work.
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/set_persistence_mode?gpu_ids=0&enabled=true&block=true",
+        app.port
+    );
+    let resp = client
+        .post(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+
+    // GPU read endpoints should return 404 (not registered).
+    let url = format!("http://127.0.0.1:{}/gpu/get_power", app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_discover_with_no_gpu_groups() {
+    let app = TestApp::start_with_groups(&[ApiGroup::CpuRead]).await;
+    let client = reqwest::Client::new();
+
+    let url = format!("http://127.0.0.1:{}/discover", app.port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let gpu_ids = body["gpu_ids"].as_array().expect("gpu_ids should be array");
+    assert_eq!(gpu_ids.len(), 0);
+    let cpu_ids = body["cpu_ids"].as_array().expect("cpu_ids should be array");
+    assert_eq!(cpu_ids.len(), 1);
+    let groups = body["enabled_api_groups"]
+        .as_array()
+        .expect("enabled_api_groups should be array");
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].as_str().unwrap(), "cpu-read");
 }

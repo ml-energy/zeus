@@ -6,11 +6,12 @@ use actix_web::{web, HttpResponse};
 use serde::Serialize;
 
 /// Discovery information returned by `GET /discover`.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DiscoveryInfo {
     pub gpu_ids: Vec<usize>,
     pub cpu_ids: Vec<usize>,
     pub dram_available: Vec<bool>,
+    pub enabled_api_groups: Vec<String>,
 }
 
 #[actix_web::get("/discover")]
