@@ -102,21 +102,45 @@ client.stop()
 
 See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/measure/#distributed-power-measurement-and-aggregation) section in our documentation for more details.
 
-### Monitor-only
+### API groups
 
-When `--monitor-only` is passed, all GPU control (write) endpoints are disabled and only the following read-only endpoints are exposed:
+`zeusd` organizes its endpoints into API groups that can be selectively enabled with the `--enable` flag. By default, all groups are enabled.
 
+| Group | Endpoints | Requires root |
+|-------|-----------|:---:|
+| `gpu-control` | `POST /gpu/set_persistence_mode` | Yes |
+| | `POST /gpu/set_power_limit` | |
+| | `POST /gpu/set_gpu_locked_clocks` | |
+| | `POST /gpu/reset_gpu_locked_clocks` | |
+| | `POST /gpu/set_mem_locked_clocks` | |
+| | `POST /gpu/reset_mem_locked_clocks` | |
+| `gpu-read` | `GET /gpu/get_power` | No |
+| | `GET /gpu/stream_power` | |
+| | `GET /gpu/get_cumulative_energy` | |
+| `cpu-read` | `GET /cpu/get_cumulative_energy` | Yes |
+| | `GET /cpu/get_power` | |
+| | `GET /cpu/stream_power` | |
+
+The following endpoints are always available regardless of which groups are enabled:
 - `GET /discover`
-- `GET /gpu/get_cumulative_energy`
-- `GET /gpu/get_power`
-- `GET /gpu/stream_power`
-- `GET /cpu/get_cumulative_energy`
-- `GET /cpu/get_power`
-- `GET /cpu/stream_power`
+- `GET /time`
+
+If a group that requires root is enabled but the daemon is not running as root, it will exit immediately with an error.
+
+Examples:
 
 ```sh
-sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938 --monitor-only
+# As root: all groups enabled (default)
+sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938
+
+# As non-root: GPU monitoring only (no root required)
+zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read
+
+# As root: monitoring only (GPU + CPU reads, no GPU control)
+sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read,cpu-read
 ```
+
+Only the devices needed by the enabled groups are initialized. For example, `--enable gpu-read` skips RAPL initialization entirely, and `--enable cpu-read` skips NVML initialization.
 
 ## API Reference
 
@@ -124,7 +148,7 @@ sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938 --monitor-only
 
 #### `GET /discover`
 
-Returns available devices and capabilities.
+Returns available devices, capabilities, and enabled API groups.
 
 Response:
 
@@ -133,13 +157,15 @@ Response:
 | `gpu_ids` | `int[]` | Available GPU indices |
 | `cpu_ids` | `int[]` | Available CPU indices |
 | `dram_available` | `bool[]` | Per-CPU DRAM energy support (indexed by position in `cpu_ids`) |
+| `enabled_api_groups` | `string[]` | API groups enabled on this instance |
 
 Example response:
 ```json
 {
   "gpu_ids": [0, 1, 2, 3],
   "cpu_ids": [0, 1],
-  "dram_available": [true, false]
+  "dram_available": [true, false],
+  "enabled_api_groups": ["gpu-control", "gpu-read", "cpu-read"]
 }
 ```
 
@@ -258,7 +284,7 @@ SSE stream of CPU power readings. `cpu_ids` is optional (omit = all CPUs).
 
 ```console
 $ zeusd --help
-The Zeus daemon runs with elevated provileges and communicates with unprivileged Zeus clients to allow them to interact with and control compute devices on the node
+The Zeus daemon manages and monitors compute devices on the node. When running as root with all API groups enabled, it exposes both monitoring and control APIs. Use `--enable` to select which API groups to activate
 
 Usage: zeusd [OPTIONS]
 
@@ -293,9 +319,6 @@ Options:
 
           [default: 127.0.0.1:4938]
 
-      --allow-unprivileged
-          If set, Zeusd will not complain about running as non-root
-
       --num-workers <NUM_WORKERS>
           Number of worker threads to use. Default is the number of logical CPUs
 
@@ -309,8 +332,15 @@ Options:
 
           [default: 10]
 
-      --monitor-only
-          If set, only expose read-only monitoring endpoints (power get/stream, cumulative energy, discovery) and disable all GPU control APIs (set power limit, set frequency, persistence mode, etc.)
+      --enable <ENABLE>
+          API groups to enable. Each group exposes a set of HTTP endpoints. Groups that require root will cause the daemon to exit at startup if it is not running as root
+
+          [default: gpu-control gpu-read cpu-read]
+
+          Possible values:
+          - gpu-control: GPU control operations (set power limit, clocks, persistence mode). Requires root
+          - gpu-read:    GPU read operations (power reading, energy consumption)
+          - cpu-read:    CPU RAPL read operations (energy, power). Requires root
 
   -h, --help
           Print help (see a summary with '-h')
