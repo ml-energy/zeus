@@ -187,10 +187,10 @@ class PowerStreamingClient:
         self._stop_event = threading.Event()
 
         for server in self._servers:
-            self._check_server_reachable(server)
+            stream_gpu, stream_cpu = self._discover_server(server)
             self._clock_offsets[server.key] = self._estimate_clock_offset(server)
 
-            if server.gpu_indices is None or server.gpu_indices:
+            if stream_gpu:
                 t = threading.Thread(
                     target=self._gpu_stream_loop,
                     args=(server,),
@@ -201,22 +201,22 @@ class PowerStreamingClient:
                 self._threads.append(t)
                 logger.info("Started GPU power streaming thread for %s", server.key)
 
-            if server.cpu_indices is None or server.cpu_indices:
-                if self._check_cpu_available(server):
-                    t = threading.Thread(
-                        target=self._cpu_stream_loop,
-                        args=(server,),
-                        name=f"cpu-power-stream-{server.key}",
-                        daemon=True,
-                    )
-                    t.start()
-                    self._threads.append(t)
-                    logger.info("Started CPU power streaming thread for %s", server.key)
-                else:
-                    raise ValueError(
-                        f"CPU power streaming requested for {server.key} but RAPL is not "
-                        "available on that server; skipping CPU streaming",
-                    )
+            if stream_cpu:
+                t = threading.Thread(
+                    target=self._cpu_stream_loop,
+                    args=(server,),
+                    name=f"cpu-power-stream-{server.key}",
+                    daemon=True,
+                )
+                t.start()
+                self._threads.append(t)
+                logger.info("Started CPU power streaming thread for %s", server.key)
+
+        if not self._threads:
+            logger.warning(
+                "No GPU or CPU power streaming threads were started. "
+                "Check that the zeusd endpoints have the expected devices available."
+            )
 
     def stop(self) -> None:
         """Stop all background connections and wake any blocked iterators."""
@@ -317,12 +317,22 @@ class PowerStreamingClient:
             return f"http://localhost{path}"
         return f"http://{server.host}:{server.port}{path}"
 
-    def _check_server_reachable(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
-        """Probe the server and validate requested device indices.
+    def _discover_server(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> tuple[bool, bool]:
+        """Probe the server, validate indices, and decide what to stream.
+
+        Calls `/discover` once and checks that any explicitly requested
+        GPU or CPU indices are a subset of what the server reports as
+        available. When indices are `None` (meaning "all available"),
+        streaming is skipped with an info log if no devices of that type
+        exist. When indices are an empty list, streaming is skipped silently.
+
+        Returns:
+            A `(stream_gpu, stream_cpu)` pair of booleans.
 
         Raises:
             ConnectionError: If the server is not reachable.
-            ValueError: If requested GPU or CPU indices are not available.
+            ValueError: If explicitly requested indices are not a subset
+                of the available indices reported by the server.
         """
         url = self._url(server, "/discover")
         try:
@@ -337,45 +347,46 @@ class PowerStreamingClient:
         except httpx.HTTPStatusError as e:
             raise ConnectionError(f"zeusd at {server.key} returned HTTP {e.response.status_code}") from e
 
+        available_gpus = set(data.get("gpu_ids", []))
+        available_cpus = set(data.get("cpu_ids", []))
+
+        # Decide whether to stream GPUs.
         if server.gpu_indices is not None:
-            available = set(data.get("gpu_ids", []))
-            requested = set(server.gpu_indices)
-            missing = requested - available
-            if missing:
-                raise ValueError(
-                    f"GPU indices {sorted(missing)} requested for {server.key} "
-                    f"but only {sorted(available)} are available"
-                )
+            if server.gpu_indices:
+                missing = set(server.gpu_indices) - available_gpus
+                if missing:
+                    raise ValueError(
+                        f"GPU indices {sorted(missing)} requested for {server.key} "
+                        f"but only {sorted(available_gpus)} are available"
+                    )
+                stream_gpu = True
+            else:
+                stream_gpu = False
+        elif available_gpus:
+            stream_gpu = True
+        else:
+            logger.info("No GPUs available on %s; skipping GPU power streaming", server.key)
+            stream_gpu = False
 
-    def _check_cpu_available(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> bool:
-        """Probe the one-shot CPU power endpoint to check RAPL availability.
+        # Decide whether to stream CPUs.
+        if server.cpu_indices is not None:
+            if server.cpu_indices:
+                missing = set(server.cpu_indices) - available_cpus
+                if missing:
+                    raise ValueError(
+                        f"CPU indices {sorted(missing)} requested for {server.key} "
+                        f"but only {sorted(available_cpus)} are available"
+                    )
+                stream_cpu = True
+            else:
+                stream_cpu = False
+        elif available_cpus:
+            stream_cpu = True
+        else:
+            logger.info("No CPUs available on %s; skipping CPU power streaming", server.key)
+            stream_cpu = False
 
-        Raises:
-            ValueError: If requested CPU indices are not available on the server.
-        """
-        url = self._url(server, "/discover")
-        try:
-            with self._make_http_client(server, timeout=5.0) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                data = response.json()
-                cpu_ids = data.get("cpu_ids", [])
-                if cpu_ids:
-                    if server.cpu_indices is not None:
-                        available = set(cpu_ids)
-                        requested = set(server.cpu_indices)
-                        missing = requested - available
-                        if missing:
-                            raise ValueError(
-                                f"CPU indices {sorted(missing)} requested for "
-                                f"{server.key} but only {sorted(available)} "
-                                f"are available"
-                            )
-                    return True
-                return False
-        except (httpx.RequestError, httpx.HTTPStatusError):
-            logger.warning("Failed to probe discovery endpoint on %s", server.key, exc_info=True)
-            return False
+        return stream_gpu, stream_cpu
 
     def _estimate_clock_offset(
         self,
