@@ -5,18 +5,22 @@
 - NVIDIA GPU availability: Number of GPUs and models.
 - AMD GPU availability: Number of GPUs and models.
 - Intel RAPL availability: Number of CPUs and whether DRAM measurements are available.
+- Zeusd daemon connectivity and capabilities (when configured).
 """
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import platform
 import shutil
+import time
 
 import zeus
 from zeus.device.cpu.rapl import RAPLCPU, ZeusdRAPLCPU
 from zeus.device.exception import ZeusBaseCPUError, ZeusBaseGPUError, ZeusBaseSoCError
+from zeus.utils.zeusd import ZeusdClient, ZeusdConfig
 from zeus.utils import framework
 from zeus.device import get_gpus, get_cpus, get_soc
 from zeus.device.cpu import RAPLCPUs
@@ -127,9 +131,9 @@ def show_env():
         assert isinstance(cpus, RAPLCPUs)
         for i, cpu in enumerate(cpus.cpus):
             if isinstance(cpu, ZeusdRAPLCPU):
-                cpu_availability += f"  CPU {i}:\n    CPU measurements available (Zeusd at {cpu.zeusd_sock_path})\n"
+                cpu_availability += f"  CPU {i}:\n    CPU measurements available (Zeusd at {cpu._client.endpoint})\n"
                 if cpu.supports_get_dram_energy_consumption():
-                    cpu_availability += f"    DRAM measurements available (Zeusd at {cpu.zeusd_sock_path})\n"
+                    cpu_availability += f"    DRAM measurements available (Zeusd at {cpu._client.endpoint})\n"
                 else:
                     cpu_availability += "    DRAM measurements unavailable\n"
             elif isinstance(cpu, RAPLCPU):
@@ -181,10 +185,56 @@ def show_env():
     print("\nDetected:\n" + soc_availability)
 
     print(SECTION_SEPARATOR)
+    print("## Zeusd daemon\n")
+
+    config = ZeusdConfig.from_env()
+    if config is None:
+        print("  Not configured (set ZEUSD_SOCK_PATH or ZEUSD_HOST_PORT to connect).\n")
+    else:
+        zeusd_info = f"  Endpoint: {config.endpoint}\n"
+        try:
+            client = ZeusdClient(config)
+            zeusd_info += f"  GPU IDs: {client.gpu_ids}\n"
+            zeusd_info += f"  CPU IDs: {client.cpu_ids}\n"
+            zeusd_info += f"  DRAM available: {client.dram_available}\n"
+            zeusd_info += f"  Auth required: {client.auth_required}\n"
+
+            # Daemon clock info.
+            t1 = time.time()
+            daemon_time = client.get_time()
+            t2 = time.time()
+            client_midpoint = (t1 + t2) / 2.0
+            clock_offset = client_midpoint - daemon_time
+            zeusd_info += f"  Clock offset: {clock_offset:+.4f} s (client - daemon)\n"
+
+            # Capabilities.
+            zeusd_info += f"  can_read_gpu: {client.can_read_gpu}\n"
+            zeusd_info += f"  can_control_gpu: {client.can_control_gpu}\n"
+            zeusd_info += f"  can_read_cpu: {client.can_read_cpu}\n"
+
+            # Auth details.
+            if client.auth_required:
+                if client.auth_error:
+                    zeusd_info += f"  Auth error: {client.auth_error}\n"
+                else:
+                    zeusd_info += f"  Authenticated as: {client._whoami_sub}\n"
+                    zeusd_info += f"  Granted scopes: {sorted(client.granted_scopes)}\n"
+                    if client._whoami_exp is not None:
+                        exp_dt = datetime.datetime.fromtimestamp(client._whoami_exp).astimezone()
+                        status = "expired" if client._whoami_exp < time.time() else "valid"
+                        zeusd_info += f"  Token expires: {exp_dt.strftime('%Y-%m-%d %H:%M:%S %Z')} ({status})\n"
+                    else:
+                        zeusd_info += "  Token expires: never\n"
+        except Exception as e:
+            zeusd_info += f"  Error: {e}\n"
+        print(zeusd_info)
+
+    print(SECTION_SEPARATOR)
 
 
 if __name__ == "__main__":
     # For the `python -m zeus.show_env` usage
     logging.basicConfig(level=logging.INFO, format="  [%(asctime)s] [%(name)s:%(lineno)d] %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     show_env()

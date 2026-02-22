@@ -100,7 +100,7 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
 [`ZeusMonitor`][zeus.monitor.ZeusMonitor] is local to a single machine, but sometimes, you may want to monitor power across multiple nodes in a cluster.
 In this case, you can run the Zeus daemon ([zeusd](https://crates.io/crates/zeusd)) on each machine and stream power readings over SSE (Server-Sent Events) to a central client ([`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient]) for real-time monitoring and aggregation.
 
-Each Zeus daemon instance is described by a [`ZeusdTcpConfig`][zeus.monitor.power_streaming.ZeusdTcpConfig] (for TCP connections) or [`ZeusdUdsConfig`][zeus.monitor.power_streaming.ZeusdUdsConfig] (for Unix domain sockets), which specifies the endpoint and optionally which GPU/CPU indices to monitor.
+Each Zeus daemon endpoint is described by a [`ZeusdConfig`][zeus.utils.zeusd.ZeusdConfig], constructed via `ZeusdConfig.tcp(...)` or `ZeusdConfig.uds(...)`.
 Both `gpu_indices` and `cpu_indices` follow the same convention as [`ZeusMonitor`][zeus.monitor.ZeusMonitor]:
 
 - `None` (default): Stream all available devices.
@@ -108,29 +108,22 @@ Both `gpu_indices` and `cpu_indices` follow the same convention as [`ZeusMonitor
 - An empty list (`[]`): Skip streaming for that device type entirely.
 
 ```python
-from zeus.monitor.power_streaming import (
-    PowerStreamingClient,
-    ZeusdTcpConfig,
-    ZeusdUdsConfig,
-)
+from zeus.utils.zeusd import ZeusdConfig
+from zeus.monitor.power_streaming import PowerStreamingClient
 
 # SSE connections start immediately on construction.
 client = PowerStreamingClient(
     servers=[
-        ZeusdTcpConfig(
-            host="node1", port=4938,
-            gpu_indices=[0, 1, 2, 3],
-            cpu_indices=[0],        # stream only CPU package 0
-        ),
-        ZeusdTcpConfig(host="node2", port=4938),  # all GPUs + all CPUs
-        ZeusdUdsConfig(socket_path="/var/run/zeusd.sock"),  # local UDS
+        ZeusdConfig.tcp("node1", 4938, gpu_indices=[0, 1, 2, 3], cpu_indices=[0]),
+        ZeusdConfig.tcp("node2", 4938),        # all GPUs + all CPUs
+        ZeusdConfig.uds("/var/run/zeusd.sock"), # local UDS
     ],
 )
 
-# Snapshot: latest readings from all endpoints, keyed by "host:port".
+# Snapshot: latest readings from all endpoints, keyed by endpoint identifier.
 readings = client.get_power()
-for key, pr in readings.items():
-    print(f"{key}: timestamp={pr.timestamp_s:.3f}s")
+for endpoint, pr in readings.items():
+    print(f"{endpoint}: timestamp={pr.timestamp_s:.3f}s")
     print(f"  GPU power: {pr.gpu_power_w}")
     for cpu_idx, cpu_reading in pr.cpu_power_w.items():
         print(f"  CPU {cpu_idx}: {cpu_reading.cpu_w:.1f} W, DRAM: {cpu_reading.dram_w}")
@@ -138,18 +131,21 @@ for key, pr in readings.items():
 # Blocking iterator: yields a snapshot each time new SSE data arrives.
 # Iteration stops when stop() is called.
 for readings in client:
-    for key, pr in readings.items():
-        print(f"{key}: GPU={pr.gpu_power_w}, CPU={pr.cpu_power_w}")
+    for endpoint, pr in readings.items():
+        print(f"{endpoint}: GPU={pr.gpu_power_w}, CPU={pr.cpu_power_w}")
 
 # Async iterator: same as above, without blocking the event loop.
 async for readings in client:
-    for key, pr in readings.items():
-        print(f"{key}: GPU={pr.gpu_power_w}, CPU={pr.cpu_power_w}")
+    for endpoint, pr in readings.items():
+        print(f"{endpoint}: GPU={pr.gpu_power_w}, CPU={pr.cpu_power_w}")
 
 client.stop()
 ```
 
-[`get_power`][zeus.monitor.power_streaming.PowerStreamingClient.get_power] returns a dict mapping each `"host:port"` key to a [`PowerReadings`][zeus.monitor.power_streaming.PowerReadings] object containing a Unix timestamp, per-GPU power in watts, and per-CPU [`CpuPowerReading`][zeus.monitor.power_streaming.CpuPowerReading] objects (with `cpu_w` and optional `dram_w` fields, both in watts).
+!!! Tip "Authentication"
+    If `zeusd` is running with `--signing-key-path` (i.e., JWT authentication enabled), set the `ZEUSD_TOKEN` environment variable or pass `token=` directly in [`ZeusdConfig`][zeus.utils.zeusd.ZeusdConfig]. The client automatically checks `/discover` to determine whether auth is required and raises a clear error if a token is needed but not provided.
+
+[`get_power`][zeus.monitor.power_streaming.PowerStreamingClient.get_power] returns a dict mapping each endpoint identifier to a [`PowerReadings`][zeus.monitor.power_streaming.PowerReadings] object containing a Unix timestamp, per-GPU power in watts, and per-CPU [`CpuPowerReading`][zeus.monitor.power_streaming.CpuPowerReading] objects (with `cpu_w` and optional `dram_w` fields, both in watts).
 
 The client spawns one background thread per device type per zeusd endpoint on construction.
 Each thread holds an SSE connection and automatically reconnects on disconnection.

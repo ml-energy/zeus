@@ -7,15 +7,14 @@ import warnings
 import functools
 import contextlib
 import logging
-from pathlib import Path
 from typing import Sequence
 from functools import lru_cache
 
-import httpx
 import pynvml
 
 import zeus.device.gpu.common as gpu_common
-from zeus.device.exception import ZeusdError
+from zeus.exception import ZeusBaseError
+from zeus.utils.zeusd import ZeusdClient, ZeusdConfig, require_capabilities
 
 logger = logging.getLogger(__name__)
 
@@ -289,22 +288,17 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     for details on system privileges required.
     """
 
-    def __init__(
-        self,
-        gpu_index: int,
-        zeusd_sock_path: str = "/var/run/zeusd.sock",
-    ) -> None:
-        """Initialize NVML and sets up the GPUs.
+    def __init__(self, gpu_index: int, client: ZeusdClient) -> None:
+        """Initialize the GPU object backed by a Zeusd daemon.
 
         Args:
-            gpu_index (int): Index of the GPU.
-            zeusd_sock_path (str): Path to the Zeus daemon socket.
+            gpu_index: Index of the GPU.
+            client: ZeusdClient connected to the daemon.
         """
         super().__init__(gpu_index)
-        self.zeusd_sock_path = zeusd_sock_path
-
-        self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
+        self._client = client
         self._gpu_index = gpu_index
+        require_capabilities(client, read_gpu=True, control_gpu=True)
 
     @property
     def supports_nonblocking_setters(self) -> bool:
@@ -316,18 +310,7 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         current_limit = self.get_power_management_limit()
         if current_limit == power_limit_mw:
             return
-
-        resp = self._client.post(
-            "http://zeusd/gpu/set_power_limit",
-            params={
-                "gpu_ids": str(self._gpu_index),
-                "power_limit_mw": str(power_limit_mw),
-                "block": "true" if block else "false",
-            },
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to set power management limit: {resp.text}")
-        logger.debug("Took %s ms to set power limit", resp.elapsed.microseconds / 1000)
+        self._client.set_power_limit([self._gpu_index], power_limit_mw, block)
 
     @_handle_nvml_errors
     def reset_power_management_limit(self, block: bool = True) -> None:
@@ -339,70 +322,23 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
 
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
-        resp = self._client.post(
-            "http://zeusd/gpu/set_persistence_mode",
-            params={
-                "gpu_ids": str(self._gpu_index),
-                "enabled": "true" if enabled else "false",
-                "block": "true" if block else "false",
-            },
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to set persistence mode: {resp.text}")
-        logger.debug("Took %s ms to set persistence mode", resp.elapsed.microseconds / 1000)
+        self._client.set_persistence_mode([self._gpu_index], enabled, block)
 
     def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""
-        resp = self._client.post(
-            "http://zeusd/gpu/set_mem_locked_clocks",
-            params={
-                "gpu_ids": str(self._gpu_index),
-                "min_clock_mhz": str(min_clock_mhz),
-                "max_clock_mhz": str(max_clock_mhz),
-                "block": "true" if block else "false",
-            },
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to set memory locked clocks: {resp.text}")
-        logger.debug("Took %s ms to set memory locked clocks", resp.elapsed.microseconds / 1000)
+        self._client.set_mem_locked_clocks([self._gpu_index], min_clock_mhz, max_clock_mhz, block)
 
     def reset_memory_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked memory clocks to the default."""
-        resp = self._client.post(
-            "http://zeusd/gpu/reset_mem_locked_clocks",
-            params={
-                "gpu_ids": str(self._gpu_index),
-                "block": "true" if block else "false",
-            },
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to reset memory locked clocks: {resp.text}")
+        self._client.reset_mem_locked_clocks([self._gpu_index], block)
 
     def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
-        resp = self._client.post(
-            "http://zeusd/gpu/set_gpu_locked_clocks",
-            params={
-                "gpu_ids": str(self._gpu_index),
-                "min_clock_mhz": str(min_clock_mhz),
-                "max_clock_mhz": str(max_clock_mhz),
-                "block": "true" if block else "false",
-            },
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to set GPU locked clocks: {resp.text}")
+        self._client.set_gpu_locked_clocks([self._gpu_index], min_clock_mhz, max_clock_mhz, block)
 
     def reset_gpu_locked_clocks(self, block: bool = True) -> None:
         """Reset the locked GPU clocks to the default."""
-        resp = self._client.post(
-            "http://zeusd/gpu/reset_gpu_locked_clocks",
-            params={
-                "gpu_ids": str(self._gpu_index),
-                "block": "true" if block else "false",
-            },
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to reset GPU locked clocks: {resp.text}")
+        self._client.reset_gpu_locked_clocks([self._gpu_index], block)
 
 
 class NVIDIAGPUs(gpu_common.GPUs):
@@ -464,20 +400,16 @@ class NVIDIAGPUs(gpu_common.GPUs):
         else:
             visible_indices = list(range(pynvml.nvmlDeviceGetCount()))
 
-        # If `ZEUSD_SOCK_PATH` is set, always use ZeusdNVIDIAGPU
-        if (sock_path := os.environ.get("ZEUSD_SOCK_PATH")) is not None:
-            if not Path(sock_path).exists():
-                raise ZeusdError(f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}")
-            if not Path(sock_path).is_socket():
-                raise ZeusdError(f"ZEUSD_SOCK_PATH is not a socket: {sock_path}")
-            if not os.access(sock_path, os.W_OK):
-                raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
-            self._gpus = [ZeusdNVIDIAGPU(gpu_num, sock_path) for gpu_num in visible_indices]
-            # Disable the warning about SYS_ADMIN capabilities for each GPU
+        # If Zeusd env vars are set, use ZeusdNVIDIAGPU backed by a shared client.
+        config = ZeusdConfig.from_env()
+        if config is not None:
+            try:
+                client = ZeusdClient(config)
+                self._gpus = [ZeusdNVIDIAGPU(gpu_num, client) for gpu_num in visible_indices]
+            except ZeusBaseError as e:
+                raise gpu_common.ZeusGPUInitError(str(e)) from e
             for gpu in self._gpus:
                 gpu._disable_sys_admin_warning = True
-
-        # Otherwise just use NVIDIAGPU
         else:
             self._gpus = [NVIDIAGPU(gpu_num) for gpu_num in visible_indices]
 

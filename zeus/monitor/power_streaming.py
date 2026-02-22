@@ -5,15 +5,13 @@ that connects to one or more zeusd endpoints (TCP or Unix domain socket)
 and provides the latest GPU and CPU power readings in a thread-safe manner.
 
 ```python
-from zeus.monitor.power_streaming import PowerStreamingClient, ZeusdTcpConfig
+from zeus.utils.zeusd import ZeusdConfig
+from zeus.monitor.power_streaming import PowerStreamingClient
 
 client = PowerStreamingClient(
     servers=[
-        ZeusdTcpConfig(
-            host="node1", port=4938,
-            gpu_indices=[0, 1, 2, 3],
-        ),
-        ZeusdTcpConfig(host="node2", port=4938),
+        ZeusdConfig.tcp("node1", 4938, gpu_indices=[0, 1, 2, 3]),
+        ZeusdConfig.tcp("node2", 4938),
     ],
 )
 
@@ -45,55 +43,9 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from zeus.utils.zeusd import ZeusdCapabilityError, ZeusdClient, ZeusdConfig
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class ZeusdTcpConfig:
-    """Connection configuration for a zeusd instance over TCP.
-
-    Args:
-        host: Hostname or IP of the zeusd instance.
-        port: TCP port of the zeusd instance.
-        gpu_indices: GPU device indices to stream. If None, all GPUs on
-            the endpoint are streamed. Pass an empty list to skip GPU streaming.
-        cpu_indices: CPU device indices to stream. If None, all CPUs on
-            the endpoint are streamed (when RAPL is available). Pass an
-            empty list to skip CPU streaming.
-    """
-
-    host: str
-    port: int = 4938
-    gpu_indices: list[int] | None = None
-    cpu_indices: list[int] | None = None
-
-    @property
-    def key(self) -> str:
-        """Return the `host:port` identifier for this server."""
-        return f"{self.host}:{self.port}"
-
-
-@dataclass(frozen=True)
-class ZeusdUdsConfig:
-    """Connection configuration for a zeusd instance over a Unix domain socket.
-
-    Args:
-        socket_path: Path to the zeusd Unix domain socket.
-        gpu_indices: GPU device indices to stream. If None, all GPUs on
-            the endpoint are streamed. Pass an empty list to skip GPU streaming.
-        cpu_indices: CPU device indices to stream. If None, all CPUs on
-            the endpoint are streamed (when RAPL is available). Pass an
-            empty list to skip CPU streaming.
-    """
-
-    socket_path: str
-    gpu_indices: list[int] | None = None
-    cpu_indices: list[int] | None = None
-
-    @property
-    def key(self) -> str:
-        """Return the socket path identifier for this server."""
-        return self.socket_path
 
 
 @dataclass
@@ -158,59 +110,61 @@ class PowerStreamingClient:
     ```
 
     Args:
-        servers: List of `ZeusdTcpConfig` or `ZeusdUdsConfig` specifying
-            zeusd endpoints and which GPUs/CPUs to stream from each.
+        servers: List of `ZeusdConfig` specifying zeusd endpoints
+            and which GPUs/CPUs to stream from each.
         reconnect_delay_s: Seconds to wait before reconnecting after a
             disconnect.
     """
 
     def __init__(
         self,
-        servers: Sequence[ZeusdTcpConfig | ZeusdUdsConfig],
+        servers: Sequence[ZeusdConfig],
         reconnect_delay_s: float = 1.0,
     ) -> None:
         """Initialize the client and start background SSE connections."""
         self._servers = list(servers)
         self._reconnect_delay = reconnect_delay_s
 
-        keys = [s.key for s in self._servers]
-        duplicates = [k for k in keys if keys.count(k) > 1]
+        endpoints = [s.endpoint for s in self._servers]
+        duplicates = [e for e in endpoints if endpoints.count(e) > 1]
         if duplicates:
-            raise ValueError(f"Duplicate server keys: {sorted(set(duplicates))}")
+            raise ValueError(f"Duplicate server endpoints: {sorted(set(duplicates))}")
 
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
         self._readings: dict[str, PowerReadings] = {}
         self._clock_offsets: dict[str, float] = {}
+        self._daemon_clients: dict[str, ZeusdClient] = {}
 
         self._threads: list[threading.Thread] = []
         self._stop_event = threading.Event()
 
         for server in self._servers:
-            stream_gpu, stream_cpu = self._discover_server(server)
-            self._clock_offsets[server.key] = self._estimate_clock_offset(server)
+            stream_gpu, stream_cpu = self._init_server(server)
+            endpoint = server.endpoint
+            self._clock_offsets[endpoint] = self._estimate_clock_offset(endpoint)
 
             if stream_gpu:
                 t = threading.Thread(
                     target=self._gpu_stream_loop,
-                    args=(server,),
-                    name=f"gpu-power-stream-{server.key}",
+                    args=(server, endpoint),
+                    name=f"gpu-power-stream-{endpoint}",
                     daemon=True,
                 )
                 t.start()
                 self._threads.append(t)
-                logger.info("Started GPU power streaming thread for %s", server.key)
+                logger.info("Started GPU power streaming thread for %s", endpoint)
 
             if stream_cpu:
                 t = threading.Thread(
                     target=self._cpu_stream_loop,
-                    args=(server,),
-                    name=f"cpu-power-stream-{server.key}",
+                    args=(server, endpoint),
+                    name=f"cpu-power-stream-{endpoint}",
                     daemon=True,
                 )
                 t.start()
                 self._threads.append(t)
-                logger.info("Started CPU power streaming thread for %s", server.key)
+                logger.info("Started CPU power streaming thread for %s", endpoint)
 
         if not self._threads:
             logger.warning(
@@ -232,7 +186,7 @@ class PowerStreamingClient:
         """Get the latest power readings from all endpoints.
 
         Returns:
-            Mapping of `"host:port"` to `PowerReadings` containing
+            Mapping of endpoint identifier to `PowerReadings` containing
             timestamp and per-GPU/CPU power in watts.
         """
         with self._lock:
@@ -257,8 +211,8 @@ class PowerStreamingClient:
         ```python
         client = PowerStreamingClient(servers=[...])
         for readings in client:
-            for key, pr in readings.items():
-                print(f"{key}: {pr.gpu_power_w}")
+            for endpoint, pr in readings.items():
+                print(f"{endpoint}: {pr.gpu_power_w}")
         ```
         """
         while not self._stop_event.is_set():
@@ -278,8 +232,8 @@ class PowerStreamingClient:
         ```python
         client = PowerStreamingClient(servers=[...])
         async for readings in client:
-            for key, pr in readings.items():
-                print(f"{key}: {pr.gpu_power_w}")
+            for endpoint, pr in readings.items():
+                print(f"{endpoint}: {pr.gpu_power_w}")
         ```
         """
         import asyncio
@@ -300,97 +254,113 @@ class PowerStreamingClient:
         with self._condition:
             return self._condition.wait(timeout=1.0)
 
-    def _make_http_client(
-        self,
-        server: ZeusdTcpConfig | ZeusdUdsConfig,
-        **kwargs: typing.Any,
-    ) -> httpx.Client:
-        """Create an httpx Client configured for the server's transport."""
-        if isinstance(server, ZeusdUdsConfig):
-            transport = httpx.HTTPTransport(uds=server.socket_path)
-            return httpx.Client(transport=transport, **kwargs)
-        return httpx.Client(**kwargs)
+    def _init_server(self, server: ZeusdConfig) -> tuple[bool, bool]:
+        """Initialize connection to a server and decide what to stream.
 
-    def _url(self, server: ZeusdTcpConfig | ZeusdUdsConfig, path: str) -> str:
-        """Build the full URL for the given server and path."""
-        if isinstance(server, ZeusdUdsConfig):
-            return f"http://localhost{path}"
-        return f"http://{server.host}:{server.port}{path}"
-
-    def _discover_server(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> tuple[bool, bool]:
-        """Probe the server, validate indices, and decide what to stream.
-
-        Calls `/discover` once and checks that any explicitly requested
-        GPU or CPU indices are a subset of what the server reports as
-        available. When indices are `None` (meaning "all available"),
-        streaming is skipped with an info log if no devices of that type
-        exist. When indices are an empty list, streaming is skipped silently.
+        Creates a `ZeusdClient` for the server (handling discovery and auth),
+        validates requested indices, and checks scope permissions.
 
         Returns:
             A `(stream_gpu, stream_cpu)` pair of booleans.
 
         Raises:
-            ConnectionError: If the server is not reachable.
-            ValueError: If explicitly requested indices are not a subset
-                of the available indices reported by the server.
+            ZeusdConnectionError: If the server is not reachable.
+            ValueError: If explicitly requested indices are not available.
+            ZeusdCapabilityError: If explicitly requested streaming requires
+                a scope the token doesn't have.
         """
-        url = self._url(server, "/discover")
-        try:
-            with self._make_http_client(server, timeout=5.0) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                data = response.json()
-        except httpx.RequestError as e:
-            raise ConnectionError(
-                f"Cannot reach zeusd at {server.key}. Is zeusd running and accessible at this address?"
-            ) from e
-        except httpx.HTTPStatusError as e:
-            raise ConnectionError(f"zeusd at {server.key} returned HTTP {e.response.status_code}") from e
+        client = ZeusdClient(server)
+        endpoint = server.endpoint
+        self._daemon_clients[endpoint] = client
 
-        available_gpus = set(data.get("gpu_ids", []))
-        available_cpus = set(data.get("cpu_ids", []))
+        available_gpus = set(client.gpu_ids)
+        available_cpus = set(client.cpu_ids)
 
-        # Decide whether to stream GPUs.
-        if server.gpu_indices is not None:
-            if server.gpu_indices:
-                missing = set(server.gpu_indices) - available_gpus
-                if missing:
-                    raise ValueError(
-                        f"GPU indices {sorted(missing)} requested for {server.key} "
-                        f"but only {sorted(available_gpus)} are available"
-                    )
-                stream_gpu = True
-            else:
-                stream_gpu = False
-        elif available_gpus:
-            stream_gpu = True
-        else:
-            logger.info("No GPUs available on %s; skipping GPU power streaming", server.key)
-            stream_gpu = False
+        stream_gpu = self._resolve_streaming(
+            user_indices=server.gpu_indices,
+            available_ids=available_gpus,
+            has_permission=client.can_read_gpu,
+            scope_name="gpu-read",
+            device_type="GPU",
+            endpoint=endpoint,
+        )
 
-        # Decide whether to stream CPUs.
-        if server.cpu_indices is not None:
-            if server.cpu_indices:
-                missing = set(server.cpu_indices) - available_cpus
-                if missing:
-                    raise ValueError(
-                        f"CPU indices {sorted(missing)} requested for {server.key} "
-                        f"but only {sorted(available_cpus)} are available"
-                    )
-                stream_cpu = True
-            else:
-                stream_cpu = False
-        elif available_cpus:
-            stream_cpu = True
-        else:
-            logger.info("No CPUs available on %s; skipping CPU power streaming", server.key)
-            stream_cpu = False
+        stream_cpu = self._resolve_streaming(
+            user_indices=server.cpu_indices,
+            available_ids=available_cpus,
+            has_permission=client.can_read_cpu,
+            scope_name="cpu-read",
+            device_type="CPU",
+            endpoint=endpoint,
+        )
 
         return stream_gpu, stream_cpu
 
+    @staticmethod
+    def _resolve_streaming(
+        user_indices: list[int] | None,
+        available_ids: set[int],
+        has_permission: bool,
+        scope_name: str,
+        device_type: str,
+        endpoint: str,
+    ) -> bool:
+        """Decide whether to stream a device type.
+
+        Semantics:
+        - `user_indices is None`: stream all available, silently skip if
+          none exist or if the token lacks the scope.
+        - `user_indices == []`: explicitly opt out, never stream.
+        - `user_indices` is a non-empty list: require all IDs to exist
+          and the scope to be granted; raise on mismatch.
+
+        Returns:
+            True if streaming should be started for this device type.
+
+        Raises:
+            ValueError: If explicit indices are not a subset of available.
+            ZeusdCapabilityError: If explicit indices are given but the
+                token lacks the required scope.
+        """
+        if user_indices is not None:
+            if not user_indices:
+                return False
+            missing = set(user_indices) - available_ids
+            if missing:
+                raise ValueError(
+                    f"{device_type} indices {sorted(missing)} requested for "
+                    f"{endpoint} but only {sorted(available_ids)} are available"
+                )
+            if not has_permission:
+                raise ZeusdCapabilityError(
+                    f"Token for {endpoint} lacks required scope '{scope_name}' "
+                    f"(explicitly requested {device_type.lower()}_indices={user_indices})"
+                )
+            return True
+
+        if not available_ids:
+            logger.info(
+                "No %ss available on %s; skipping %s power streaming",
+                device_type,
+                endpoint,
+                device_type,
+            )
+            return False
+
+        if not has_permission:
+            logger.info(
+                "Token for %s lacks '%s' scope; skipping %s streaming",
+                endpoint,
+                scope_name,
+                device_type,
+            )
+            return False
+
+        return True
+
     def _estimate_clock_offset(
         self,
-        server: ZeusdTcpConfig | ZeusdUdsConfig,
+        endpoint: str,
         num_samples: int = 5,
     ) -> float:
         """Estimate the clock offset between this client and the daemon.
@@ -401,19 +371,20 @@ class PowerStreamingClient:
         is behind the client clock.
 
         Args:
-            server: The server to probe.
+            endpoint: The endpoint identifier.
             num_samples: Number of round-trips for robustness.
 
         Returns:
             Estimated clock offset in seconds. Add this to daemon
             timestamps to align them with client time.
         """
-        url = self._url(server, "/time")
+        client = self._daemon_clients[endpoint]
+        url = client.url("/time")
         offsets: list[float] = []
-        with self._make_http_client(server, timeout=5.0) as client:
+        with client.make_client() as http:
             for _ in range(num_samples):
                 t1 = time.time()
-                response = client.get(url)
+                response = http.get(url)
                 t2 = time.time()
                 response.raise_for_status()
                 daemon_time_s = response.json()["timestamp_ms"] / 1000.0
@@ -422,53 +393,61 @@ class PowerStreamingClient:
         offset = statistics.median(offsets)
         logger.info(
             "Clock offset for %s: %.4f s (median of %d samples)",
-            server.key,
+            endpoint,
             offset,
             num_samples,
         )
         return offset
 
-    def _gpu_stream_loop(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
+    def _gpu_stream_loop(self, server: ZeusdConfig, endpoint: str) -> None:
         """Background thread: stream GPU power from a single server."""
-        base_url = self._url(server, "/gpu/stream_power")
-        # User specified specific indices to stream
+        client = self._daemon_clients[endpoint]
+        base_url = client.url("/gpu/stream_power")
         if server.gpu_indices is not None:
             ids_param = ",".join(str(i) for i in server.gpu_indices)
             url = f"{base_url}?gpu_ids={ids_param}"
-        # User wants all available indices
         else:
             url = base_url
-        self._stream_loop(url, server, self._process_gpu_event, "GPU")
+        self._stream_loop(url, endpoint, self._process_gpu_event, "GPU")
 
-    def _cpu_stream_loop(self, server: ZeusdTcpConfig | ZeusdUdsConfig) -> None:
+    def _cpu_stream_loop(self, server: ZeusdConfig, endpoint: str) -> None:
         """Background thread: stream CPU power from a single server."""
-        base_url = self._url(server, "/cpu/stream_power")
-        # User specified specific indices to stream
+        client = self._daemon_clients[endpoint]
+        base_url = client.url("/cpu/stream_power")
         if server.cpu_indices is not None:
             ids_param = ",".join(str(i) for i in server.cpu_indices)
             url = f"{base_url}?cpu_ids={ids_param}"
-        # User wants all available indices
         else:
             url = base_url
-        self._stream_loop(url, server, self._process_cpu_event, "CPU")
+        self._stream_loop(url, endpoint, self._process_cpu_event, "CPU")
 
     def _stream_loop(
         self,
         url: str,
-        server: ZeusdTcpConfig | ZeusdUdsConfig,
+        endpoint: str,
         process_fn: typing.Callable[[str, str], None],
         label: str,
     ) -> None:
         """Shared reconnect loop for SSE streams."""
         while not self._stop_event.is_set():
             try:
-                self._connect_and_stream(url, server, process_fn)
-            except httpx.HTTPStatusError:
+                self._connect_and_stream(url, endpoint, process_fn)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (401, 403):
+                    logger.error(
+                        "%s SSE connection to %s failed with HTTP %d: %s",
+                        label,
+                        endpoint,
+                        e.response.status_code,
+                        e.response.text,
+                    )
+                    return
                 if not self._stop_event.is_set():
                     logger.warning(
-                        "%s SSE connection to %s rejected, reconnecting in %.1fs",
+                        "%s SSE connection to %s rejected (HTTP %d), reconnecting in %.1fs",
                         label,
-                        server.key,
+                        endpoint,
+                        e.response.status_code,
                         self._reconnect_delay,
                         exc_info=True,
                     )
@@ -478,7 +457,7 @@ class PowerStreamingClient:
                     logger.warning(
                         "%s SSE connection to %s lost, reconnecting in %.1fs",
                         label,
-                        server.key,
+                        endpoint,
                         self._reconnect_delay,
                         exc_info=True,
                     )
@@ -487,12 +466,13 @@ class PowerStreamingClient:
     def _connect_and_stream(
         self,
         url: str,
-        server: ZeusdTcpConfig | ZeusdUdsConfig,
+        endpoint: str,
         process_fn: typing.Callable[[str, str], None],
     ) -> None:
         """Open an SSE connection and process events until disconnected."""
+        client = self._daemon_clients[endpoint]
         logger.info("Connecting to SSE at %s", url)
-        with self._make_http_client(server, timeout=None) as client, client.stream("GET", url) as response:
+        with client.make_client() as http, http.stream("GET", url, timeout=None) as response:
             response.raise_for_status()
             logger.info("SSE connected to %s", url)
             buffer = ""
@@ -502,9 +482,9 @@ class PowerStreamingClient:
                 buffer += chunk
                 while "\n\n" in buffer:
                     event_text, buffer = buffer.split("\n\n", 1)
-                    process_fn(event_text, server.key)
+                    process_fn(event_text, endpoint)
 
-    def _process_gpu_event(self, event_text: str, key: str) -> None:
+    def _process_gpu_event(self, event_text: str, endpoint: str) -> None:
         """Parse a GPU SSE event and update readings."""
         for line in event_text.strip().split("\n"):
             if line.startswith("data: "):
@@ -512,30 +492,30 @@ class PowerStreamingClient:
                 try:
                     data = json.loads(data_str)
                 except json.JSONDecodeError:
-                    logger.warning("Invalid JSON in GPU SSE event from %s: %s", key, data_str[:100])
+                    logger.warning("Invalid JSON in GPU SSE event from %s: %s", endpoint, data_str[:100])
                     continue
 
                 power_mw = data.get("power_mw", {})
                 timestamp_ms = data.get("timestamp_ms", 0)
-                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[key]
+                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[endpoint]
 
                 gpu_power_w: dict[int, float] = {}
                 for gpu_id_str, mw in power_mw.items():
                     gpu_power_w[int(gpu_id_str)] = float(mw) / 1000.0  # mW -> W
 
                 with self._condition:
-                    existing = self._readings.get(key)
+                    existing = self._readings.get(endpoint)
                     if existing is not None:
                         existing.gpu_power_w = gpu_power_w
                         existing.timestamp_s = max(existing.timestamp_s, timestamp_s)
                     else:
-                        self._readings[key] = PowerReadings(
+                        self._readings[endpoint] = PowerReadings(
                             timestamp_s=timestamp_s,
                             gpu_power_w=gpu_power_w,
                         )
                     self._condition.notify_all()
 
-    def _process_cpu_event(self, event_text: str, key: str) -> None:
+    def _process_cpu_event(self, event_text: str, endpoint: str) -> None:
         """Parse a CPU SSE event and update readings.
 
         Expected JSON format: `{"timestamp_ms": N, "power_mw": {"0": {"cpu_mw": N, "dram_mw": N|null}}}`.
@@ -546,12 +526,12 @@ class PowerStreamingClient:
                 try:
                     data = json.loads(data_str)
                 except json.JSONDecodeError:
-                    logger.warning("Invalid JSON in CPU SSE event from %s: %s", key, data_str[:100])
+                    logger.warning("Invalid JSON in CPU SSE event from %s: %s", endpoint, data_str[:100])
                     continue
 
                 power_mw = data.get("power_mw", {})
                 timestamp_ms = data.get("timestamp_ms", 0)
-                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[key]
+                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[endpoint]
 
                 cpu_power_w: dict[int, CpuPowerReading] = {}
                 for cpu_id_str, readings in power_mw.items():
@@ -563,12 +543,12 @@ class PowerStreamingClient:
                     )
 
                 with self._condition:
-                    existing = self._readings.get(key)
+                    existing = self._readings.get(endpoint)
                     if existing is not None:
                         existing.cpu_power_w = cpu_power_w
                         existing.timestamp_s = max(existing.timestamp_s, timestamp_s)
                     else:
-                        self._readings[key] = PowerReadings(
+                        self._readings[endpoint] = PowerReadings(
                             timestamp_s=timestamp_s,
                             cpu_power_w=cpu_power_w,
                         )

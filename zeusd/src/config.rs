@@ -1,7 +1,8 @@
 //! Zeus daemon configuration.
 
 use anyhow::Context;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
+use serde::{Deserialize, Serialize};
 
 /// API groups that can be independently enabled or disabled.
 ///
@@ -30,7 +31,8 @@ use clap::{Parser, ValueEnum};
 /// The following endpoints are always available regardless of enabled groups:
 ///   - `GET /discover`
 ///   - `GET /time`
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ValueEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ApiGroup {
     /// GPU control operations (set power limit, clocks, persistence mode).
     /// Requires root.
@@ -60,12 +62,35 @@ impl std::fmt::Display for ApiGroup {
 }
 
 /// The Zeus daemon manages and monitors compute devices on the node.
-/// When running as root with all API groups enabled, it exposes both
-/// monitoring and control APIs. Use `--enable` to select which API
-/// groups to activate.
 #[derive(Parser, Debug)]
 #[command(version)]
-pub struct Config {
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+/// Top-level subcommands.
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Start the Zeus daemon.
+    Serve(ServeConfig),
+    /// Token management.
+    Token {
+        #[command(subcommand)]
+        action: TokenCommand,
+    },
+}
+
+/// Token management subcommands.
+#[derive(Subcommand, Debug)]
+pub enum TokenCommand {
+    /// Issue a new JWT token for a user.
+    Issue(TokenIssueConfig),
+}
+
+/// Configuration for the `serve` subcommand.
+#[derive(Parser, Debug)]
+pub struct ServeConfig {
     /// Operating mode: UDS or TCP.
     #[clap(long, default_value = "uds")]
     pub mode: ConnectionMode,
@@ -111,9 +136,14 @@ pub struct Config {
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
     )]
     pub enable: Vec<ApiGroup>,
+
+    /// Path to the HMAC-SHA256 signing key file for JWT authentication.
+    /// If not provided, authentication is disabled.
+    #[clap(long)]
+    pub signing_key_path: Option<String>,
 }
 
-impl Config {
+impl ServeConfig {
     /// Parses socket permissions as an octal number. E.g., "666" -> 0o666.
     pub fn socket_permissions(&self) -> anyhow::Result<u32> {
         u32::from_str_radix(&self.socket_permissions, 8)
@@ -136,6 +166,51 @@ impl Config {
     }
 }
 
+/// Configuration for the `token issue` subcommand.
+#[derive(Parser, Debug)]
+pub struct TokenIssueConfig {
+    /// Path to the HMAC-SHA256 signing key file.
+    #[clap(long)]
+    pub signing_key_path: String,
+
+    /// User identity to embed in the token (the `sub` claim).
+    #[clap(long)]
+    pub user: String,
+
+    /// API group scopes to grant. Comma-separated.
+    #[clap(long, value_delimiter = ',')]
+    pub scope: Vec<ApiGroup>,
+
+    /// Token lifetime. Human-readable duration (e.g., "1h", "7d", "30d").
+    /// Use "never" for tokens that do not expire.
+    #[clap(long)]
+    pub expires: String,
+}
+
+impl TokenIssueConfig {
+    /// Parse the `--expires` value into an optional Unix timestamp.
+    ///
+    /// Returns `None` for "never" or "0" (no expiry), otherwise returns
+    /// `Some(unix_timestamp)`.
+    pub fn expires_at(&self) -> anyhow::Result<Option<usize>> {
+        let s = self.expires.trim().to_lowercase();
+        if s == "never" || s == "0" {
+            return Ok(None);
+        }
+        let duration: std::time::Duration = s
+            .parse::<humantime::Duration>()
+            .context(format!(
+                "Invalid duration '{}'. Use e.g. '1h', '7d', '30d', or 'never'.",
+                self.expires
+            ))?
+            .into();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .context("System clock error")?;
+        Ok(Some((now + duration).as_secs() as usize))
+    }
+}
+
 /// The mode of connection to use for the daemon.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum ConnectionMode {
@@ -145,7 +220,7 @@ pub enum ConnectionMode {
     TCP,
 }
 
-/// Parse command line arguments and return the resulting configuration object.
-pub fn get_config() -> Config {
-    Config::parse()
+/// Parse command line arguments.
+pub fn get_cli() -> Cli {
+    Cli::parse()
 }

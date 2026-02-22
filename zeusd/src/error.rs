@@ -34,6 +34,10 @@ pub enum ZeusdError {
     CpuInitializationError(usize),
     #[error("IOError: {0}")]
     IOError(#[from] std::io::Error),
+    #[error("Authentication required.")]
+    Unauthorized,
+    #[error("Insufficient permissions: {0}")]
+    Forbidden(String),
 }
 
 /// This allows us to return a custom HTTP status code for each error variant.
@@ -53,6 +57,8 @@ impl ResponseError for ZeusdError {
             ZeusdError::CpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuInitializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::IOError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::Unauthorized => StatusCode::UNAUTHORIZED,
+            ZeusdError::Forbidden(_) => StatusCode::FORBIDDEN,
         }
     }
 }

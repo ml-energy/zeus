@@ -160,7 +160,7 @@ To deploy `zeusd`:
 cargo install zeusd
 
 # Run zeusd with admin privileges
-sudo zeusd \
+sudo zeusd serve \
     --socket-path /var/run/zeusd.sock \   # (1)!
     --socket-permissions 666            # (2)!
 ```
