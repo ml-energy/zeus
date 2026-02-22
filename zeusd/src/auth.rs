@@ -185,6 +185,7 @@ where
             Some(t) => t.to_string(),
             None => {
                 let resp = HttpResponse::Unauthorized()
+                    .insert_header(("WWW-Authenticate", "Bearer realm=\"zeusd\""))
                     .json(serde_json::json!({"error": "Authentication required. Provide an Authorization: Bearer <token> header."}));
                 return Box::pin(async move { Ok(req.into_response(resp).map_into_right_body()) });
             }
@@ -207,7 +208,9 @@ where
                     }
                     _ => format!("Invalid token: {e}"),
                 };
-                let resp = HttpResponse::Unauthorized().json(serde_json::json!({"error": msg}));
+                let resp = HttpResponse::Unauthorized()
+                    .insert_header(("WWW-Authenticate", "Bearer realm=\"zeusd\""))
+                    .json(serde_json::json!({"error": msg}));
                 return Box::pin(async move { Ok(req.into_response(resp).map_into_right_body()) });
             }
         };

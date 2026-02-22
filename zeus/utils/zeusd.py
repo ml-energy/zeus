@@ -102,8 +102,7 @@ class ZeusdConfig:
     Use the classmethods `tcp`, `uds`, or `from_env` to construct.
 
     Attributes:
-        host: Hostname or IP (TCP mode). None for UDS.
-        port: TCP port (default 4938). Ignored for UDS.
+        host_port: `host:port` string (TCP mode). None for UDS.
         socket_path: Unix domain socket path (UDS mode). None for TCP.
         token: JWT token. Falls back to `ZEUSD_TOKEN` env var.
         gpu_indices: GPU indices to stream (for `PowerStreamingClient`).
@@ -112,8 +111,7 @@ class ZeusdConfig:
             None means all, empty list means skip. Ignored by `ZeusdClient`.
     """
 
-    host: str | None = None
-    port: int = 4938
+    host_port: str | None = None
     socket_path: str | None = None
     token: str | None = None
     gpu_indices: list[int] | None = None
@@ -123,7 +121,7 @@ class ZeusdConfig:
     def tcp(
         cls,
         host: str,
-        port: int = 4938,
+        port: int,
         *,
         token: str | None = None,
         gpu_indices: list[int] | None = None,
@@ -133,14 +131,13 @@ class ZeusdConfig:
 
         Args:
             host: Hostname or IP of the Zeusd instance.
-            port: TCP port (default 4938).
+            port: TCP port.
             token: JWT token. Falls back to `ZEUSD_TOKEN` env var.
             gpu_indices: GPU indices to stream (for `PowerStreamingClient`).
             cpu_indices: CPU indices to stream (for `PowerStreamingClient`).
         """
         return cls(
-            host=host,
-            port=port,
+            host_port=f"{host}:{port}",
             token=token,
             gpu_indices=gpu_indices,
             cpu_indices=cpu_indices,
@@ -175,8 +172,8 @@ class ZeusdConfig:
         """Create from environment variables.
 
         Tries `ZEUSD_SOCK_PATH` (UDS) first, then `ZEUSD_HOST_PORT` (TCP).
-        `ZEUSD_HOST_PORT` accepts `host:port` or just `host` (defaults to
-        port 4938). `ZEUSD_TOKEN` is read for JWT authentication.
+        `ZEUSD_HOST_PORT` should be `host:port`. `ZEUSD_TOKEN` is read for
+        JWT authentication.
 
         Returns None if neither env var is set.
         """
@@ -186,13 +183,7 @@ class ZeusdConfig:
             return cls.uds(socket_path=sock, token=token)
         host_port = os.environ.get("ZEUSD_HOST_PORT")
         if host_port is not None:
-            if ":" in host_port:
-                host, port_str = host_port.rsplit(":", 1)
-                port = int(port_str)
-            else:
-                host = host_port
-                port = 4938
-            return cls.tcp(host=host, port=port, token=token)
+            return cls(host_port=host_port, token=token)
         return None
 
     @property
@@ -211,14 +202,14 @@ class ZeusdConfig:
         """Build the full URL for the given path."""
         if self._is_uds:
             return f"http://localhost{path}"
-        return f"http://{self.host}:{self.port}{path}"
+        return f"http://{self.host_port}{path}"
 
     @property
     def endpoint(self) -> str:
         """Human-readable identifier for this connection."""
         if self._is_uds:
             return self.socket_path  # type: ignore[return-value]
-        return f"{self.host}:{self.port}"
+        return self.host_port  # type: ignore[return-value]
 
     def _auth_headers(self) -> dict[str, str]:
         if self.token:

@@ -172,16 +172,15 @@ def mock_zeusd(monkeypatch):
 class TestZeusdConfig:
     def test_tcp(self):
         c = ZeusdConfig.tcp("node1", 5000, token="tok", gpu_indices=[0], cpu_indices=[1])
-        assert c.host == "node1"
-        assert c.port == 5000
+        assert c.host_port == "node1:5000"
         assert c.socket_path is None
         assert c.token == "tok"
         assert c.gpu_indices == [0]
         assert c.cpu_indices == [1]
 
     def test_tcp_defaults(self):
-        c = ZeusdConfig.tcp("node1")
-        assert c.port == 4938
+        c = ZeusdConfig.tcp("node1", 4938)
+        assert c.host_port == "node1:4938"
         assert c.token is None
         assert c.gpu_indices is None
         assert c.cpu_indices is None
@@ -189,7 +188,7 @@ class TestZeusdConfig:
     def test_uds(self):
         c = ZeusdConfig.uds("/var/run/zeusd.sock", token="tok")
         assert c.socket_path == "/var/run/zeusd.sock"
-        assert c.host is None
+        assert c.host_port is None
         assert c.token == "tok"
 
     def test_from_env_uds(self, monkeypatch):
@@ -204,16 +203,14 @@ class TestZeusdConfig:
         monkeypatch.setenv("ZEUSD_HOST_PORT", "node1:5000")
         c = ZeusdConfig.from_env()
         assert c is not None
-        assert c.host == "node1"
-        assert c.port == 5000
+        assert c.host_port == "node1:5000"
 
     def test_from_env_tcp_host_only(self, monkeypatch):
         monkeypatch.delenv("ZEUSD_SOCK_PATH", raising=False)
         monkeypatch.setenv("ZEUSD_HOST_PORT", "node1")
         c = ZeusdConfig.from_env()
         assert c is not None
-        assert c.host == "node1"
-        assert c.port == 4938
+        assert c.host_port == "node1"
 
     def test_from_env_token(self, monkeypatch):
         monkeypatch.setenv("ZEUSD_SOCK_PATH", "/tmp/test.sock")
@@ -233,7 +230,7 @@ class TestZeusdConfig:
         c = ZeusdConfig.from_env()
         assert c is not None
         assert c.socket_path == "/tmp/test.sock"
-        assert c.host is None
+        assert c.host_port is None
 
     def test_url_tcp(self):
         c = ZeusdConfig.tcp("node1", 5000)
