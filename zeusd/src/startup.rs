@@ -13,6 +13,7 @@ use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
+use crate::auth::{AuthMiddleware, SigningKeyData};
 use crate::config::ApiGroup;
 use crate::devices::cpu::power::{start_cpu_poller, CpuPowerBroadcast, CpuPowerPoller};
 use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
@@ -152,6 +153,7 @@ pub struct ServerState {
     pub cpu_power_broadcast: Option<CpuPowerBroadcast>,
     pub discovery_info: DiscoveryInfo,
     pub enabled_groups: EnabledGroups,
+    pub signing_key: Option<SigningKeyData>,
 }
 
 /// Build an `HttpServer` with routes and app data based on enabled API groups.
@@ -162,9 +164,16 @@ macro_rules! configure_server {
             let enabled = &state.enabled_groups.0;
 
             let mut app = App::new()
+                .wrap(AuthMiddleware)
                 .wrap(tracing_actix_web::TracingLogger::default())
                 .configure(server_routes)
-                .app_data(web::Data::new(state.discovery_info.clone()));
+                .app_data(web::Data::new(state.discovery_info.clone()))
+                .app_data(web::Data::new(state.enabled_groups.clone()));
+
+            // Register signing key for the auth middleware (if configured).
+            if let Some(ref key) = state.signing_key {
+                app = app.app_data(web::Data::new(key.clone()));
+            }
 
             // GPU routes: conditionally register read and/or control routes.
             if enabled.contains(&ApiGroup::GpuRead) || enabled.contains(&ApiGroup::GpuControl) {

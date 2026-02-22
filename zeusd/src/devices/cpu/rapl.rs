@@ -290,11 +290,11 @@ mod tests {
         let max = 1_000_000;
         let (mut cpu, path, _) = make_test_cpu(tmp.path(), max, false);
 
-        // First call with a non-zero starting value — no wraparound offset.
+        // First call with a non-zero starting value (no wraparound offset).
         write_energy(&path, 42_000);
         assert_eq!(cpu.get_cpu_energy().unwrap(), 42_000);
 
-        // Second call still higher — still no offset.
+        // Second call still higher (still no offset).
         write_energy(&path, 100_000);
         assert_eq!(cpu.get_cpu_energy().unwrap(), 100_000);
     }

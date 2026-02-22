@@ -12,6 +12,7 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use zeusd::auth::SigningKeyData;
 use zeusd::config::ApiGroup;
 use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
@@ -429,6 +430,7 @@ impl TestApp {
             cpu_ids: (0..cpu_count).collect(),
             dram_available,
             enabled_api_groups: groups.iter().map(|g| g.to_string()).collect(),
+            auth_required: false,
         };
 
         let state = ServerState {
@@ -438,6 +440,107 @@ impl TestApp {
             cpu_power_broadcast,
             discovery_info,
             enabled_groups,
+            signing_key: None,
+        };
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
+        let port = listener.local_addr().unwrap().port();
+        let server = start_server_tcp(listener, state, 2).expect("Failed to start server");
+        let _ = tokio::spawn(server);
+
+        TestApp {
+            port,
+            observers: test_gpu_observers,
+            cpu_injectors: cpu_test_injectors,
+        }
+    }
+
+    /// Start a test server with auth enabled using the given signing key
+    /// and all API groups enabled.
+    pub async fn start_with_auth(signing_key: &[u8]) -> Self {
+        Self::start_with_auth_and_groups(
+            signing_key,
+            &[ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
+        )
+        .await
+    }
+
+    /// Start a test server with auth enabled and specific API groups.
+    pub async fn start_with_auth_and_groups(signing_key: &[u8], groups: &[ApiGroup]) -> Self {
+        Lazy::force(&TRACING);
+
+        let enabled_groups = EnabledGroups(groups.iter().cloned().collect::<HashSet<_>>());
+        let needs_gpu =
+            groups.contains(&ApiGroup::GpuControl) || groups.contains(&ApiGroup::GpuRead);
+        let needs_gpu_poller = groups.contains(&ApiGroup::GpuRead);
+        let needs_cpu = groups.contains(&ApiGroup::CpuRead);
+
+        let (gpu_test_tasks, test_gpu_observers, gpu_count) = if needs_gpu {
+            let (tasks, observers) =
+                start_gpu_test_tasks().expect("Failed to start gpu test tasks");
+            let count = tasks.device_count();
+            (Some(tasks), observers, count)
+        } else {
+            (None, Vec::new(), 0)
+        };
+
+        let gpu_power_broadcast = if needs_gpu_poller {
+            let test_power_gpus: Vec<(usize, TestGpu)> = (0..NUM_GPUS as usize)
+                .map(|i| (i, TestGpu::init().unwrap().0))
+                .collect();
+            let gpu_power_poller = start_gpu_poller(test_power_gpus, 10);
+            Some(gpu_power_poller.broadcast())
+        } else {
+            None
+        };
+
+        let (cpu_test_tasks, cpu_test_injectors, cpu_count, dram_available) = if needs_cpu {
+            let (tasks, injectors) =
+                start_cpu_test_tasks().expect("Failed to start cpu test tasks");
+            let count = tasks.device_count();
+            (Some(tasks), injectors, count, vec![true; count])
+        } else {
+            (None, Vec::new(), 0, vec![])
+        };
+
+        let cpu_power_broadcast = if needs_cpu {
+            let cpu_power_cpus: Vec<(usize, PowerTestCpu)> = (0..NUM_CPUS)
+                .map(|i| {
+                    (
+                        i,
+                        PowerTestCpu::new(
+                            POWER_TEST_CPU_INCREMENT_UJ,
+                            POWER_TEST_DRAM_INCREMENT_UJ,
+                        ),
+                    )
+                })
+                .collect();
+            let cpu_power_poller = start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ);
+            Some(cpu_power_poller.broadcast())
+        } else {
+            None
+        };
+
+        let signing_key_data = SigningKeyData(Arc::new(jsonwebtoken::DecodingKey::from_secret(
+            signing_key,
+        )));
+
+        let discovery_info = DiscoveryInfo {
+            gpu_ids: (0..gpu_count).collect(),
+            cpu_ids: (0..cpu_count).collect(),
+            dram_available,
+            enabled_api_groups: groups.iter().map(|g| g.to_string()).collect(),
+            auth_required: true,
+        };
+
+        let state = ServerState {
+            gpu_device_tasks: gpu_test_tasks,
+            cpu_device_tasks: cpu_test_tasks,
+            gpu_power_broadcast,
+            cpu_power_broadcast,
+            discovery_info,
+            enabled_groups,
+            signing_key: Some(signing_key_data),
         };
 
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");

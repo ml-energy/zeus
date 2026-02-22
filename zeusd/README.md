@@ -36,7 +36,7 @@ Both modes (UDS and TCP) serve the same HTTP API. The only difference is the tra
 UDS (Unix domain socket) mode is the default. It's intended for local communication between processes on the same node.
 
 ```sh
-sudo zeusd --socket-path /var/run/zeusd.sock --socket-permissions 666
+sudo zeusd serve --socket-path /var/run/zeusd.sock --socket-permissions 666
 ```
 
 To allow the Zeus Python library to recognize that `zeusd` is available, set:
@@ -52,7 +52,7 @@ When Zeus detects `ZEUSD_SOCK_PATH`, it'll automatically instantiate the right G
 TCP mode exposes the same API over a TCP socket, making it accessible from remote hosts. This is useful for cluster-wide power monitoring.
 
 ```sh
-sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938
+sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
 ```
 
 Example queries via curl:
@@ -84,20 +84,22 @@ curl -X POST 'http://localhost:4938/gpu/set_power_limit?gpu_ids=0,1&power_limit_
 On the Python side, use `PowerStreamingClient` to connect to one or more `zeusd` instances:
 
 ```python
-from zeus.monitor.power_streaming import PowerStreamingClient, ZeusdTcpConfig
+from zeus.utils.zeusd import ZeusdConfig
+from zeus.monitor.power_streaming import PowerStreamingClient
 
 client = PowerStreamingClient(
     servers=[
-        ZeusdTcpConfig(
-            host="node1", port=4938,
-            gpu_indices=[0, 1, 2, 3],
-            cpu_indices=[0],
-        ),
-        ZeusdTcpConfig(host="node2", port=4938),
+        ZeusdConfig.tcp(host="node1", port=4938, gpu_indices=[0, 1, 2, 3]),
+        ZeusdConfig.uds(socket_path="/var/run/zeusd.sock", gpu_indices=[0, 1, 2, 3]),
     ],
 )
+
+# Get current power reading once
 readings = client.get_power()
-client.stop()
+
+# Continuously stream power readings
+for power_reading in client:
+    print(power_reading)
 ```
 
 See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/measure/#distributed-power-measurement-and-aggregation) section in our documentation for more details.
@@ -131,16 +133,72 @@ Examples:
 
 ```sh
 # As root: all groups enabled (default)
-sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938
+sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
 
 # As non-root: GPU monitoring only (no root required)
-zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read
+zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read
 
 # As root: monitoring only (GPU + CPU reads, no GPU control)
-sudo zeusd --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read,cpu-read
+sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read,cpu-read
 ```
 
 Only the devices needed by the enabled groups are initialized. For example, `--enable gpu-read` skips RAPL initialization entirely, and `--enable cpu-read` skips NVML initialization.
+
+### Authentication
+
+`zeusd` supports optional per-user JWT authentication. When `--signing-key-path` is provided, all endpoints except `/discover` and `/time` require a valid `Authorization: Bearer <token>` header.
+
+**Setting up a signing key:**
+
+```sh
+# Generate a 32-byte signing key (shared across all daemons in a cluster)
+openssl rand -base64 32 > /etc/zeusd/signing.key
+chmod 600 /etc/zeusd/signing.key
+```
+
+**Starting the daemon with auth:**
+
+```sh
+sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path /etc/zeusd/signing.key
+```
+
+**Issuing tokens:**
+
+```sh
+# Token with 7-day expiry and GPU read scope
+zeusd token issue \
+    --signing-key-path /etc/zeusd/signing.key \
+    --user alice \
+    --scope gpu-read \
+    --expires 7d
+
+# Token with multiple scopes and no expiry
+zeusd token issue \
+    --signing-key-path /etc/zeusd/signing.key \
+    --user alice \
+    --scope gpu-read,gpu-control,cpu-read \
+    --expires never
+```
+
+`--expires` accepts human-readable durations (`1h`, `7d`, `30d`) or `never`/`0` for tokens that never expire.
+
+**Using tokens with Python clients:**
+
+Set the `ZEUSD_TOKEN` environment variable, or pass the token directly:
+
+```sh
+export ZEUSD_TOKEN="eyJ..."
+```
+
+Python clients (`ZeusdNVIDIAGPU`, `ZeusdRAPLCPU`, `PowerStreamingClient`) automatically check `/discover` to determine whether auth is required. If auth is required and no token is available, an error is raised with a clear message.
+
+**Using tokens with curl:**
+
+```sh
+curl -H "Authorization: Bearer $ZEUSD_TOKEN" http://localhost:4938/gpu/get_power
+```
+
+When no `--signing-key-path` is provided, the daemon runs without authentication and all endpoints are freely accessible. The `/discover` endpoint always reports `auth_required: true` or `false` so clients can adapt.
 
 ## API Reference
 
@@ -158,6 +216,7 @@ Response:
 | `cpu_ids` | `int[]` | Available CPU indices |
 | `dram_available` | `bool[]` | Per-CPU DRAM energy support (indexed by position in `cpu_ids`) |
 | `enabled_api_groups` | `string[]` | API groups enabled on this instance |
+| `auth_required` | `bool` | Whether JWT authentication is required |
 
 Example response:
 ```json
@@ -165,7 +224,8 @@ Example response:
   "gpu_ids": [0, 1, 2, 3],
   "cpu_ids": [0, 1],
   "dram_available": [true, false],
-  "enabled_api_groups": ["gpu-control", "gpu-read", "cpu-read"]
+  "enabled_api_groups": ["gpu-control", "gpu-read", "cpu-read"],
+  "auth_required": false
 }
 ```
 
@@ -284,9 +344,25 @@ SSE stream of CPU power readings. `cpu_ids` is optional (omit = all CPUs).
 
 ```console
 $ zeusd --help
-The Zeus daemon manages and monitors compute devices on the node. When running as root with all API groups enabled, it exposes both monitoring and control APIs. Use `--enable` to select which API groups to activate
+The Zeus daemon manages and monitors compute devices on the node
 
-Usage: zeusd [OPTIONS]
+Usage: zeusd <COMMAND>
+
+Commands:
+  serve  Start the Zeus daemon
+  token  Token management
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+```console
+$ zeusd serve --help
+Start the Zeus daemon
+
+Usage: zeusd serve [OPTIONS]
 
 Options:
       --mode <MODE>
@@ -342,9 +418,37 @@ Options:
           - gpu-read:    GPU read operations (power reading, energy consumption)
           - cpu-read:    CPU RAPL read operations (energy, power). Requires root
 
+      --signing-key-path <SIGNING_KEY_PATH>
+          Path to the HMAC-SHA256 signing key file for JWT authentication. If not provided, authentication is disabled
+
   -h, --help
           Print help (see a summary with '-h')
+```
 
-  -V, --version
-          Print version
+```console
+$ zeusd token issue --help
+Issue a new JWT token for a user
+
+Usage: zeusd token issue [OPTIONS] --signing-key-path <SIGNING_KEY_PATH> --user <USER> --expires <EXPIRES>
+
+Options:
+      --signing-key-path <SIGNING_KEY_PATH>
+          Path to the HMAC-SHA256 signing key file
+
+      --user <USER>
+          User identity to embed in the token (the `sub` claim)
+
+      --scope <SCOPE>
+          API group scopes to grant. Comma-separated
+
+          Possible values:
+          - gpu-control: GPU control operations (set power limit, clocks, persistence mode). Requires root
+          - gpu-read:    GPU read operations (power reading, energy consumption)
+          - cpu-read:    CPU RAPL read operations (energy, power). Requires root
+
+      --expires <EXPIRES>
+          Token lifetime. Human-readable duration (e.g., "1h", "7d", "30d"). Use "never" for tokens that do not expire
+
+  -h, --help
+          Print help (see a summary with '-h')
 ```

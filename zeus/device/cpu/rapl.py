@@ -19,17 +19,16 @@ import multiprocessing as mp
 import os
 import time
 import warnings
-from pathlib import Path
 from functools import lru_cache
 from glob import glob
 from multiprocessing.sharedctypes import Synchronized
 from typing import Sequence
 
-import httpx
-
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
+from zeus.exception import ZeusBaseError
 from zeus.device.exception import ZeusBaseCPUError, ZeusdError
+from zeus.utils.zeusd import ZeusdClient, ZeusdConfig, require_capabilities
 
 logger = logging.getLogger(__name__)
 
@@ -276,69 +275,33 @@ class ZeusdRAPLCPU(RAPLCPU):
     for details on system privileges required.
     """
 
-    def __init__(
-        self,
-        cpu_index: int,
-        zeusd_sock_path: str = "/var/run/zeusd.sock",
-    ) -> None:
-        """Initialize the Intel CPU with a specified index."""
+    def __init__(self, cpu_index: int, client: ZeusdClient) -> None:
+        """Initialize the Intel CPU with a specified index.
+
+        Args:
+            cpu_index: Index of the CPU.
+            client: ZeusdClient connected to the daemon.
+        """
         self.cpu_index = cpu_index
-        self.zeusd_sock_path = zeusd_sock_path
-
-        self._client = httpx.Client(transport=httpx.HTTPTransport(uds=zeusd_sock_path))
-
-        self.dram_available = self._supports_get_dram_energy_consumption()
-
-    def _supports_get_dram_energy_consumption(self) -> bool:
-        """Query the /discover endpoint to check DRAM energy support for this CPU."""
-        resp = self._client.get("http://zeusd/discover")
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to query Zeusd discovery endpoint: {resp.text}")
-        data = resp.json()
-        dram_available = data.get("dram_available")
-        if dram_available is None:
-            raise ZeusdError("Discovery response missing 'dram_available' field.")
-        cpu_ids = data.get("cpu_ids", [])
-        try:
-            idx = cpu_ids.index(self.cpu_index)
-        except ValueError as e:
-            raise ZeusdError(f"CPU {self.cpu_index} not found in discovery response (available: {cpu_ids})") from e
-        if len(cpu_ids) != len(dram_available):
-            raise ZeusdError(
-                f"Discovery response has mismatched lengths: "
-                f"{len(cpu_ids)} cpu_ids vs {len(dram_available)} dram_available entries"
-            )
-        return dram_available[idx]
+        self._client = client
+        require_capabilities(client, read_cpu=True, cpu_ids=[cpu_index])
+        idx = client.cpu_ids.index(cpu_index)
+        self.dram_available = client.dram_available[idx]
 
     def get_total_energy_consumption(self) -> CpuDramMeasurement:
         """Returns the total energy consumption of the specified powerzone. Units: mJ."""
-        resp = self._client.get(
-            "http://zeusd/cpu/get_cumulative_energy",
-            params={
-                "cpu_ids": str(self.cpu_index),
-                "cpu": "true",
-                "dram": "true",
-            },
-        )
-        if resp.status_code != 200:
-            raise ZeusdError(f"Failed to get total energy consumption: {resp.text}")
-
-        data = resp.json()
-        cpu_data = data.get(str(self.cpu_index))
-        if cpu_data is None:
-            raise ZeusdError(f"CPU {self.cpu_index} not found in response")
-        cpu_uj = cpu_data.get("cpu_energy_uj")
-        if cpu_uj is None:
+        result = self._client.get_cpu_energy([self.cpu_index], cpu=True, dram=True)
+        entry = result[self.cpu_index]
+        if entry.cpu_energy_uj is None:
             raise ZeusdError(f"CPU {self.cpu_index}: cpu_energy_uj is null in response")
-        cpu_mj = cpu_uj / 1000
+        cpu_mj = entry.cpu_energy_uj / 1000
 
         dram_mj = None
-        dram_uj = cpu_data.get("dram_energy_uj")
-        if dram_uj is None:
+        if entry.dram_energy_uj is None:
             if self.dram_available:
                 raise ZeusdError("DRAM energy should be available but no measurement was found")
         else:
-            dram_mj = dram_uj / 1000
+            dram_mj = entry.dram_energy_uj / 1000
 
         return CpuDramMeasurement(cpu_mj=cpu_mj, dram_mj=dram_mj)
 
@@ -377,15 +340,14 @@ class RAPLCPUs(cpu_common.CPUs):
             if len(parts) > 1 and parts[1].isdigit():
                 cpu_indices.append(int(parts[1]))
 
-        # If `ZEUSD_SOCK_PATH` is set, always use ZeusdRAPLCPU
-        if (sock_path := os.environ.get("ZEUSD_SOCK_PATH")) is not None:
-            if not Path(sock_path).exists():
-                raise ZeusdError(f"ZEUSD_SOCK_PATH points to non-existent file: {sock_path}")
-            if not Path(sock_path).is_socket():
-                raise ZeusdError(f"ZEUSD_SOCK_PATH is not a socket: {sock_path}")
-            if not os.access(sock_path, os.W_OK):
-                raise ZeusdError(f"ZEUSD_SOCK_PATH is not writable: {sock_path}")
-            self._cpus = [ZeusdRAPLCPU(cpu_index, sock_path) for cpu_index in cpu_indices]
+        # If Zeusd env vars are set, use ZeusdRAPLCPU backed by a shared client.
+        config = ZeusdConfig.from_env()
+        if config is not None:
+            try:
+                client = ZeusdClient(config)
+                self._cpus = [ZeusdRAPLCPU(cpu_index, client) for cpu_index in cpu_indices]
+            except ZeusBaseError as e:
+                raise cpu_common.ZeusCPUInitError(str(e)) from e
         else:
             self._cpus = [RAPLCPU(cpu_index, self.rapl_dir) for cpu_index in cpu_indices]
 
