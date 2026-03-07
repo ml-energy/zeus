@@ -1,7 +1,7 @@
 r"""Thermally stable energy profiling for GPU workloads.
 
 See our blog post for more details:
-<https://ml.energy/blog/energy/measurement/thermally-stable-profiling-for-accurate-gpu-energy-measurement/>
+[Thermally Stable Profiling for Accurate GPU Energy Measurement](https://ml.energy/blog/energy/measurement/thermally-stable-profiling-for-accurate-gpu-energy-measurement/)
 
 ## Public API
 
