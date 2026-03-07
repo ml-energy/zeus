@@ -1,20 +1,58 @@
-"""Thermally stable energy profiling for GPU workloads.
+r"""Thermally stable energy profiling for GPU workloads.
+
+See our blog post for more details:
+<https://ml.energy/blog/energy/measurement/thermally-stable-profiling-for-accurate-gpu-energy-measurement/>
+
+## Public API
+
+- [`profile_parameters`][zeus.profile.profile_parameters] -- auto-profile both
+  measurement and cooldown durations.
+- [`profile_measurement_duration`][zeus.profile.profile_measurement_duration] --
+  sweep measurement durations only.
+- [`profile_cooldown_duration`][zeus.profile.profile_cooldown_duration] --
+  sweep cooldown durations only.
+- [`measure`][zeus.profile.measure] -- run a single energy measurement trial
+  with known measurement and cooldown durations.
+
+## Overview
 
 The module provides functions to determine the best measurement and cooldown
 durations that yield stable (low-variance) energy measurements for a
 user-provided callable.
 
+```
+Single trial
+============
+
+|<--- cooldown_duration --->|            |<--- measurement_duration --->|
+|                           |            |                              |
++----------- idle ----------+-- warmup --+--iter--iter-- ... --iter-----+
+                                         |                              |
+                                         +-- energy_per_iter measured --+
+
+Sweep (num_trials = 3, num_warmup_trials = 1)
+======================
+
+Warmup trial:  [--iter--iter--...--iter--]
+Trial 1:  [--- cooldown ---|-- warmup --|--iter--iter--...--iter--]
+Trial 2:  [--- cooldown ---|-- warmup --|--iter--iter--...--iter--]
+Trial 3:  [--- cooldown ---|-- warmup --|--iter--iter--...--iter--]
+                                         \________________________/
+    measurement_duration=5.0 s [VALID]    std of energy_per_iter
+                                          < trial_stddev_threshold
+```
+
 **Measurement duration sweep**: fixes cooldown_duration at the maximum of the
 cooldown search range and sweeps measurement_duration.  Each configuration is
 measured for `num_trials` trials; configurations whose energy standard
-deviation falls below `variance_threshold` are considered valid.
+deviation falls below `trial_stddev_threshold` are considered valid.
 
 **Cooldown duration sweep**: fixes measurement_duration at the maximum of the
 measurement search range and sweeps cooldown_duration with the same validity
 criterion.
 
 Both durations can also be chosen manually and passed directly to
-[`measure`][zeus.monitor.kernel_profiler.measure].
+[`measure`][zeus.profile.measure].
 
 **Multi-GPU / distributed setting**: In a distributed setting each rank should
 create its own [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] with
@@ -22,9 +60,7 @@ create its own [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] with
 rank executes the workload and measures energy on its local GPU.
 [`all_reduce`][zeus.utils.framework.all_reduce] is used internally to
 aggregate results across ranks (energy is summed, time takes the max across
-ranks, and temperature is averaged).  When the distributed backend is not
-initialized, ``all_reduce`` is a no-op and single-GPU behavior is preserved.
-Only rank 0 prints progress and reports.
+ranks, and temperature is averaged). Only rank 0 logs progress and reports.
 """
 
 from __future__ import annotations
@@ -33,15 +69,7 @@ import logging
 import statistics
 import time
 from dataclasses import dataclass
-from typing import Any, Callable
-
-from rich.progress import (
-    Progress,
-    BarColumn,
-    TextColumn,
-    MofNCompleteColumn,
-    TimeRemainingColumn,
-)
+from typing import Any, Callable, Literal
 
 from zeus.monitor.energy import ZeusMonitor
 from zeus.utils.framework import all_reduce, get_rank, get_world_size, sync_execution
@@ -93,7 +121,7 @@ class SweepResult:
         avg_temperature_after: Average temperature after the measurement.
         avg_total_time: Mean total time across trials.
         avg_total_energy: Mean total energy across trials.
-        is_valid: `True` when `energy_std < variance_threshold`.
+        is_valid: `True` when `energy_std < trial_stddev_threshold`.
     """
 
     measurement_duration: float
@@ -111,12 +139,12 @@ class SweepResult:
         """One-line summary without per-trial details."""
         tag = "VALID" if self.is_valid else "INVALID"
         return (
-            f"measurement={self.measurement_duration:.1f}s  "
-            f"cooldown={self.cooldown_duration:.1f}s  "
+            f"measurement={self.measurement_duration:.1f} s  "
+            f"cooldown={self.cooldown_duration:.1f} s  "
             f"mean={self.energy_mean:.4f} J  "
             f"std={self.energy_std:.4f} J  "
-            f"temp_before={self.avg_temperature_before:.1f}\u00b0C  "
-            f"temp_after={self.avg_temperature_after:.1f}\u00b0C  "
+            f"temp_before={self.avg_temperature_before:.1f} \u00b0C  "
+            f"temp_after={self.avg_temperature_after:.1f} \u00b0C  "
             f"[{tag}]"
         )
 
@@ -139,78 +167,75 @@ class SweepReport:
         """Multi-line summary: one line per swept value."""
         sweep_name, _ = self.sweep_param
         fixed_name, fixed_value = self.fixed_param
-        lines = [f"Sweep {sweep_name} (fixed {fixed_name}={fixed_value:.1f}s):"]
-        for e in self.entries:
-            swept_value = getattr(e, sweep_name)
+        prefixes = [f"{sweep_name}={getattr(e, sweep_name):.1f} s" for e in self.entries]
+        max_prefix_len = max(len(p) for p in prefixes)
+        lines = [f"Sweep {sweep_name} (fixed {fixed_name}={fixed_value:.1f} s):"]
+        for prefix, e in zip(prefixes, self.entries):
             tag = "VALID" if e.is_valid else "INVALID"
             lines.append(
-                f"  {sweep_name}={swept_value:.1f}s  "
+                f"  {prefix:<{max_prefix_len}}  "
                 f"mean={e.energy_mean:.4f} J  "
                 f"std={e.energy_std:.4f} J  "
-                f"temp_before={e.avg_temperature_before:.1f}\u00b0C  "
-                f"temp_after={e.avg_temperature_after:.1f}\u00b0C  "
+                f"temp_before={e.avg_temperature_before:.1f} \u00b0C  "
+                f"temp_after={e.avg_temperature_after:.1f} \u00b0C  "
                 f"[{tag}]"
             )
         return "\n".join(lines)
 
 
-def _calibrate_iter_duration(
-    target_function: Callable[..., Any],
+def _calibrate_iteration_duration(
+    target_function: Callable[[], Any],
     zeus_monitor: ZeusMonitor,
-    warmup_iterations: int,
-    calibration_iterations: int,
+    num_warmup_iterations: int,
+    num_calibration_iterations: int,
 ) -> float:
     """Warm up *target_function* and measure per-iteration execution time."""
-    for _ in range(warmup_iterations):
+    for _ in range(num_warmup_iterations):
         target_function()
 
     sync_execution(zeus_monitor.gpu_indices, sync_with=zeus_monitor.sync_with)
     start = time.monotonic()
-    for _ in range(calibration_iterations):
+    for _ in range(num_calibration_iterations):
         target_function()
     sync_execution(zeus_monitor.gpu_indices, sync_with=zeus_monitor.sync_with)
     elapsed = time.monotonic() - start
 
-    iter_duration = elapsed / calibration_iterations
-    [iter_duration] = all_reduce([iter_duration], "max")
-    logger.info("Calibrated iteration duration: %.3f ms", iter_duration * 1000)
-    return iter_duration
-
-
-def _iterations_for(iter_duration: float, target_duration: float) -> int:
-    """Return how many iterations fill *target_duration* seconds."""
-    return max(1, int(target_duration / iter_duration))
+    iteration_duration = elapsed / num_calibration_iterations
+    [iteration_duration] = all_reduce([iteration_duration], "max")
+    logger.info("Calibrated iteration duration: %.3f ms", iteration_duration * 1000)
+    return iteration_duration
 
 
 def _read_avg_gpu_temperature(zeus_monitor: ZeusMonitor) -> float:
     """Return the mean GPU temperature (deg C) across all monitored GPUs."""
     temps = [zeus_monitor.gpus.get_gpu_temperature(idx) for idx in zeus_monitor.gpu_indices]
-    return sum(temps) / len(temps) if temps else 0.0
+    assert temps, "ZeusMonitor is monitoring zero GPUs."
+    return sum(temps) / len(temps)
 
 
 def _run_trial(
-    target_function: Callable[..., Any],
+    target_function: Callable[[], Any],
     zeus_monitor: ZeusMonitor,
     cooldown_duration: float,
     measurement_duration: float,
-    warmup_iterations: int,
-    iter_duration: float,
+    num_warmup_iterations: int,
+    iteration_duration: float,
 ) -> TrialResult:
     """Execute one trial: cooldown -> warmup -> measure."""
-    iterations = _iterations_for(iter_duration, measurement_duration)
+    iterations = max(1, int(measurement_duration / iteration_duration))
 
     if cooldown_duration > 0:
         time.sleep(cooldown_duration)
 
     temperature_before = _read_avg_gpu_temperature(zeus_monitor)
 
-    for _ in range(warmup_iterations):
+    for _ in range(num_warmup_iterations):
         target_function()
 
-    zeus_monitor.begin_window("_trial")
+    zeus_monitor.begin_window("__zeus_profile_run_trial")
     for _ in range(iterations):
         target_function()
-    result = zeus_monitor.end_window("_trial")
+    result = zeus_monitor.end_window("__zeus_profile_run_trial")
 
     temperature_after = _read_avg_gpu_temperature(zeus_monitor)
 
@@ -235,9 +260,9 @@ def _build_sweep_result(
     measurement_duration: float,
     cooldown_duration: float,
     trials: list[TrialResult],
-    variance_threshold: float,
+    trial_stddev_threshold: float,
 ) -> SweepResult:
-    """Aggregate trial results into a [`SweepResult`][zeus.monitor.kernel_profiler.SweepResult]."""
+    """Aggregate trial results into a [`SweepResult`][zeus.profile.SweepResult]."""
     energies = [t.energy_per_iter for t in trials]
     n = len(trials)
     e_std = statistics.stdev(energies) if n >= 2 else 0.0
@@ -251,68 +276,71 @@ def _build_sweep_result(
         avg_temperature_after=sum(t.temperature_after for t in trials) / n,
         avg_total_time=sum(t.total_time for t in trials) / n,
         avg_total_energy=sum(t.total_energy for t in trials) / n,
-        is_valid=e_std < variance_threshold,
+        is_valid=e_std < trial_stddev_threshold,
     )
 
 
 def _sweep(
-    target_function: Callable[..., Any],
+    target_function: Callable[[], Any],
     zeus_monitor: ZeusMonitor,
     sweep_values: list[float],
     fixed_value: float,
-    sweep_type: str,
+    sweep_type: Literal["cooldown_duration", "measurement_duration"],
     num_trials: int,
-    variance_threshold: float,
-    warmup_iterations: int,
-    iter_duration: float,
+    num_warmup_trials: int,
+    trial_stddev_threshold: float,
+    num_warmup_iterations: int,
+    iteration_duration: float,
 ) -> SweepReport:
-    """Run a parameter sweep and return a [`SweepReport`][zeus.monitor.kernel_profiler.SweepReport]."""
+    """Run a parameter sweep and return a [`SweepReport`][zeus.profile.SweepReport].
+
+    Warmup trials skip cooldown and warmup iterations and use the maximum
+    measurement duration.
+    """
     is_cooldown_sweep = sweep_type == "cooldown_duration"
-    show_progress = _is_rank_zero()
+
+    if num_warmup_trials > 0:
+        warmup_cooldown = 0.0
+        warmup_measure = fixed_value if is_cooldown_sweep else max(sweep_values)
+        warmup_warmup_iterations = 0
+        if _is_rank_zero():
+            logger.info("Running %d warmup trial(s)", num_warmup_trials)
+        for i in range(num_warmup_trials):
+            _run_trial(
+                target_function=target_function,
+                zeus_monitor=zeus_monitor,
+                cooldown_duration=warmup_cooldown,
+                measurement_duration=warmup_measure,
+                num_warmup_iterations=warmup_warmup_iterations,
+                iteration_duration=iteration_duration,
+            )
+            if _is_rank_zero():
+                logger.info("Warmup trial %d/%d done", i + 1, num_warmup_trials)
 
     entries: list[SweepResult] = []
-    progress_ctx = (
-        Progress(
-            TextColumn("[bold]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeRemainingColumn(),
-        )
-        if show_progress
-        else None
-    )
-    if progress_ctx is not None:
-        progress_ctx.start()
+    for val in sweep_values:
+        cooldown_dur = val if is_cooldown_sweep else fixed_value
+        measure_dur = fixed_value if is_cooldown_sweep else val
 
-    try:
-        for val in sweep_values:
-            cooldown_dur = val if is_cooldown_sweep else fixed_value
-            measure_dur = fixed_value if is_cooldown_sweep else val
+        if _is_rank_zero():
+            logger.info("Starting %s=%.1f s  [%d trials]", sweep_type, val, num_trials)
 
-            task_id = (
-                progress_ctx.add_task(f"{sweep_type}={val:.1f}s", total=num_trials)
-                if progress_ctx is not None
-                else None
+        trials: list[TrialResult] = []
+        for trial_idx in range(num_trials):
+            trial = _run_trial(
+                target_function=target_function,
+                zeus_monitor=zeus_monitor,
+                cooldown_duration=cooldown_dur,
+                measurement_duration=measure_dur,
+                num_warmup_iterations=num_warmup_iterations,
+                iteration_duration=iteration_duration,
             )
-            trials: list[TrialResult] = []
-            for _ in range(num_trials):
-                trial = _run_trial(
-                    target_function=target_function,
-                    zeus_monitor=zeus_monitor,
-                    cooldown_duration=cooldown_dur,
-                    measurement_duration=measure_dur,
-                    warmup_iterations=warmup_iterations,
-                    iter_duration=iter_duration,
-                )
-                trials.append(trial)
-                if progress_ctx is not None and task_id is not None:
-                    progress_ctx.advance(task_id)
+            trials.append(trial)
+            if _is_rank_zero():
+                logger.info("Trial %d/%d done", trial_idx + 1, num_trials)
 
-            entry = _build_sweep_result(measure_dur, cooldown_dur, trials, variance_threshold)
-            entries.append(entry)
-    finally:
-        if progress_ctx is not None:
-            progress_ctx.stop()
+        entry = _build_sweep_result(measure_dur, cooldown_dur, trials, trial_stddev_threshold)
+        entries.append(entry)
 
     swept_name = "cooldown_duration" if is_cooldown_sweep else "measurement_duration"
     fixed_name = "measurement_duration" if is_cooldown_sweep else "cooldown_duration"
@@ -324,117 +352,126 @@ def _sweep(
 
 
 def profile_measurement_duration(
-    target_function: Callable[..., Any],
+    target_function: Callable[[], Any],
     zeus_monitor: ZeusMonitor,
     measurement_duration_search_range: list[float] | None = None,
-    fixed_cooldown_duration: float = 10.0,
+    cooldown_duration: float = 10.0,
     num_trials: int = 10,
-    variance_threshold: float = 0.01,
-    warmup_iterations: int = 10,
-    calibration_iterations: int = 100,
-    iter_duration: float | None = None,
+    num_warmup_trials: int = 2,
+    trial_stddev_threshold: float = 0.01,
+    num_warmup_iterations: int = 10,
+    num_calibration_iterations: int = 100,
+    iteration_duration: float | None = None,
 ) -> SweepReport:
-    """Sweep measurement durations and return a [`SweepReport`][zeus.monitor.kernel_profiler.SweepReport].
+    """Sweep measurement durations and return a [`SweepReport`][zeus.profile.SweepReport].
 
     Args:
         target_function: Callable to profile (invoked with no arguments).
         zeus_monitor: [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] instance.
         measurement_duration_search_range: Durations (seconds) to sweep.
             Defaults to `[1.0, 2.0, ..., 10.0]`.
-        fixed_cooldown_duration: Cooldown held constant during the sweep.
+        cooldown_duration: Cooldown held constant during the sweep.
         num_trials: Repeated trials per sweep point.
-        variance_threshold: Maximum acceptable `energy_std` (Joules) for a
+        num_warmup_trials: Number of throwaway trials to run before the sweep
+            to warm up the GPU thermal state.
+        trial_stddev_threshold: Maximum acceptable `energy_std` (Joules) for a
             duration to be considered valid.
-        warmup_iterations: Warm-up iterations before each measurement.
-        calibration_iterations: Iterations used to estimate per-iteration time.
-        iter_duration: Pre-calibrated iteration duration (seconds).  If `None`,
+        num_warmup_iterations: Warm-up iterations before each measurement.
+        num_calibration_iterations: Iterations used to estimate per-iteration time.
+        iteration_duration: Pre-calibrated iteration duration (seconds).  If `None`,
             calibration runs automatically.
     """
-    search_range = measurement_duration_search_range or list(_DEFAULT_SEARCH_RANGE)
-    if iter_duration is None:
-        iter_duration = _calibrate_iter_duration(
-            target_function, zeus_monitor, warmup_iterations, calibration_iterations
+    search_range = measurement_duration_search_range or _DEFAULT_SEARCH_RANGE
+    if iteration_duration is None:
+        iteration_duration = _calibrate_iteration_duration(
+            target_function, zeus_monitor, num_warmup_iterations, num_calibration_iterations
         )
 
     if _is_rank_zero():
-        print(f"=== Sweeping measurement_duration (cooldown fixed at {fixed_cooldown_duration:.1f}s) ===")
+        logger.info("Sweeping measurement_duration (cooldown fixed at %.1f s)", cooldown_duration)
     report = _sweep(
         target_function=target_function,
         zeus_monitor=zeus_monitor,
         sweep_values=search_range,
-        fixed_value=fixed_cooldown_duration,
+        fixed_value=cooldown_duration,
         sweep_type="measurement_duration",
         num_trials=num_trials,
-        variance_threshold=variance_threshold,
-        warmup_iterations=warmup_iterations,
-        iter_duration=iter_duration,
+        trial_stddev_threshold=trial_stddev_threshold,
+        num_warmup_iterations=num_warmup_iterations,
+        iteration_duration=iteration_duration,
+        num_warmup_trials=num_warmup_trials,
     )
     if _is_rank_zero():
-        print(report)
+        logger.info("%s", report)
     return report
 
 
 def profile_cooldown_duration(
-    target_function: Callable[..., Any],
+    target_function: Callable[[], Any],
     zeus_monitor: ZeusMonitor,
     cooldown_duration_search_range: list[float] | None = None,
-    fixed_measurement_duration: float = 10.0,
+    measurement_duration: float = 10.0,
     num_trials: int = 10,
-    variance_threshold: float = 0.01,
-    warmup_iterations: int = 10,
-    calibration_iterations: int = 100,
-    iter_duration: float | None = None,
+    num_warmup_trials: int = 2,
+    trial_stddev_threshold: float = 0.01,
+    num_warmup_iterations: int = 10,
+    num_calibration_iterations: int = 100,
+    iteration_duration: float | None = None,
 ) -> SweepReport:
-    """Sweep cooldown durations and return a [`SweepReport`][zeus.monitor.kernel_profiler.SweepReport].
+    """Sweep cooldown durations and return a [`SweepReport`][zeus.profile.SweepReport].
 
     Args:
         target_function: Callable to profile (invoked with no arguments).
         zeus_monitor: [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] instance.
         cooldown_duration_search_range: Durations (seconds) to sweep.
             Defaults to `[1.0, 2.0, ..., 10.0]`.
-        fixed_measurement_duration: Measurement duration held constant during
+        measurement_duration: Measurement duration held constant during
             the sweep.
         num_trials: Repeated trials per sweep point.
-        variance_threshold: Maximum acceptable `energy_std` (Joules) for a
+        num_warmup_trials: Number of throwaway trials to run before the sweep
+            to warm up the GPU thermal state.
+        trial_stddev_threshold: Maximum acceptable `energy_std` (Joules) for a
             duration to be considered valid.
-        warmup_iterations: Warm-up iterations before each measurement.
-        calibration_iterations: Iterations used to estimate per-iteration time.
-        iter_duration: Pre-calibrated iteration duration (seconds).  If `None`,
+        num_warmup_iterations: Warm-up iterations before each measurement.
+        num_calibration_iterations: Iterations used to estimate per-iteration time.
+        iteration_duration: Pre-calibrated iteration duration (seconds).  If `None`,
             calibration runs automatically.
     """
-    search_range = cooldown_duration_search_range or list(_DEFAULT_SEARCH_RANGE)
-    if iter_duration is None:
-        iter_duration = _calibrate_iter_duration(
-            target_function, zeus_monitor, warmup_iterations, calibration_iterations
+    search_range = cooldown_duration_search_range or _DEFAULT_SEARCH_RANGE
+    if iteration_duration is None:
+        iteration_duration = _calibrate_iteration_duration(
+            target_function, zeus_monitor, num_warmup_iterations, num_calibration_iterations
         )
 
     if _is_rank_zero():
-        print(f"=== Sweeping cooldown_duration (measurement fixed at {fixed_measurement_duration:.1f}s) ===")
+        logger.info("Sweeping cooldown_duration (measurement fixed at %.1f s)", measurement_duration)
     report = _sweep(
         target_function=target_function,
         zeus_monitor=zeus_monitor,
         sweep_values=search_range,
-        fixed_value=fixed_measurement_duration,
+        fixed_value=measurement_duration,
         sweep_type="cooldown_duration",
         num_trials=num_trials,
-        variance_threshold=variance_threshold,
-        warmup_iterations=warmup_iterations,
-        iter_duration=iter_duration,
+        trial_stddev_threshold=trial_stddev_threshold,
+        num_warmup_iterations=num_warmup_iterations,
+        iteration_duration=iteration_duration,
+        num_warmup_trials=num_warmup_trials,
     )
     if _is_rank_zero():
-        print(report)
+        logger.info("%s", report)
     return report
 
 
 def profile_parameters(
-    target_function: Callable[..., Any],
+    target_function: Callable[[], Any],
     zeus_monitor: ZeusMonitor,
     measurement_duration_search_range: list[float] | None = None,
     cooldown_duration_search_range: list[float] | None = None,
     num_trials: int = 10,
-    variance_threshold: float = 0.01,
-    warmup_iterations: int = 10,
-    calibration_iterations: int = 100,
+    num_warmup_trials: int = 2,
+    trial_stddev_threshold: float = 0.01,
+    num_warmup_iterations: int = 10,
+    num_calibration_iterations: int = 100,
 ) -> tuple[SweepReport, SweepReport]:
     """Auto-profile both measurement and cooldown durations.
 
@@ -445,6 +482,8 @@ def profile_parameters(
     2. **Cooldown duration sweep** -- measurement duration is fixed at the
        *maximum* of `measurement_duration_search_range`.
 
+    Warmup trials are run once before the first sweep only.
+
     Args:
         target_function: Callable to profile (invoked with no arguments).
         zeus_monitor: [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] instance.
@@ -453,52 +492,57 @@ def profile_parameters(
         cooldown_duration_search_range: Durations (seconds) to sweep.
             Defaults to `[1.0, 2.0, ..., 10.0]`.
         num_trials: Repeated trials per sweep point.
-        variance_threshold: Maximum acceptable `energy_std` (Joules) for a
+        num_warmup_trials: Number of throwaway trials to run before the first
+            sweep to warm up the GPU thermal state.
+        trial_stddev_threshold: Maximum acceptable `energy_std` (Joules) for a
             duration to be considered valid.
-        warmup_iterations: Warm-up iterations before each measurement.
-        calibration_iterations: Iterations used to estimate per-iteration time.
+        num_warmup_iterations: Warm-up iterations before each measurement.
+        num_calibration_iterations: Iterations used to estimate per-iteration time.
 
     Returns:
         `(measurement_sweep_report, cooldown_sweep_report)`
     """
-    m_range = measurement_duration_search_range or list(_DEFAULT_SEARCH_RANGE)
-    c_range = cooldown_duration_search_range or list(_DEFAULT_SEARCH_RANGE)
+    m_range = measurement_duration_search_range or _DEFAULT_SEARCH_RANGE
+    c_range = cooldown_duration_search_range or _DEFAULT_SEARCH_RANGE
 
-    iter_dur = _calibrate_iter_duration(target_function, zeus_monitor, warmup_iterations, calibration_iterations)
+    iteration_duration = _calibrate_iteration_duration(
+        target_function, zeus_monitor, num_warmup_iterations, num_calibration_iterations
+    )
 
     measurement_report = profile_measurement_duration(
         target_function=target_function,
         zeus_monitor=zeus_monitor,
         measurement_duration_search_range=m_range,
-        fixed_cooldown_duration=max(c_range),
+        cooldown_duration=max(c_range),
         num_trials=num_trials,
-        variance_threshold=variance_threshold,
-        warmup_iterations=warmup_iterations,
-        iter_duration=iter_dur,
+        trial_stddev_threshold=trial_stddev_threshold,
+        num_warmup_iterations=num_warmup_iterations,
+        iteration_duration=iteration_duration,
+        num_warmup_trials=num_warmup_trials,
     )
 
     cooldown_report = profile_cooldown_duration(
         target_function=target_function,
         zeus_monitor=zeus_monitor,
         cooldown_duration_search_range=c_range,
-        fixed_measurement_duration=max(m_range),
+        measurement_duration=max(m_range),
         num_trials=num_trials,
-        variance_threshold=variance_threshold,
-        warmup_iterations=warmup_iterations,
-        iter_duration=iter_dur,
+        trial_stddev_threshold=trial_stddev_threshold,
+        num_warmup_iterations=num_warmup_iterations,
+        iteration_duration=iteration_duration,
+        num_warmup_trials=0,
     )
 
     return measurement_report, cooldown_report
 
 
 def measure(
-    target_function: Callable[..., Any],
+    target_function: Callable[[], Any],
     zeus_monitor: ZeusMonitor,
     measurement_duration: float,
     cooldown_duration: float,
-    warmup_iterations: int = 10,
-    calibration_iterations: int = 100,
-    iter_duration: float | None = None,
+    num_warmup_iterations: int = 10,
+    num_calibration_iterations: int = 100,
 ) -> TrialResult:
     """Run a single energy measurement trial.
 
@@ -507,22 +551,18 @@ def measure(
         zeus_monitor: [`ZeusMonitor`][zeus.monitor.energy.ZeusMonitor] instance.
         measurement_duration: Target measurement window length (seconds).
         cooldown_duration: Idle time before the measurement (seconds).
-        warmup_iterations: Warm-up iterations before the measurement.
-        calibration_iterations: Iterations used to estimate per-iteration time
-            (only used when `iter_duration` is `None`).
-        iter_duration: Iteration duration of target_function (seconds).  If `None`,
-            calibration runs automatically.
+        num_warmup_iterations: Warm-up iterations before the measurement.
+        num_calibration_iterations: Iterations used to estimate per-iteration time.
     """
-    if iter_duration is None:
-        iter_duration = _calibrate_iter_duration(
-            target_function, zeus_monitor, warmup_iterations, calibration_iterations
-        )
+    iteration_duration = _calibrate_iteration_duration(
+        target_function, zeus_monitor, num_warmup_iterations, num_calibration_iterations
+    )
 
     return _run_trial(
         target_function=target_function,
         zeus_monitor=zeus_monitor,
         cooldown_duration=cooldown_duration,
         measurement_duration=measurement_duration,
-        warmup_iterations=warmup_iterations,
-        iter_duration=iter_duration,
+        num_warmup_iterations=num_warmup_iterations,
+        iteration_duration=iteration_duration,
     )

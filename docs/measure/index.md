@@ -431,6 +431,22 @@ Total energy (J):
 {'GPU0': 198.52566362297537, 'GPU1': 206.22215216255188, 'GPU2': 201.08565518283845, 'GPU3': 201.79834523367884}
 ```
 
+## Thermally Stable Energy Profiling
+
+GPU thermal state affects energy measurements.
+The [`zeus.profile`][zeus.profile] module provides functions that automatically determine the right **measurement duration** and **cooldown duration** to yield stable, low-variance energy readings.
+
+See our blog post for the full methodology, evaluation and example usage:
+[Thermally Stable Profiling for Accurate GPU Energy Measurement](https://ml.energy/blog/energy/measurement/thermally-stable-profiling-for-accurate-gpu-energy-measurement/).
+
+Four functions are exposed:
+
+- [`profile_parameters`][zeus.profile.profile_parameters] -- Auto-profile both measurement and cooldown durations.
+- [`profile_measurement_duration`][zeus.profile.profile_measurement_duration] -- Sweep measurement durations with a fixed cooldown.
+- [`profile_cooldown_duration`][zeus.profile.profile_cooldown_duration] -- Sweep cooldown durations with a fixed measurement duration.
+- [`measure`][zeus.profile.measure] -- Measure energy once with known measurement and cooldown durations.
+
+
 ## Troubleshooting
 
 ### Repeated execution of the main script module after using Zeus monitors
