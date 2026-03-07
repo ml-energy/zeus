@@ -170,3 +170,29 @@ def is_distributed() -> bool:
         jax = MODULE_CACHE["jax"]
         return jax.device_count() > 1
     raise RuntimeError("No framework is available.")
+
+
+def get_rank() -> int:
+    """Return the rank of the current process, or 0 if not distributed."""
+    if torch_is_available(ensure_cuda=False):
+        torch = MODULE_CACHE["torch"]
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return torch.distributed.get_rank()
+        return 0
+    if jax_is_available():
+        jax = MODULE_CACHE["jax"]
+        return jax.process_index()
+    return 0
+
+
+def get_world_size() -> int:
+    """Return the number of processes, or 1 if not distributed."""
+    if torch_is_available(ensure_cuda=False):
+        torch = MODULE_CACHE["torch"]
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            return torch.distributed.get_world_size()
+        return 1
+    if jax_is_available():
+        jax = MODULE_CACHE["jax"]
+        return jax.process_count()
+    return 1

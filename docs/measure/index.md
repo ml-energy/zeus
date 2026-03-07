@@ -153,6 +153,22 @@ Unless `cpu_indices` is set to `[]`, the client probes the zeusd one-shot CPU po
 Call `stop()` when done to cleanly shut down background threads.
 zeusd uses demand-driven polling -- power is only read from the hardware while at least one client is connected, so idle endpoints consume no resources.
 
+## Thermally Stable Energy Profiling
+
+[`ZeusMonitor`][zeus.monitor.ZeusMonitor] works well for general energy measurement.
+However, if you want to compare energy for workloads consisting of only one or a few GPU kernels, the energy profiling requires more care.
+The [`zeus.profile`][zeus.profile] module builds on top of [`ZeusMonitor`][zeus.monitor.ZeusMonitor] and automatically determines the right **measurement duration** and **cooldown duration** to yield stable, low-variance energy readings.
+
+See our blog post for the full methodology, evaluation, and example usage:
+[Thermally Stable Profiling for Accurate GPU Energy Measurement](https://ml.energy/blog/energy/measurement/thermally-stable-profiling-for-accurate-gpu-energy-measurement/).
+
+Four functions are exposed:
+
+- [`profile_parameters`][zeus.profile.profile_parameters] -- Auto-profile both measurement and cooldown durations.
+- [`profile_measurement_duration`][zeus.profile.profile_measurement_duration] -- Sweep measurement durations with a fixed cooldown.
+- [`profile_cooldown_duration`][zeus.profile.profile_cooldown_duration] -- Sweep cooldown durations with a fixed measurement duration.
+- [`measure`][zeus.profile.measure] -- Measure energy once with known measurement and cooldown durations.
+
 ## Hardware Support
 
 For GPUs, we currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.1 or later).

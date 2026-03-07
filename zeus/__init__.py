@@ -7,6 +7,7 @@
 - [`callback`][zeus.callback]: Callback definition
 - [`exception`][zeus.exception]: Base exception class definition
 - [`metric`][zeus.metric]: Tools for defining and tracking power and energy-related metrics
+- [`profile`][zeus.profile]: Thermally stable energy profiling for GPU workloads
 - [`show_env`][zeus.show_env]: Command line tool for install verification and device detection
 - [`_legacy`][zeus._legacy.policy]: Legacy code mostly to keep our papers reproducible
 """
