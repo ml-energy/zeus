@@ -8,6 +8,7 @@ from dataclasses import dataclass, asdict, fields
 from functools import lru_cache
 
 from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
+from zeus.device.common import deprecated_alias
 
 try:
     import zeus_apple_silicon  # type: ignore
@@ -102,6 +103,7 @@ class AppleSiliconMeasurement(SoCMeasurement):
 
         return result
 
+    @deprecated_alias("zeroAllFields")
     def zero_all_fields(self) -> None:
         """Set the value of all fields in the measurement object to zero."""
         for field in fields(self):
