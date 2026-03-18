@@ -102,6 +102,7 @@ pydocstyle.convention = "google"
 "zeus/device/gpu/*.py" = ["N802", "N803"]
 "zeus/device/cpu/*.py" = ["N802"]
 "zeus/device/soc/*.py" = ["N802"]
+"zeus/device/common.py" = ["N804"]
 "zeus/utils/testing.py" = ["N802"]
 
 [tool.pytest.ini_options]
