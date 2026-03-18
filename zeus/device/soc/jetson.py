@@ -213,7 +213,9 @@ class Jetson(SoC):
             if "power" in metrics:
                 power_measurement[rail] = DirectPower(metrics["power"])  # ty: ignore[invalid-key]
             elif "volt" in metrics and "curr" in metrics:
-                power_measurement[rail] = VoltageCurrentProduct(metrics["volt"], metrics["curr"])  # ty: ignore[invalid-key]
+                power_measurement[rail] = VoltageCurrentProduct(
+                    metrics["volt"], metrics["curr"]
+                )  # ty: ignore[invalid-key]
             # Else, skip the rail due to insufficient metrics for power
         return power_measurement
 

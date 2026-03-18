@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import pytest
+from dataclasses import dataclass
 
 from zeus.device.common import DeprecatedAliasABCMeta, deprecated_alias
 
@@ -34,6 +35,27 @@ class MockDevice(MockDeviceBase):
 
     def set_value(self, value: int) -> None:
         self.value = value
+
+
+@dataclass
+class MockDataclassBase(abc.ABC, metaclass=DeprecatedAliasABCMeta):
+    @deprecated_alias("zeroAllFields")
+    @abc.abstractmethod
+    def zero_all_fields(self) -> None: ...
+
+
+@dataclass
+class MockDataclass(MockDataclassBase):
+    value: int = 0
+
+    def zero_all_fields(self) -> None:
+        self.value = 0
+
+
+def test_dataclass_subclass_is_instantiable():
+    obj = MockDataclass(value=42)
+    obj.zero_all_fields()
+    assert obj.value == 0
 
 
 def test_method_calls():

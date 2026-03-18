@@ -128,6 +128,11 @@ def _make_deprecated_method(new_method: Callable, old_name: str, new_name: str) 
     if hasattr(deprecated_method, "_deprecated_alias"):
         delattr(deprecated_method, "_deprecated_alias")
 
+    # Since subclasses won't explicitly have an implementation for the deprecated
+    # function, we remove this attribute.
+    if hasattr(deprecated_method, "__isabstractmethod__"):
+        delattr(deprecated_method, "__isabstractmethod__")
+
     return deprecated_method
 
 
