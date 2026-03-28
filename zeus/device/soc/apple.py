@@ -175,11 +175,17 @@ class AppleSilicon(SoC):
         result = self._monitor.get_cumulative_energy()
         return AppleSiliconMeasurement.from_metrics(result)
 
-    def begin_window(self, key) -> None:
-        """Begin a measurement interval labeled with `key`."""
-        self._monitor.begin_window(key)
+    def begin_window(self, key: str, restart: bool = False) -> None:
+        """Begin a measurement interval labeled with `key`.
 
-    def end_window(self, key) -> AppleSiliconMeasurement:
+        Args:
+            key: Unique name of the measurement window.
+            restart: If True and the window already exists, cancel the existing
+                window and start a new one.
+        """
+        self._monitor.begin_window(key, restart=restart)
+
+    def end_window(self, key: str) -> AppleSiliconMeasurement:
         """End a measurement window and return the energy consumption. Units: mJ."""
         result = self._monitor.end_window(key)
         return AppleSiliconMeasurement.from_metrics(result)

@@ -268,7 +268,7 @@ class ZeusMonitor:
         power_measurement_time = time() - power_measurement_start_time
         return power, power_measurement_time
 
-    def begin_window(self, key: str, sync_execution: bool = True) -> None:
+    def begin_window(self, key: str, sync_execution: bool = True, restart: bool = False) -> None:
         """Begin a new measurement window.
 
         Args:
@@ -278,10 +278,17 @@ class ZeusMonitor:
                 and JAX will run GPU computations asynchronously, and waiting them to
                 finish is necessary to ensure that the measurement window captures all
                 and only the computations dispatched within the window.
+            restart: If True and the window already exists, cancel the existing window
+                and start a new one. This is useful in interactive environments like
+                Jupyter notebooks where a cell may crash between `begin_window` and
+                `end_window`, leaving the window in a stale state.
         """
-        # Make sure the key is unique.
+        # Handle an existing window with the same key.
         if key in self.measurement_states:
-            raise ValueError(f"Measurement window '{key}' already exists")
+            if not restart:
+                raise ValueError(f"Measurement window '{key}' already exists")
+            self.measurement_states.pop(key)
+            logger.info("Measurement window '%s' restarted.", key)
 
         # Synchronize execution (e.g., cudaSynchronize) to freeze at the right time.
         if sync_execution and self.gpu_indices:
@@ -306,7 +313,7 @@ class ZeusMonitor:
                 dram_energy_state[cpu_index] = cpu_measurement.dram_mj
 
         if self.soc_is_present:
-            self.soc.begin_window(key)
+            self.soc.begin_window(key, restart=restart)
 
         # Add measurement state to dictionary.
         self.measurement_states[key] = MeasurementState(
