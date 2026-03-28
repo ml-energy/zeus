@@ -6,6 +6,7 @@ import typing
 from typing import Generator, Iterable
 from unittest.mock import call
 
+import pynvml
 import pytest
 import pandas as pd
 
@@ -117,8 +118,13 @@ def test_power_limit_optimizer(
     tmp_path: Path,
 ):
     # Mock PyNVML.
+    mocker.patch("zeus.device.gpu.nvml_is_available", return_value=True)
     pynvml_mock = mocker.patch("zeus.device.gpu.nvidia.pynvml", autospec=True)
+    num_gpus = len(replay_log.gpu_indices)
+    pynvml_mock.nvmlDeviceGetCount.return_value = num_gpus
     pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda i: f"handle{i}"
+    pynvml_mock.nvmlDeviceGetArchitecture.return_value = pynvml.NVML_DEVICE_ARCH_VOLTA
+    pynvml_mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
     pynvml_mock.nvmlDeviceGetPowerManagementLimitConstraints.side_effect = lambda _: (
         min(replay_log.power_limits) * 1000,
         max(replay_log.power_limits) * 1000,

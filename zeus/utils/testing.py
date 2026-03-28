@@ -72,7 +72,7 @@ class ReplayZeusMonitor(ZeusMonitor):
         # Keep track of ongoing measurement windows.
         self.ongoing_windows = []
 
-    def begin_window(self, key: str, sync_execution: bool = True) -> None:
+    def begin_window(self, key: str, sync_execution: bool = True, restart: bool = False) -> None:
         """Begin a new window.
 
         This method just pushes the key into a list of ongoing measurement windows,
@@ -82,9 +82,13 @@ class ReplayZeusMonitor(ZeusMonitor):
             key: Name of the measurement window.
             sync_execution: Whether to synchronize CUDA before starting the measurement window.
                 (Default: `True`)
+            restart: If True and the window already exists, cancel the existing window
+                and start a new one.
         """
         if key in self.ongoing_windows:
-            raise RuntimeError(f"Window {key} is already ongoing.")
+            if not restart:
+                raise RuntimeError(f"Window {key} is already ongoing.")
+            self.ongoing_windows.remove(key)
         self.ongoing_windows.append(key)
 
         if not self.ignore_sync_execution and sync_execution:

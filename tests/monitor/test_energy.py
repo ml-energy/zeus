@@ -10,8 +10,6 @@ import pytest
 
 from zeus.monitor import Measurement, ZeusMonitor
 from zeus.utils.testing import ReplayZeusMonitor
-import zeus.device.gpu
-import zeus.device.cpu
 from zeus.device.cpu.common import CpuDramMeasurement, CPUs, CPU
 
 if TYPE_CHECKING:
@@ -64,13 +62,6 @@ class MockCPUs(CPUs):
     def __del__(self) -> None:
         """Shuts down the Mock CPU monitoring."""
         return
-
-
-@pytest.fixture(autouse=True, scope="function")
-def reset_gpus_and_cpus() -> None:
-    """Reset the global variable `_gpus` and `_cpus` to None on every test."""
-    zeus.device.gpu._gpus = None
-    zeus.device.cpu._cpus = None
 
 
 @pytest.fixture
@@ -468,3 +459,46 @@ def test_monitor(pynvml_mock, mock_gpus, mocker: MockerFixture, tmp_path: Path):
         test_measurement = monitor.end_window("window0", sync_execution=False)
 
     assert all(value == 0.0 for value in test_measurement.gpu_energy.values())
+
+
+def test_begin_window_restart(pynvml_mock, mocker: MockerFixture):
+    """Test that begin_window with restart=True cancels and restarts an existing window."""
+    # Set up a single Volta GPU.
+    pynvml_mock.nvmlDeviceGetCount.return_value = 1
+    pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda index: f"handle{index}"
+    pynvml_mock.nvmlDeviceGetArchitecture.return_value = pynvml.NVML_DEVICE_ARCH_VOLTA
+
+    energy_counter = itertools.count(start=1000, step=3)
+    pynvml_mock.nvmlDeviceGetTotalEnergyConsumption.side_effect = lambda handle: next(energy_counter)
+
+    time_counter = itertools.count(start=0, step=1)
+    mocker.patch("zeus.monitor.energy.time", side_effect=time_counter)
+    mocker.patch("zeus.device.gpu.nvml_is_available", return_value=True)
+    mocker.patch("zeus.device.cpu._cpus", new=MockCPUs())
+
+    monitor = ZeusMonitor(gpu_indices=[0], cpu_indices=[])
+
+    # Start a window.
+    monitor.begin_window("w", sync_execution=False)
+    assert "w" in monitor.measurement_states
+
+    # restart=False (default) should raise.
+    with pytest.raises(ValueError, match="already exists"):
+        monitor.begin_window("w", sync_execution=False)
+
+    # restart=True should succeed and replace the stale state.
+    old_state = monitor.measurement_states["w"]
+    monitor.begin_window("w", sync_execution=False, restart=True)
+    new_state = monitor.measurement_states["w"]
+    assert new_state is not old_state
+    assert new_state.time > old_state.time
+
+    # The restarted window can be ended normally.
+    measurement = monitor.end_window("w", sync_execution=False)
+    assert measurement.time > 0
+    assert "w" not in monitor.measurement_states
+
+    # restart=True on a non-existent window should just start it normally.
+    monitor.begin_window("w2", sync_execution=False, restart=True)
+    assert "w2" in monitor.measurement_states
+    monitor.end_window("w2", sync_execution=False)

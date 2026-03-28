@@ -131,7 +131,7 @@ class Jetson(SoC):
         if not jetson_is_available():
             raise ZeusJetsonInitError("No Jetson processor was detected on the current device.")
 
-        super().__init__()
+        self.measurement_states: dict[str, JetsonMeasurement] = {}
 
         # Maps each power rail (cpu, gpu, and total) to a power measurement strategy
         self.power_measurement = self._discover_available_metrics()
@@ -244,6 +244,31 @@ class Jetson(SoC):
         """
         self.command_queue.put(Command.READ)
         return self.result_queue.get(timeout=timeout)
+
+    def begin_window(self, key: str, restart: bool = False) -> None:
+        """Begin a measurement interval labeled with `key`.
+
+        Args:
+            key: Unique name of the measurement window.
+            restart: If True and the window already exists, cancel the existing
+                window and start a new one.
+        """
+        if key in self.measurement_states:
+            if not restart:
+                raise KeyError(f"Measurement window '{key}' already exists")
+            self.measurement_states.pop(key)
+
+        self.measurement_states[key] = self.get_total_energy_consumption()
+
+    def end_window(self, key: str) -> JetsonMeasurement:
+        """End a measurement window and return the energy consumption. Units: mJ."""
+        try:
+            start_cumulative = self.measurement_states.pop(key)
+        except KeyError:
+            raise KeyError(f"Measurement window '{key}' does not exist") from None
+
+        end_cumulative = self.get_total_energy_consumption()
+        return end_cumulative - start_cumulative
 
 
 class Command(enum.Enum):
