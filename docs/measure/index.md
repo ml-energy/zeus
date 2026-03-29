@@ -222,21 +222,39 @@ mes = monitor.end_window("epoch")
 apple_energy_metrics = mes.soc_energy
 ```
 
-For Apple Silicon, the `soc_energy` field will include metrics for:
+No sudo is required.
 
-- On-chip CPU (`cpu_total_mj`)
-- Every efficiency core (`efficiency_cores_mj`)
-- Every performance core (`performance_cores_mj`)
-- Efficiency core manager (`efficiency_core_manager_mj`)
-- Performance core manager (`performance_core_manager_mj`)
-- DRAM (`dram_mj`)
-- On-chip GPU (`gpu_mj`)
-- GPU SRAM (`gpu_sram_mj`)
-- Apple Neural Engine (ANE) (`ane_mj`)
+#### How it works
 
-Note that units are in mJ.
+Apple Silicon energy monitoring uses Apple's **IOReport** framework, a private (undocumented) macOS framework that provides hardware telemetry.
+Zeus subscribes to the "Energy Model" channel group, which contains cumulative energy counters for various SoC subsystems.
 
-Some metrics may be unavailable for monitoring depending on the specific processor (e.g., DRAM is sometimes unavailable on M1 macs). If a certain subsystem's energy could not be measured, its entry in the result object will simply hold `None`.
+IOReport energy values are believed to be model-based estimates derived from utilization, frequency, and voltage, rather than direct power sensor readings.
+Resolution is 1 mJ for most subsystems.
+
+#### Available metrics
+
+The `soc_energy` field is an [`AppleSiliconMeasurement`][zeus.device.soc.apple.AppleSiliconMeasurement] object. All values are in **millijoules (mJ)**. Unavailable fields will be `None`.
+
+| Field | Description |
+|---|---|
+| `cpu_total_mj` | Total CPU energy. |
+| `efficiency_cores_mj` | Per-core energy for each efficiency core (list). |
+| `performance_cores_mj` | Per-core energy for each performance core (list). |
+| `efficiency_cluster_mj` | Per-cluster total for efficiency core clusters (list). Includes shared resources like L2 cache. |
+| `performance_cluster_mj` | Per-cluster total for performance core clusters (list). Includes shared resources like L2 cache. |
+| `efficiency_core_manager_mj` | Efficiency core cluster manager energy. |
+| `performance_core_manager_mj` | Performance core cluster manager energy. |
+| `dram_mj` | DRAM energy. |
+| `gpu_mj` | On-chip GPU energy. |
+| `gpu_sram_mj` | GPU SRAM energy. |
+| `ane_mj` | Apple Neural Engine energy. |
+
+!!! Tip "Cluster totals vs. per-core sums"
+    Cluster totals are more representative of actual energy consumption than per-core sums because they include shared resources (L2 cache, interconnect). On the M5 Max, cluster totals are 1.5x to 2x the per-core sum. Some chips have multiple clusters of the same type (e.g., M1 Max has two P-core clusters), in which case the list will have one entry per cluster.
+
+!!! Note "M5 core types"
+    The M5 family introduces a new "Performance" core type alongside "Super" and "Efficiency" cores, but no single chip has all three. The base M5 has Super + Efficiency cores, while the M5 Pro/Max replace Efficiency cores with Performance cores (Super + Performance). See [Apple M5 on Wikipedia](https://en.wikipedia.org/wiki/Apple_M5){.external} for details. Zeus maps the lower-power tier to `efficiency_*` fields and the higher-power tier to `performance_*` fields regardless of Apple's naming.
 
 ### Jetson Platforms
 

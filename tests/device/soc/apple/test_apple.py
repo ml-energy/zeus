@@ -42,6 +42,8 @@ def test_total_energy(mock_monitor):
         cpu_total_mj=123,
         efficiency_cores_mj=[1, 2, 3],
         performance_cores_mj=[11, 22, 33],
+        efficiency_cluster_mj=[100, 200],
+        performance_cluster_mj=[500],
         efficiency_core_manager_mj=123,
         performance_core_manager_mj=123,
         dram_mj=123,
@@ -61,6 +63,8 @@ def test_total_energy(mock_monitor):
         "cpu_total_mj": 123,
         "efficiency_cores_mj": [1, 2, 3],
         "performance_cores_mj": [11, 22, 33],
+        "efficiency_cluster_mj": [100, 200],
+        "performance_cluster_mj": [500],
         "efficiency_core_manager_mj": 123,
         "performance_core_manager_mj": 123,
         "dram_mj": 123,
@@ -80,6 +84,8 @@ def test_interval_energy(mock_monitor):
         cpu_total_mj=100,
         efficiency_cores_mj=[100, 100, 100],
         performance_cores_mj=[220, 220, 220],
+        efficiency_cluster_mj=[400],
+        performance_cluster_mj=[700],
         efficiency_core_manager_mj=10,
         performance_core_manager_mj=20,
         dram_mj=None,
@@ -98,6 +104,8 @@ def test_interval_energy(mock_monitor):
         "cpu_total_mj": 100,
         "efficiency_cores_mj": [100, 100, 100],
         "performance_cores_mj": [220, 220, 220],
+        "efficiency_cluster_mj": [400],
+        "performance_cluster_mj": [700],
         "efficiency_core_manager_mj": 10,
         "performance_core_manager_mj": 20,
         "dram_mj": None,
@@ -117,6 +125,8 @@ def test_overlapping_interval_energy(mock_monitor):
         cpu_total_mj=100,
         efficiency_cores_mj=[100, 100, 100],
         performance_cores_mj=[220, 220, 220],
+        efficiency_cluster_mj=None,
+        performance_cluster_mj=None,
         efficiency_core_manager_mj=10,
         performance_core_manager_mj=20,
         dram_mj=None,
@@ -136,6 +146,8 @@ def test_overlapping_interval_energy(mock_monitor):
         "cpu_total_mj": 100,
         "efficiency_cores_mj": [100, 100, 100],
         "performance_cores_mj": [220, 220, 220],
+        "efficiency_cluster_mj": None,
+        "performance_cluster_mj": None,
         "efficiency_core_manager_mj": 10,
         "performance_core_manager_mj": 20,
         "dram_mj": None,
@@ -150,6 +162,8 @@ def test_overlapping_interval_energy(mock_monitor):
         cpu_total_mj=200,
         efficiency_cores_mj=[200, 100, 100],
         performance_cores_mj=[220, 220, 220],
+        efficiency_cluster_mj=None,
+        performance_cluster_mj=None,
         efficiency_core_manager_mj=10,
         performance_core_manager_mj=20,
         dram_mj=None,
@@ -165,6 +179,8 @@ def test_overlapping_interval_energy(mock_monitor):
         "cpu_total_mj": 200,
         "efficiency_cores_mj": [200, 100, 100],
         "performance_cores_mj": [220, 220, 220],
+        "efficiency_cluster_mj": None,
+        "performance_cluster_mj": None,
         "efficiency_core_manager_mj": 10,
         "performance_core_manager_mj": 20,
         "dram_mj": None,
@@ -183,6 +199,8 @@ def test_available_metrics(mock_monitor):
         cpu_total_mj=100,
         efficiency_cores_mj=[100, 100, 100],
         performance_cores_mj=None,
+        efficiency_cluster_mj=[400],
+        performance_cluster_mj=None,
         efficiency_core_manager_mj=None,
         performance_core_manager_mj=20,
         dram_mj=None,
@@ -197,6 +215,7 @@ def test_available_metrics(mock_monitor):
     expected = {
         "cpu_total_mj",
         "efficiency_cores_mj",
+        "efficiency_cluster_mj",
         "performance_core_manager_mj",
         "gpu_mj",
     }
@@ -207,12 +226,38 @@ def test_available_metrics(mock_monitor):
 def test_metrics_subtraction(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
-    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 0, 1], 10, 30, 5, None, None, 5)
-    metrics2 = AppleSiliconMeasurement(20, [100, 110, 100], [1, 1, 1], 30, 40, 5, None, None, 10)
+    metrics1 = AppleSiliconMeasurement(
+        cpu_total_mj=10,
+        efficiency_cores_mj=[10, 10, 10],
+        performance_cores_mj=[1, 0, 1],
+        efficiency_cluster_mj=[50],
+        performance_cluster_mj=[20],
+        efficiency_core_manager_mj=10,
+        performance_core_manager_mj=30,
+        dram_mj=5,
+        gpu_mj=None,
+        gpu_sram_mj=None,
+        ane_mj=5,
+    )
+    metrics2 = AppleSiliconMeasurement(
+        cpu_total_mj=20,
+        efficiency_cores_mj=[100, 110, 100],
+        performance_cores_mj=[1, 1, 1],
+        efficiency_cluster_mj=[80],
+        performance_cluster_mj=[30],
+        efficiency_core_manager_mj=30,
+        performance_core_manager_mj=40,
+        dram_mj=5,
+        gpu_mj=None,
+        gpu_sram_mj=None,
+        ane_mj=10,
+    )
     diff = metrics2 - metrics1
     assert diff.cpu_total_mj == 10
     assert diff.efficiency_cores_mj == [90, 100, 90]
     assert diff.performance_cores_mj == [0, 1, 0]
+    assert diff.efficiency_cluster_mj == [30]
+    assert diff.performance_cluster_mj == [10]
     assert diff.efficiency_core_manager_mj == 20
     assert diff.performance_core_manager_mj == 10
     assert diff.dram_mj == 0
@@ -225,26 +270,28 @@ def test_metrics_bad_subtraction(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
     # Differing list lengths
-    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5)
-    metrics2 = AppleSiliconMeasurement(20, [100, 110, 100], [1, 1, 1], 30, 40, 5, None, None, 10)
+    metrics1 = AppleSiliconMeasurement(cpu_total_mj=10, efficiency_cores_mj=[10, 10, 10], performance_cores_mj=[1, 1])
+    metrics2 = AppleSiliconMeasurement(
+        cpu_total_mj=20, efficiency_cores_mj=[100, 110, 100], performance_cores_mj=[1, 1, 1]
+    )
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 
     # Differing field types
-    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5)
-    metrics2 = AppleSiliconMeasurement([20], [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10)
+    metrics1 = AppleSiliconMeasurement(cpu_total_mj=10, efficiency_cores_mj=[10, 10, 10])
+    metrics2 = AppleSiliconMeasurement(cpu_total_mj=[20], efficiency_cores_mj=[100, 110, 100])
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 
     # (None) - (not None)
-    metrics1 = AppleSiliconMeasurement(10, [10, 10, 10], [1, 1], 10, 30, 5, None, None, 5)
-    metrics2 = AppleSiliconMeasurement(None, [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10)
+    metrics1 = AppleSiliconMeasurement(cpu_total_mj=10, ane_mj=5)
+    metrics2 = AppleSiliconMeasurement(cpu_total_mj=None, ane_mj=10)
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 
     # (not None) - (None)
-    metrics1 = AppleSiliconMeasurement(None, [10, 10, 10], [1, 1], 10, 30, 5, None, None, None)
-    metrics2 = AppleSiliconMeasurement(None, [100, 110, 100], [1, 1], 30, 40, 5, None, None, 10)
+    metrics1 = AppleSiliconMeasurement(ane_mj=None)
+    metrics2 = AppleSiliconMeasurement(ane_mj=10)
     with pytest.raises(ValueError):
         diff = metrics2 - metrics1
 
@@ -252,17 +299,31 @@ def test_metrics_bad_subtraction(mock_monitor):
 def test_metrics_zero_out(mock_monitor):
     from zeus.device.soc.apple import AppleSilicon, AppleSiliconMeasurement
 
-    metrics = AppleSiliconMeasurement(10, [10, 10, 10], None, 30, 30, 5, None, None, 5)
+    metrics = AppleSiliconMeasurement(
+        cpu_total_mj=10,
+        efficiency_cores_mj=[10, 10, 10],
+        performance_cores_mj=None,
+        efficiency_cluster_mj=[50, 60],
+        performance_cluster_mj=None,
+        efficiency_core_manager_mj=30,
+        performance_core_manager_mj=30,
+        dram_mj=5,
+        gpu_mj=None,
+        gpu_sram_mj=None,
+        ane_mj=5,
+    )
     metrics.zero_all_fields()
 
     assert metrics.cpu_total_mj == 0
     assert metrics.efficiency_cores_mj == []
-    assert metrics.performance_cores_mj == None
+    assert metrics.performance_cores_mj is None
+    assert metrics.efficiency_cluster_mj == []
+    assert metrics.performance_cluster_mj is None
     assert metrics.efficiency_core_manager_mj == 0
     assert metrics.performance_core_manager_mj == 0
     assert metrics.dram_mj == 0
-    assert metrics.gpu_mj == None
-    assert metrics.gpu_sram_mj == None
+    assert metrics.gpu_mj is None
+    assert metrics.gpu_sram_mj is None
     assert metrics.ane_mj == 0
 
 

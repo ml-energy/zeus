@@ -56,24 +56,37 @@ class ZeusAppleInitError(ZeusSoCInitError):
 class AppleSiliconMeasurement(SoCMeasurement):
     """Represents energy consumption of various subsystems on an Apple processor.
 
-    All measurements are in mJ.
+    All measurements are in mJ. Fields that are unavailable on the current
+    processor will be `None`.
+
+    Attributes:
+        cpu_total_mj: Total energy consumed by all CPU subsystems combined.
+        efficiency_cores_mj: Per-core energy for each efficiency core.
+        performance_cores_mj: Per-core energy for each performance core.
+        efficiency_cluster_mj: Per-cluster energy for efficiency core clusters,
+            including shared resources like L2 cache. More representative of
+            end-to-end energy than the sum of individual cores.
+        performance_cluster_mj: Per-cluster energy for performance core clusters,
+            including shared resources like L2 cache. More representative of
+            end-to-end energy than the sum of individual cores.
+        efficiency_core_manager_mj: Energy for efficiency core cluster management.
+        performance_core_manager_mj: Energy for performance core cluster management.
+        dram_mj: Energy consumed by DRAM.
+        gpu_mj: Energy consumed by the on-chip GPU.
+        gpu_sram_mj: Energy consumed by GPU SRAM.
+        ane_mj: Energy consumed by the Apple Neural Engine.
     """
 
-    # CPU related metrics
     cpu_total_mj: int | None = None
     efficiency_cores_mj: list[int] | None = None
     performance_cores_mj: list[int] | None = None
+    efficiency_cluster_mj: list[int] | None = None
+    performance_cluster_mj: list[int] | None = None
     efficiency_core_manager_mj: int | None = None
     performance_core_manager_mj: int | None = None
-
-    # DRAM
     dram_mj: int | None = None
-
-    # GPU related metrics
     gpu_mj: int | None = None
     gpu_sram_mj: int | None = None
-
-    # ANE (Apple Neural Engine)
     ane_mj: int | None = None
 
     def __sub__(self, other: AppleSiliconMeasurement) -> AppleSiliconMeasurement:
@@ -124,6 +137,8 @@ class AppleSiliconMeasurement(SoCMeasurement):
             cpu_total_mj=metrics.cpu_total_mj,
             efficiency_cores_mj=metrics.efficiency_cores_mj,
             performance_cores_mj=metrics.performance_cores_mj,
+            efficiency_cluster_mj=metrics.efficiency_cluster_mj,
+            performance_cluster_mj=metrics.performance_cluster_mj,
             efficiency_core_manager_mj=metrics.efficiency_core_manager_mj,
             performance_core_manager_mj=metrics.performance_core_manager_mj,
             dram_mj=metrics.dram_mj,
