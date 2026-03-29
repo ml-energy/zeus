@@ -67,7 +67,8 @@ class AppleSiliconMeasurement(SoCMeasurement):
             including shared resources like L2 cache. More representative of
             end-to-end energy than the sum of individual cores.
         performance_cluster_mj: Per-cluster energy for performance core clusters,
-            including shared resources like L2 cache.
+            including shared resources like L2 cache. More representative of
+            end-to-end energy than the sum of individual cores.
         efficiency_core_manager_mj: Energy for efficiency core cluster management.
         performance_core_manager_mj: Energy for performance core cluster management.
         dram_mj: Energy consumed by DRAM.
