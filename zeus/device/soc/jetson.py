@@ -159,13 +159,12 @@ class Jetson(SoC):
         """
         # Some kernels register the driver as "ina3221" (no trailing 'x').
         # Try both names; use the first one that exists.
+        path = Path("/sys/bus/i2c/drivers/ina3221x")
         for driver_name in ("ina3221x", "ina3221"):
             candidate = Path(f"/sys/bus/i2c/drivers/{driver_name}")
             if candidate.exists():
                 path = candidate
                 break
-        else:
-            path = Path("/sys/bus/i2c/drivers/ina3221x")  # fallback, will glob nothing
 
         metric_paths: dict[str, dict[str, Path]] = {}
         power_measurement: DeviceMap = {}
