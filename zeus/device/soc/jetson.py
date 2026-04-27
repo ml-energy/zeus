@@ -157,7 +157,15 @@ class Jetson(SoC):
           - https://docs.nvidia.com/jetson/archives/r35.6.1/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html#software-based-power-consumption-modeling
           - https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html#
         """
-        path = Path("/sys/bus/i2c/drivers/ina3221x")
+        # Some kernels register the driver as "ina3221" (no trailing 'x').
+        # Try both names; use the first one that exists.
+        for driver_name in ("ina3221x", "ina3221"):
+            candidate = Path(f"/sys/bus/i2c/drivers/{driver_name}")
+            if candidate.exists():
+                path = candidate
+                break
+        else:
+            path = Path("/sys/bus/i2c/drivers/ina3221x")  # fallback, will glob nothing
 
         metric_paths: dict[str, dict[str, Path]] = {}
         power_measurement: DeviceMap = {}
@@ -195,18 +203,23 @@ class Jetson(SoC):
 
         for device in path.glob("*"):
             for subdevice in device.glob("*"):
-                # Get the files containing rail names.
-                label_files = subdevice.glob("in*_label")
-                rail_files = subdevice.glob("rail_name_*")
-                # For each rail name, get its respective power, voltage, current paths.
-                for label_file in label_files:
-                    rail_name = label_file.read_text().strip()
-                    rail_index = label_file.name.split("_")[0].lstrip("in")
-                    extract_directories(subdevice, rail_name, rail_index, "label")
-                for rail_file in rail_files:
-                    rail_name = rail_file.read_text().strip()
-                    rail_index = rail_file.name.split("rail_name_", 1)[-1]
-                    extract_directories(subdevice, rail_name, rail_index, "rail_name")
+                # Newer kernels (e.g. L4T 35+) nest hwmon files one level deeper:
+                # device/hwmon/hwmon0/in*_label instead of device/subdev/in*_label.
+                # Scan both the subdevice dir itself and any hwmon* children.
+                scan_dirs = [subdevice] + list(subdevice.glob("hwmon*"))
+                for scan_dir in scan_dirs:
+                    # Get the files containing rail names.
+                    label_files = scan_dir.glob("in*_label")
+                    rail_files = scan_dir.glob("rail_name_*")
+                    # For each rail name, get its respective power, voltage, current paths.
+                    for label_file in label_files:
+                        rail_name = label_file.read_text().strip()
+                        rail_index = label_file.name.split("_")[0].lstrip("in")
+                        extract_directories(scan_dir, rail_name, rail_index, "label")
+                    for rail_file in rail_files:
+                        rail_name = rail_file.read_text().strip()
+                        rail_index = rail_file.name.split("rail_name_", 1)[-1]
+                        extract_directories(scan_dir, rail_name, rail_index, "rail_name")
 
         # Instantiate PowerMeasurementStrategy objects based on available metrics
         for rail, metrics in metric_paths.items():
