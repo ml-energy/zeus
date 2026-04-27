@@ -205,7 +205,9 @@ class Jetson(SoC):
                 # Newer kernels (e.g. L4T 35+) nest hwmon files one level deeper:
                 # device/hwmon/hwmon0/in*_label instead of device/subdev/in*_label.
                 # Scan both the subdevice dir itself and any hwmon* children.
-                scan_dirs = [subdevice] + list(subdevice.glob("hwmon*"))
+                scan_dirs = [subdevice]
+                if subdevice.is_dir():
+                    scan_dirs.extend(subdevice.glob("hwmon*"))
                 for scan_dir in scan_dirs:
                     # Get the files containing rail names.
                     label_files = scan_dir.glob("in*_label")
