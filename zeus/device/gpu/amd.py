@@ -7,6 +7,7 @@ import os
 import contextlib
 import logging
 import time
+from ctypes import c_void_p
 from typing import Sequence
 from functools import lru_cache
 
@@ -64,12 +65,21 @@ def amdsmi_is_available() -> bool:
         )
         return False
     try:
-        amdsmi.amdsmi_init()
+        amdsmi.amdsmi_init(amdsmi.AmdSmiInitFlags.INIT_AMD_GPUS)
         logger.info("amdsmi is available and initialized")
         return True
     except amdsmi.AmdSmiLibraryException as e:
         logger.info("amdsmi is available but could not initialize: %s", e)
         return False
+
+
+@lru_cache(maxsize=1)
+def _hip_to_amdsmi_handle() -> dict[int, c_void_p]:
+    """Map each HIP index to its amdsmi processor handle.
+
+    The mapping is invariant for the life of the process, so it's cached.
+    """
+    return {amdsmi.amdsmi_get_gpu_enumeration_info(h)["hip_id"]: h for h in amdsmi.amdsmi_get_processor_handles()}
 
 
 def _handle_amdsmi_errors(func):
@@ -129,8 +139,7 @@ class AMDGPU(gpu_common.GPU):
         # index spaces differ. Map HIP index -> handle via
         # `amdsmi_get_gpu_enumeration_info`, the same source `amd-smi monitor`
         # uses to print its HIP-ID column.
-        handles = amdsmi.amdsmi_get_processor_handles()
-        hip_to_handle = {amdsmi.amdsmi_get_gpu_enumeration_info(h)["hip_id"]: h for h in handles}
+        hip_to_handle = _hip_to_amdsmi_handle()
         if self.gpu_index not in hip_to_handle:
             raise gpu_common.ZeusGPUNotFoundError(
                 f"GPU with HIP index {self.gpu_index} not found. Found HIP indices: {sorted(hip_to_handle)}."
@@ -433,7 +442,7 @@ class AMDGPUs(gpu_common.GPUs):
             ensure_homogeneous (bool): If True, ensures that all tracked GPUs have the same name.
         """
         try:
-            amdsmi.amdsmi_init()
+            amdsmi.amdsmi_init(amdsmi.AmdSmiInitFlags.INIT_AMD_GPUS)
             self._init_gpus()
             if ensure_homogeneous:
                 self._ensure_homogeneous()
