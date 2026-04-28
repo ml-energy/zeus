@@ -10,7 +10,7 @@ from functools import lru_cache
 from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
 
 try:
-    import zeus_apple_silicon  # type: ignore
+    import zeus_apple_silicon
 
     zeus_apple_available = True
 
@@ -31,7 +31,7 @@ except Exception:
             )
 
     zeus_apple_available = False
-    zeus_apple_silicon = MockZeusAppleSilicon()
+    zeus_apple_silicon = MockZeusAppleSilicon()  # type: ignore[invalid-assignment]
 
 
 @lru_cache(maxsize=1)

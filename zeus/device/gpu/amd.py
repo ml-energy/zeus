@@ -123,12 +123,19 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def _get_handle(self):
+        # `self.gpu_index` is a HIP index (what PyTorch sees), but
+        # `amdsmi_get_processor_handles()` returns handles ordered by amd-smi's
+        # own GPU index (BDF-sorted). On some nodes (e.g., MI350X) these two
+        # index spaces differ. Map HIP index -> handle via
+        # `amdsmi_get_gpu_enumeration_info`, the same source `amd-smi monitor`
+        # uses to print its HIP-ID column.
         handles = amdsmi.amdsmi_get_processor_handles()
-        if len(handles) <= self.gpu_index:
+        hip_to_handle = {amdsmi.amdsmi_get_gpu_enumeration_info(h)["hip_id"]: h for h in handles}
+        if self.gpu_index not in hip_to_handle:
             raise gpu_common.ZeusGPUNotFoundError(
-                f"GPU with index {self.gpu_index} not found. Found {len(handles)} GPUs."
+                f"GPU with HIP index {self.gpu_index} not found. Found HIP indices: {sorted(hip_to_handle)}."
             )
-        self.handle = amdsmi.amdsmi_get_processor_handles()[self.gpu_index]
+        self.handle = hip_to_handle[self.gpu_index]
 
     @_handle_amdsmi_errors
     def get_name(self) -> str:
@@ -370,15 +377,53 @@ class AMDGPUs(gpu_common.GPUs):
     """AMD GPU Manager object, containing individual AMDGPU objects, abstracting amdsmi calls and handling related exceptions.
 
     !!! Important
-        Currently only ROCm >= 6.1 is supported.
+        Currently only ROCm >= 6.2 is supported.
 
-    `HIP_VISIBLE_DEVICES` environment variable is respected if set.
-    For example, if there are 4 GPUs on the node and `HIP_VISIBLE_DEVICES=0,2`,
-    only GPUs 0 and 2 are instantiated. In this case, to access
-    GPU of HIP index 0, use the index 0, and for HIP index 2, use the index 1.
+    ## Index resolution
 
-    When `HIP_VISIBLE_DEVICES` is not set but `CUDA_VISIBLE_DEVICES` is set,
-    `CUDA_VISIBLE_DEVICES` is honored as if it were `HIP_VISIBLE_DEVICES`.
+    AMD systems simultaneously expose several index spaces for the same
+    physical GPU, and they do not all agree:
+
+    - **HIP index** — what the HIP runtime hands out. This is what PyTorch
+      sees as `cuda:N`, what `torch.cuda.current_device()` returns, and what
+      `HIP_VISIBLE_DEVICES` / `CUDA_VISIBLE_DEVICES` refer to.
+    - **amd-smi GPU index** — the slot number `amd-smi` and `rocm-smi` use
+      (ordered by PCI BDF). This is what appears in `amd-smi monitor`'s
+      `GPU` column, what `amdsmi_get_processor_handles()` is ordered by, and
+      what node-local admin scripts like `set_powercap.sh -gpu N` expect.
+    - **OAM-ID** — physical OAM tray position; not used by Zeus but shown
+      by `amd-smi monitor`.
+
+    On most nodes these orderings happen to coincide, but on some (e.g.,
+    MI350X in SPX/NPS1), the HIP runtime enumerates GPUs in a different
+    order than PCI BDF — so HIP index 0 may be amd-smi GPU 3, and so on.
+    Mixing up the two spaces results in silently operating on the wrong
+    physical GPU.
+
+    Zeus sits at the application layer, so **all indices passed to Zeus are
+    HIP indices** (matching PyTorch). Internally, `AMDGPU._get_handle` uses
+    `amdsmi_get_gpu_enumeration_info(handle)["hip_id"]` to translate each
+    HIP index to the correct `amdsmi` processor handle before any query or
+    set — same data source `amd-smi monitor` uses to populate its `HIP-ID`
+    column.
+
+    ## HIP_VISIBLE_DEVICES / CUDA_VISIBLE_DEVICES
+
+    `HIP_VISIBLE_DEVICES` is respected exactly as HIP itself interprets it:
+    a comma-separated list of HIP indices to expose, in order. The remaining
+    GPUs are hidden; the exposed GPUs are re-numbered densely starting at 0
+    within the process (matching what PyTorch shows as `cuda:0`, `cuda:1`, …).
+
+    The index you pass to `AMDGPUs` / `GPUs` methods is this dense,
+    post-masking index — the same one PyTorch uses. Example: on a 4-GPU
+    node with `HIP_VISIBLE_DEVICES=0,2`, Zeus tracks two GPUs, and the
+    call `gpus.get_power_management_limit(1)` hits the physical GPU whose
+    HIP index (as seen by the driver before masking) was 2, i.e.,
+    PyTorch's `cuda:1`.
+
+    When `HIP_VISIBLE_DEVICES` is not set but `CUDA_VISIBLE_DEVICES` is,
+    Zeus honors `CUDA_VISIBLE_DEVICES` as if it were `HIP_VISIBLE_DEVICES`
+    (this mirrors how ROCm PyTorch builds behave).
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:
