@@ -4,14 +4,24 @@ from __future__ import annotations
 
 import sys
 import platform
+import importlib
 from dataclasses import dataclass, asdict, fields
 from functools import lru_cache
+from typing import Any
 
 from zeus.device.soc.common import SoC, SoCMeasurement, ZeusSoCInitError
 
-try:
-    import zeus_apple_silicon
+# `zeus_apple_silicon` is a Mac-only extra and is never installable on
+# Linux. Loading it via `importlib.import_module` (rather than `import`)
+# keeps `ty`'s static view identical across platforms — there is no
+# `import` statement for it to resolve, so we don't need conflicting
+# ignore comments for the Linux (unresolved import) and macOS (real
+# module type vs. mock fallback) cases.
+zeus_apple_silicon: Any
+zeus_apple_available: bool
 
+try:
+    zeus_apple_silicon = importlib.import_module("zeus_apple_silicon")
     zeus_apple_available = True
 
 except Exception:
@@ -30,8 +40,8 @@ except Exception:
                 "shouldn't have been called. This is a bug."
             )
 
+    zeus_apple_silicon = MockZeusAppleSilicon()
     zeus_apple_available = False
-    zeus_apple_silicon = MockZeusAppleSilicon()  # type: ignore[invalid-assignment]
 
 
 @lru_cache(maxsize=1)
