@@ -157,13 +157,10 @@ class Jetson(SoC):
           - https://docs.nvidia.com/jetson/archives/r35.6.1/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html#software-based-power-consumption-modeling
           - https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonOrinNanoSeriesJetsonOrinNxSeriesAndJetsonAgxOrinSeries.html#
         """
-        # Some kernels register the driver as "ina3221" (no trailing 'x').
-        # Try both names; use the first one that exists.
-        path = Path("/sys/bus/i2c/drivers/ina3221x")
+        # The driver is registered as "ina3221x" on older kernels and "ina3221" on newer ones.
         for driver_name in ("ina3221x", "ina3221"):
-            candidate = Path(f"/sys/bus/i2c/drivers/{driver_name}")
-            if candidate.exists():
-                path = candidate
+            path = Path(f"/sys/bus/i2c/drivers/{driver_name}")
+            if path.exists():
                 break
 
         metric_paths: dict[str, dict[str, Path]] = {}
@@ -202,9 +199,8 @@ class Jetson(SoC):
 
         for device in path.glob("*"):
             for subdevice in device.glob("*"):
-                # Newer kernels (e.g. L4T 35+) nest hwmon files one level deeper:
-                # device/hwmon/hwmon0/in*_label instead of device/subdev/in*_label.
-                # Scan both the subdevice dir itself and any hwmon* children.
+                # Rail files may live directly under the subdevice (older kernels)
+                # or one level deeper under a hwmon* child (newer kernels).
                 scan_dirs = [subdevice]
                 if subdevice.is_dir():
                     scan_dirs.extend(subdevice.glob("hwmon*"))
