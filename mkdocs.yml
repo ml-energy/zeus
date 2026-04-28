@@ -54,7 +54,7 @@ plugins:
         python:
           inventories:
             - https://pytorch.org/docs/stable/objects.inv
-            - https://huggingface.co/docs/transformers/master/en/objects.inv
+            - https://huggingface.co/docs/transformers/main/en/objects.inv
             - https://huggingface.co/docs/trl/main/en/objects.inv
           options:
             show_root_heading: true
