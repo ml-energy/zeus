@@ -171,7 +171,7 @@ Four functions are exposed:
 
 ## Hardware Support
 
-For GPUs, we currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.1 or later).
+For GPUs, we currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.2 or later).
 
 CPU measurement is supported for devices that have the RAPL interface built in.
 This includes the majority of Intel CPUs and most modern AMD CPUs.
@@ -199,7 +199,14 @@ These [`GPU`][zeus.device.gpu.common.GPU] objects directly call respective `nvml
 `amdsmi.amdsmi_get_power_info` provides "average_socket_power" and "current_socket_power" fields, but the "current_socket_power" field is sometimes not supported and returns "N/A." During the [`AMDGPUs`][zeus.device.gpu.AMDGPUs] object initialization, this method is checked, and if "N/A" is returned, the [`AMDGPU.get_instant_power_usage`][zeus.device.gpu.amd.AMDGPU.get_instant_power_usage] method is disabled. Instead, [`AMDGPU.get_average_power_usage`][zeus.device.gpu.amd.AMDGPU.get_average_power_usage] needs to be used.
 
 #### ROCm and AMDSMI Versions
-Only ROCm >= 6.1 is supported, as the AMDSMI APIs for power and energy return wrong values. For more information, see [AMDSMI issue #22](https://github.com/ROCm/amdsmi/issues/22). Ensure your `amdsmi` and ROCm versions are up-to-date.
+Only ROCm >= 6.2 is supported. Older versions returned wrong values from the AMDSMI power and energy APIs (see [AMDSMI issue #22](https://github.com/ROCm/amdsmi/issues/22)), and versions before 6.2 lack `amdsmi_get_gpu_enumeration_info`, which Zeus uses for HIP-index resolution. Ensure your `amdsmi` and ROCm versions are up-to-date.
+
+#### GPU indices and `HIP_VISIBLE_DEVICES`
+
+All GPU indices passed to Zeus are HIP indices; the same ones PyTorch uses for `cuda:N`.
+Zeus respects `HIP_VISIBLE_DEVICES` (and falls back to `CUDA_VISIBLE_DEVICES` if unset) exactly as HIP does, so on a node with `HIP_VISIBLE_DEVICES=0,2` Zeus tracks two GPUs at indices 0 and 1, matching PyTorch's `cuda:0` and `cuda:1`.
+
+Note that on some nodes (e.g., MI350X) the HIP index space differs from `amd-smi`'s own GPU index. See [`AMDGPUs`][zeus.device.gpu.AMDGPUs] for the full breakdown of index spaces and how Zeus resolves them.
 
 ### NUMA CPUs
 
