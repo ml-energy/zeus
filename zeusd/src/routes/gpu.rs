@@ -3,8 +3,9 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use actix_web::http::StatusCode;
 use actix_web::web::Bytes;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpResponse, ResponseError};
 use paste::paste;
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
@@ -111,33 +112,29 @@ macro_rules! impl_handler_for_gpu_command {
                     });
                 }
                 let results = futures::future::join_all(handles).await;
-                let mut errors: HashMap<usize, String> = HashMap::new();
+                let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
                 for (gpu_id, result) in results {
                     if let Err(e) = result {
-                        errors.insert(gpu_id, e.to_string());
+                        errors.insert(gpu_id, e);
                     }
                 }
                 if errors.is_empty() {
                     Ok(HttpResponse::Ok().finish())
                 } else {
-                    Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                        "errors": errors
-                    })))
+                    Ok(aggregate_error_response(errors))
                 }
             } else {
                 // Non-blocking: send all and collect send results.
-                let mut errors: HashMap<usize, String> = HashMap::new();
+                let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
                 for &gpu_id in &gpu_ids {
                     if let Err(e) = device_tasks.send_command_nonblocking(gpu_id, command.clone(), now) {
-                        errors.insert(gpu_id, e.to_string());
+                        errors.insert(gpu_id, e);
                     }
                 }
                 if errors.is_empty() {
                     Ok(HttpResponse::Ok().finish())
                 } else {
-                    Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                        "errors": errors
-                    })))
+                    Ok(aggregate_error_response(errors))
                 }
             }
         }
@@ -230,17 +227,20 @@ async fn get_cumulative_energy_handler(
     let results = futures::future::join_all(handles).await;
 
     let mut response_map: HashMap<String, GpuEnergyResponse> = HashMap::new();
-    let mut errors: HashMap<String, String> = HashMap::new();
+    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
     for (gpu_id, result) in results {
         match result {
             Ok(GpuResponse::Energy { energy_mj }) => {
                 response_map.insert(gpu_id.to_string(), GpuEnergyResponse { energy_mj });
             }
             Ok(_) => {
-                errors.insert(gpu_id.to_string(), "Unexpected response type".to_string());
+                errors.insert(
+                    gpu_id,
+                    ZeusdError::GpuManagementTaskTerminatedError(gpu_id),
+                );
             }
             Err(e) => {
-                errors.insert(gpu_id.to_string(), e.to_string());
+                errors.insert(gpu_id, e);
             }
         }
     }
@@ -248,10 +248,25 @@ async fn get_cumulative_energy_handler(
     if errors.is_empty() {
         Ok(HttpResponse::Ok().json(response_map))
     } else {
-        Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "errors": errors
-        })))
+        Ok(aggregate_error_response(errors))
     }
+}
+
+/// Aggregate per-GPU errors into one HTTP response. The response status
+/// is the most severe `status_code()` across the errors so a single 4xx
+/// per-device error does not get masked as a 5xx, and a 5xx is not hidden
+/// by mixing in 4xxs.
+fn aggregate_error_response(errors: HashMap<usize, ZeusdError>) -> HttpResponse {
+    let worst_status = errors
+        .values()
+        .map(|e| e.status_code())
+        .max()
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let payload: HashMap<String, String> = errors
+        .into_iter()
+        .map(|(gpu_id, e)| (gpu_id.to_string(), e.to_string()))
+        .collect();
+    HttpResponse::build(worst_status).json(serde_json::json!({"errors": payload}))
 }
 
 fn filter_snapshot(snapshot: &GpuPowerSnapshot, gpu_ids: &Option<Vec<usize>>) -> GpuPowerSnapshot {

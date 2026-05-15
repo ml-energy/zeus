@@ -3,8 +3,9 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use actix_web::http::StatusCode;
 use actix_web::web::Bytes;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpResponse, ResponseError};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
 
@@ -86,14 +87,14 @@ async fn get_cumulative_energy_handler(
     let results = futures::future::join_all(handles).await;
 
     let mut response_map: HashMap<String, RaplResponse> = HashMap::new();
-    let mut errors: HashMap<String, String> = HashMap::new();
+    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
     for (cpu_id, result) in results {
         match result {
             Ok(measurement) => {
                 response_map.insert(cpu_id.to_string(), measurement);
             }
             Err(e) => {
-                errors.insert(cpu_id.to_string(), e.to_string());
+                errors.insert(cpu_id, e);
             }
         }
     }
@@ -101,9 +102,16 @@ async fn get_cumulative_energy_handler(
     if errors.is_empty() {
         Ok(HttpResponse::Ok().json(response_map))
     } else {
-        Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "errors": errors
-        })))
+        let worst_status = errors
+            .values()
+            .map(|e| e.status_code())
+            .max()
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let payload: HashMap<String, String> = errors
+            .into_iter()
+            .map(|(cpu_id, e)| (cpu_id.to_string(), e.to_string()))
+            .collect();
+        Ok(HttpResponse::build(worst_status).json(serde_json::json!({"errors": payload})))
     }
 }
 
