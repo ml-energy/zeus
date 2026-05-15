@@ -38,6 +38,12 @@ pub enum ZeusdError {
     Unauthorized,
     #[error("Insufficient permissions: {0}")]
     Forbidden(String),
+    #[error(
+        "Persistence mode cannot be disabled on this platform: on Windows \
+         the kernel-mode driver stays loaded at all times and cannot be \
+         unloaded via NVML."
+    )]
+    PersistenceModeCannotBeDisabled,
 }
 
 /// This allows us to return a custom HTTP status code for each error variant.
@@ -49,6 +55,7 @@ impl ResponseError for ZeusdError {
             ZeusdError::NvmlError(e) => match e {
                 NvmlError::NoPermission => StatusCode::FORBIDDEN,
                 NvmlError::InvalidArg => StatusCode::BAD_REQUEST,
+                NvmlError::NotSupported => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ZeusdError::GpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -59,6 +66,7 @@ impl ResponseError for ZeusdError {
             ZeusdError::IOError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::Unauthorized => StatusCode::UNAUTHORIZED,
             ZeusdError::Forbidden(_) => StatusCode::FORBIDDEN,
+            ZeusdError::PersistenceModeCannotBeDisabled => StatusCode::BAD_REQUEST,
         }
     }
 }

@@ -2,12 +2,17 @@
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+#[cfg(unix)]
 use anyhow::Context;
 use std::collections::HashSet;
+#[cfg(unix)]
 use std::fs;
 use std::net::TcpListener;
+#[cfg(unix)]
 use std::os::unix::fs::{chown, PermissionsExt};
+#[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::Path;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
@@ -17,8 +22,12 @@ use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::auth::{AuthMiddleware, SigningKeyData};
 use crate::config::ApiGroup;
-use crate::devices::cpu::power::{start_cpu_poller, CpuPowerBroadcast, CpuPowerPoller};
-use crate::devices::cpu::{CpuManagementTasks, CpuManager, RaplCpu};
+#[cfg(target_os = "linux")]
+use crate::devices::cpu::power::start_cpu_poller;
+use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerPoller};
+use crate::devices::cpu::CpuManagementTasks;
+#[cfg(target_os = "linux")]
+use crate::devices::cpu::{CpuManager, RaplCpu};
 use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcast, GpuPowerPoller};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::cpu_routes;
@@ -40,6 +49,7 @@ where
 }
 
 /// Create a socket at the given path and bind a UnixListener to it.
+#[cfg(unix)]
 pub fn get_unix_listener(
     socket_path: &str,
     permissions: u32,
@@ -94,6 +104,8 @@ pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerPoller> {
 /// Initialize RAPL and start CPU management tasks.
 ///
 /// Returns the management tasks and a per-CPU DRAM availability vector.
+/// RAPL is Linux-specific; on other platforms this errors out.
+#[cfg(target_os = "linux")]
 pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<bool>)> {
     tracing::info!("Starting Rapl and CPU management tasks.");
     let num_cpus = RaplCpu::device_count()?;
@@ -112,7 +124,16 @@ pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<bool>
     Ok((CpuManagementTasks::start(cpus)?, dram_available))
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<bool>)> {
+    anyhow::bail!(
+        "CPU RAPL monitoring is only available on Linux. \
+         Remove 'cpu-read' from --enable to start zeusd on this platform."
+    )
+}
+
 /// Initialize a separate set of RAPL handles and start the CPU power poller.
+#[cfg(target_os = "linux")]
 pub fn start_cpu_power_poller(poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
     tracing::info!("Starting CPU RAPL power poller at {} Hz.", poll_hz);
     let num_cpus = RaplCpu::device_count()?;
@@ -124,25 +145,55 @@ pub fn start_cpu_power_poller(poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
     Ok(start_cpu_poller(cpus, poll_hz))
 }
 
-/// Check that the daemon has sufficient privileges for the requested API groups.
+#[cfg(not(target_os = "linux"))]
+pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
+    anyhow::bail!("CPU RAPL monitoring is only available on Linux.")
+}
+
+/// Check that the daemon has sufficient privileges for the requested API groups
+/// and that every requested group is available on this platform.
 ///
-/// For each enabled group that requires root, verifies that the effective
-/// user ID is 0. Returns an error naming the offending group if not.
+/// On Linux, verifies that the effective user ID is 0 for groups that require
+/// root and returns an error naming the offending group if not.
+///
+/// On non-Linux platforms, rejects `cpu-read` because RAPL is not available
+/// outside of Linux. On Windows there is no fail-fast admin check: NVML
+/// write calls (gpu-control) return `NoPermission` at request time if the
+/// daemon lacks admin, which surfaces as HTTP 403 to clients.
+#[allow(unused_variables)]
 pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
-    let is_root = nix::unistd::geteuid().is_root();
-    for &group in enabled_groups {
-        if group.requires_root() && !is_root {
+    #[cfg(not(target_os = "linux"))]
+    {
+        if enabled_groups.contains(&ApiGroup::CpuRead) {
             tracing::error!(
-                "API group '{}' requires root privileges. \
-                 Either run as root or remove it from --enable.",
-                group,
+                "API group 'cpu-read' is only supported on Linux \
+                 (requires Intel RAPL via /sys/class/powercap)."
             );
             anyhow::bail!(
-                "API group '{}' requires root but Zeusd is not running as root",
-                group,
+                "API group 'cpu-read' is only supported on Linux. \
+                 Remove it from --enable to start zeusd on this platform."
             );
         }
     }
+
+    #[cfg(unix)]
+    {
+        let is_root = nix::unistd::geteuid().is_root();
+        for &group in enabled_groups {
+            if group.requires_root() && !is_root {
+                tracing::error!(
+                    "API group '{}' requires root privileges. \
+                     Either run as root or remove it from --enable.",
+                    group,
+                );
+                anyhow::bail!(
+                    "API group '{}' requires root but Zeusd is not running as root",
+                    group,
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -165,61 +216,70 @@ pub struct ServerState {
     pub signing_key: Option<SigningKeyData>,
 }
 
+/// Construct an `App` with routes and app data based on enabled API groups.
+///
+/// Returns an actix-web `App` value (not a closure or server). The caller
+/// is responsible for cloning `$state` if the App is built more than once
+/// (e.g., once per worker or per Named Pipe connection).
+macro_rules! build_app {
+    ($state:expr) => {{
+        let state = $state;
+        let enabled = &state.enabled_groups.0;
+
+        let mut app = App::new()
+            .wrap(AuthMiddleware)
+            .wrap(tracing_actix_web::TracingLogger::default())
+            .configure(server_routes)
+            .app_data(web::Data::new(state.discovery_info.clone()))
+            .app_data(web::Data::new(state.enabled_groups.clone()));
+
+        // Register signing key for the auth middleware (if configured).
+        if let Some(ref key) = state.signing_key {
+            app = app.app_data(web::Data::new(key.clone()));
+        }
+
+        // GPU routes: conditionally register read and/or control routes.
+        if enabled.contains(&ApiGroup::GpuRead) || enabled.contains(&ApiGroup::GpuControl) {
+            let mut gpu_scope = web::scope("/gpu");
+            if enabled.contains(&ApiGroup::GpuRead) {
+                gpu_scope = gpu_scope.configure(gpu_read_routes);
+            }
+            if enabled.contains(&ApiGroup::GpuControl) {
+                gpu_scope = gpu_scope.configure(gpu_control_routes);
+            }
+            app = app.service(gpu_scope);
+        }
+        if let Some(ref tasks) = state.gpu_device_tasks {
+            app = app.app_data(web::Data::new(tasks.clone()));
+        }
+        if let Some(ref broadcast) = state.gpu_power_broadcast {
+            app = app.app_data(web::Data::new(broadcast.clone()));
+        }
+
+        // CPU routes: only if cpu-read is enabled.
+        if enabled.contains(&ApiGroup::CpuRead) {
+            app = app.service(web::scope("/cpu").configure(cpu_routes));
+        }
+        if let Some(ref tasks) = state.cpu_device_tasks {
+            app = app.app_data(web::Data::new(tasks.clone()));
+        }
+        if let Some(ref broadcast) = state.cpu_power_broadcast {
+            app = app.app_data(web::Data::new(broadcast.clone()));
+        }
+
+        app
+    }};
+}
+
 /// Build an `HttpServer` with routes and app data based on enabled API groups.
 macro_rules! configure_server {
     ($state:expr, $workers:expr) => {
-        HttpServer::new(move || {
-            let state = $state.clone();
-            let enabled = &state.enabled_groups.0;
-
-            let mut app = App::new()
-                .wrap(AuthMiddleware)
-                .wrap(tracing_actix_web::TracingLogger::default())
-                .configure(server_routes)
-                .app_data(web::Data::new(state.discovery_info.clone()))
-                .app_data(web::Data::new(state.enabled_groups.clone()));
-
-            // Register signing key for the auth middleware (if configured).
-            if let Some(ref key) = state.signing_key {
-                app = app.app_data(web::Data::new(key.clone()));
-            }
-
-            // GPU routes: conditionally register read and/or control routes.
-            if enabled.contains(&ApiGroup::GpuRead) || enabled.contains(&ApiGroup::GpuControl) {
-                let mut gpu_scope = web::scope("/gpu");
-                if enabled.contains(&ApiGroup::GpuRead) {
-                    gpu_scope = gpu_scope.configure(gpu_read_routes);
-                }
-                if enabled.contains(&ApiGroup::GpuControl) {
-                    gpu_scope = gpu_scope.configure(gpu_control_routes);
-                }
-                app = app.service(gpu_scope);
-            }
-            if let Some(ref tasks) = state.gpu_device_tasks {
-                app = app.app_data(web::Data::new(tasks.clone()));
-            }
-            if let Some(ref broadcast) = state.gpu_power_broadcast {
-                app = app.app_data(web::Data::new(broadcast.clone()));
-            }
-
-            // CPU routes: only if cpu-read is enabled.
-            if enabled.contains(&ApiGroup::CpuRead) {
-                app = app.service(web::scope("/cpu").configure(cpu_routes));
-            }
-            if let Some(ref tasks) = state.cpu_device_tasks {
-                app = app.app_data(web::Data::new(tasks.clone()));
-            }
-            if let Some(ref broadcast) = state.cpu_power_broadcast {
-                app = app.app_data(web::Data::new(broadcast.clone()));
-            }
-
-            app
-        })
-        .workers($workers)
+        HttpServer::new(move || build_app!($state.clone())).workers($workers)
     };
 }
 
 /// Set up routing and start the server on a unix domain socket.
+#[cfg(unix)]
 pub fn start_server_uds(
     listener: UnixListener,
     state: ServerState,
@@ -239,4 +299,88 @@ pub fn start_server_tcp(
     Ok(configure_server!(state, num_workers)
         .listen(listener)?
         .run())
+}
+
+/// Run the server over a Windows Named Pipe.
+///
+/// `HttpServer::listen_uds` is Unix-only, so on Windows we drive actix-http
+/// `H1Service` directly over each connected `NamedPipeServer`. Connections
+/// are served on a `LocalSet`: actix-web/actix-http internals hold `Rc<>`s
+/// and so the per-connection futures are `!Send` — the same single-threaded
+/// model `actix-server` uses for its worker tasks.
+///
+/// The default pipe name follows the conventional Windows form
+/// `\\.\pipe\zeusd`. Up to 255 concurrent client connections are accepted;
+/// each connection runs the full actix-web App.
+#[cfg(windows)]
+pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> anyhow::Result<()> {
+    use tokio::net::windows::named_pipe::ServerOptions;
+
+    tracing::info!("Listening on named pipe {}", &pipe_name);
+
+    // Reserve the pipe name with the first instance. Subsequent instances
+    // are created lazily after each accept so the pipe is always ready for
+    // the next client.
+    let mut server = ServerOptions::new()
+        .first_pipe_instance(true)
+        .max_instances(255)
+        .create(&pipe_name)?;
+
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async move {
+            loop {
+                server.connect().await?;
+                let connected = std::mem::replace(
+                    &mut server,
+                    ServerOptions::new().max_instances(255).create(&pipe_name)?,
+                );
+
+                let conn_state = state.clone();
+                tokio::task::spawn_local(async move {
+                    if let Err(e) = serve_named_pipe_connection(connected, conn_state).await {
+                        tracing::warn!("Named pipe connection error: {:?}", e);
+                    }
+                });
+            }
+        })
+        .await
+}
+
+/// Serve a single Named Pipe connection with the actix-web App.
+///
+/// Builds a fresh `H1Service` per connection. This is slightly wasteful
+/// compared to the worker-pooled model `HttpServer` uses, but the cost is
+/// dominated by the request handler itself and keeps the integration code
+/// straightforward. Most clients will issue one short request per connection
+/// or stream SSE on a long-lived connection — both fine with this model.
+#[cfg(windows)]
+async fn serve_named_pipe_connection(
+    io: tokio::net::windows::named_pipe::NamedPipeServer,
+    state: ServerState,
+) -> anyhow::Result<()> {
+    use actix_http::HttpService;
+    use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
+    use actix_web::dev::AppConfig;
+
+    let app = build_app!(state);
+
+    // Adapt App (Config = AppConfig, Error = actix_web::Error) to what
+    // H1Service expects (Config = (), Error: Into<Response<BoxBody>>).
+    let svc_factory = HttpService::build().h1(actix_service::map_config(
+        app.into_factory().map_err(|err| err.error_response()),
+        |_| AppConfig::default(),
+    ));
+
+    let service = svc_factory
+        .new_service(())
+        .await
+        .map_err(|_| anyhow::anyhow!("Failed to initialize HttpService"))?;
+
+    service
+        .call((io, None))
+        .await
+        .map_err(|e| anyhow::anyhow!("Dispatcher error: {:?}", e))?;
+
+    Ok(())
 }

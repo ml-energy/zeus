@@ -91,25 +91,37 @@ pub enum TokenCommand {
 /// Configuration for the `serve` subcommand.
 #[derive(Parser, Debug)]
 pub struct ServeConfig {
-    /// Operating mode: UDS or TCP.
-    #[clap(long, default_value = "uds")]
+    /// Operating mode (default depends on platform: `uds` on Unix,
+    /// `named-pipe` on Windows).
+    #[cfg_attr(unix, clap(long, default_value = "uds"))]
+    #[cfg_attr(windows, clap(long, default_value = "named-pipe"))]
     pub mode: ConnectionMode,
 
     /// [UDS mode] Path to the socket Zeusd will listen on.
+    #[cfg(unix)]
     #[clap(long, default_value = "/run/zeusd/zeusd.sock")]
     pub socket_path: String,
 
     /// [UDS mode] Permissions for the socket file to be created.
+    #[cfg(unix)]
     #[clap(long, default_value = "666")]
     socket_permissions: String,
 
     /// [UDS mode] UID to chown the socket file to.
+    #[cfg(unix)]
     #[clap(long)]
     pub socket_uid: Option<u32>,
 
     /// [UDS mode] GID to chown the socket file to.
+    #[cfg(unix)]
     #[clap(long)]
     pub socket_gid: Option<u32>,
+
+    /// [Named pipe mode] Named pipe Zeusd will listen on (Windows only).
+    /// Conventional prefix is `\\.\pipe\<name>`.
+    #[cfg(windows)]
+    #[clap(long, default_value = r"\\.\pipe\zeusd")]
+    pub pipe_name: String,
 
     /// [TCP mode] Address to bind to.
     #[clap(long, default_value = "127.0.0.1:4938")]
@@ -145,6 +157,7 @@ pub struct ServeConfig {
 
 impl ServeConfig {
     /// Parses socket permissions as an octal number. E.g., "666" -> 0o666.
+    #[cfg(unix)]
     pub fn socket_permissions(&self) -> anyhow::Result<u32> {
         u32::from_str_radix(&self.socket_permissions, 8)
             .context("Failed to parse socket permissions")
@@ -212,12 +225,19 @@ impl TokenIssueConfig {
 }
 
 /// The mode of connection to use for the daemon.
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+///
+/// Variants are gated by platform: `UDS` is Unix-only and `NamedPipe`
+/// is Windows-only. `TCP` is always available.
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum, Debug)]
 pub enum ConnectionMode {
     /// Unix domain socket.
+    #[cfg(unix)]
     UDS,
     /// TCP.
     TCP,
+    /// Windows named pipe (`\\.\pipe\<name>`).
+    #[cfg(windows)]
+    NamedPipe,
 }
 
 /// Parse command line arguments.
