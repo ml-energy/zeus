@@ -4,8 +4,8 @@
 
 ## Problem
 
-Energy optimizers in Zeus need to change the GPU's configurations including its power limit or frequency, which requires the Linux security capability `SYS_ADMIN` (which is pretty much `sudo`).
-However, it's not a good idea to grant the entire application such strong privileges just to be able to change GPU configurations.
+Energy optimizers in Zeus need to change the GPU's configurations including its power limit or frequency, which requires the Linux security capability `SYS_ADMIN` (effectively `sudo`) or admin elevation on Windows.
+It's not a good idea to grant the entire application such strong privileges just to be able to change GPU configurations.
 
 Additionally, monitoring GPU and CPU power across multiple nodes in a cluster requires a lightweight, always-on service that can stream readings to remote clients.
 
@@ -15,11 +15,19 @@ Additionally, monitoring GPU and CPU power across multiple nodes in a cluster re
 
 - **GPU management endpoints** that wrap privileged NVML methods, so unprivileged applications can change GPU configuration on their behalf.
 - **GPU power streaming** via SSE (Server-Sent Events) using NVML instant power readings.
-- **CPU power streaming** via SSE using RAPL energy counters (Intel and modern AMD CPUs).
+- **CPU power streaming** via SSE using RAPL energy counters (Intel and modern AMD CPUs, Linux only).
 
 Power polling is demand-driven: `zeusd` only reads from hardware while at least one client is connected, so idle endpoints consume no resources.
 
 To make this as low latency as possible, `zeusd` was written in Rust.
+
+## Platform support
+
+| Platform | Default transport | GPU (NVML) | CPU RAPL | Notes |
+|----------|------------------|:----------:|:--------:|-------|
+| Linux    | UDS              | ✓ | ✓ | All API groups work. |
+| macOS    | UDS              | (NVIDIA not supported) | — | NVML/RAPL unavailable; daemon runs but reports zero devices. |
+| Windows  | Named Pipe       | ✓ | — | `cpu-read` group is rejected at startup. `set_persistence_mode(false)` returns HTTP 400 — see [Windows-specific behavior](#windows-specific-behavior). |
 
 ## How to use `zeusd`
 
@@ -29,11 +37,11 @@ First, install `zeusd`:
 cargo install zeusd
 ```
 
-Both modes (UDS and TCP) serve the same HTTP API. The only difference is the transport layer.
+All three transports (UDS, TCP, named pipe) serve the same HTTP API. The only difference is the local transport layer.
 
-### UDS mode
+### UDS mode (Unix only)
 
-UDS (Unix domain socket) mode is the default. It's intended for local communication between processes on the same node.
+UDS (Unix domain socket) mode is the default on Unix. It's intended for local communication between processes on the same node.
 
 ```sh
 sudo zeusd serve --socket-path /run/zeusd/zeusd.sock --socket-permissions 666
@@ -47,9 +55,22 @@ export ZEUSD_SOCK_PATH=/run/zeusd/zeusd.sock
 
 When Zeus detects `ZEUSD_SOCK_PATH`, it'll automatically instantiate the right GPU backend and relay privileged GPU management method calls to `zeusd`.
 
+### Named Pipe mode (Windows only)
+
+Named Pipe mode is the default on Windows. It plays the same local-IPC role as UDS does on Unix, using a filesystem-style path under `\\.\pipe\`.
+
+```powershell
+# In an elevated PowerShell:
+zeusd serve --pipe-name \\.\pipe\zeusd
+```
+
+The default pipe name is `\\.\pipe\zeusd`. Up to 254 concurrent client connections are accepted (Windows' `PIPE_UNLIMITED_INSTANCES` = 255 is rejected by Tokio's builder, so 254 is the practical cap).
+
+`actix-web`'s built-in `HttpServer` does not support Windows named pipes, so on the named-pipe path zeusd drives `actix-http`'s `H1Service` over each connected `NamedPipeServer` on a single-threaded `LocalSet`. `--num-workers` is therefore ignored in this mode.
+
 ### TCP mode
 
-TCP mode exposes the same API over a TCP socket, making it accessible from remote hosts. This is useful for cluster-wide power monitoring.
+TCP mode exposes the same API over a TCP socket, making it accessible from remote hosts. This is useful for cluster-wide power monitoring and works on all platforms.
 
 ```sh
 sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
@@ -119,7 +140,7 @@ See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/m
 | `gpu-read` | `GET /gpu/get_power` | No |
 | | `GET /gpu/stream_power` | |
 | | `GET /gpu/get_cumulative_energy` | |
-| `cpu-read` | `GET /cpu/get_cumulative_energy` | Yes |
+| `cpu-read` (Linux only) | `GET /cpu/get_cumulative_energy` | Yes |
 | | `GET /cpu/get_power` | |
 | | `GET /cpu/stream_power` | |
 
@@ -127,7 +148,18 @@ The following endpoints are always available regardless of which groups are enab
 - `GET /discover`
 - `GET /time`
 
-If a group that requires root is enabled but the daemon is not running as root, it will exit immediately with an error.
+If a group that requires root is enabled but the daemon is not running as root (Linux/macOS), it will exit immediately with an error. On Windows there is no fail-fast admin check; NVML write calls fall back to NVML's own `NoPermission` if the daemon lacks admin, which surfaces as HTTP 403 to clients.
+
+`cpu-read` is implemented via the Linux RAPL sysfs interface and is therefore rejected at startup on macOS and Windows.
+
+## Windows-specific behavior
+
+NVML's persistence-mode API (`nvmlDeviceSetPersistenceMode`) is documented as Linux-only. On Windows the kernel-mode driver stays loaded at all times, so:
+
+- `POST /gpu/set_persistence_mode?...&enabled=true` returns `200 OK` (no-op). The daemon logs a one-shot warning so operators know the call was redundant.
+- `POST /gpu/set_persistence_mode?...&enabled=false` returns `400 Bad Request` with a body explaining the operation is not possible on this platform.
+
+All other GPU operations (`set_power_limit`, `set_gpu_locked_clocks`, `set_mem_locked_clocks`, energy/power reads) behave identically across platforms.
 
 Examples:
 
@@ -253,6 +285,8 @@ Set GPU persistence mode.
 | `enabled` | `bool` | yes | Enable or disable persistence mode |
 | `block` | `bool` | yes | Wait for completion |
 
+See [Windows-specific behavior](#windows-specific-behavior) — `enabled=false` returns HTTP 400 on Windows since the Windows driver model keeps the driver resident at all times.
+
 #### `POST /gpu/set_gpu_locked_clocks`
 
 Lock GPU core clocks to a range.
@@ -358,37 +392,43 @@ Options:
   -V, --version  Print version
 ```
 
+Note: a few flags are platform-conditional. The `--mode` default and the UDS / named-pipe options below only appear on the platforms where they apply.
+
 ```console
-$ zeusd serve --help
+$ zeusd serve --help     # Linux/macOS variant shown; Windows omits --socket-* and adds --pipe-name
 Start the Zeus daemon
 
 Usage: zeusd serve [OPTIONS]
 
 Options:
       --mode <MODE>
-          Operating mode: UDS or TCP
-
-          [default: uds]
+          Operating mode (default depends on platform: `uds` on Unix, `named-pipe` on Windows)
 
           Possible values:
-          - uds: Unix domain socket
-          - tcp: TCP
+          - uds:         Unix domain socket (Unix only)
+          - tcp:         TCP
+          - named-pipe:  Windows named pipe (Windows only)
 
-      --socket-path <SOCKET_PATH>
+      --socket-path <SOCKET_PATH>          # Unix only
           [UDS mode] Path to the socket Zeusd will listen on
 
           [default: /run/zeusd/zeusd.sock]
 
-      --socket-permissions <SOCKET_PERMISSIONS>
+      --socket-permissions <SOCKET_PERMISSIONS>          # Unix only
           [UDS mode] Permissions for the socket file to be created
 
           [default: 666]
 
-      --socket-uid <SOCKET_UID>
+      --socket-uid <SOCKET_UID>            # Unix only
           [UDS mode] UID to chown the socket file to
 
-      --socket-gid <SOCKET_GID>
+      --socket-gid <SOCKET_GID>            # Unix only
           [UDS mode] GID to chown the socket file to
+
+      --pipe-name <PIPE_NAME>              # Windows only
+          [Named pipe mode] Named pipe Zeusd will listen on
+
+          [default: \\.\pipe\zeusd]
 
       --tcp-bind-address <TCP_BIND_ADDRESS>
           [TCP mode] Address to bind to
@@ -396,7 +436,8 @@ Options:
           [default: 127.0.0.1:4938]
 
       --num-workers <NUM_WORKERS>
-          Number of worker threads to use. Default is the number of logical CPUs
+          Number of worker threads to use. Default is the number of logical CPUs.
+          Ignored in named-pipe mode (which uses a single-threaded LocalSet)
 
       --gpu-power-poll-hz <GPU_POWER_POLL_HZ>
           GPU power polling frequency in Hz for the streaming endpoint
