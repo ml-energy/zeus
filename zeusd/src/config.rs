@@ -96,7 +96,7 @@ pub struct ServeConfig {
     pub mode: ConnectionMode,
 
     /// [UDS mode] Path to the socket Zeusd will listen on.
-    #[clap(long, default_value = "/var/run/zeusd.sock")]
+    #[clap(long, default_value = "/run/zeusd/zeusd.sock")]
     pub socket_path: String,
 
     /// [UDS mode] Permissions for the socket file to be created.

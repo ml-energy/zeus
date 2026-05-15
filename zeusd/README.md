@@ -36,13 +36,13 @@ Both modes (UDS and TCP) serve the same HTTP API. The only difference is the tra
 UDS (Unix domain socket) mode is the default. It's intended for local communication between processes on the same node.
 
 ```sh
-sudo zeusd serve --socket-path /var/run/zeusd.sock --socket-permissions 666
+sudo zeusd serve --socket-path /run/zeusd/zeusd.sock --socket-permissions 666
 ```
 
 To allow the Zeus Python library to recognize that `zeusd` is available, set:
 
 ```sh
-export ZEUSD_SOCK_PATH=/var/run/zeusd.sock
+export ZEUSD_SOCK_PATH=/run/zeusd/zeusd.sock
 ```
 
 When Zeus detects `ZEUSD_SOCK_PATH`, it'll automatically instantiate the right GPU backend and relay privileged GPU management method calls to `zeusd`.
@@ -90,7 +90,7 @@ from zeus.monitor.power_streaming import PowerStreamingClient
 client = PowerStreamingClient(
     servers=[
         ZeusdConfig.tcp(host="node1", port=4938, gpu_indices=[0, 1, 2, 3]),
-        ZeusdConfig.uds(socket_path="/var/run/zeusd.sock", gpu_indices=[0, 1, 2, 3]),
+        ZeusdConfig.uds(socket_path="/run/zeusd/zeusd.sock", gpu_indices=[0, 1, 2, 3]),
     ],
 )
 
@@ -377,7 +377,7 @@ Options:
       --socket-path <SOCKET_PATH>
           [UDS mode] Path to the socket Zeusd will listen on
 
-          [default: /var/run/zeusd.sock]
+          [default: /run/zeusd/zeusd.sock]
 
       --socket-permissions <SOCKET_PERMISSIONS>
           [UDS mode] Permissions for the socket file to be created

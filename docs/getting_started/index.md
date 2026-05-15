@@ -161,18 +161,18 @@ cargo install zeusd
 
 # Run zeusd with admin privileges
 sudo zeusd serve \
-    --socket-path /var/run/zeusd.sock \   # (1)!
+    --socket-path /run/zeusd/zeusd.sock \   # (1)!
     --socket-permissions 666            # (2)!
 ```
 
 1. Unix domain socket path that `zeusd` listens to.
 2. Applications need *write* access to the socket to be able to talk to `zeusd`. This string is interpreted as [UNIX file permissions](https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation).
 
-After deploying `zeusd`, set the `ZEUSD_SOCK_PATH` environment variable to the socket path (e.g., `/var/run/zeusd.sock`) to allow Zeus imported in your application find and talk to the running Zeus daemon.
+After deploying `zeusd`, set the `ZEUSD_SOCK_PATH` environment variable to the socket path (e.g., `/run/zeusd/zeusd.sock`) to allow Zeus imported in your application find and talk to the running Zeus daemon.
 You can test out whether it worked with:
 
 ```console
-$ ZEUSD_SOCK_PATH=/var/run/zeusd.sock python -m zeus.show_env
+$ ZEUSD_SOCK_PATH=/run/zeusd/zeusd.sock python -m zeus.show_env
 --------------------------------------------------------------------------------
 ...other fields
 --------------------------------------------------------------------------------
@@ -183,11 +183,11 @@ Logging output:
 
 Detected:
   CPU 0:
-    CPU measurements available (Zeusd at /var/run/zeusd.sock)
-    DRAM measurements available (Zeusd at /var/run/zeusd.sock)
+    CPU measurements available (Zeusd at /run/zeusd/zeusd.sock)
+    DRAM measurements available (Zeusd at /run/zeusd/zeusd.sock)
   CPU 1:
-    CPU measurements available (Zeusd at /var/run/zeusd.sock)
-    DRAM measurements available (Zeusd at /var/run/zeusd.sock)
+    CPU measurements available (Zeusd at /run/zeusd/zeusd.sock)
+    DRAM measurements available (Zeusd at /run/zeusd/zeusd.sock)
 
 --------------------------------------------------------------------------------
 ```

@@ -1,0 +1,41 @@
+[Unit]
+Description=Zeus daemon (GPU/CPU management and power streaming)
+Documentation=https://github.com/ml-energy/zeus
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/zeusd
+ExecStart=/usr/local/bin/zeusd serve $ZEUSD_ARGS
+Restart=on-failure
+RestartSec=5s
+
+RuntimeDirectory=zeusd
+RuntimeDirectoryMode=0755
+
+# Hardening (see packaging/systemd/README.md for rationale)
+# Even when running as root, CAP_DAC_READ_SEARCH is required to read
+# /sys/class/powercap/.../energy_uj (mode 0400 since CVE-2020-8694).
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+KeyringMode=private
+RemoveIPC=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+# /etc/default/zeusd -- arguments for `zeusd serve`.
+# Override via `sudo systemctl edit zeusd` (drop-in) for unit-level changes,
+# or edit this file for CLI args. Restart: `sudo systemctl restart zeusd`.
+
+# Default: UDS mode on /run/zeusd/zeusd.sock with all API groups enabled.
+#ZEUSD_ARGS=""
+
+# TCP mode (all interfaces, port 4938). For production, also set --signing-key-path.
+#ZEUSD_ARGS="--mode tcp --tcp-bind-address 0.0.0.0:4938"
+
+# Monitoring-only (no GPU control), no root needed for these endpoints but the
+# unit still runs as root for RAPL; remove cpu-read to drop that requirement.
+#ZEUSD_ARGS="--enable gpu-read,cpu-read"
+
+# TCP with JWT auth.
+#ZEUSD_ARGS="--mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path /etc/zeusd/signing.key"

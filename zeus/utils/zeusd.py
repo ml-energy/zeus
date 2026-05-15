@@ -9,7 +9,7 @@ Typical usage:
 ```python
 from zeus.utils.zeusd import ZeusdConfig, ZeusdClient
 
-client = ZeusdClient(ZeusdConfig.uds(socket_path="/var/run/zeusd.sock"))
+client = ZeusdClient(ZeusdConfig.uds(socket_path="/run/zeusd/zeusd.sock"))
 print(client.gpu_ids)       # [0, 1, 2, 3]
 print(client.can_read_gpu)  # True
 
