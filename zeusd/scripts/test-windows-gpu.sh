@@ -280,6 +280,122 @@ Start-Sleep -Seconds 4
 \$pyExit = \$LASTEXITCODE
 Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
 if (\$pyExit -ne 0) { throw "python test exit \$pyExit" }
+# ---------- SDDL test: unprivileged client reaching elevated daemon ----------
+# Validates the Windows pipe DACL. The other tests in this script run as
+# SYSTEM (the SSM agent's identity), which has admin rights and is allowed
+# by any DACL; without this stage we would not know whether --pipe-sddl
+# actually grants access to non-admin clients, which is the core reason
+# zeusd needs an SDDL on Windows at all.
+#
+# We can't use \`Start-Process -Credential\` here: under SSM-as-SYSTEM on EC2
+# the privilege to assign a primary token to another process is stripped,
+# and a fresh local user does not get SeBatchLogonRight (so scheduled tasks
+# also fail to run as them). Instead, we LogonUser + WindowsIdentity.Impersonate
+# inside this same process; the kernel checks the pipe DACL against the
+# impersonated token at CreateFile time, which is exactly what a real
+# unprivileged client process would experience.
+Write-Host "===== SDDL test (positive + negative) ====="
+
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class TokenUtils {
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern bool LogonUser(
+        string lpszUsername, string lpszDomain, string lpszPassword,
+        int dwLogonType, int dwLogonProvider, out IntPtr phToken);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool CloseHandle(IntPtr hObject);
+    public const int LOGON32_LOGON_INTERACTIVE = 2;
+    public const int LOGON32_PROVIDER_DEFAULT  = 0;
+}
+'@
+
+\$testUser = 'zd_pipeclient'
+# Password must not contain the username and must hit Windows complexity:
+# >= 8 chars and >= 3 of {upper, lower, digit, symbol}.
+\$testPass = 'Xz7@Kv9!Mq3#Rt5\$Pw2'
+\$securePass = ConvertTo-SecureString \$testPass -AsPlainText -Force
+if (Get-LocalUser -Name \$testUser -ErrorAction SilentlyContinue) {
+  Remove-LocalUser -Name \$testUser
+}
+New-LocalUser -Name \$testUser -Password \$securePass -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
+Remove-LocalGroupMember -Group 'Administrators' -Member \$testUser -ErrorAction SilentlyContinue
+
+function Connect-As-User(\$pipeName) {
+  \$token = [IntPtr]::Zero
+  \$ok = [TokenUtils]::LogonUser(
+    \$testUser, '.', \$testPass,
+    [TokenUtils]::LOGON32_LOGON_INTERACTIVE,
+    [TokenUtils]::LOGON32_PROVIDER_DEFAULT,
+    [ref]\$token)
+  if (-not \$ok) {
+    return "FAILED: LogonUser win32 err \$([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+  }
+  \$identity = New-Object System.Security.Principal.WindowsIdentity(\$token)
+  \$context  = \$identity.Impersonate()
+  try {
+    try {
+      \$pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', \$pipeName, 'InOut')
+      \$pipe.Connect(5000)
+      \$req = "GET /discover HTTP/1.1\`r\`nHost: localhost\`r\`nConnection: close\`r\`nContent-Length: 0\`r\`n\`r\`n"
+      \$b   = [Text.Encoding]::ASCII.GetBytes(\$req)
+      \$pipe.Write(\$b, 0, \$b.Length); \$pipe.Flush()
+      \$ms  = New-Object IO.MemoryStream
+      \$buf = New-Object byte[] 8192
+      while ((\$n = \$pipe.Read(\$buf, 0, \$buf.Length)) -gt 0) { \$ms.Write(\$buf, 0, \$n) }
+      \$resp = [Text.Encoding]::ASCII.GetString(\$ms.ToArray())
+      \$pipe.Close()
+      return \$resp
+    } catch {
+      return "FAILED: \$(\$_.Exception.Message)"
+    }
+  } finally {
+    \$context.Undo()
+    [TokenUtils]::CloseHandle(\$token) | Out-Null
+  }
+}
+
+# --- Positive: default SDDL ('D:(A;;GRGW;;;AU)') should let an AU connect ---
+\$pipeOk = 'zeusd-sddl-pos'
+Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep 1
+\$null = Start-Process -FilePath \$exe \`
+  -ArgumentList @('serve','--mode','named-pipe','--pipe-name',"\\\\.\\pipe\\\$pipeOk",'--enable','gpu-control,gpu-read') \`
+  -PassThru -NoNewWindow -RedirectStandardOutput "\$src\\sddl-pos.out" -RedirectStandardError "\$src\\sddl-pos.err"
+Start-Sleep -Seconds 4
+\$respOk = Connect-As-User \$pipeOk
+Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep 1
+if (\$respOk -match 'HTTP/1\\.1 200 OK') {
+  Write-Host "  positive: PASS (unprivileged client got 200 OK)"
+} else {
+  Write-Host "  positive: FAIL. client output:"
+  Write-Host \$respOk
+  Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
+  throw "SDDL positive test failed"
+}
+
+# --- Negative: restrictive SDDL ('D:(A;;GA;;;BA)') should DENY AU ---
+\$pipeNo = 'zeusd-sddl-neg'
+\$null = Start-Process -FilePath \$exe \`
+  -ArgumentList @('serve','--mode','named-pipe','--pipe-name',"\\\\.\\pipe\\\$pipeNo",'--pipe-sddl','D:(A;;GA;;;BA)','--enable','gpu-control,gpu-read') \`
+  -PassThru -NoNewWindow -RedirectStandardOutput "\$src\\sddl-neg.out" -RedirectStandardError "\$src\\sddl-neg.err"
+Start-Sleep -Seconds 4
+\$respNo = Connect-As-User \$pipeNo
+Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep 1
+if (\$respNo -match 'FAILED') {
+  Write-Host "  negative: PASS (got expected failure: \$((\$respNo -split "\`r\`n",2)[0].Trim()))"
+} else {
+  Write-Host "  negative: FAIL: expected denial but got:"
+  Write-Host \$respNo
+  Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
+  throw "SDDL negative test failed"
+}
+
+Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
+
 Write-Host "ALL_OK"
 POWERSHELL
 )

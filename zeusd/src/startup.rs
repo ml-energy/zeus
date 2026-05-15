@@ -346,7 +346,7 @@ fn create_pipe_with_sddl(
     let ok = unsafe {
         ConvertStringSecurityDescriptorToSecurityDescriptorW(
             sddl_w.as_ptr(),
-            SDDL_REVISION_1 as u32,
+            SDDL_REVISION_1,
             &mut psd,
             std::ptr::null_mut(),
         )
