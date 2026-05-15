@@ -316,6 +316,10 @@ pub fn start_server_tcp(
 /// actix-web App.
 #[cfg(windows)]
 pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> anyhow::Result<()> {
+    use actix_http::HttpService;
+    use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
+    use actix_web::dev::AppConfig;
+    use std::rc::Rc;
     use tokio::net::windows::named_pipe::ServerOptions;
 
     // Reserve the pipe name with the first instance. Subsequent instances
@@ -330,6 +334,26 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async move {
+            // Build the App and `H1Service` factory ONCE for the lifetime of
+            // the daemon, INSIDE the LocalSet's task. This is required:
+            // `HttpService::build().h1(...)` transitively constructs an
+            // `actix_http::date::DateService`, whose constructor calls
+            // `actix_rt::spawn` (= `tokio::task::spawn_local`). Building the
+            // factory outside any `LocalSet` panics immediately with
+            // "spawn_local called from outside of a task::LocalSet".
+            // `actix-server`'s `HttpServer` model avoids this because each
+            // worker runs in its own `Arbiter` (which sets up a current-thread
+            // runtime + LocalSet); we have to provide that context ourselves.
+            //
+            // Per-connection we then only `Rc::clone` the shared factory and
+            // call `new_service(())`, which is much cheaper than re-cloning
+            // `ServerState` and re-building the routing / middleware stack.
+            let app = build_app!(state);
+            let svc_factory = Rc::new(HttpService::build().h1(actix_service::map_config(
+                app.into_factory().map_err(|err| err.error_response()),
+                |_| AppConfig::default(),
+            )));
+
             loop {
                 if let Err(e) = server.connect().await {
                     tracing::warn!("Named pipe accept failed: {e:?}; retrying in 1s");
@@ -356,9 +380,16 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
                 };
                 let connected = std::mem::replace(&mut server, next);
 
-                let conn_state = state.clone();
+                let factory = Rc::clone(&svc_factory);
                 tokio::task::spawn_local(async move {
-                    if let Err(e) = serve_named_pipe_connection(connected, conn_state).await {
+                    let service = match factory.new_service(()).await {
+                        Ok(s) => s,
+                        Err(_) => {
+                            tracing::warn!("Failed to initialize HttpService for connection");
+                            return;
+                        }
+                    };
+                    if let Err(e) = service.call((connected, None)).await {
                         tracing::warn!("Named pipe connection error: {e:?}");
                     }
                 });
@@ -370,45 +401,4 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
             Ok::<(), anyhow::Error>(())
         })
         .await
-}
-
-/// Serve a single Named Pipe connection with the actix-web App.
-///
-/// Builds the App and `H1Service` factory per connection. This is wasteful
-/// compared to the worker-pooled model `HttpServer` uses (factory built
-/// once per worker, many connections per worker), but lifting the factory
-/// out of `spawn_local` broke first-connection accept on actix-http 3.x in
-/// testing: the accept loop appeared to stall before serving the first
-/// client. The per-connection cost is dominated by the request handler,
-/// not the routing/middleware construction, so this is acceptable for
-/// zeusd's local-IPC use case.
-#[cfg(windows)]
-async fn serve_named_pipe_connection(
-    io: tokio::net::windows::named_pipe::NamedPipeServer,
-    state: ServerState,
-) -> anyhow::Result<()> {
-    use actix_http::HttpService;
-    use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
-    use actix_web::dev::AppConfig;
-
-    let app = build_app!(state);
-
-    // Adapt App (Config = AppConfig, Error = actix_web::Error) to what
-    // H1Service expects (Config = (), Error: Into<Response<BoxBody>>).
-    let svc_factory = HttpService::build().h1(actix_service::map_config(
-        app.into_factory().map_err(|err| err.error_response()),
-        |_| AppConfig::default(),
-    ));
-
-    let service = svc_factory
-        .new_service(())
-        .await
-        .map_err(|_| anyhow::anyhow!("Failed to initialize HttpService"))?;
-
-    service
-        .call((io, None))
-        .await
-        .map_err(|e| anyhow::anyhow!("Dispatcher error: {:?}", e))?;
-
-    Ok(())
 }
