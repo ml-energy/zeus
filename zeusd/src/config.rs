@@ -152,11 +152,21 @@ pub struct ServeConfig {
     /// API groups to enable. Each group exposes a set of HTTP endpoints.
     /// Groups that require root will cause the daemon to exit at startup
     /// if it is not running as root.
-    #[clap(
+    ///
+    /// The default is platform-specific: on Linux all three groups
+    /// (`gpu-control`, `gpu-read`, `cpu-read`) are enabled. On non-Linux
+    /// platforms `cpu-read` is omitted because it requires the Intel RAPL
+    /// sysfs interface and is rejected at startup elsewhere.
+    #[cfg_attr(target_os = "linux", clap(
         long,
         value_delimiter = ',',
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
-    )]
+    ))]
+    #[cfg_attr(not(target_os = "linux"), clap(
+        long,
+        value_delimiter = ',',
+        default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead],
+    ))]
     pub enable: Vec<ApiGroup>,
 
     /// Path to the HMAC-SHA256 signing key file for JWT authentication.

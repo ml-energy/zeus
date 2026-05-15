@@ -412,25 +412,36 @@ pub async fn run_server_named_pipe(
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async move {
-            // Build the App and `H1Service` factory ONCE for the lifetime of
-            // the daemon, INSIDE the LocalSet's task. This is required:
-            // `HttpService::build().h1(...)` transitively constructs an
-            // `actix_http::date::DateService`, whose constructor calls
-            // `actix_rt::spawn` (= `tokio::task::spawn_local`). Building the
-            // factory outside any `LocalSet` panics immediately with
-            // "spawn_local called from outside of a task::LocalSet".
-            // `actix-server`'s `HttpServer` model avoids this because each
-            // worker runs in its own `Arbiter` (which sets up a current-thread
-            // runtime + LocalSet); we have to provide that context ourselves.
+            // Build the App, the `H1Service` factory, and the per-daemon
+            // service all INSIDE the LocalSet's task. Two reasons:
             //
-            // Per-connection we then only `Rc::clone` the shared factory and
-            // call `new_service(())`, which is much cheaper than re-cloning
-            // `ServerState` and re-building the routing / middleware stack.
+            // 1. `HttpService::build().h1(...)` transitively constructs an
+            //    `actix_http::date::DateService`, whose constructor calls
+            //    `actix_rt::spawn` (= `tokio::task::spawn_local`). Building
+            //    outside any `LocalSet` panics with "spawn_local called
+            //    from outside of a task::LocalSet".
+            //
+            // 2. `AppInit::new_service` (actix-web 4.9 `app_service.rs:77`)
+            //    drains its services Vec via `mem::take` on the FIRST call,
+            //    then overwrites its `factory_ref` from that drain. A second
+            //    call yields an `AppRoutingFactory` with no services, so
+            //    every route except the default 404 stops matching. We
+            //    therefore call `new_service` exactly once and share the
+            //    resulting service across all connections via `Rc`.
+            //    `HttpServer` avoids this by calling `new_service` once per
+            //    worker; we mirror that here on the single-threaded
+            //    `LocalSet`.
             let app = build_app!(state);
-            let svc_factory = Rc::new(HttpService::build().h1(actix_service::map_config(
+            let svc_factory = HttpService::build().h1(actix_service::map_config(
                 app.into_factory().map_err(|err| err.error_response()),
                 |_| AppConfig::default(),
-            )));
+            ));
+            let service = Rc::new(
+                svc_factory
+                    .new_service(())
+                    .await
+                    .map_err(|_| anyhow::anyhow!("Failed to initialize HTTP service"))?,
+            );
 
             loop {
                 // Ensure we have a listening pipe instance. If the previous
@@ -467,7 +478,7 @@ pub async fn run_server_named_pipe(
                 // Try to set up the replacement listener. If it fails, we'll
                 // re-create it on the next iteration; importantly, we still
                 // serve the just-connected client now (the loop's next iter
-                // won't busy-wait — the listener is None until we recreate).
+                // won't busy-wait; the listener is None until we recreate).
                 server = match create_pipe_with_sddl(&pipe_name, &pipe_sddl, false) {
                     Ok(new) => Some(new),
                     Err(e) => {
@@ -479,16 +490,9 @@ pub async fn run_server_named_pipe(
                     }
                 };
 
-                let factory = Rc::clone(&svc_factory);
+                let svc = Rc::clone(&service);
                 tokio::task::spawn_local(async move {
-                    let service = match factory.new_service(()).await {
-                        Ok(s) => s,
-                        Err(_) => {
-                            tracing::warn!("Failed to initialize HttpService for connection");
-                            return;
-                        }
-                    };
-                    if let Err(e) = service.call((connected, None)).await {
+                    if let Err(e) = svc.call((connected, None)).await {
                         tracing::warn!("Named pipe connection error: {e:?}");
                     }
                 });

@@ -256,15 +256,29 @@ function Invoke-PipeHttp(\$m,\$path) {
   while ((\$n = \$pipe.Read(\$buf,0,\$buf.Length)) -gt 0) { \$ms.Write(\$buf,0,\$n) }
   \$pipe.Close(); return [Text.Encoding]::ASCII.GetString(\$ms.ToArray())
 }
+# Expected codes encode the regression we hit before: actix-web's AppInit
+# drains its services Vec on the first new_service() call, so if zeusd
+# calls new_service() per connection (as it used to), the FIRST pipe
+# request hits a populated router (200) and EVERY SUBSEQUENT request hits
+# an empty router (404). Asserting per-route status codes catches this.
+\$failed = 0
 foreach (\$x in @(
-  @{m='GET'; p='/discover'}, @{m='GET'; p='/gpu/get_power'}, @{m='GET'; p='/gpu/get_cumulative_energy'},
-  @{m='POST'; p='/gpu/set_persistence_mode?gpu_ids=0&enabled=true&block=true'},
-  @{m='POST'; p='/gpu/set_persistence_mode?gpu_ids=0&enabled=false&block=true'}
+  @{m='GET' ; p='/discover'                                                           ; expect=200},
+  @{m='GET' ; p='/gpu/get_power'                                                      ; expect=200},
+  @{m='GET' ; p='/gpu/get_cumulative_energy'                                          ; expect=200},
+  @{m='POST'; p='/gpu/set_persistence_mode?gpu_ids=0&enabled=true&block=true'         ; expect=200},
+  @{m='POST'; p='/gpu/set_persistence_mode?gpu_ids=0&enabled=false&block=true'        ; expect=400}
 )) {
   Write-Host ">>> PIPE \$(\$x.m) \$(\$x.p)"
   \$resp = Invoke-PipeHttp \$x.m \$x.p
-  Write-Host "  \$((\$resp -split "\`r\`n",2)[0])"
+  \$statusLine = (\$resp -split "\`r\`n",2)[0]
+  Write-Host "  \$statusLine"
+  if (\$statusLine -notmatch "HTTP/1\.1 \$(\$x.expect)") {
+    Write-Host "    expected HTTP \$(\$x.expect)"
+    \$failed = 1
+  }
 }
+if (\$failed) { throw "Named-pipe smoke failed (see expected vs actual above)" }
 Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 

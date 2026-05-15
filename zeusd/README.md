@@ -27,7 +27,7 @@ To make this as low latency as possible, `zeusd` was written in Rust.
 |----------|------------------|:----------:|:--------:|-------|
 | Linux    | UDS              | ✓ | ✓ | All API groups work. |
 | macOS    | UDS              | (NVIDIA not supported) | n/a | NVML/RAPL unavailable; daemon runs but reports zero devices. |
-| Windows  | Named Pipe       | ✓ | n/a | `cpu-read` group is rejected at startup. `set_persistence_mode(false)` returns HTTP 400; see [Windows-specific behavior](#windows-specific-behavior). |
+| Windows  | Named Pipe       | ✓ | n/a | `cpu-read` is omitted from the default `--enable` and rejected at startup if added. `set_persistence_mode(false)` returns HTTP 400; see [Windows-specific behavior](#windows-specific-behavior). Python clients should use `--mode tcp` (no named-pipe `httpx` transport yet). |
 
 ## How to use `zeusd`
 
@@ -67,6 +67,10 @@ zeusd serve --pipe-name \\.\pipe\zeusd
 The default pipe name is `\\.\pipe\zeusd`. Up to 254 concurrent client connections are accepted (Windows' `PIPE_UNLIMITED_INSTANCES` = 255 is rejected by Tokio's builder, so 254 is the practical cap).
 
 `actix-web`'s built-in `HttpServer` does not support Windows named pipes, so on the named-pipe path zeusd drives `actix-http`'s `H1Service` over each connected `NamedPipeServer` on a single-threaded `LocalSet`. `--num-workers` is therefore ignored in this mode.
+
+Access control is enforced via the pipe's DACL, configurable through `--pipe-sddl`. The default `D:(A;;GRGW;;;AU)` grants read+write to all authenticated users, analogous to `--socket-permissions 666` for UDS; pass any valid SDDL string to tighten or widen the audience.
+
+**Python client integration.** The Zeus Python library (`zeus.utils.zeusd.ZeusdConfig` and the `ZeusdNVIDIAGPU` / `PowerStreamingClient` it backs) currently constructs HTTP transports for TCP and Unix domain sockets only; there is no `httpx` transport for Windows named pipes yet. To use `zeusd` from a Zeus Python application on Windows, run the daemon in TCP mode (`--mode tcp`) and point clients at `ZEUSD_HOST_PORT`. Named-pipe mode is fully usable from non-Python clients (curl in WSL, .NET `NamedPipeClientStream`, custom Rust/Go clients, etc.).
 
 ### TCP mode
 
@@ -127,7 +131,7 @@ See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/m
 
 ### API groups
 
-`zeusd` organizes its endpoints into API groups that can be selectively enabled with the `--enable` flag. By default, all groups are enabled.
+`zeusd` organizes its endpoints into API groups that can be selectively enabled with the `--enable` flag. The default is platform-specific: on Linux all three groups are enabled (`gpu-control,gpu-read,cpu-read`); on Windows and macOS `cpu-read` is omitted from the default because it requires the Intel RAPL sysfs interface and is rejected at startup elsewhere.
 
 | Group | Endpoints | Requires root |
 |-------|-----------|:---:|
@@ -450,9 +454,10 @@ Options:
           [default: 10]
 
       --enable <ENABLE>
-          API groups to enable. Each group exposes a set of HTTP endpoints. Groups that require root will cause the daemon to exit at startup if it is not running as root
+          API groups to enable. Each group exposes a set of HTTP endpoints. Groups that require root will cause the daemon to exit at startup if it is not running as root. The default is platform-specific: Linux includes `cpu-read`, Windows and macOS do not
 
-          [default: gpu-control gpu-read cpu-read]
+          [default: gpu-control gpu-read cpu-read]   # Linux
+          [default: gpu-control gpu-read]            # Windows / macOS
 
           Possible values:
           - gpu-control: GPU control operations (set power limit, clocks, persistence mode). Requires root
