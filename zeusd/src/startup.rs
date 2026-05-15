@@ -306,7 +306,7 @@ pub fn start_server_tcp(
 /// `HttpServer::listen_uds` is Unix-only, so on Windows we drive actix-http
 /// `H1Service` directly over each connected `NamedPipeServer`. Connections
 /// are served on a `LocalSet`: actix-web/actix-http internals hold `Rc<>`s
-/// and so the per-connection futures are `!Send` — the same single-threaded
+/// and so the per-connection futures are `!Send`; this is the same single-threaded
 /// model `actix-server` uses for its worker tasks.
 ///
 /// The default pipe name follows the conventional Windows form
@@ -316,10 +316,6 @@ pub fn start_server_tcp(
 /// actix-web App.
 #[cfg(windows)]
 pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> anyhow::Result<()> {
-    use actix_http::HttpService;
-    use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
-    use actix_web::dev::AppConfig;
-    use std::rc::Rc;
     use tokio::net::windows::named_pipe::ServerOptions;
 
     // Reserve the pipe name with the first instance. Subsequent instances
@@ -330,16 +326,6 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
         .max_instances(254)
         .create(&pipe_name)?;
     tracing::info!("Listening on named pipe {}", &pipe_name);
-
-    // Build the App and H1Service factory once for the lifetime of the
-    // daemon. Per-connection we only need to call `new_service(())` on this
-    // shared factory, which is much cheaper than re-cloning ServerState and
-    // re-building the entire routing / middleware stack.
-    let app = build_app!(state);
-    let svc_factory = Rc::new(HttpService::build().h1(actix_service::map_config(
-        app.into_factory().map_err(|err| err.error_response()),
-        |_| AppConfig::default(),
-    )));
 
     let local = tokio::task::LocalSet::new();
     local
@@ -353,7 +339,7 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
 
                 // Try to set up the next listener BEFORE we hand off the
                 // connected pipe. If we can't (e.g. concurrent-connection cap
-                // hit, transient OS error), don't propagate — log, drop the
+                // hit, transient OS error), don't propagate: log, drop the
                 // just-accepted client, and back off so the daemon stays
                 // alive. The client will reconnect.
                 let next = match ServerOptions::new().max_instances(254).create(&pipe_name) {
@@ -370,16 +356,9 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
                 };
                 let connected = std::mem::replace(&mut server, next);
 
-                let factory = Rc::clone(&svc_factory);
+                let conn_state = state.clone();
                 tokio::task::spawn_local(async move {
-                    let service = match factory.new_service(()).await {
-                        Ok(s) => s,
-                        Err(_) => {
-                            tracing::warn!("Failed to initialize HttpService for connection");
-                            return;
-                        }
-                    };
-                    if let Err(e) = service.call((connected, None)).await {
+                    if let Err(e) = serve_named_pipe_connection(connected, conn_state).await {
                         tracing::warn!("Named pipe connection error: {e:?}");
                     }
                 });
@@ -391,4 +370,45 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
             Ok::<(), anyhow::Error>(())
         })
         .await
+}
+
+/// Serve a single Named Pipe connection with the actix-web App.
+///
+/// Builds the App and `H1Service` factory per connection. This is wasteful
+/// compared to the worker-pooled model `HttpServer` uses (factory built
+/// once per worker, many connections per worker), but lifting the factory
+/// out of `spawn_local` broke first-connection accept on actix-http 3.x in
+/// testing: the accept loop appeared to stall before serving the first
+/// client. The per-connection cost is dominated by the request handler,
+/// not the routing/middleware construction, so this is acceptable for
+/// zeusd's local-IPC use case.
+#[cfg(windows)]
+async fn serve_named_pipe_connection(
+    io: tokio::net::windows::named_pipe::NamedPipeServer,
+    state: ServerState,
+) -> anyhow::Result<()> {
+    use actix_http::HttpService;
+    use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
+    use actix_web::dev::AppConfig;
+
+    let app = build_app!(state);
+
+    // Adapt App (Config = AppConfig, Error = actix_web::Error) to what
+    // H1Service expects (Config = (), Error: Into<Response<BoxBody>>).
+    let svc_factory = HttpService::build().h1(actix_service::map_config(
+        app.into_factory().map_err(|err| err.error_response()),
+        |_| AppConfig::default(),
+    ));
+
+    let service = svc_factory
+        .new_service(())
+        .await
+        .map_err(|_| anyhow::anyhow!("Failed to initialize HttpService"))?;
+
+    service
+        .call((io, None))
+        .await
+        .map_err(|e| anyhow::anyhow!("Dispatcher error: {:?}", e))?;
+
+    Ok(())
 }

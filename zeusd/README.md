@@ -26,8 +26,8 @@ To make this as low latency as possible, `zeusd` was written in Rust.
 | Platform | Default transport | GPU (NVML) | CPU RAPL | Notes |
 |----------|------------------|:----------:|:--------:|-------|
 | Linux    | UDS              | ✓ | ✓ | All API groups work. |
-| macOS    | UDS              | (NVIDIA not supported) | — | NVML/RAPL unavailable; daemon runs but reports zero devices. |
-| Windows  | Named Pipe       | ✓ | — | `cpu-read` group is rejected at startup. `set_persistence_mode(false)` returns HTTP 400 — see [Windows-specific behavior](#windows-specific-behavior). |
+| macOS    | UDS              | (NVIDIA not supported) | n/a | NVML/RAPL unavailable; daemon runs but reports zero devices. |
+| Windows  | Named Pipe       | ✓ | n/a | `cpu-read` group is rejected at startup. `set_persistence_mode(false)` returns HTTP 400; see [Windows-specific behavior](#windows-specific-behavior). |
 
 ## How to use `zeusd`
 
@@ -285,7 +285,7 @@ Set GPU persistence mode.
 | `enabled` | `bool` | yes | Enable or disable persistence mode |
 | `block` | `bool` | yes | Wait for completion |
 
-See [Windows-specific behavior](#windows-specific-behavior) — `enabled=false` returns HTTP 400 on Windows since the Windows driver model keeps the driver resident at all times.
+See [Windows-specific behavior](#windows-specific-behavior): `enabled=false` returns HTTP 400 on Windows since the Windows driver model keeps the driver resident at all times.
 
 #### `POST /gpu/set_gpu_locked_clocks`
 

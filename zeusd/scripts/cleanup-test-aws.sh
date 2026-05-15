@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tear down anything left behind by `test-windows-gpu.sh` — finds resources
+# Tear down anything left behind by `test-windows-gpu.sh`: finds resources
 # tagged `zeusd-test=*` and deletes them in the right order.
 #
 # Use cases:

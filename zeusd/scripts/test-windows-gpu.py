@@ -146,7 +146,7 @@ if load_p_med < 3 * idle_p_med:
     fail(f"load median power ({load_p_med:.0f} mW) not >= 3x idle median ({idle_p_med:.0f} mW)")
 # Load max should approach the power cap (within 5% headroom)
 if load_p_max < int(0.9 * pmax):
-    print(f"WARN: load max {load_p_max} mW is well below cap {pmax} mW — workload may not be saturating GPU")
+    print(f"WARN: load max {load_p_max} mW is well below cap {pmax} mW; workload may not be saturating GPU")
 
 # ---------- 5. power-limit round-trips ----------
 banner("set_power_limit round-trip via zeusd")
