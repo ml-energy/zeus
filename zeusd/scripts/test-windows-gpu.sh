@@ -322,7 +322,7 @@ if (Get-LocalUser -Name \$testUser -ErrorAction SilentlyContinue) {
 New-LocalUser -Name \$testUser -Password \$securePass -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
 Remove-LocalGroupMember -Group 'Administrators' -Member \$testUser -ErrorAction SilentlyContinue
 
-function Connect-As-User(\$pipeName) {
+function Send-Request-As-User(\$pipeName, \$method, \$path) {
   \$token = [IntPtr]::Zero
   \$ok = [TokenUtils]::LogonUser(
     \$testUser, '.', \$testPass,
@@ -338,7 +338,7 @@ function Connect-As-User(\$pipeName) {
     try {
       \$pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', \$pipeName, 'InOut')
       \$pipe.Connect(5000)
-      \$req = "GET /discover HTTP/1.1\`r\`nHost: localhost\`r\`nConnection: close\`r\`nContent-Length: 0\`r\`n\`r\`n"
+      \$req = "\$method \$path HTTP/1.1\`r\`nHost: localhost\`r\`nConnection: close\`r\`nContent-Length: 0\`r\`n\`r\`n"
       \$b   = [Text.Encoding]::ASCII.GetBytes(\$req)
       \$pipe.Write(\$b, 0, \$b.Length); \$pipe.Flush()
       \$ms  = New-Object IO.MemoryStream
@@ -356,7 +356,12 @@ function Connect-As-User(\$pipeName) {
   }
 }
 
-# --- Positive: default SDDL ('D:(A;;GRGW;;;AU)') should let an AU connect ---
+# --- Positive: default SDDL ('D:(A;;GRGW;;;AU)') should let an AU connect AND
+# trigger a privileged NVML write through the elevated daemon. This is the
+# whole reason zeusd exists on Windows: an unprivileged client process must be
+# able to ask the elevated daemon to change power-limit / locked-clocks. The
+# READ check alone (GET /discover) only proves pipe ACL access; it doesn't
+# prove the privilege bridge works.
 \$pipeOk = 'zeusd-sddl-pos'
 Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep 1
@@ -364,31 +369,56 @@ Start-Sleep 1
   -ArgumentList @('serve','--mode','named-pipe','--pipe-name',"\\\\.\\pipe\\\$pipeOk",'--enable','gpu-control,gpu-read') \`
   -PassThru -NoNewWindow -RedirectStandardOutput "\$src\\sddl-pos.out" -RedirectStandardError "\$src\\sddl-pos.err"
 Start-Sleep -Seconds 4
-\$respOk = Connect-As-User \$pipeOk
+
+# (a) READ: unprivileged client should be able to reach /discover.
+\$respDisc = Send-Request-As-User \$pipeOk 'GET' '/discover'
+if (-not (\$respDisc -match 'HTTP/1\\.1 200 OK')) {
+  Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
+  Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
+  Write-Host "  positive read: FAIL. client output:"; Write-Host \$respDisc
+  throw "SDDL positive read test failed"
+}
+Write-Host "  positive read:  PASS (unprivileged client got 200 OK on /discover)"
+
+# (b) WRITE: unprivileged client triggers a privileged NVML op (set_power_limit).
+#     Daemon (SYSTEM) executes nvmlDeviceSetPowerManagementLimit on its behalf.
+\$respSet = Send-Request-As-User \$pipeOk 'POST' '/gpu/set_power_limit?gpu_ids=0&power_limit_mw=65000&block=true'
+if (-not (\$respSet -match 'HTTP/1\\.1 200 OK')) {
+  Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
+  Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
+  Write-Host "  positive write: FAIL. client output:"; Write-Host \$respSet
+  throw "SDDL positive write test failed (privilege bridge broken)"
+}
+Write-Host "  positive write: PASS (unprivileged client drove privileged NVML write via daemon)"
+
+# (c) WRITE-BAD-ARG: same path but with out-of-range value should yield 400 (proves
+#     the daemon really did call NVML and propagated the InvalidArg, rather than
+#     rubber-stamping 200 to anything from the unprivileged client).
+\$respBad = Send-Request-As-User \$pipeOk 'POST' '/gpu/set_power_limit?gpu_ids=0&power_limit_mw=99999999&block=true'
+if (-not (\$respBad -match 'HTTP/1\\.1 400 Bad Request')) {
+  Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
+  Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
+  Write-Host "  positive 400:   FAIL. client output:"; Write-Host \$respBad
+  throw "SDDL positive 400 test failed (daemon didn't propagate NVML error)"
+}
+Write-Host "  positive 400:   PASS (out-of-range power limit returns 400 to unprivileged client)"
+
 Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep 1
-if (\$respOk -match 'HTTP/1\\.1 200 OK') {
-  Write-Host "  positive: PASS (unprivileged client got 200 OK)"
-} else {
-  Write-Host "  positive: FAIL. client output:"
-  Write-Host \$respOk
-  Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
-  throw "SDDL positive test failed"
-}
 
-# --- Negative: restrictive SDDL ('D:(A;;GA;;;BA)') should DENY AU ---
+# --- Negative: restrictive SDDL ('D:(A;;GA;;;BA)') should DENY AU at pipe-open ---
 \$pipeNo = 'zeusd-sddl-neg'
 \$null = Start-Process -FilePath \$exe \`
   -ArgumentList @('serve','--mode','named-pipe','--pipe-name',"\\\\.\\pipe\\\$pipeNo",'--pipe-sddl','D:(A;;GA;;;BA)','--enable','gpu-control,gpu-read') \`
   -PassThru -NoNewWindow -RedirectStandardOutput "\$src\\sddl-neg.out" -RedirectStandardError "\$src\\sddl-neg.err"
 Start-Sleep -Seconds 4
-\$respNo = Connect-As-User \$pipeNo
+\$respNo = Send-Request-As-User \$pipeNo 'GET' '/discover'
 Get-Process -Name zeusd -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep 1
 if (\$respNo -match 'FAILED') {
-  Write-Host "  negative: PASS (got expected failure: \$((\$respNo -split "\`r\`n",2)[0].Trim()))"
+  Write-Host "  negative:       PASS (got expected failure: \$((\$respNo -split "\`r\`n",2)[0].Trim()))"
 } else {
-  Write-Host "  negative: FAIL: expected denial but got:"
+  Write-Host "  negative:       FAIL: expected denial but got:"
   Write-Host \$respNo
   Remove-LocalUser -Name \$testUser -ErrorAction SilentlyContinue
   throw "SDDL negative test failed"
