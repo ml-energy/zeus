@@ -310,21 +310,22 @@ pub fn start_server_tcp(
 /// model `actix-server` uses for its worker tasks.
 ///
 /// The default pipe name follows the conventional Windows form
-/// `\\.\pipe\zeusd`. Up to 255 concurrent client connections are accepted;
-/// each connection runs the full actix-web App.
+/// `\\.\pipe\zeusd`. Up to 254 concurrent client connections are accepted
+/// (Windows' `PIPE_UNLIMITED_INSTANCES` = 255 is rejected by tokio's
+/// builder, so 254 is the practical cap); each connection runs the full
+/// actix-web App.
 #[cfg(windows)]
 pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> anyhow::Result<()> {
     use tokio::net::windows::named_pipe::ServerOptions;
-
-    tracing::info!("Listening on named pipe {}", &pipe_name);
 
     // Reserve the pipe name with the first instance. Subsequent instances
     // are created lazily after each accept so the pipe is always ready for
     // the next client.
     let mut server = ServerOptions::new()
         .first_pipe_instance(true)
-        .max_instances(255)
+        .max_instances(254)
         .create(&pipe_name)?;
+    tracing::info!("Listening on named pipe {}", &pipe_name);
 
     let local = tokio::task::LocalSet::new();
     local
@@ -333,7 +334,7 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
                 server.connect().await?;
                 let connected = std::mem::replace(
                     &mut server,
-                    ServerOptions::new().max_instances(255).create(&pipe_name)?,
+                    ServerOptions::new().max_instances(254).create(&pipe_name)?,
                 );
 
                 let conn_state = state.clone();

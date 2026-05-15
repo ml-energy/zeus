@@ -234,10 +234,7 @@ async fn get_cumulative_energy_handler(
                 response_map.insert(gpu_id.to_string(), GpuEnergyResponse { energy_mj });
             }
             Ok(_) => {
-                errors.insert(
-                    gpu_id,
-                    ZeusdError::GpuManagementTaskTerminatedError(gpu_id),
-                );
+                errors.insert(gpu_id, ZeusdError::GpuManagementTaskTerminatedError(gpu_id));
             }
             Err(e) => {
                 errors.insert(gpu_id, e);
