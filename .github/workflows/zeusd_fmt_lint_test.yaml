@@ -62,7 +62,7 @@ jobs:
             zeusd/target/
           key: ${{ github.event.repository.name }}-${{ runner.os }}-zeusd-cargo-v3
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all -- -D warnings
         working-directory: zeusd
       - name: Run tests
         run: cargo test
