@@ -51,7 +51,7 @@ To avoid running applications as root, Zeus provides a privileged daemon.
 
 - **Purpose**: Runs with admin privileges and exposes API endpoints wrapping privileged RAPL counters and NVML methods
 - **Implementation**: Written in Rust for low latency
-- **Communication**: Unix domain socket (default: `/var/run/zeusd.sock`) or TCP
+- **Communication**: Unix domain socket (default: `/run/zeusd/zeusd.sock`) or TCP
 - **Security model**: Unprivileged applications request privileged operations through the daemon
 
 **Daemon Security Considerations**

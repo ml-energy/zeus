@@ -1,0 +1,21 @@
+# /etc/default/zeusd -- arguments for `zeusd serve`.
+# Override via `sudo systemctl edit zeusd` (drop-in) for unit-level changes,
+# or edit this file for CLI args. Restart: `sudo systemctl restart zeusd`.
+
+# Default: UDS mode on /run/zeusd/zeusd.sock, all API groups enabled.
+# --num-workers caps actix-web's HTTP worker thread count. zeusd is async +
+# actor-based so most workers stay parked on epoll; 10 covers a typical
+# production GPU node (~8 GPUs + 2 NUMA sockets) with headroom.
+ZEUSD_ARGS="--num-workers 10"
+
+# Alternatives -- uncomment one and comment out the line above:
+#
+# TCP mode (all interfaces, port 4938). For production, also set --signing-key-path.
+#ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938"
+#
+# Monitoring-only (drop gpu-control). cpu-read still needs root for RAPL;
+# remove it too if you want a fully unprivileged daemon.
+#ZEUSD_ARGS="--num-workers 10 --enable gpu-read,cpu-read"
+#
+# TCP with JWT auth.
+#ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path /etc/zeusd/signing.key"

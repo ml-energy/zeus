@@ -116,7 +116,7 @@ client = PowerStreamingClient(
     servers=[
         ZeusdConfig.tcp("node1", 4938, gpu_indices=[0, 1, 2, 3], cpu_indices=[0]),
         ZeusdConfig.tcp("node2", 4938),        # all GPUs + all CPUs
-        ZeusdConfig.uds("/var/run/zeusd.sock"), # local UDS
+        ZeusdConfig.uds("/run/zeusd/zeusd.sock"), # local UDS
     ],
 )
 

@@ -2,11 +2,13 @@
 
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use anyhow::Context;
 use std::collections::HashSet;
 use std::fs;
 use std::net::TcpListener;
 use std::os::unix::fs::{chown, PermissionsExt};
 use std::os::unix::net::UnixListener;
+use std::path::Path;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::fmt::MakeWriter;
@@ -50,6 +52,13 @@ pub fn get_unix_listener(
             socket_path,
         );
         anyhow::bail!("Socket file already exists");
+    }
+    if let Some(parent) = Path::new(socket_path).parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create parent directory for socket {socket_path}")
+            })?;
+        }
     }
     let listener = UnixListener::bind(socket_path)?;
     fs::set_permissions(socket_path, fs::Permissions::from_mode(permissions))?;
