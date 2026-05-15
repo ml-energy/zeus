@@ -316,6 +316,10 @@ pub fn start_server_tcp(
 /// actix-web App.
 #[cfg(windows)]
 pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> anyhow::Result<()> {
+    use actix_http::HttpService;
+    use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
+    use actix_web::dev::AppConfig;
+    use std::rc::Rc;
     use tokio::net::windows::named_pipe::ServerOptions;
 
     // Reserve the pipe name with the first instance. Subsequent instances
@@ -327,61 +331,64 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
         .create(&pipe_name)?;
     tracing::info!("Listening on named pipe {}", &pipe_name);
 
+    // Build the App and H1Service factory once for the lifetime of the
+    // daemon. Per-connection we only need to call `new_service(())` on this
+    // shared factory, which is much cheaper than re-cloning ServerState and
+    // re-building the entire routing / middleware stack.
+    let app = build_app!(state);
+    let svc_factory = Rc::new(HttpService::build().h1(actix_service::map_config(
+        app.into_factory().map_err(|err| err.error_response()),
+        |_| AppConfig::default(),
+    )));
+
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async move {
             loop {
-                server.connect().await?;
-                let connected = std::mem::replace(
-                    &mut server,
-                    ServerOptions::new().max_instances(254).create(&pipe_name)?,
-                );
+                if let Err(e) = server.connect().await {
+                    tracing::warn!("Named pipe accept failed: {e:?}; retrying in 1s");
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    continue;
+                }
 
-                let conn_state = state.clone();
+                // Try to set up the next listener BEFORE we hand off the
+                // connected pipe. If we can't (e.g. concurrent-connection cap
+                // hit, transient OS error), don't propagate — log, drop the
+                // just-accepted client, and back off so the daemon stays
+                // alive. The client will reconnect.
+                let next = match ServerOptions::new().max_instances(254).create(&pipe_name) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to create next named pipe instance: {e:?}; \
+                             accepted client will be dropped, backing off 1s. \
+                             This usually means the concurrent-connection cap was hit."
+                        );
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        continue;
+                    }
+                };
+                let connected = std::mem::replace(&mut server, next);
+
+                let factory = Rc::clone(&svc_factory);
                 tokio::task::spawn_local(async move {
-                    if let Err(e) = serve_named_pipe_connection(connected, conn_state).await {
-                        tracing::warn!("Named pipe connection error: {:?}", e);
+                    let service = match factory.new_service(()).await {
+                        Ok(s) => s,
+                        Err(_) => {
+                            tracing::warn!("Failed to initialize HttpService for connection");
+                            return;
+                        }
+                    };
+                    if let Err(e) = service.call((connected, None)).await {
+                        tracing::warn!("Named pipe connection error: {e:?}");
                     }
                 });
             }
+            // Unreachable: the loop above only exits if its body returns,
+            // which it never does (errors `continue` instead of propagating).
+            // The annotation gives the async block a concrete Result type.
+            #[allow(unreachable_code)]
+            Ok::<(), anyhow::Error>(())
         })
         .await
-}
-
-/// Serve a single Named Pipe connection with the actix-web App.
-///
-/// Builds a fresh `H1Service` per connection. This is slightly wasteful
-/// compared to the worker-pooled model `HttpServer` uses, but the cost is
-/// dominated by the request handler itself and keeps the integration code
-/// straightforward. Most clients will issue one short request per connection
-/// or stream SSE on a long-lived connection — both fine with this model.
-#[cfg(windows)]
-async fn serve_named_pipe_connection(
-    io: tokio::net::windows::named_pipe::NamedPipeServer,
-    state: ServerState,
-) -> anyhow::Result<()> {
-    use actix_http::HttpService;
-    use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
-    use actix_web::dev::AppConfig;
-
-    let app = build_app!(state);
-
-    // Adapt App (Config = AppConfig, Error = actix_web::Error) to what
-    // H1Service expects (Config = (), Error: Into<Response<BoxBody>>).
-    let svc_factory = HttpService::build().h1(actix_service::map_config(
-        app.into_factory().map_err(|err| err.error_response()),
-        |_| AppConfig::default(),
-    ));
-
-    let service = svc_factory
-        .new_service(())
-        .await
-        .map_err(|_| anyhow::anyhow!("Failed to initialize HttpService"))?;
-
-    service
-        .call((io, None))
-        .await
-        .map_err(|e| anyhow::anyhow!("Dispatcher error: {:?}", e))?;
-
-    Ok(())
 }
