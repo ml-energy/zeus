@@ -2526,6 +2526,7 @@ dependencies = [
  "tracing-actix-web",
  "tracing-log",
  "tracing-subscriber",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

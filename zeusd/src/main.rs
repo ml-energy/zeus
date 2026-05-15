@@ -162,7 +162,8 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
         #[cfg(windows)]
         ConnectionMode::NamedPipe => {
             let _ = num_workers; // num_workers applies to actix-server workers (TCP/UDS)
-            run_server_named_pipe(config.pipe_name.clone(), state).await?;
+            run_server_named_pipe(config.pipe_name.clone(), config.pipe_sddl.clone(), state)
+                .await?;
         }
     }
 

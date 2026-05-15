@@ -123,6 +123,16 @@ pub struct ServeConfig {
     #[clap(long, default_value = r"\\.\pipe\zeusd")]
     pub pipe_name: String,
 
+    /// [Named pipe mode] SDDL describing the pipe's DACL (Windows only).
+    /// Default `D:(A;;GRGW;;;AU)` grants `GenericRead | GenericWrite` to all
+    /// authenticated users, so an elevated daemon can be reached from a
+    /// non-elevated client (analogous to `--socket-permissions 666` on Unix).
+    /// Pass any valid SDDL to override; see Microsoft's Security Descriptor
+    /// Definition Language reference for syntax.
+    #[cfg(windows)]
+    #[clap(long, default_value = "D:(A;;GRGW;;;AU)")]
+    pub pipe_sddl: String,
+
     /// [TCP mode] Address to bind to.
     #[clap(long, default_value = "127.0.0.1:4938")]
     pub tcp_bind_address: String,

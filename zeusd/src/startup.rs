@@ -314,22 +314,100 @@ pub fn start_server_tcp(
 /// (Windows' `PIPE_UNLIMITED_INSTANCES` = 255 is rejected by tokio's
 /// builder, so 254 is the practical cap); each connection runs the full
 /// actix-web App.
+/// Create a Named Pipe instance with the given SDDL applied to its DACL.
+///
+/// Tokio's `ServerOptions::create()` uses the calling process's default
+/// security descriptor, which on an elevated daemon only grants access to
+/// `SYSTEM` and `Administrators`. An unprivileged client process would
+/// get `ERROR_ACCESS_DENIED` on `CreateFile`. We pass an explicit SDDL via
+/// `ConvertStringSecurityDescriptorToSecurityDescriptorW` so the caller
+/// can authorize a broader audience (default `D:(A;;GRGW;;;AU)` =
+/// `GenericRead|GenericWrite` for authenticated users).
 #[cfg(windows)]
-pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> anyhow::Result<()> {
+fn create_pipe_with_sddl(
+    pipe_name: &str,
+    sddl: &str,
+    first_instance: bool,
+) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeServer> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use tokio::net::windows::named_pipe::ServerOptions;
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+
+    let sddl_w: Vec<u16> = OsStr::new(sddl)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut psd = std::ptr::null_mut();
+    let ok = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl_w.as_ptr(),
+            SDDL_REVISION_1 as u32,
+            &mut psd,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 || psd.is_null() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "Failed to parse pipe SDDL `{}`: {}",
+                sddl,
+                std::io::Error::last_os_error()
+            ),
+        ));
+    }
+
+    let mut sa = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: psd,
+        bInheritHandle: 0,
+    };
+
+    let mut opts = ServerOptions::new();
+    if first_instance {
+        opts.first_pipe_instance(true);
+    }
+    opts.max_instances(254);
+
+    // SAFETY: `sa` and `psd` are valid for the duration of this call. The
+    // kernel makes its own copy of the security descriptor before the call
+    // returns, so we can safely `LocalFree(psd)` immediately afterward.
+    let result = unsafe {
+        opts.create_with_security_attributes_raw(
+            pipe_name,
+            &mut sa as *mut _ as *mut std::ffi::c_void,
+        )
+    };
+    unsafe { LocalFree(psd as _) };
+    result
+}
+
+#[cfg(windows)]
+pub async fn run_server_named_pipe(
+    pipe_name: String,
+    pipe_sddl: String,
+    state: ServerState,
+) -> anyhow::Result<()> {
     use actix_http::HttpService;
     use actix_service::{IntoServiceFactory, Service, ServiceFactory, ServiceFactoryExt};
     use actix_web::dev::AppConfig;
     use std::rc::Rc;
-    use tokio::net::windows::named_pipe::ServerOptions;
 
     // Reserve the pipe name with the first instance. Subsequent instances
     // are created lazily after each accept so the pipe is always ready for
     // the next client.
-    let mut server = ServerOptions::new()
-        .first_pipe_instance(true)
-        .max_instances(254)
-        .create(&pipe_name)?;
-    tracing::info!("Listening on named pipe {}", &pipe_name);
+    let initial = create_pipe_with_sddl(&pipe_name, &pipe_sddl, true)?;
+    tracing::info!(
+        "Listening on named pipe {} (SDDL: {})",
+        &pipe_name,
+        &pipe_sddl
+    );
+    let mut server: Option<tokio::net::windows::named_pipe::NamedPipeServer> = Some(initial);
 
     let local = tokio::task::LocalSet::new();
     local
@@ -355,30 +433,51 @@ pub async fn run_server_named_pipe(pipe_name: String, state: ServerState) -> any
             )));
 
             loop {
-                if let Err(e) = server.connect().await {
-                    tracing::warn!("Named pipe accept failed: {e:?}; retrying in 1s");
+                // Ensure we have a listening pipe instance. If the previous
+                // iteration couldn't create one (e.g. concurrent-connection
+                // cap hit), try again here.
+                let listener = match server.as_mut() {
+                    Some(s) => s,
+                    None => match create_pipe_with_sddl(&pipe_name, &pipe_sddl, false) {
+                        Ok(new) => {
+                            server = Some(new);
+                            server.as_mut().unwrap()
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Cannot create named pipe listener: {e:?}; retrying in 1s. \
+                                 This usually means the concurrent-connection cap was hit."
+                            );
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            continue;
+                        }
+                    },
+                };
+
+                if let Err(e) = listener.connect().await {
+                    tracing::warn!("Named pipe accept failed: {e:?}; resetting listener");
+                    server = None;
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     continue;
                 }
 
-                // Try to set up the next listener BEFORE we hand off the
-                // connected pipe. If we can't (e.g. concurrent-connection cap
-                // hit, transient OS error), don't propagate: log, drop the
-                // just-accepted client, and back off so the daemon stays
-                // alive. The client will reconnect.
-                let next = match ServerOptions::new().max_instances(254).create(&pipe_name) {
-                    Ok(s) => s,
+                // Take ownership of the connected pipe immediately so subsequent
+                // loop iterations work on a fresh listener.
+                let connected = server.take().unwrap();
+                // Try to set up the replacement listener. If it fails, we'll
+                // re-create it on the next iteration; importantly, we still
+                // serve the just-connected client now (the loop's next iter
+                // won't busy-wait — the listener is None until we recreate).
+                server = match create_pipe_with_sddl(&pipe_name, &pipe_sddl, false) {
+                    Ok(new) => Some(new),
                     Err(e) => {
                         tracing::warn!(
-                            "Failed to create next named pipe instance: {e:?}; \
-                             accepted client will be dropped, backing off 1s. \
-                             This usually means the concurrent-connection cap was hit."
+                            "Connected client OK but cannot create replacement listener: {e:?}; \
+                             will retry on next loop iter"
                         );
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                        continue;
+                        None
                     }
                 };
-                let connected = std::mem::replace(&mut server, next);
 
                 let factory = Rc::clone(&svc_factory);
                 tokio::task::spawn_local(async move {

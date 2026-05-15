@@ -113,8 +113,10 @@ def poll_thread():
     while not stop.is_set():
         try:
             load_samples.append((time.time(), *poll_once()))
-        except Exception:
-            pass
+        except requests.exceptions.RequestException as e:
+            print(f"  poll error (network): {e}", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"  poll error (unexpected): {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         time.sleep(0.2)
 
 

@@ -43,9 +43,17 @@ nix = { version = "0.29", default-features = false, features = ["user"] }
 # Windows-only deps needed to serve actix-web on a Named Pipe transport
 # (HttpServer::listen_uds is Unix-only, so on Windows we drive actix-http
 #  H1Service directly over each connected NamedPipeServer instance).
+# windows-sys is used for ConvertStringSecurityDescriptorToSecurityDescriptorW
+# so we can create the pipe with a caller-supplied SDDL (so unprivileged
+# clients can connect to the elevated daemon's pipe).
 [target.'cfg(windows)'.dependencies]
 actix-http = "3"
 actix-service = "2"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+] }
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
