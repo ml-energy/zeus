@@ -1,7 +1,7 @@
 //! Routes for interacting with GPUs
 
-use std::collections::HashMap;
-use std::time::Instant;
+use std::collections::{BTreeMap, HashMap};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use actix_web::web::Bytes;
 use actix_web::{web, HttpResponse};
@@ -265,32 +265,80 @@ fn filter_snapshot(snapshot: &GpuPowerSnapshot, gpu_ids: &Option<Vec<usize>>) ->
 
 /// One-shot GPU power reading.
 ///
-/// Subscribes briefly to wake the poller, waits for a fresh reading (up to
-/// 200 ms), then returns the snapshot as JSON. Optionally filtered by
-/// `gpu_ids` query parameter (comma-separated GPU indices).
+/// Fans out a `GetInstantPower` command to each requested GPU's management
+/// task and returns the collected snapshot as JSON. Optionally filtered by
+/// `gpu_ids` query parameter (comma-separated GPU indices); omit to read all
+/// GPUs.
 #[actix_web::get("/get_power")]
-#[tracing::instrument(skip(broadcast), fields(gpu_ids = ?query.gpu_ids))]
+#[tracing::instrument(skip(query, device_tasks), fields(gpu_ids = ?query.gpu_ids))]
 async fn get_power_handler(
     query: web::Query<GpuReadQuery>,
-    broadcast: web::Data<GpuPowerBroadcast>,
-) -> HttpResponse {
+    device_tasks: web::Data<GpuManagementTasks>,
+) -> Result<HttpResponse, ZeusdError> {
+    let now = Instant::now();
     tracing::info!("Received request");
-    let gpu_ids = query.gpu_ids.as_ref().map(|s| parse_gpu_ids(s));
-    if let Some(ref ids) = gpu_ids {
-        if let Err(unknown) = broadcast.validate_ids(ids) {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!(
-                    "Unknown GPU indices: {:?}. Available: {:?}",
-                    unknown,
-                    broadcast.valid_ids(),
-                )
-            }));
+
+    let device_count = device_tasks.device_count();
+    let gpu_ids: Vec<usize> = match &query.gpu_ids {
+        Some(raw) => {
+            let ids = parse_gpu_ids(raw);
+            if ids.is_empty() {
+                return Ok(HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "gpu_ids must contain at least one GPU index"
+                })));
+            }
+            for &id in &ids {
+                if id >= device_count {
+                    return Err(ZeusdError::GpuNotFoundError(id));
+                }
+            }
+            ids
+        }
+        None => (0..device_count).collect(),
+    };
+
+    let mut handles = Vec::with_capacity(gpu_ids.len());
+    for &gpu_id in &gpu_ids {
+        let tasks = device_tasks.clone();
+        handles.push(async move {
+            (
+                gpu_id,
+                tasks
+                    .send_command_blocking(gpu_id, GpuCommand::GetInstantPower, now)
+                    .await,
+            )
+        });
+    }
+    let results = futures::future::join_all(handles).await;
+
+    let mut power_mw: BTreeMap<usize, u32> = BTreeMap::new();
+    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
+    for (gpu_id, result) in results {
+        match result {
+            Ok(GpuResponse::InstantPower { power_mw: p }) => {
+                power_mw.insert(gpu_id, p);
+            }
+            Ok(_) => {
+                errors.insert(gpu_id, ZeusdError::GpuManagementTaskTerminatedError(gpu_id));
+            }
+            Err(e) => {
+                errors.insert(gpu_id, e);
+            }
         }
     }
-    let _guard = broadcast.add_subscriber();
-    let snapshot = broadcast.wait_for_fresh().await.unwrap_or_default();
-    let filtered = filter_snapshot(&snapshot, &gpu_ids);
-    HttpResponse::Ok().json(filtered)
+
+    if !errors.is_empty() {
+        return Ok(aggregate_error_response(errors));
+    }
+
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    Ok(HttpResponse::Ok().json(GpuPowerSnapshot {
+        timestamp_ms,
+        power_mw,
+    }))
 }
 
 /// SSE stream of GPU power readings.

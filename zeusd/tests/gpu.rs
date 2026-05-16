@@ -824,6 +824,32 @@ async fn test_gpu_power_oneshot_has_all_gpus() {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_gpu_power_oneshot_returns_promptly_with_stable_mock() {
+    // Regression guard: /gpu/get_power must return promptly even when the
+    // underlying device reports a byte-identical power reading on every call.
+    // Multi-thread runtime and the request loop exercise the cross-thread
+    // ordering where a poller-coupled handler is most likely to hang.
+    let _app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/gpu/get_power", _app.port);
+
+    let inner = async {
+        for _ in 0..10 {
+            let resp = client
+                .get(&url)
+                .send()
+                .await
+                .expect("Failed to send request");
+            assert_eq!(resp.status(), 200);
+        }
+    };
+
+    tokio::time::timeout(std::time::Duration::from_secs(3), inner)
+        .await
+        .expect("/gpu/get_power should return promptly with a stable-power mock");
+}
+
 #[tokio::test]
 async fn test_gpu_power_stream_receives_events() {
     let _app = TestApp::start().await;
