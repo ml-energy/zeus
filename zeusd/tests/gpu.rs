@@ -764,6 +764,82 @@ async fn test_gpu_cumulative_energy() {
 }
 
 #[tokio::test]
+async fn test_gpu_get_power_limit() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/get_power_limit?gpu_ids=0",
+        app.port
+    );
+    let resp = client.get(&url).send().await.expect("send");
+    assert_eq!(resp.status(), 200);
+    let body: HashMap<String, serde_json::Value> = resp.json().await.expect("json");
+    // TestGpu pins the read at the bottom of its valid range (100_000 mW).
+    assert_eq!(body["0"]["power_limit_mw"], 100_000);
+
+    let url = format!("http://127.0.0.1:{}/gpu/get_power_limit", app.port);
+    let resp = client.get(&url).send().await.expect("send");
+    assert_eq!(resp.status(), 200);
+    let body: HashMap<String, serde_json::Value> = resp.json().await.expect("json");
+    for i in 0..NUM_GPUS {
+        assert_eq!(body[&i.to_string()]["power_limit_mw"], 100_000);
+    }
+}
+
+#[tokio::test]
+async fn test_gpu_get_power_limit_constraints() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/get_power_limit_constraints?gpu_ids=0",
+        app.port
+    );
+    let resp = client.get(&url).send().await.expect("send");
+    assert_eq!(resp.status(), 200);
+    let body: HashMap<String, serde_json::Value> = resp.json().await.expect("json");
+    assert_eq!(body["0"]["min_power_limit_mw"], 100_000);
+    assert_eq!(body["0"]["max_power_limit_mw"], 300_000);
+}
+
+#[tokio::test]
+async fn test_gpu_get_persistence_mode() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+
+    let url = format!(
+        "http://127.0.0.1:{}/gpu/get_persistence_mode?gpu_ids=0,1",
+        app.port
+    );
+    let resp = client.get(&url).send().await.expect("send");
+    assert_eq!(resp.status(), 200);
+    let body: HashMap<String, serde_json::Value> = resp.json().await.expect("json");
+    assert_eq!(body["0"]["enabled"], true);
+    assert_eq!(body["1"]["enabled"], true);
+}
+
+#[tokio::test]
+async fn test_gpu_read_endpoints_reject_unknown_gpu() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+
+    for path in [
+        "get_power_limit",
+        "get_power_limit_constraints",
+        "get_persistence_mode",
+    ] {
+        let url = format!("http://127.0.0.1:{}/gpu/{path}?gpu_ids=99", app.port);
+        let resp = client.get(&url).send().await.expect("send");
+        assert_eq!(
+            resp.status(),
+            400,
+            "{path} should reject out-of-range gpu_ids"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_gpu_power_oneshot() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
@@ -904,6 +980,15 @@ impl GpuManager for PollCountingGpu {
     }
     fn get_total_energy_consumption(&mut self) -> Result<u64, ZeusdError> {
         Ok(500_000)
+    }
+    fn get_persistence_mode(&mut self) -> Result<bool, ZeusdError> {
+        Ok(true)
+    }
+    fn get_power_management_limit(&mut self) -> Result<u32, ZeusdError> {
+        Ok(100_000)
+    }
+    fn get_power_management_limit_constraints(&mut self) -> Result<(u32, u32), ZeusdError> {
+        Ok((100_000, 300_000))
     }
 }
 
@@ -1072,13 +1157,16 @@ async fn test_gpu_control_only_mode() {
     assert_eq!(resp.status(), 200);
 
     // GPU read endpoints should return 404 (not registered).
-    let url = format!("http://127.0.0.1:{}/gpu/get_power", app.port);
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .expect("Failed to send request");
-    assert_eq!(resp.status(), 404);
+    for path in [
+        "get_power",
+        "get_power_limit",
+        "get_power_limit_constraints",
+        "get_persistence_mode",
+    ] {
+        let url = format!("http://127.0.0.1:{}/gpu/{path}", app.port);
+        let resp = client.get(&url).send().await.expect("send");
+        assert_eq!(resp.status(), 404, "{path} should not be registered");
+    }
 }
 
 #[tokio::test]

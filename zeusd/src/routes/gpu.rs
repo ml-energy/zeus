@@ -21,29 +21,55 @@ pub struct GpuReadQuery {
     pub gpu_ids: Option<String>,
 }
 
-/// Parse a comma-separated list of device indices.
+/// Parse a comma-separated list of GPU indices.
 fn parse_gpu_ids(raw: &str) -> Vec<usize> {
     raw.split(',')
         .filter_map(|part| part.trim().parse().ok())
         .collect()
 }
 
-/// Macro to generate a handler for a GPU command.
+/// Resolve `gpu_ids` for a read endpoint: parse the optional comma-separated
+/// list, default to all GPUs if absent, reject empty lists or out-of-range
+/// indices.
+fn resolve_read_gpu_ids(
+    query: &Option<String>,
+    device_count: usize,
+) -> Result<Vec<usize>, HttpResponse> {
+    match query {
+        Some(raw) => {
+            let parsed = parse_gpu_ids(raw);
+            if parsed.is_empty() {
+                return Err(HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "gpu_ids must contain at least one GPU index"
+                })));
+            }
+            for &id in &parsed {
+                if id >= device_count {
+                    return Err(HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": format!("GPU {id} not found"),
+                    })));
+                }
+            }
+            Ok(parsed)
+        }
+        None => Ok((0..device_count).collect()),
+    }
+}
+
+/// Macro for a write endpoint that fans a `GpuCommand` out to each
+/// requested GPU and returns an empty 200 OK on success.
 ///
-/// This macro takes
-/// - the API name (set_power_limit, set_persistence_mode, etc.),
-/// - and a list of `field name: type` pairs of the corresponding `GpuCommand` variant.
+/// Inputs:
+/// - `api`: handler name (snake), also the path-tail and the synthesized
+///   `<ApiCamel>` query struct + `GpuCommand` variant name.
+/// - `path`: route path (e.g. `"/set_power_limit"`).
+/// - `field: type, ...`: the variant's command fields. These become
+///   query params alongside the always-present `gpu_ids: String` and
+///   `block: bool`.
 ///
-/// Given this, the macro generates
-/// - a query parameter struct named API name (e.g., SetPowerLimit) with `gpu_ids: String`,
-///   all the fields specified, and `block: bool`,
-/// - an implementation of `From` for the struct to convert it to `GpuCommand`,
-/// - a handler function that dispatches the command to each requested GPU.
-///
-///  Assumptions:
-///  - The `GpuCommand` variant name is the same as the API name, but the former is camel case
-///    and the latter is snake case (e.g., SetPowerLimit vs. set_power_limit).
-macro_rules! impl_handler_for_gpu_command {
+/// Assumes the `GpuCommand` variant is `<ApiCamel>` (e.g. `set_power_limit`
+/// and `SetPowerLimit`).
+macro_rules! impl_write_handler_for_gpu_command {
     ($api:ident, $path:literal, $($field:ident: $ftype:ty,)*) => {
         paste! {
         // Query parameter structure (includes gpu_ids and block alongside command fields).
@@ -80,8 +106,6 @@ macro_rules! impl_handler_for_gpu_command {
             device_tasks: web::Data<GpuManagementTasks>,
         ) -> Result<HttpResponse, ZeusdError> {
             let now = Instant::now();
-
-            tracing::info!("Received request");
 
             let gpu_ids = parse_gpu_ids(&query.gpu_ids);
             if gpu_ids.is_empty() {
@@ -141,112 +165,143 @@ macro_rules! impl_handler_for_gpu_command {
     };
 }
 
-impl_handler_for_gpu_command!(
+impl_write_handler_for_gpu_command!(
     set_persistence_mode,
     "/set_persistence_mode",
     enabled: bool,
 );
 
-impl_handler_for_gpu_command!(
+impl_write_handler_for_gpu_command!(
     set_power_limit,
     "/set_power_limit",
     power_limit_mw: u32,
 );
 
-impl_handler_for_gpu_command!(
+impl_write_handler_for_gpu_command!(
     set_gpu_locked_clocks,
     "/set_gpu_locked_clocks",
     min_clock_mhz: u32,
     max_clock_mhz: u32,
 );
 
-impl_handler_for_gpu_command!(reset_gpu_locked_clocks, "/reset_gpu_locked_clocks",);
+impl_write_handler_for_gpu_command!(reset_gpu_locked_clocks, "/reset_gpu_locked_clocks",);
 
-impl_handler_for_gpu_command!(
+impl_write_handler_for_gpu_command!(
     set_mem_locked_clocks,
     "/set_mem_locked_clocks",
     min_clock_mhz: u32,
     max_clock_mhz: u32,
 );
 
-impl_handler_for_gpu_command!(reset_mem_locked_clocks, "/reset_mem_locked_clocks",);
+impl_write_handler_for_gpu_command!(reset_mem_locked_clocks, "/reset_mem_locked_clocks",);
 
-/// Query parameters for the GPU cumulative energy endpoint.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct GpuGetCumulativeEnergyQuery {
-    pub gpu_ids: Option<String>,
-}
-
-#[derive(Serialize)]
-struct GpuEnergyResponse {
-    energy_mj: u64,
-}
-
-#[actix_web::get("/get_cumulative_energy")]
-#[tracing::instrument(skip(query, device_tasks), fields(gpu_ids = ?query.gpu_ids))]
-async fn get_cumulative_energy_handler(
-    query: web::Query<GpuGetCumulativeEnergyQuery>,
-    device_tasks: web::Data<GpuManagementTasks>,
-) -> Result<HttpResponse, ZeusdError> {
-    let now = Instant::now();
-    tracing::info!("Received request");
-
-    let device_count = device_tasks.device_count();
-    let gpu_ids: Vec<usize> = match &query.gpu_ids {
-        Some(raw) => {
-            let ids = parse_gpu_ids(raw);
-            if ids.is_empty() {
-                return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                    "error": "gpu_ids must contain at least one GPU index"
-                })));
+/// Macro for a read endpoint that fans a `GpuCommand` out to each requested
+/// GPU and returns a JSON map keyed by GPU id.
+///
+/// Inputs:
+/// - `api`: handler name (snake), also the path-tail and the synthesized
+///   `<ApiCamel>Response` struct name.
+/// - `path`: route path (e.g. `"/get_power_limit"`).
+/// - `cmd`: `GpuCommand` variant to dispatch.
+/// - `resp`: matching `GpuResponse` variant.
+/// - `field: type, ...`: the variant's named fields, in declaration order.
+///   The fields become the JSON object body for each GPU.
+macro_rules! impl_read_handler_for_gpu_command {
+    ($api:ident, $path:literal, $cmd:ident, $resp:ident, $($field:ident: $ftype:ty,)+) => {
+        paste! {
+            #[derive(Serialize)]
+            struct [<$api:camel Response>] {
+                $($field: $ftype,)+
             }
-            for &id in &ids {
-                if id >= device_count {
-                    return Err(ZeusdError::GpuNotFoundError(id));
+
+            #[actix_web::get($path)]
+            #[tracing::instrument(skip(query, device_tasks), fields(gpu_ids = ?query.gpu_ids))]
+            async fn [<$api:snake _handler>](
+                query: web::Query<GpuReadQuery>,
+                device_tasks: web::Data<GpuManagementTasks>,
+            ) -> Result<HttpResponse, ZeusdError> {
+                let now = Instant::now();
+
+                let gpu_ids = match resolve_read_gpu_ids(&query.gpu_ids, device_tasks.device_count()) {
+                    Ok(ids) => ids,
+                    Err(resp) => return Ok(resp),
+                };
+
+                let mut handles = Vec::with_capacity(gpu_ids.len());
+                for &gpu_id in &gpu_ids {
+                    let tasks = device_tasks.clone();
+                    handles.push(async move {
+                        (
+                            gpu_id,
+                            tasks
+                                .send_command_blocking(gpu_id, GpuCommand::$cmd, now)
+                                .await,
+                        )
+                    });
+                }
+                let results = futures::future::join_all(handles).await;
+
+                let mut response_map: BTreeMap<usize, [<$api:camel Response>]> = BTreeMap::new();
+                let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
+                for (gpu_id, result) in results {
+                    match result {
+                        Ok(GpuResponse::$resp { $($field,)+ }) => {
+                            response_map.insert(
+                                gpu_id,
+                                [<$api:camel Response>] { $($field,)+ },
+                            );
+                        }
+                        Ok(_) => {
+                            errors.insert(gpu_id, ZeusdError::GpuManagementTaskTerminatedError(gpu_id));
+                        }
+                        Err(e) => {
+                            errors.insert(gpu_id, e);
+                        }
+                    }
+                }
+
+                if errors.is_empty() {
+                    Ok(HttpResponse::Ok().json(response_map))
+                } else {
+                    Ok(aggregate_error_response(errors))
                 }
             }
-            ids
         }
-        None => (0..device_count).collect(),
     };
-
-    let mut handles = Vec::with_capacity(gpu_ids.len());
-    for &gpu_id in &gpu_ids {
-        let tasks = device_tasks.clone();
-        handles.push(async move {
-            (
-                gpu_id,
-                tasks
-                    .send_command_blocking(gpu_id, GpuCommand::GetTotalEnergyConsumption, now)
-                    .await,
-            )
-        });
-    }
-    let results = futures::future::join_all(handles).await;
-
-    let mut response_map: HashMap<String, GpuEnergyResponse> = HashMap::new();
-    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
-    for (gpu_id, result) in results {
-        match result {
-            Ok(GpuResponse::Energy { energy_mj }) => {
-                response_map.insert(gpu_id.to_string(), GpuEnergyResponse { energy_mj });
-            }
-            Ok(_) => {
-                errors.insert(gpu_id, ZeusdError::GpuManagementTaskTerminatedError(gpu_id));
-            }
-            Err(e) => {
-                errors.insert(gpu_id, e);
-            }
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(HttpResponse::Ok().json(response_map))
-    } else {
-        Ok(aggregate_error_response(errors))
-    }
 }
+
+impl_read_handler_for_gpu_command!(
+    get_cumulative_energy,
+    "/get_cumulative_energy",
+    GetTotalEnergyConsumption,
+    Energy,
+    energy_mj: u64,
+);
+
+impl_read_handler_for_gpu_command!(
+    get_power_limit,
+    "/get_power_limit",
+    GetPowerLimit,
+    PowerLimit,
+    power_limit_mw: u32,
+);
+
+impl_read_handler_for_gpu_command!(
+    get_power_limit_constraints,
+    "/get_power_limit_constraints",
+    GetPowerLimitConstraints,
+    PowerLimitConstraints,
+    min_power_limit_mw: u32,
+    max_power_limit_mw: u32,
+);
+
+impl_read_handler_for_gpu_command!(
+    get_persistence_mode,
+    "/get_persistence_mode",
+    GetPersistenceMode,
+    PersistenceMode,
+    enabled: bool,
+);
 
 fn filter_snapshot(snapshot: &GpuPowerSnapshot, gpu_ids: &Option<Vec<usize>>) -> GpuPowerSnapshot {
     match gpu_ids {
@@ -266,9 +321,7 @@ fn filter_snapshot(snapshot: &GpuPowerSnapshot, gpu_ids: &Option<Vec<usize>>) ->
 /// One-shot GPU power reading.
 ///
 /// Fans out a `GetInstantPower` command to each requested GPU's management
-/// task and returns the collected snapshot as JSON. Optionally filtered by
-/// `gpu_ids` query parameter (comma-separated GPU indices); omit to read all
-/// GPUs.
+/// task and returns the collected snapshot as JSON.
 #[actix_web::get("/get_power")]
 #[tracing::instrument(skip(query, device_tasks), fields(gpu_ids = ?query.gpu_ids))]
 async fn get_power_handler(
@@ -276,25 +329,10 @@ async fn get_power_handler(
     device_tasks: web::Data<GpuManagementTasks>,
 ) -> Result<HttpResponse, ZeusdError> {
     let now = Instant::now();
-    tracing::info!("Received request");
 
-    let device_count = device_tasks.device_count();
-    let gpu_ids: Vec<usize> = match &query.gpu_ids {
-        Some(raw) => {
-            let ids = parse_gpu_ids(raw);
-            if ids.is_empty() {
-                return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                    "error": "gpu_ids must contain at least one GPU index"
-                })));
-            }
-            for &id in &ids {
-                if id >= device_count {
-                    return Err(ZeusdError::GpuNotFoundError(id));
-                }
-            }
-            ids
-        }
-        None => (0..device_count).collect(),
+    let gpu_ids = match resolve_read_gpu_ids(&query.gpu_ids, device_tasks.device_count()) {
+        Ok(ids) => ids,
+        Err(resp) => return Ok(resp),
     };
 
     let mut handles = Vec::with_capacity(gpu_ids.len());
@@ -345,15 +383,13 @@ async fn get_power_handler(
 ///
 /// Emits a new event whenever any monitored GPU's power reading changes.
 /// The subscriber guard keeps the poller active for the lifetime of the
-/// stream. Optionally filtered by `gpu_ids` query parameter (comma-separated
-/// GPU indices).
+/// stream.
 #[actix_web::get("/stream_power")]
-#[tracing::instrument(skip(broadcast), fields(gpu_ids = ?query.gpu_ids))]
+#[tracing::instrument(skip(query, broadcast), fields(gpu_ids = ?query.gpu_ids))]
 async fn stream_power_handler(
     query: web::Query<GpuReadQuery>,
     broadcast: web::Data<GpuPowerBroadcast>,
 ) -> HttpResponse {
-    tracing::info!("Received request");
     let gpu_ids = query.gpu_ids.as_ref().map(|s| parse_gpu_ids(s));
     if let Some(ref ids) = gpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
@@ -383,6 +419,9 @@ async fn stream_power_handler(
 pub fn gpu_read_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(get_cumulative_energy_handler)
         .service(get_power_handler)
+        .service(get_power_limit_handler)
+        .service(get_power_limit_constraints_handler)
+        .service(get_persistence_mode_handler)
         .service(stream_power_handler);
 }
 

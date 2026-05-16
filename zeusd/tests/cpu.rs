@@ -15,7 +15,7 @@ async fn test_only_cpu_measuremnt() {
     for expected in measurements {
         let resp = app
             .send(GetCumulativeEnergy {
-                cpu_ids: "0".to_string(),
+                cpu_ids: Some("0".to_string()),
                 cpu: true,
                 dram: false,
             })
@@ -40,7 +40,7 @@ async fn test_only_dram_measuremnt() {
     for expected in measurements {
         let resp = app
             .send(GetCumulativeEnergy {
-                cpu_ids: "0".to_string(),
+                cpu_ids: Some("0".to_string()),
                 cpu: false,
                 dram: true,
             })
@@ -66,7 +66,7 @@ async fn test_both_measuremnt() {
     for expected in measurements {
         let resp = app
             .send(GetCumulativeEnergy {
-                cpu_ids: "0".to_string(),
+                cpu_ids: Some("0".to_string()),
                 cpu: true,
                 dram: true,
             })

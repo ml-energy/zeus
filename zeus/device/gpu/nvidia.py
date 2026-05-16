@@ -164,6 +164,11 @@ class NVIDIAGPU(gpu_common.GPU):
             pynvml.nvmlDeviceSetPersistenceMode(self.handle, desired_mode)
 
     @_handle_nvml_errors
+    def get_persistence_mode(self) -> bool:
+        """Return whether persistence mode is currently enabled."""
+        return pynvml.nvmlDeviceGetPersistenceMode(self.handle) == pynvml.NVML_FEATURE_ENABLED
+
+    @_handle_nvml_errors
     def get_supported_memory_clocks(self) -> list[int]:
         """Return a list of supported memory clock frequencies. Units: MHz."""
         return pynvml.nvmlDeviceGetSupportedMemoryClocks(self.handle)
@@ -323,6 +328,10 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         self._client.set_persistence_mode([self._gpu_index], enabled, block)
+
+    def get_persistence_mode(self) -> bool:
+        """Return whether persistence mode is currently enabled."""
+        return self._client.get_persistence_mode([self._gpu_index])[self._gpu_index]
 
     def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""

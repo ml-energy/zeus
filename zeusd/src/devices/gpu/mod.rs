@@ -25,8 +25,15 @@ pub trait GpuManager {
         Self: Sized;
     /// Set the persistence mode of the GPU.
     fn set_persistence_mode(&mut self, enabled: bool) -> Result<(), ZeusdError>;
+    /// Read whether persistence mode is currently enabled on the GPU.
+    fn get_persistence_mode(&mut self) -> Result<bool, ZeusdError>;
     /// Set the power management limit in milliwatts.
     fn set_power_management_limit(&mut self, power_limit: u32) -> Result<(), ZeusdError>;
+    /// Read the GPU's currently configured power management limit in
+    /// milliwatts.
+    fn get_power_management_limit(&mut self) -> Result<u32, ZeusdError>;
+    /// Read the GPU's power-management-limit constraints `(min_mw, max_mw)`.
+    fn get_power_management_limit_constraints(&mut self) -> Result<(u32, u32), ZeusdError>;
     /// Set the GPU's locked clock range in MHz.
     fn set_gpu_locked_clocks(
         &mut self,
@@ -53,8 +60,22 @@ pub trait GpuManager {
 #[derive(Debug)]
 pub enum GpuResponse {
     Ok,
-    Energy { energy_mj: u64 },
-    InstantPower { power_mw: u32 },
+    Energy {
+        energy_mj: u64,
+    },
+    InstantPower {
+        power_mw: u32,
+    },
+    PowerLimit {
+        power_limit_mw: u32,
+    },
+    PowerLimitConstraints {
+        min_power_limit_mw: u32,
+        max_power_limit_mw: u32,
+    },
+    PersistenceMode {
+        enabled: bool,
+    },
 }
 
 /// A request to execute a GPU command.
@@ -188,6 +209,12 @@ pub enum GpuCommand {
     GetTotalEnergyConsumption,
     /// Read instantaneous power draw in milliwatts.
     GetInstantPower,
+    /// Read the GPU's currently configured power management limit (mW).
+    GetPowerLimit,
+    /// Read the GPU's power-management-limit constraints (min, max in mW).
+    GetPowerLimitConstraints,
+    /// Read whether persistence mode is currently enabled.
+    GetPersistenceMode,
 }
 
 /// Log the result of a GPU command with timing information.
@@ -325,6 +352,44 @@ impl GpuCommand {
                     "Cannot read instant power",
                 );
                 result.map(|power_mw| GpuResponse::InstantPower { power_mw })
+            }
+            Self::GetPowerLimit => {
+                let result = device.get_power_management_limit();
+                log_command_result(
+                    &result,
+                    request_arrival_time,
+                    command_start_time,
+                    "Power management limit read",
+                    "Cannot read power management limit",
+                );
+                result.map(|power_limit_mw| GpuResponse::PowerLimit { power_limit_mw })
+            }
+            Self::GetPowerLimitConstraints => {
+                let result = device.get_power_management_limit_constraints();
+                log_command_result(
+                    &result,
+                    request_arrival_time,
+                    command_start_time,
+                    "Power management limit constraints read",
+                    "Cannot read power management limit constraints",
+                );
+                result.map(|(min_power_limit_mw, max_power_limit_mw)| {
+                    GpuResponse::PowerLimitConstraints {
+                        min_power_limit_mw,
+                        max_power_limit_mw,
+                    }
+                })
+            }
+            Self::GetPersistenceMode => {
+                let result = device.get_persistence_mode();
+                log_command_result(
+                    &result,
+                    request_arrival_time,
+                    command_start_time,
+                    "Persistence mode read",
+                    "Cannot read persistence mode",
+                );
+                result.map(|enabled| GpuResponse::PersistenceMode { enabled })
             }
         }
     }
