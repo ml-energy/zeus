@@ -106,6 +106,7 @@ nav:
   - Zeus: index.md
   - Getting Started: getting_started/index.md
   - Measuring Energy: measure/index.md
+  - Zeus Daemon: zeusd/index.md
   - Optimizing Energy:
     - optimize/index.md
     - Power Limit Optimizer: optimize/power_limit_optimizer.md

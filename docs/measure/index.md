@@ -97,8 +97,11 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
 
 ## Distributed Power Measurement and Aggregation
 
+!!! Tip
+    For daemon deployment, transports, API groups, and JWT authentication, see the [Zeus Daemon](../zeusd/index.md) page. This section focuses on the Python client API.
+
 [`ZeusMonitor`][zeus.monitor.ZeusMonitor] is local to a single machine, but sometimes, you may want to monitor power across multiple nodes in a cluster.
-In this case, you can run the Zeus daemon ([zeusd](https://crates.io/crates/zeusd)) on each machine and stream power readings over SSE (Server-Sent Events) to a central client ([`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient]) for real-time monitoring and aggregation.
+In this case, you can run the Zeus daemon (`zeusd`) on each machine and stream power readings over SSE (Server-Sent Events) to a central client ([`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient]) for real-time monitoring and aggregation.
 
 Each Zeus daemon endpoint is described by a [`ZeusdConfig`][zeus.utils.zeusd.ZeusdConfig], constructed via `ZeusdConfig.tcp(...)` or `ZeusdConfig.uds(...)`.
 Both `gpu_indices` and `cpu_indices` follow the same convention as [`ZeusMonitor`][zeus.monitor.ZeusMonitor]:

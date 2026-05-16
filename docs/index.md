@@ -31,6 +31,7 @@ Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
 
 - [Getting Started](getting_started/index.md): Instructions on installation and setup.
 - [Measuring Energy](measure/index.md): How to measure time and energy programmatically and on the command line.
+- [Zeus Daemon](zeusd/index.md): Run `zeusd` for privilege-isolated CPU power measurement and GPU control, and distributed power streaming across nodes.
 - [Optimizing Energy](optimize/index.md): How to optimize energy.
 - [Research Overview](research_overview/index.md): Overview of the research papers Zeus is rooted on.
 - [Source Code Reference](reference/index.md): Auto-generated source code reference for the entire codebase.

@@ -4,8 +4,6 @@
 # By default it does not build social preview cards. If you want to debug social cards,
 # set the environment variable `BUILD_SOCIAL_CARD=true` to this script.
 
-set -e
-
 uv pip list | grep mkdocs-material 2>&1 >/dev/null
 
 if [[ ! $? -eq 0 ]]; then

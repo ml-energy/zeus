@@ -148,49 +148,18 @@ This is also possible for Kubernetes Pods with `securityContext.capabilities.add
 
 ### Option 2: Deploying the Zeus daemon (`zeusd`)
 
-Granting `SYS_ADMIN` to the entire application just to be able to change the GPU's configuration is [granting too much](https://en.wikipedia.org/wiki/Principle_of_least_privilege){.external}.
-Instead, Zeus provides the [**Zeus daemon** or `zeusd`](https://github.com/ml-energy/zeus/tree/master/zeusd){.external}, which is a simple server/daemon process that is designed to run with admin privileges and exposes the minimal set of APIs wrapping NVML methods for changing the GPU's configuration.
-Then, an unprivileged (i.e., run normally by any user) application can ask `zeusd` via a Unix Domain Socket to change the local node's GPU configuration on its behalf.
-The Zeus daemon also supports CPU/DRAM power measurement via Intel RAPL, which normally requires `root` privileges.
+Granting `SYS_ADMIN` to the entire application just to change the GPU's configuration is [granting too much](https://en.wikipedia.org/wiki/Principle_of_least_privilege){.external}.
+Instead, deploy the [**Zeus daemon**](../zeusd/index.md) -- a small Rust daemon that runs as the single privileged process on the node and exposes a minimal HTTP API. Unprivileged applications relay privileged GPU and CPU/DRAM operations through it.
 
-To deploy `zeusd`:
+Quick start (Linux):
 
-``` { .sh .annotate }
-# Install zeusd
+```sh
 cargo install zeusd
-
-# Run zeusd with admin privileges
-sudo zeusd serve \
-    --socket-path /run/zeusd/zeusd.sock \   # (1)!
-    --socket-permissions 666            # (2)!
+sudo zeusd serve --socket-path /run/zeusd/zeusd.sock --socket-permissions 666
+export ZEUSD_SOCK_PATH=/run/zeusd/zeusd.sock
 ```
 
-1. Unix domain socket path that `zeusd` listens to.
-2. Applications need *write* access to the socket to be able to talk to `zeusd`. This string is interpreted as [UNIX file permissions](https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation).
-
-After deploying `zeusd`, set the `ZEUSD_SOCK_PATH` environment variable to the socket path (e.g., `/run/zeusd/zeusd.sock`) to allow Zeus imported in your application find and talk to the running Zeus daemon.
-You can test out whether it worked with:
-
-```console
-$ ZEUSD_SOCK_PATH=/run/zeusd/zeusd.sock python -m zeus.show_env
---------------------------------------------------------------------------------
-...other fields
---------------------------------------------------------------------------------
-## CPU availability
-
-Logging output:
-[2025-07-25 16:40:40,396] [zeus.device.cpu.rapl](rapl.py:137) RAPL directory (/sys/class/powercap/intel-rapl) is available.
-
-Detected:
-  CPU 0:
-    CPU measurements available (Zeusd at /run/zeusd/zeusd.sock)
-    DRAM measurements available (Zeusd at /run/zeusd/zeusd.sock)
-  CPU 1:
-    CPU measurements available (Zeusd at /run/zeusd/zeusd.sock)
-    DRAM measurements available (Zeusd at /run/zeusd/zeusd.sock)
-
---------------------------------------------------------------------------------
-```
+When `ZEUSD_SOCK_PATH` is set, Zeus auto-detects the daemon and routes privileged GPU/CPU calls through it. See the [Zeus Daemon](../zeusd/index.md) page for transport choices (UDS, Windows named pipe, TCP), API groups, JWT authentication, and the full HTTP API reference.
 
 ### Option 3: Running applications with `sudo`
 
