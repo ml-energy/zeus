@@ -12,4 +12,4 @@ if [[ ! $? -eq 0 ]]; then
   exit 1
 fi
 
-mkdocs serve -a 0.0.0.0:7777 -w zeus --strict
+mkdocs serve -a localhost:7777 -w zeus --strict
