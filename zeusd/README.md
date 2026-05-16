@@ -23,11 +23,11 @@ To make this as low latency as possible, `zeusd` was written in Rust.
 
 ## Platform support
 
-| Platform | Default transport | GPU (NVML) | CPU RAPL | Notes |
-|----------|------------------|:----------:|:--------:|-------|
-| Linux    | UDS              | ✓ | ✓ | All API groups work. |
-| macOS    | UDS              | (NVIDIA not supported) | n/a | NVML/RAPL unavailable; daemon runs but reports zero devices. |
-| Windows  | Named Pipe       | ✓ | n/a | `cpu-read` is omitted from the default `--enable` and rejected at startup if added. `set_persistence_mode(false)` returns HTTP 400; see [Windows-specific behavior](#windows-specific-behavior). Python clients should use `--mode tcp` (no named-pipe `httpx` transport yet). |
+**Linux** is the primary deployment target. Full GPU control and monitoring via NVML, CPU package and DRAM power via Intel RAPL (`/sys/class/powercap`). UDS is the default local transport.
+
+**Windows** runs the GPU control and monitoring path against `nvml.dll`. CPU RAPL is unavailable (the kernel powercap interface is Linux-specific), so `cpu-read` is omitted from the default `--enable` and rejected at startup if explicitly added. Default local transport is a Windows named pipe with a configurable DACL; see [Named Pipe mode](#named-pipe-mode-windows-only).
+
+**macOS** is not supported: the daemon compiles and runs but neither NVML nor RAPL is available there, so it reports zero devices.
 
 ## How to use `zeusd`
 
@@ -131,7 +131,7 @@ See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/m
 
 ### API groups
 
-`zeusd` organizes its endpoints into API groups that can be selectively enabled with the `--enable` flag. The default is platform-specific: on Linux all three groups are enabled (`gpu-control,gpu-read,cpu-read`); on Windows and macOS `cpu-read` is omitted from the default because it requires the Intel RAPL sysfs interface and is rejected at startup elsewhere.
+`zeusd` organizes its endpoints into API groups that can be selectively enabled with the `--enable` flag. By default Linux enables all three groups (`gpu-control,gpu-read,cpu-read`); Windows omits `cpu-read`.
 
 | Group | Endpoints | Requires root |
 |-------|-----------|:---:|
@@ -152,33 +152,7 @@ The following endpoints are always available regardless of which groups are enab
 - `GET /discover`
 - `GET /time`
 
-If a group that requires root is enabled but the daemon is not running as root (Linux/macOS), it will exit immediately with an error. On Windows there is no fail-fast admin check; NVML write calls fall back to NVML's own `NoPermission` if the daemon lacks admin, which surfaces as HTTP 403 to clients.
-
-`cpu-read` is implemented via the Linux RAPL sysfs interface and is therefore rejected at startup on macOS and Windows.
-
-## Windows-specific behavior
-
-NVML's persistence-mode API (`nvmlDeviceSetPersistenceMode`) is documented as Linux-only. On Windows the kernel-mode driver stays loaded at all times, so:
-
-- `POST /gpu/set_persistence_mode?...&enabled=true` returns `200 OK` (no-op). The daemon logs a one-shot warning so operators know the call was redundant.
-- `POST /gpu/set_persistence_mode?...&enabled=false` returns `400 Bad Request` with a body explaining the operation is not possible on this platform.
-
-All other GPU operations (`set_power_limit`, `set_gpu_locked_clocks`, `set_mem_locked_clocks`, energy/power reads) behave identically across platforms.
-
-Examples:
-
-```sh
-# As root: all groups enabled (default)
-sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
-
-# As non-root: GPU monitoring only (no root required)
-zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read
-
-# As root: monitoring only (GPU + CPU reads, no GPU control)
-sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read,cpu-read
-```
-
-Only the devices needed by the enabled groups are initialized. For example, `--enable gpu-read` skips RAPL initialization entirely, and `--enable cpu-read` skips NVML initialization.
+If a group that requires root is enabled but the daemon is not running as root, it will exit immediately with an error. On Windows there is no fail-fast admin check; NVML write calls fall back to NVML's own `NoPermission` if the daemon lacks admin, which surfaces as HTTP 403 to clients.
 
 ### Authentication
 
@@ -238,7 +212,7 @@ When no `--signing-key-path` is provided, the daemon runs without authentication
 
 ## Testing
 
-Unit and integration tests run via `cargo test` inside `zeusd/`. CI exercises this on Linux, Windows, and macOS for every push.
+Unit and integration tests run via `cargo test` inside `zeusd/`. CI runs the matrix on every push.
 
 For Windows-specific end-to-end coverage with a real NVIDIA GPU, two helper scripts live in `zeusd/scripts/`:
 
@@ -299,8 +273,6 @@ Set GPU persistence mode.
 | `gpu_ids` | `string` | yes | Comma-separated GPU indices |
 | `enabled` | `bool` | yes | Enable or disable persistence mode |
 | `block` | `bool` | yes | Wait for completion |
-
-See [Windows-specific behavior](#windows-specific-behavior): `enabled=false` returns HTTP 400 on Windows since the Windows driver model keeps the driver resident at all times.
 
 #### `POST /gpu/set_gpu_locked_clocks`
 
@@ -410,7 +382,7 @@ Options:
 Note: a few flags are platform-conditional. The `--mode` default and the UDS / named-pipe options below only appear on the platforms where they apply.
 
 ```console
-$ zeusd serve --help     # Linux/macOS variant shown; Windows omits --socket-* and adds --pipe-name
+$ zeusd serve --help     # Linux variant shown; Windows omits --socket-* and adds --pipe-name
 Start the Zeus daemon
 
 Usage: zeusd serve [OPTIONS]
@@ -465,10 +437,10 @@ Options:
           [default: 10]
 
       --enable <ENABLE>
-          API groups to enable. Each group exposes a set of HTTP endpoints. Groups that require root will cause the daemon to exit at startup if it is not running as root. The default is platform-specific: Linux includes `cpu-read`, Windows and macOS do not
+          API groups to enable. Each group exposes a set of HTTP endpoints. Groups that require root will cause the daemon to exit at startup if it is not running as root. Linux defaults to all three; Windows omits `cpu-read`
 
           [default: gpu-control gpu-read cpu-read]   # Linux
-          [default: gpu-control gpu-read]            # Windows / macOS
+          [default: gpu-control gpu-read]            # Windows
 
           Possible values:
           - gpu-control: GPU control operations (set power limit, clocks, persistence mode). Requires root
