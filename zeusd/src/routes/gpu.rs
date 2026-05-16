@@ -3,16 +3,15 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use actix_web::http::StatusCode;
 use actix_web::web::Bytes;
-use actix_web::{web, HttpResponse, ResponseError};
+use actix_web::{web, HttpResponse};
 use paste::paste;
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
 
 use crate::devices::gpu::power::{GpuPowerBroadcast, GpuPowerSnapshot};
 use crate::devices::gpu::{GpuCommand, GpuManagementTasks, GpuResponse};
-use crate::error::ZeusdError;
+use crate::error::{aggregate_error_response, ZeusdError};
 
 /// Query parameters for GPU read endpoints.
 /// `gpu_ids` is optional; omit to read all GPUs.
@@ -247,20 +246,6 @@ async fn get_cumulative_energy_handler(
     } else {
         Ok(aggregate_error_response(errors))
     }
-}
-
-/// Aggregate per-GPU errors into one response, status = max(status_code).
-fn aggregate_error_response(errors: HashMap<usize, ZeusdError>) -> HttpResponse {
-    let worst_status = errors
-        .values()
-        .map(|e| e.status_code())
-        .max()
-        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    let payload: HashMap<String, String> = errors
-        .into_iter()
-        .map(|(gpu_id, e)| (gpu_id.to_string(), e.to_string()))
-        .collect();
-    HttpResponse::build(worst_status).json(serde_json::json!({"errors": payload}))
 }
 
 fn filter_snapshot(snapshot: &GpuPowerSnapshot, gpu_ids: &Option<Vec<usize>>) -> GpuPowerSnapshot {

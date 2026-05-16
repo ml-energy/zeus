@@ -3,15 +3,14 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use actix_web::http::StatusCode;
 use actix_web::web::Bytes;
-use actix_web::{web, HttpResponse, ResponseError};
+use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
 
 use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerSnapshot};
 use crate::devices::cpu::{CpuCommand, CpuManagementTasks, RaplResponse};
-use crate::error::ZeusdError;
+use crate::error::{aggregate_error_response, ZeusdError};
 
 /// Query parameters for CPU read endpoints.
 /// `cpu_ids` is optional; omit to read all CPUs.
@@ -102,16 +101,7 @@ async fn get_cumulative_energy_handler(
     if errors.is_empty() {
         Ok(HttpResponse::Ok().json(response_map))
     } else {
-        let worst_status = errors
-            .values()
-            .map(|e| e.status_code())
-            .max()
-            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        let payload: HashMap<String, String> = errors
-            .into_iter()
-            .map(|(cpu_id, e)| (cpu_id.to_string(), e.to_string()))
-            .collect();
-        Ok(HttpResponse::build(worst_status).json(serde_json::json!({"errors": payload})))
+        Ok(aggregate_error_response(errors))
     }
 }
 
