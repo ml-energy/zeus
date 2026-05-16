@@ -150,16 +150,8 @@ pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
     anyhow::bail!("CPU RAPL monitoring is only available on Linux.")
 }
 
-/// Check that the daemon has sufficient privileges for the requested API groups
-/// and that every requested group is available on this platform.
-///
-/// On Linux, verifies that the effective user ID is 0 for groups that require
-/// root and returns an error naming the offending group if not.
-///
-/// On non-Linux platforms, rejects `cpu-read` because RAPL is not available
-/// outside of Linux. On Windows there is no fail-fast admin check: NVML
-/// write calls (gpu-control) return `NoPermission` at request time if the
-/// daemon lacks admin, which surfaces as HTTP 403 to clients.
+/// Reject API groups that aren't supported on this platform or that the
+/// daemon lacks the privileges for.
 #[allow(unused_variables)]
 pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
     #[cfg(not(target_os = "linux"))]
@@ -216,11 +208,8 @@ pub struct ServerState {
     pub signing_key: Option<SigningKeyData>,
 }
 
-/// Construct an `App` with routes and app data based on enabled API groups.
-///
-/// Returns an actix-web `App` value (not a closure or server). The caller
-/// is responsible for cloning `$state` if the App is built more than once
-/// (e.g., once per worker or per Named Pipe connection).
+/// Build an `App` with routes and data wired up from `$state`. Caller
+/// clones `$state` if the App is built more than once.
 macro_rules! build_app {
     ($state:expr) => {{
         let state = $state;
@@ -233,12 +222,10 @@ macro_rules! build_app {
             .app_data(web::Data::new(state.discovery_info.clone()))
             .app_data(web::Data::new(state.enabled_groups.clone()));
 
-        // Register signing key for the auth middleware (if configured).
         if let Some(ref key) = state.signing_key {
             app = app.app_data(web::Data::new(key.clone()));
         }
 
-        // GPU routes: conditionally register read and/or control routes.
         if enabled.contains(&ApiGroup::GpuRead) || enabled.contains(&ApiGroup::GpuControl) {
             let mut gpu_scope = web::scope("/gpu");
             if enabled.contains(&ApiGroup::GpuRead) {
@@ -256,7 +243,6 @@ macro_rules! build_app {
             app = app.app_data(web::Data::new(broadcast.clone()));
         }
 
-        // CPU routes: only if cpu-read is enabled.
         if enabled.contains(&ApiGroup::CpuRead) {
             app = app.service(web::scope("/cpu").configure(cpu_routes));
         }
@@ -301,28 +287,9 @@ pub fn start_server_tcp(
         .run())
 }
 
-/// Run the server over a Windows Named Pipe.
-///
-/// `HttpServer::listen_uds` is Unix-only, so on Windows we drive actix-http
-/// `H1Service` directly over each connected `NamedPipeServer`. Connections
-/// are served on a `LocalSet`: actix-web/actix-http internals hold `Rc<>`s
-/// and so the per-connection futures are `!Send`; this is the same single-threaded
-/// model `actix-server` uses for its worker tasks.
-///
-/// The default pipe name follows the conventional Windows form
-/// `\\.\pipe\zeusd`. Up to 254 concurrent client connections are accepted
-/// (Windows' `PIPE_UNLIMITED_INSTANCES` = 255 is rejected by tokio's
-/// builder, so 254 is the practical cap); each connection runs the full
-/// actix-web App.
-/// Create a Named Pipe instance with the given SDDL applied to its DACL.
-///
-/// Tokio's `ServerOptions::create()` uses the calling process's default
-/// security descriptor, which on an elevated daemon only grants access to
-/// `SYSTEM` and `Administrators`. An unprivileged client process would
-/// get `ERROR_ACCESS_DENIED` on `CreateFile`. We pass an explicit SDDL via
-/// `ConvertStringSecurityDescriptorToSecurityDescriptorW` so the caller
-/// can authorize a broader audience (default `D:(A;;GRGW;;;AU)` =
-/// `GenericRead|GenericWrite` for authenticated users).
+/// Create a named pipe instance with the caller-supplied SDDL applied
+/// to its DACL. The default elevated-process descriptor only grants
+/// access to SYSTEM and Administrators, blocking unprivileged clients.
 #[cfg(windows)]
 fn create_pipe_with_sddl(
     pipe_name: &str,
@@ -387,6 +354,9 @@ fn create_pipe_with_sddl(
     result
 }
 
+/// Serve actix-web over a Windows named pipe. `HttpServer` is Unix-only
+/// there, so we drive `actix-http`'s `H1Service` directly on a single-
+/// threaded `LocalSet` (per-connection futures are `!Send`).
 #[cfg(windows)]
 pub async fn run_server_named_pipe(
     pipe_name: String,
@@ -398,9 +368,6 @@ pub async fn run_server_named_pipe(
     use actix_web::dev::AppConfig;
     use std::rc::Rc;
 
-    // Reserve the pipe name with the first instance. Subsequent instances
-    // are created lazily after each accept so the pipe is always ready for
-    // the next client.
     let initial = create_pipe_with_sddl(&pipe_name, &pipe_sddl, true)?;
     tracing::info!(
         "Listening on named pipe {} (SDDL: {})",
@@ -412,25 +379,11 @@ pub async fn run_server_named_pipe(
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async move {
-            // Build the App, the `H1Service` factory, and the per-daemon
-            // service all INSIDE the LocalSet's task. Two reasons:
-            //
-            // 1. `HttpService::build().h1(...)` transitively constructs an
-            //    `actix_http::date::DateService`, whose constructor calls
-            //    `actix_rt::spawn` (= `tokio::task::spawn_local`). Building
-            //    outside any `LocalSet` panics with "spawn_local called
-            //    from outside of a task::LocalSet".
-            //
-            // 2. `AppInit::new_service` (actix-web 4.9 `app_service.rs:77`)
-            //    drains its services Vec via `mem::take` on the FIRST call,
-            //    then overwrites its `factory_ref` from that drain. A second
-            //    call yields an `AppRoutingFactory` with no services, so
-            //    every route except the default 404 stops matching. We
-            //    therefore call `new_service` exactly once and share the
-            //    resulting service across all connections via `Rc`.
-            //    `HttpServer` avoids this by calling `new_service` once per
-            //    worker; we mirror that here on the single-threaded
-            //    `LocalSet`.
+            // Build inside the LocalSet (DateService ctor calls
+            // `actix_rt::spawn`, which needs one) and ONCE for the daemon:
+            // `AppInit::new_service` (actix-web 4.9 app_service.rs:77)
+            // drains its services Vec on first call, so a second call
+            // yields an empty router. Share the service via `Rc`.
             let app = build_app!(state);
             let svc_factory = HttpService::build().h1(actix_service::map_config(
                 app.into_factory().map_err(|err| err.error_response()),
@@ -444,9 +397,6 @@ pub async fn run_server_named_pipe(
             );
 
             loop {
-                // Ensure we have a listening pipe instance. If the previous
-                // iteration couldn't create one (e.g. concurrent-connection
-                // cap hit), try again here.
                 let listener = match server.as_mut() {
                     Some(s) => s,
                     None => match create_pipe_with_sddl(&pipe_name, &pipe_sddl, false) {
@@ -472,13 +422,7 @@ pub async fn run_server_named_pipe(
                     continue;
                 }
 
-                // Take ownership of the connected pipe immediately so subsequent
-                // loop iterations work on a fresh listener.
                 let connected = server.take().unwrap();
-                // Try to set up the replacement listener. If it fails, we'll
-                // re-create it on the next iteration; importantly, we still
-                // serve the just-connected client now (the loop's next iter
-                // won't busy-wait; the listener is None until we recreate).
                 server = match create_pipe_with_sddl(&pipe_name, &pipe_sddl, false) {
                     Ok(new) => Some(new),
                     Err(e) => {
@@ -497,9 +441,6 @@ pub async fn run_server_named_pipe(
                     }
                 });
             }
-            // Unreachable: the loop above only exits if its body returns,
-            // which it never does (errors `continue` instead of propagating).
-            // The annotation gives the async block a concrete Result type.
             #[allow(unreachable_code)]
             Ok::<(), anyhow::Error>(())
         })

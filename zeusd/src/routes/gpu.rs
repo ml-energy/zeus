@@ -249,10 +249,7 @@ async fn get_cumulative_energy_handler(
     }
 }
 
-/// Aggregate per-GPU errors into one HTTP response. The response status
-/// is the most severe `status_code()` across the errors so a single 4xx
-/// per-device error does not get masked as a 5xx, and a 5xx is not hidden
-/// by mixing in 4xxs.
+/// Aggregate per-GPU errors into one response, status = max(status_code).
 fn aggregate_error_response(errors: HashMap<usize, ZeusdError>) -> HttpResponse {
     let worst_status = errors
         .values()

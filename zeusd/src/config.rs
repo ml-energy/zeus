@@ -117,18 +117,13 @@ pub struct ServeConfig {
     #[clap(long)]
     pub socket_gid: Option<u32>,
 
-    /// [Named pipe mode] Named pipe Zeusd will listen on (Windows only).
-    /// Conventional prefix is `\\.\pipe\<name>`.
+    /// [Named pipe mode] Pipe name (Windows only).
     #[cfg(windows)]
     #[clap(long, default_value = r"\\.\pipe\zeusd")]
     pub pipe_name: String,
 
-    /// [Named pipe mode] SDDL describing the pipe's DACL (Windows only).
-    /// Default `D:(A;;GRGW;;;AU)` grants `GenericRead | GenericWrite` to all
-    /// authenticated users, so an elevated daemon can be reached from a
-    /// non-elevated client (analogous to `--socket-permissions 666` on Unix).
-    /// Pass any valid SDDL to override; see Microsoft's Security Descriptor
-    /// Definition Language reference for syntax.
+    /// [Named pipe mode] SDDL for the pipe's DACL. Default grants read+write
+    /// to all authenticated users (analogous to `--socket-permissions 666`).
     #[cfg(windows)]
     #[clap(long, default_value = "D:(A;;GRGW;;;AU)")]
     pub pipe_sddl: String,
@@ -149,14 +144,9 @@ pub struct ServeConfig {
     #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
 
-    /// API groups to enable. Each group exposes a set of HTTP endpoints.
-    /// Groups that require root will cause the daemon to exit at startup
-    /// if it is not running as root.
-    ///
-    /// The default is platform-specific: on Linux all three groups
-    /// (`gpu-control`, `gpu-read`, `cpu-read`) are enabled. On non-Linux
-    /// platforms `cpu-read` is omitted because it requires the Intel RAPL
-    /// sysfs interface and is rejected at startup elsewhere.
+    /// API groups to enable. Groups that require root cause the daemon to
+    /// exit at startup if not running as root. Linux default includes all
+    /// three; non-Linux omits `cpu-read` (Linux-only RAPL interface).
     #[cfg_attr(target_os = "linux", clap(
         long,
         value_delimiter = ',',

@@ -99,7 +99,6 @@ iso_to_epoch() {
 }
 
 is_too_new() {
-  # 0 (true) if the resource is newer than the cutoff, i.e. should be skipped.
   [[ -z "$CUTOFF_EPOCH" ]] && return 1
   local launch="$1"
   [[ -z "$launch" || "$launch" == "None" ]] && return 1
@@ -119,7 +118,6 @@ run() {
   fi
 }
 
-# Confirmation gate for blanket delete (no scope filter, `--all` passed).
 if [[ "$ACTION" == "delete" && $ALL_OK -eq 1 && -z "$TAG_VALUE_FILTER" && -z "$OLDER_THAN" && $ASSUME_YES -ne 1 ]]; then
   echo "About to DELETE every resource tagged 'zeusd-test' in $REGION."
   echo "This will affect other Zeus devs sharing this account if they have in-flight tests."
@@ -127,8 +125,8 @@ if [[ "$ACTION" == "delete" && $ALL_OK -eq 1 && -z "$TAG_VALUE_FILTER" && -z "$O
   [[ "$confirm" == "yes" ]] || { echo "Aborted."; exit 1; }
 fi
 
-# Track tag values of resources we actually targeted, so SGs and key pairs
-# (which lack a creation timestamp) can ride along under --older-than mode.
+# SGs and key pairs lack creation timestamps, so under --older-than they
+# ride along on the tag values of aged instances/IAM resources.
 declare -A TARGETED_TAG_VALUES
 
 mark_targeted() {
@@ -136,9 +134,6 @@ mark_targeted() {
   [[ -n "$tv" && "$tv" != "None" ]] && TARGETED_TAG_VALUES["$tv"]=1
 }
 
-# Returns 0 (true) if the resource is eligible for deletion under the current
-# filters. For SGs and key pairs (no age info), eligibility under --older-than
-# is "tag value matches a resource we already targeted."
 ride_along_eligible() {
   local tv="$1"
   [[ -z "$OLDER_THAN" ]] && return 0

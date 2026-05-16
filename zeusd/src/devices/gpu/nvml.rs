@@ -70,10 +70,6 @@ impl GpuManager for NvmlGpu<'static> {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            // `nvmlDeviceSetPersistenceMode` is documented by NVIDIA as
-            // Linux-only. On Windows the driver model keeps the kernel-mode
-            // driver loaded at all times, so this knob is inapplicable:
-            // enabling is a no-op and disabling is not possible.
             if enabled {
                 static WARNED: std::sync::Once = std::sync::Once::new();
                 WARNED.call_once(|| {

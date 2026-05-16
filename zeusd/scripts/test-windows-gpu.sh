@@ -70,12 +70,6 @@ if [[ $SKIP_QUOTA -eq 0 ]]; then
   fi
 fi
 
-# ---------- scoped resource names ----------
-# Per-run tag value: timestamp + PID + random suffix. The random suffix is
-# insurance against PID collisions on shared CI hosts where two concurrent
-# runs could in principle hit the same UTC second with the same recycled
-# PID. With 24 bits of entropy from openssl, two simultaneous runs colliding
-# is effectively impossible.
 TAG_VALUE="zeusd-test-$(date -u +%Y%m%d-%H%M%S)-$$-$(openssl rand -hex 3)"
 KEY_NAME="$TAG_VALUE"
 SG_NAME="$TAG_VALUE"

@@ -38,11 +38,7 @@ pub enum ZeusdError {
     Unauthorized,
     #[error("Insufficient permissions: {0}")]
     Forbidden(String),
-    #[error(
-        "Persistence mode cannot be disabled on this platform: on Windows \
-         the kernel-mode driver stays loaded at all times and cannot be \
-         unloaded via NVML."
-    )]
+    #[error("Persistence mode cannot be disabled on this platform.")]
     PersistenceModeCannotBeDisabled,
 }
 
