@@ -71,7 +71,12 @@ if [[ $SKIP_QUOTA -eq 0 ]]; then
 fi
 
 # ---------- scoped resource names ----------
-TAG_VALUE="zeusd-test-$(date -u +%Y%m%d-%H%M%S)-$$"
+# Per-run tag value: timestamp + PID + random suffix. The random suffix is
+# insurance against PID collisions on shared CI hosts where two concurrent
+# runs could in principle hit the same UTC second with the same recycled
+# PID. With 24 bits of entropy from openssl, two simultaneous runs colliding
+# is effectively impossible.
+TAG_VALUE="zeusd-test-$(date -u +%Y%m%d-%H%M%S)-$$-$(openssl rand -hex 3)"
 KEY_NAME="$TAG_VALUE"
 SG_NAME="$TAG_VALUE"
 ROLE_NAME="$TAG_VALUE-role"
@@ -98,7 +103,7 @@ cleanup() {
     {
       echo "WARNING: AWS credentials are not valid; cleanup cannot run."
       echo "After re-logging in, run this to clean up everything tagged for this run:"
-      echo "  bash $SCRIPT_DIR/cleanup-test-aws.sh --tag-value $TAG_VALUE"
+      echo "  bash $SCRIPT_DIR/cleanup-test-aws.sh --delete --tag-value $TAG_VALUE"
       echo "Or delete by hand:"
       [[ -n "$INSTANCE_ID" ]] && \
         echo "  aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_ID"

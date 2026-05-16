@@ -236,6 +236,17 @@ curl -H "Authorization: Bearer $ZEUSD_TOKEN" http://localhost:4938/gpu/get_power
 
 When no `--signing-key-path` is provided, the daemon runs without authentication and all endpoints are freely accessible. The `/discover` endpoint always reports `auth_required: true` or `false` so clients can adapt.
 
+## Testing
+
+Unit and integration tests run via `cargo test` inside `zeusd/`. CI exercises this on Linux, Windows, and macOS for every push.
+
+For Windows-specific end-to-end coverage with a real NVIDIA GPU, two helper scripts live in `zeusd/scripts/`:
+
+- `test-windows-gpu.sh` provisions a `g4dn.xlarge` on AWS, builds `zeusd` from a Git ref, runs TCP + named-pipe smoke tests, a PyTorch matmul load with NVML power-limit / locked-clocks round-trips, and an SDDL ACL test that drives privileged NVML writes from an unprivileged client through the elevated daemon. Tears its own resources down via a trap. Pass `-h` for options.
+- `cleanup-test-aws.sh` lists or deletes resources tagged `zeusd-test` (used to recover from crashed traps or stale orphans on a shared AWS account). Default mode is list-only; deletion requires an explicit scope (`--tag-value`, `--older-than`, or `--all`). Pass `-h` for the full usage.
+
+Both scripts require `aws` CLI v2 with valid credentials and `jq`. Resources are tagged with a unique per-run value (`zeusd-test-<utc-second>-<pid>-<6 hex chars>`), so concurrent runs by multiple devs on the same AWS account don't collide and a scoped cleanup affects only its own run.
+
 ## API Reference
 
 ### Discovery
