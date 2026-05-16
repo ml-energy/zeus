@@ -241,13 +241,13 @@ macro_rules! impl_read_handler_for_gpu_command {
                 }
                 let results = futures::future::join_all(handles).await;
 
-                let mut response_map: HashMap<String, [<$api:camel Response>]> = HashMap::new();
+                let mut response_map: BTreeMap<usize, [<$api:camel Response>]> = BTreeMap::new();
                 let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
                 for (gpu_id, result) in results {
                     match result {
                         Ok(GpuResponse::$resp { $($field,)+ }) => {
                             response_map.insert(
-                                gpu_id.to_string(),
+                                gpu_id,
                                 [<$api:camel Response>] { $($field,)+ },
                             );
                         }
