@@ -54,6 +54,7 @@ pub trait GpuManager {
 pub enum GpuResponse {
     Ok,
     Energy { energy_mj: u64 },
+    InstantPower { power_mw: u32 },
 }
 
 /// A request to execute a GPU command.
@@ -185,6 +186,8 @@ pub enum GpuCommand {
     ResetMemLockedClocks,
     /// Get total energy consumption since driver load.
     GetTotalEnergyConsumption,
+    /// Read instantaneous power draw in milliwatts.
+    GetInstantPower,
 }
 
 /// Log the result of a GPU command with timing information.
@@ -311,6 +314,17 @@ impl GpuCommand {
                     "Cannot read total energy consumption",
                 );
                 result.map(|energy_mj| GpuResponse::Energy { energy_mj })
+            }
+            Self::GetInstantPower => {
+                let result = device.get_instant_power_mw();
+                log_command_result(
+                    &result,
+                    request_arrival_time,
+                    command_start_time,
+                    "Instant power read",
+                    "Cannot read instant power",
+                );
+                result.map(|power_mw| GpuResponse::InstantPower { power_mw })
             }
         }
     }
