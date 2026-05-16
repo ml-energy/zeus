@@ -91,25 +91,42 @@ pub enum TokenCommand {
 /// Configuration for the `serve` subcommand.
 #[derive(Parser, Debug)]
 pub struct ServeConfig {
-    /// Operating mode: UDS or TCP.
-    #[clap(long, default_value = "uds")]
+    /// Operating mode (default depends on platform: `uds` on Unix,
+    /// `named-pipe` on Windows).
+    #[cfg_attr(unix, clap(long, default_value = "uds"))]
+    #[cfg_attr(windows, clap(long, default_value = "named-pipe"))]
     pub mode: ConnectionMode,
 
     /// [UDS mode] Path to the socket Zeusd will listen on.
+    #[cfg(unix)]
     #[clap(long, default_value = "/run/zeusd/zeusd.sock")]
     pub socket_path: String,
 
     /// [UDS mode] Permissions for the socket file to be created.
+    #[cfg(unix)]
     #[clap(long, default_value = "666")]
     socket_permissions: String,
 
     /// [UDS mode] UID to chown the socket file to.
+    #[cfg(unix)]
     #[clap(long)]
     pub socket_uid: Option<u32>,
 
     /// [UDS mode] GID to chown the socket file to.
+    #[cfg(unix)]
     #[clap(long)]
     pub socket_gid: Option<u32>,
+
+    /// [Named pipe mode] Pipe name (Windows only).
+    #[cfg(windows)]
+    #[clap(long, default_value = r"\\.\pipe\zeusd")]
+    pub pipe_name: String,
+
+    /// [Named pipe mode] SDDL for the pipe's DACL. Default grants read+write
+    /// to all authenticated users (analogous to `--socket-permissions 666`).
+    #[cfg(windows)]
+    #[clap(long, default_value = "D:(A;;GRGW;;;AU)")]
+    pub pipe_sddl: String,
 
     /// [TCP mode] Address to bind to.
     #[clap(long, default_value = "127.0.0.1:4938")]
@@ -127,14 +144,19 @@ pub struct ServeConfig {
     #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
 
-    /// API groups to enable. Each group exposes a set of HTTP endpoints.
-    /// Groups that require root will cause the daemon to exit at startup
-    /// if it is not running as root.
-    #[clap(
+    /// API groups to enable. Groups that require root cause the daemon to
+    /// exit at startup if not running as root. Linux default includes all
+    /// three; non-Linux omits `cpu-read` (Linux-only RAPL interface).
+    #[cfg_attr(target_os = "linux", clap(
         long,
         value_delimiter = ',',
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
-    )]
+    ))]
+    #[cfg_attr(not(target_os = "linux"), clap(
+        long,
+        value_delimiter = ',',
+        default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead],
+    ))]
     pub enable: Vec<ApiGroup>,
 
     /// Path to the HMAC-SHA256 signing key file for JWT authentication.
@@ -145,6 +167,7 @@ pub struct ServeConfig {
 
 impl ServeConfig {
     /// Parses socket permissions as an octal number. E.g., "666" -> 0o666.
+    #[cfg(unix)]
     pub fn socket_permissions(&self) -> anyhow::Result<u32> {
         u32::from_str_radix(&self.socket_permissions, 8)
             .context("Failed to parse socket permissions")
@@ -212,12 +235,19 @@ impl TokenIssueConfig {
 }
 
 /// The mode of connection to use for the daemon.
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+///
+/// Variants are gated by platform: `UDS` is Unix-only and `NamedPipe`
+/// is Windows-only. `TCP` is always available.
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum, Debug)]
 pub enum ConnectionMode {
     /// Unix domain socket.
+    #[cfg(unix)]
     UDS,
     /// TCP.
     TCP,
+    /// Windows named pipe (`\\.\pipe\<name>`).
+    #[cfg(windows)]
+    NamedPipe,
 }
 
 /// Parse command line arguments.

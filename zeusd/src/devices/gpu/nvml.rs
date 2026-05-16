@@ -1,7 +1,10 @@
 //! Implements `NvmlGpu`, a GPU manager for NVIDIA GPUs using the NVML library.
 //!
-//! Note that NVML is only available on Linux.
+//! NVML is available on Linux (`libnvidia-ml.so`) and Windows (`nvml.dll`),
+//! but not on macOS. The `nvml-wrapper` crate locates the library
+//! automatically at runtime via `libloading`.
 
+#[cfg(target_os = "linux")]
 use std::ffi::OsStr;
 
 use nvml_wrapper::enums::device::GpuLockedClocksSetting;
@@ -18,6 +21,10 @@ pub struct NvmlGpu<'n> {
 fn init_nvml() -> Result<Nvml, NvmlError> {
     // Initialize NVML and return the instance.
     match Nvml::init() {
+        // Some Linux installs only ship `libnvidia-ml.so.1` and not the
+        // unversioned `libnvidia-ml.so` symlink that nvml-wrapper looks for
+        // by default. On Windows the default `nvml.dll` is found automatically.
+        #[cfg(target_os = "linux")]
         Err(NvmlError::LibloadingError(_)) => {
             tracing::warn!("NVML library not found, trying with `libnvidia-ml.so.1`");
             Nvml::builder()
@@ -57,7 +64,25 @@ impl GpuManager for NvmlGpu<'static> {
 
     #[inline]
     fn set_persistence_mode(&mut self, enabled: bool) -> Result<(), ZeusdError> {
-        Ok(self.device.set_persistent(enabled)?)
+        #[cfg(target_os = "linux")]
+        {
+            Ok(self.device.set_persistent(enabled)?)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            if enabled {
+                static WARNED: std::sync::Once = std::sync::Once::new();
+                WARNED.call_once(|| {
+                    tracing::warn!(
+                        "set_persistence_mode(true) is a no-op on this platform; \
+                         on Windows the kernel-mode driver stays loaded at all times."
+                    );
+                });
+                Ok(())
+            } else {
+                Err(ZeusdError::PersistenceModeCannotBeDisabled)
+            }
+        }
     }
 
     #[inline]

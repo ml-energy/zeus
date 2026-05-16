@@ -217,8 +217,9 @@ async fn test_set_power_limit_multiple() {
 async fn test_set_power_limit_invalid() {
     let mut app = TestApp::start().await;
 
-    // Valid requests with invalid power limits (blocking).
-    // With the new batch response, errors are returned as JSON with an "errors" key.
+    // Valid requests with invalid power limits (blocking). Out-of-range
+    // values yield NvmlError::InvalidArg, which the error layer maps to
+    // 400 BAD_REQUEST.
     let resp = app
         .send(SetPowerLimit {
             gpu_ids: "0".to_string(),
@@ -228,7 +229,7 @@ async fn test_set_power_limit_invalid() {
         .await
         .expect("Failed to send request");
 
-    assert_eq!(resp.status(), 500);
+    assert_eq!(resp.status(), 400);
 
     let resp = app
         .send(SetPowerLimit {
@@ -239,7 +240,7 @@ async fn test_set_power_limit_invalid() {
         .await
         .expect("Failed to send request");
 
-    assert_eq!(resp.status(), 500);
+    assert_eq!(resp.status(), 400);
     let text = resp.text().await.expect("Failed to read response");
     assert!(text.contains("NVML error"));
     assert!(text.contains("invalid"));
@@ -319,7 +320,7 @@ async fn test_set_power_limit_bulk() {
     }
 
     // After this blocking request finishes, all non-blocking ones should have completed.
-    // 350_000 exceeds the valid range -> error (now 500 with batch error format).
+    // 350_000 exceeds the valid range -> NvmlError::InvalidArg -> 400.
     assert_eq!(
         app.send(SetPowerLimit {
             gpu_ids: "0".to_string(),
@@ -329,7 +330,7 @@ async fn test_set_power_limit_bulk() {
         .await
         .expect("Failed to send request")
         .status(),
-        500
+        400
     );
 
     let history = app.power_limit_history_for_gpu(0);

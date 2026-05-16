@@ -4,8 +4,8 @@
 
 ## Problem
 
-Energy optimizers in Zeus need to change the GPU's configurations including its power limit or frequency, which requires the Linux security capability `SYS_ADMIN` (which is pretty much `sudo`).
-However, it's not a good idea to grant the entire application such strong privileges just to be able to change GPU configurations.
+Energy optimizers in Zeus need to change the GPU's configurations including its power limit or frequency, which requires the Linux security capability `SYS_ADMIN` (effectively `sudo`) or admin elevation on Windows.
+It's not a good idea to grant the entire application such strong privileges just to be able to change GPU configurations.
 
 Additionally, monitoring GPU and CPU power across multiple nodes in a cluster requires a lightweight, always-on service that can stream readings to remote clients.
 
@@ -15,11 +15,19 @@ Additionally, monitoring GPU and CPU power across multiple nodes in a cluster re
 
 - **GPU management endpoints** that wrap privileged NVML methods, so unprivileged applications can change GPU configuration on their behalf.
 - **GPU power streaming** via SSE (Server-Sent Events) using NVML instant power readings.
-- **CPU power streaming** via SSE using RAPL energy counters (Intel and modern AMD CPUs).
+- **CPU power streaming** via SSE using RAPL energy counters (Intel and modern AMD CPUs, Linux only).
 
 Power polling is demand-driven: `zeusd` only reads from hardware while at least one client is connected, so idle endpoints consume no resources.
 
 To make this as low latency as possible, `zeusd` was written in Rust.
+
+## Platform support
+
+**Linux** is the primary deployment target. Full GPU control and monitoring via NVML, CPU package and DRAM power via Intel RAPL (`/sys/class/powercap`). UDS is the default local transport.
+
+**Windows** runs the GPU control and monitoring path against `nvml.dll`. CPU RAPL is unavailable (the kernel powercap interface is Linux-specific), so `cpu-read` is omitted from the default `--enable` and rejected at startup if explicitly added. Default local transport is a Windows named pipe with a configurable DACL; see [Named Pipe mode](#named-pipe-mode-windows-only).
+
+**macOS** is not supported: the daemon compiles and runs but neither NVML nor RAPL is available there, so it reports zero devices.
 
 ## How to use `zeusd`
 
@@ -29,11 +37,11 @@ First, install `zeusd`:
 cargo install zeusd
 ```
 
-Both modes (UDS and TCP) serve the same HTTP API. The only difference is the transport layer.
+All three transports (UDS, TCP, named pipe) serve the same HTTP API. The only difference is the local transport layer.
 
-### UDS mode
+### UDS mode (Unix only)
 
-UDS (Unix domain socket) mode is the default. It's intended for local communication between processes on the same node.
+UDS (Unix domain socket) mode is the default on Unix. It's intended for local communication between processes on the same node.
 
 ```sh
 sudo zeusd serve --socket-path /run/zeusd/zeusd.sock --socket-permissions 666
@@ -47,9 +55,26 @@ export ZEUSD_SOCK_PATH=/run/zeusd/zeusd.sock
 
 When Zeus detects `ZEUSD_SOCK_PATH`, it'll automatically instantiate the right GPU backend and relay privileged GPU management method calls to `zeusd`.
 
+### Named Pipe mode (Windows only)
+
+Named Pipe mode is the default on Windows. It plays the same local-IPC role as UDS does on Unix, using a filesystem-style path under `\\.\pipe\`.
+
+```powershell
+# In an elevated PowerShell:
+zeusd serve --pipe-name \\.\pipe\zeusd
+```
+
+The default pipe name is `\\.\pipe\zeusd`. Up to 254 concurrent client connections are accepted (Windows' `PIPE_UNLIMITED_INSTANCES` = 255 is rejected by Tokio's builder, so 254 is the practical cap).
+
+`actix-web`'s built-in `HttpServer` does not support Windows named pipes, so on the named-pipe path zeusd drives `actix-http`'s `H1Service` over each connected `NamedPipeServer` on a single-threaded `LocalSet`. `--num-workers` is therefore ignored in this mode.
+
+Access control is enforced via the pipe's DACL, configurable through `--pipe-sddl`. The default `D:(A;;GRGW;;;AU)` grants read+write to all authenticated users, analogous to `--socket-permissions 666` for UDS; pass any valid SDDL string to tighten or widen the audience.
+
+**Python client integration.** The Zeus Python library (`zeus.utils.zeusd.ZeusdConfig` and the `ZeusdNVIDIAGPU` / `PowerStreamingClient` it backs) currently constructs HTTP transports for TCP and Unix domain sockets only; there is no `httpx` transport for Windows named pipes yet. To use `zeusd` from a Zeus Python application on Windows, run the daemon in TCP mode (`--mode tcp`) and point clients at `ZEUSD_HOST_PORT`. Named-pipe mode is fully usable from non-Python clients (curl in WSL, .NET `NamedPipeClientStream`, custom Rust/Go clients, etc.).
+
 ### TCP mode
 
-TCP mode exposes the same API over a TCP socket, making it accessible from remote hosts. This is useful for cluster-wide power monitoring.
+TCP mode exposes the same API over a TCP socket, making it accessible from remote hosts. This is useful for cluster-wide power monitoring and works on all platforms.
 
 ```sh
 sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
@@ -106,7 +131,7 @@ See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/m
 
 ### API groups
 
-`zeusd` organizes its endpoints into API groups that can be selectively enabled with the `--enable` flag. By default, all groups are enabled.
+`zeusd` organizes its endpoints into API groups that can be selectively enabled with the `--enable` flag. By default Linux enables all three groups (`gpu-control,gpu-read,cpu-read`); Windows omits `cpu-read`.
 
 | Group | Endpoints | Requires root |
 |-------|-----------|:---:|
@@ -119,7 +144,7 @@ See the [Distributed Power Measurement and Aggregation](https://ml.energy/zeus/m
 | `gpu-read` | `GET /gpu/get_power` | No |
 | | `GET /gpu/stream_power` | |
 | | `GET /gpu/get_cumulative_energy` | |
-| `cpu-read` | `GET /cpu/get_cumulative_energy` | Yes |
+| `cpu-read` (Linux only) | `GET /cpu/get_cumulative_energy` | Yes |
 | | `GET /cpu/get_power` | |
 | | `GET /cpu/stream_power` | |
 
@@ -127,22 +152,7 @@ The following endpoints are always available regardless of which groups are enab
 - `GET /discover`
 - `GET /time`
 
-If a group that requires root is enabled but the daemon is not running as root, it will exit immediately with an error.
-
-Examples:
-
-```sh
-# As root: all groups enabled (default)
-sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
-
-# As non-root: GPU monitoring only (no root required)
-zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read
-
-# As root: monitoring only (GPU + CPU reads, no GPU control)
-sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --enable gpu-read,cpu-read
-```
-
-Only the devices needed by the enabled groups are initialized. For example, `--enable gpu-read` skips RAPL initialization entirely, and `--enable cpu-read` skips NVML initialization.
+If a group that requires root is enabled but the daemon is not running as root, it will exit immediately with an error. On Windows there is no fail-fast admin check; NVML write calls fall back to NVML's own `NoPermission` if the daemon lacks admin, which surfaces as HTTP 403 to clients.
 
 ### Authentication
 
@@ -199,6 +209,17 @@ curl -H "Authorization: Bearer $ZEUSD_TOKEN" http://localhost:4938/gpu/get_power
 ```
 
 When no `--signing-key-path` is provided, the daemon runs without authentication and all endpoints are freely accessible. The `/discover` endpoint always reports `auth_required: true` or `false` so clients can adapt.
+
+## Testing
+
+Unit and integration tests run via `cargo test` inside `zeusd/`. CI runs the matrix on every push.
+
+For Windows-specific end-to-end coverage with a real NVIDIA GPU, two helper scripts live in `zeusd/scripts/`:
+
+- `test-windows-gpu.sh` provisions a `g4dn.xlarge` on AWS, builds `zeusd` from a Git ref, runs TCP + named-pipe smoke tests, a PyTorch matmul load with NVML power-limit / locked-clocks round-trips, and an SDDL ACL test that drives privileged NVML writes from an unprivileged client through the elevated daemon. Tears its own resources down via a trap. Pass `-h` for options.
+- `cleanup-test-aws.sh` lists or deletes resources tagged `zeusd-test` (used to recover from crashed traps or stale orphans on a shared AWS account). Default mode is list-only; deletion requires an explicit scope (`--tag-value`, `--older-than`, or `--all`). Pass `-h` for the full usage.
+
+Both scripts require `aws` CLI v2 with valid credentials and `jq`. Resources are tagged with a unique per-run value (`zeusd-test-<utc-second>-<pid>-<6 hex chars>`), so concurrent runs by multiple devs on the same AWS account don't collide and a scoped cleanup affects only its own run.
 
 ## API Reference
 
@@ -358,37 +379,43 @@ Options:
   -V, --version  Print version
 ```
 
+Note: a few flags are platform-conditional. The `--mode` default and the UDS / named-pipe options below only appear on the platforms where they apply.
+
 ```console
-$ zeusd serve --help
+$ zeusd serve --help     # Linux variant shown; Windows omits --socket-* and adds --pipe-name
 Start the Zeus daemon
 
 Usage: zeusd serve [OPTIONS]
 
 Options:
       --mode <MODE>
-          Operating mode: UDS or TCP
-
-          [default: uds]
+          Operating mode (default depends on platform: `uds` on Unix, `named-pipe` on Windows)
 
           Possible values:
-          - uds: Unix domain socket
-          - tcp: TCP
+          - uds:         Unix domain socket (Unix only)
+          - tcp:         TCP
+          - named-pipe:  Windows named pipe (Windows only)
 
-      --socket-path <SOCKET_PATH>
+      --socket-path <SOCKET_PATH>          # Unix only
           [UDS mode] Path to the socket Zeusd will listen on
 
           [default: /run/zeusd/zeusd.sock]
 
-      --socket-permissions <SOCKET_PERMISSIONS>
+      --socket-permissions <SOCKET_PERMISSIONS>          # Unix only
           [UDS mode] Permissions for the socket file to be created
 
           [default: 666]
 
-      --socket-uid <SOCKET_UID>
+      --socket-uid <SOCKET_UID>            # Unix only
           [UDS mode] UID to chown the socket file to
 
-      --socket-gid <SOCKET_GID>
+      --socket-gid <SOCKET_GID>            # Unix only
           [UDS mode] GID to chown the socket file to
+
+      --pipe-name <PIPE_NAME>              # Windows only
+          [Named pipe mode] Named pipe Zeusd will listen on
+
+          [default: \\.\pipe\zeusd]
 
       --tcp-bind-address <TCP_BIND_ADDRESS>
           [TCP mode] Address to bind to
@@ -396,7 +423,8 @@ Options:
           [default: 127.0.0.1:4938]
 
       --num-workers <NUM_WORKERS>
-          Number of worker threads to use. Default is the number of logical CPUs
+          Number of worker threads to use. Default is the number of logical CPUs.
+          Ignored in named-pipe mode (which uses a single-threaded LocalSet)
 
       --gpu-power-poll-hz <GPU_POWER_POLL_HZ>
           GPU power polling frequency in Hz for the streaming endpoint
@@ -409,9 +437,10 @@ Options:
           [default: 10]
 
       --enable <ENABLE>
-          API groups to enable. Each group exposes a set of HTTP endpoints. Groups that require root will cause the daemon to exit at startup if it is not running as root
+          API groups to enable. Each group exposes a set of HTTP endpoints. Groups that require root will cause the daemon to exit at startup if it is not running as root. Linux defaults to all three; Windows omits `cpu-read`
 
-          [default: gpu-control gpu-read cpu-read]
+          [default: gpu-control gpu-read cpu-read]   # Linux
+          [default: gpu-control gpu-read]            # Windows
 
           Possible values:
           - gpu-control: GPU control operations (set power limit, clocks, persistence mode). Requires root

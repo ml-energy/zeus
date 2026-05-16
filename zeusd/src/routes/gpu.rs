@@ -11,7 +11,7 @@ use tokio_stream::StreamExt;
 
 use crate::devices::gpu::power::{GpuPowerBroadcast, GpuPowerSnapshot};
 use crate::devices::gpu::{GpuCommand, GpuManagementTasks, GpuResponse};
-use crate::error::ZeusdError;
+use crate::error::{aggregate_error_response, ZeusdError};
 
 /// Query parameters for GPU read endpoints.
 /// `gpu_ids` is optional; omit to read all GPUs.
@@ -111,33 +111,29 @@ macro_rules! impl_handler_for_gpu_command {
                     });
                 }
                 let results = futures::future::join_all(handles).await;
-                let mut errors: HashMap<usize, String> = HashMap::new();
+                let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
                 for (gpu_id, result) in results {
                     if let Err(e) = result {
-                        errors.insert(gpu_id, e.to_string());
+                        errors.insert(gpu_id, e);
                     }
                 }
                 if errors.is_empty() {
                     Ok(HttpResponse::Ok().finish())
                 } else {
-                    Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                        "errors": errors
-                    })))
+                    Ok(aggregate_error_response(errors))
                 }
             } else {
                 // Non-blocking: send all and collect send results.
-                let mut errors: HashMap<usize, String> = HashMap::new();
+                let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
                 for &gpu_id in &gpu_ids {
                     if let Err(e) = device_tasks.send_command_nonblocking(gpu_id, command.clone(), now) {
-                        errors.insert(gpu_id, e.to_string());
+                        errors.insert(gpu_id, e);
                     }
                 }
                 if errors.is_empty() {
                     Ok(HttpResponse::Ok().finish())
                 } else {
-                    Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                        "errors": errors
-                    })))
+                    Ok(aggregate_error_response(errors))
                 }
             }
         }
@@ -230,17 +226,17 @@ async fn get_cumulative_energy_handler(
     let results = futures::future::join_all(handles).await;
 
     let mut response_map: HashMap<String, GpuEnergyResponse> = HashMap::new();
-    let mut errors: HashMap<String, String> = HashMap::new();
+    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
     for (gpu_id, result) in results {
         match result {
             Ok(GpuResponse::Energy { energy_mj }) => {
                 response_map.insert(gpu_id.to_string(), GpuEnergyResponse { energy_mj });
             }
             Ok(_) => {
-                errors.insert(gpu_id.to_string(), "Unexpected response type".to_string());
+                errors.insert(gpu_id, ZeusdError::GpuManagementTaskTerminatedError(gpu_id));
             }
             Err(e) => {
-                errors.insert(gpu_id.to_string(), e.to_string());
+                errors.insert(gpu_id, e);
             }
         }
     }
@@ -248,9 +244,7 @@ async fn get_cumulative_energy_handler(
     if errors.is_empty() {
         Ok(HttpResponse::Ok().json(response_map))
     } else {
-        Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "errors": errors
-        })))
+        Ok(aggregate_error_response(errors))
     }
 }
 

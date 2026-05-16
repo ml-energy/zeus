@@ -6,11 +6,14 @@ use std::sync::Arc;
 use zeusd::auth::{issue_token, SigningKeyData};
 use zeusd::config::{get_cli, ApiGroup, Command, ConnectionMode, TokenCommand};
 use zeusd::routes::DiscoveryInfo;
+#[cfg(windows)]
+use zeusd::startup::run_server_named_pipe;
 use zeusd::startup::{
-    check_privileges, get_unix_listener, init_tracing, start_cpu_device_tasks,
-    start_cpu_power_poller, start_gpu_device_tasks, start_gpu_power_poller, start_server_tcp,
-    start_server_uds, EnabledGroups, ServerState,
+    check_privileges, init_tracing, start_cpu_device_tasks, start_cpu_power_poller,
+    start_gpu_device_tasks, start_gpu_power_poller, start_server_tcp, EnabledGroups, ServerState,
 };
+#[cfg(unix)]
+use zeusd::startup::{get_unix_listener, start_server_uds};
 
 /// Read the signing key from the given file path.
 fn read_signing_key(path: &str) -> anyhow::Result<Vec<u8>> {
@@ -138,6 +141,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
             .into()
     });
     match config.mode {
+        #[cfg(unix)]
         ConnectionMode::UDS => {
             let listener = get_unix_listener(
                 &config.socket_path,
@@ -154,6 +158,12 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
             tracing::info!("Listening on {}", &listener.local_addr()?);
 
             start_server_tcp(listener, state, num_workers)?.await?;
+        }
+        #[cfg(windows)]
+        ConnectionMode::NamedPipe => {
+            let _ = num_workers; // num_workers applies to actix-server workers (TCP/UDS)
+            run_server_named_pipe(config.pipe_name.clone(), config.pipe_sddl.clone(), state)
+                .await?;
         }
     }
 

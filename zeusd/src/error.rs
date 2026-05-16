@@ -6,8 +6,10 @@
 //! Note that errors that occur during the initialization of the daemon are
 //! handled with `anyhow` and eventually end up terminating the process.
 
+use std::collections::HashMap;
+
 use actix_web::http::StatusCode;
-use actix_web::ResponseError;
+use actix_web::{HttpResponse, ResponseError};
 use nvml_wrapper::error::NvmlError;
 use tokio::sync::mpsc::error::SendError;
 
@@ -38,6 +40,8 @@ pub enum ZeusdError {
     Unauthorized,
     #[error("Insufficient permissions: {0}")]
     Forbidden(String),
+    #[error("Persistence mode cannot be disabled on this platform.")]
+    PersistenceModeCannotBeDisabled,
 }
 
 /// This allows us to return a custom HTTP status code for each error variant.
@@ -49,6 +53,7 @@ impl ResponseError for ZeusdError {
             ZeusdError::NvmlError(e) => match e {
                 NvmlError::NoPermission => StatusCode::FORBIDDEN,
                 NvmlError::InvalidArg => StatusCode::BAD_REQUEST,
+                NvmlError::NotSupported => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ZeusdError::GpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -59,6 +64,21 @@ impl ResponseError for ZeusdError {
             ZeusdError::IOError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::Unauthorized => StatusCode::UNAUTHORIZED,
             ZeusdError::Forbidden(_) => StatusCode::FORBIDDEN,
+            ZeusdError::PersistenceModeCannotBeDisabled => StatusCode::BAD_REQUEST,
         }
     }
+}
+
+/// Aggregate per-device errors into one response, status = max(status_code).
+pub fn aggregate_error_response(errors: HashMap<usize, ZeusdError>) -> HttpResponse {
+    let worst_status = errors
+        .values()
+        .map(|e| e.status_code())
+        .max()
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let payload: HashMap<String, String> = errors
+        .into_iter()
+        .map(|(id, e)| (id.to_string(), e.to_string()))
+        .collect();
+    HttpResponse::build(worst_status).json(serde_json::json!({ "errors": payload }))
 }

@@ -10,7 +10,7 @@ use tokio_stream::StreamExt;
 
 use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerSnapshot};
 use crate::devices::cpu::{CpuCommand, CpuManagementTasks, RaplResponse};
-use crate::error::ZeusdError;
+use crate::error::{aggregate_error_response, ZeusdError};
 
 /// Query parameters for CPU read endpoints.
 /// `cpu_ids` is optional; omit to read all CPUs.
@@ -86,14 +86,14 @@ async fn get_cumulative_energy_handler(
     let results = futures::future::join_all(handles).await;
 
     let mut response_map: HashMap<String, RaplResponse> = HashMap::new();
-    let mut errors: HashMap<String, String> = HashMap::new();
+    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
     for (cpu_id, result) in results {
         match result {
             Ok(measurement) => {
                 response_map.insert(cpu_id.to_string(), measurement);
             }
             Err(e) => {
-                errors.insert(cpu_id.to_string(), e.to_string());
+                errors.insert(cpu_id, e);
             }
         }
     }
@@ -101,9 +101,7 @@ async fn get_cumulative_energy_handler(
     if errors.is_empty() {
         Ok(HttpResponse::Ok().json(response_map))
     } else {
-        Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-            "errors": errors
-        })))
+        Ok(aggregate_error_response(errors))
     }
 }
 

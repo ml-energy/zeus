@@ -2501,8 +2501,10 @@ dependencies = [
 
 [[package]]
 name = "zeusd"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
+ "actix-http",
+ "actix-service",
  "actix-web",
  "anyhow",
  "clap",
@@ -2524,6 +2526,7 @@ dependencies = [
  "tracing-actix-web",
  "tracing-log",
  "tracing-subscriber",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
