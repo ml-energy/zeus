@@ -120,6 +120,30 @@ def mock_zeusd(monkeypatch):
                     json={str(i): {"energy_mj": 100000 + i * 10000} for i in gpu_ids},
                 )
 
+            if path == "/gpu/get_power_limit":
+                return httpx.Response(
+                    200,
+                    json={str(i): {"power_limit_mw": 200000 + i * 1000} for i in gpu_ids},
+                )
+
+            if path == "/gpu/get_power_limit_constraints":
+                return httpx.Response(
+                    200,
+                    json={
+                        str(i): {
+                            "min_power_limit_mw": 100000,
+                            "max_power_limit_mw": 300000,
+                        }
+                        for i in gpu_ids
+                    },
+                )
+
+            if path == "/gpu/get_persistence_mode":
+                return httpx.Response(
+                    200,
+                    json={str(i): {"enabled": i % 2 == 0} for i in gpu_ids},
+                )
+
             if path == "/cpu/get_power":
                 return httpx.Response(
                     200,
@@ -460,6 +484,32 @@ class TestZeusdClientGpuRead:
         with pytest.raises(ZeusdError, match="get_gpu_power"):
             client.get_gpu_power()
 
+    def test_get_power_limit(self, mock_zeusd):
+        server = mock_zeusd(gpu_ids=(0, 1))
+        client = ZeusdClient(server.config)
+        result = client.get_power_limit([0, 1])
+        assert result == {0: 200000, 1: 201000}
+        assert server.last_params()["gpu_ids"] == "0,1"
+
+    def test_get_power_limit_all(self, mock_zeusd):
+        server = mock_zeusd(gpu_ids=(0, 1))
+        client = ZeusdClient(server.config)
+        client.get_power_limit()
+        assert "gpu_ids" not in server.last_params()
+
+    def test_get_power_limit_constraints(self, mock_zeusd):
+        server = mock_zeusd(gpu_ids=(0,))
+        client = ZeusdClient(server.config)
+        result = client.get_power_limit_constraints([0])
+        assert result == {0: (100000, 300000)}
+
+    def test_get_persistence_mode(self, mock_zeusd):
+        server = mock_zeusd(gpu_ids=(0, 1))
+        client = ZeusdClient(server.config)
+        result = client.get_persistence_mode([0, 1])
+        assert result == {0: True, 1: False}
+        assert server.last_params()["gpu_ids"] == "0,1"
+
 
 # ---------------------------------------------------------------------------
 # ZeusdClient GPU control
@@ -565,6 +615,12 @@ class TestZeusdClientCpuRead:
         params = server.last_params()
         assert params["cpu"] == "true"
         assert params["dram"] == "false"
+
+    def test_get_cpu_energy_all(self, mock_zeusd):
+        server = mock_zeusd(cpu_ids=(0, 1), dram_available=(True, False))
+        client = ZeusdClient(server.config)
+        client.get_cpu_energy()
+        assert "cpu_ids" not in server.last_params()
 
     def test_get_cpu_power_all(self, mock_zeusd):
         server = mock_zeusd(cpu_ids=(0, 1), dram_available=(True, False))

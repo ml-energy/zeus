@@ -86,8 +86,32 @@ impl GpuManager for NvmlGpu<'static> {
     }
 
     #[inline]
+    fn get_persistence_mode(&mut self) -> Result<bool, ZeusdError> {
+        #[cfg(target_os = "linux")]
+        {
+            Ok(self.device.is_in_persistent_mode()?)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            // Windows: the kernel-mode driver stays loaded at all times.
+            Ok(true)
+        }
+    }
+
+    #[inline]
     fn set_power_management_limit(&mut self, power_limit_mw: u32) -> Result<(), ZeusdError> {
         Ok(self.device.set_power_management_limit(power_limit_mw)?)
+    }
+
+    #[inline]
+    fn get_power_management_limit(&mut self) -> Result<u32, ZeusdError> {
+        Ok(self.device.power_management_limit()?)
+    }
+
+    #[inline]
+    fn get_power_management_limit_constraints(&mut self) -> Result<(u32, u32), ZeusdError> {
+        let c = self.device.power_management_limit_constraints()?;
+        Ok((c.min_limit, c.max_limit))
     }
 
     #[inline]

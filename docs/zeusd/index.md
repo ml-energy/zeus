@@ -133,9 +133,11 @@ Authenticated user's identity and scopes. Requires a bearer token. Returns 404 w
 
 ### GPU
 
-All endpoints under `/gpu`. Write endpoints (`POST`) take `gpu_ids` (comma-separated) and `block` (bool: `true` waits for completion and reports per-GPU execution errors; `false` dispatches non-blocking and only reports MPSC send errors).
+All endpoints are under `/gpu`. `gpu_ids` is a comma-separated list of GPU indices: required on writes; optional on reads (omit to apply to / read all GPUs).
 
-| Method | Path | Extra params |
+Writes (`POST`) also take `block` (bool): `true` waits for completion and reports per-GPU execution errors; `false` dispatches non-blocking and only reports MPSC send errors.
+
+| Method | Path | Extra params / notes |
 |---|---|---|
 | `POST` | `/gpu/set_power_limit` | `power_limit_mw` |
 | `POST` | `/gpu/set_persistence_mode` | `enabled` (see [Windows quirk](#windows-quirk)) |
@@ -143,9 +145,12 @@ All endpoints under `/gpu`. Write endpoints (`POST`) take `gpu_ids` (comma-separ
 | `POST` | `/gpu/reset_gpu_locked_clocks` | -- |
 | `POST` | `/gpu/set_mem_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
 | `POST` | `/gpu/reset_mem_locked_clocks` | -- |
-| `GET` | `/gpu/get_cumulative_energy[?gpu_ids=0,1]` | `gpu_ids` optional |
-| `GET` | `/gpu/get_power[?gpu_ids=0,1]` | `gpu_ids` optional |
-| `GET` | `/gpu/stream_power[?gpu_ids=0,1]` | `gpu_ids` optional; SSE |
+| `GET`  | `/gpu/get_cumulative_energy` | -- |
+| `GET`  | `/gpu/get_power` | one-shot snapshot |
+| `GET`  | `/gpu/stream_power` | SSE stream |
+| `GET`  | `/gpu/get_power_limit` | -- |
+| `GET`  | `/gpu/get_power_limit_constraints` | -- |
+| `GET`  | `/gpu/get_persistence_mode` | always `true` on Windows |
 
 `get_cumulative_energy` response (keyed by GPU index as string):
 
@@ -159,15 +164,23 @@ All endpoints under `/gpu`. Write endpoints (`POST`) take `gpu_ids` (comma-separ
 {"timestamp_ms": 1762000000000, "power_mw": {"0": 75000, "1": 120000}}
 ```
 
+`get_power_limit`, `get_power_limit_constraints`, and `get_persistence_mode` responses (keyed by GPU index as string):
+
+```json
+{"0": {"power_limit_mw": 200000}, "1": {"power_limit_mw": 250000}}
+{"0": {"min_power_limit_mw": 100000, "max_power_limit_mw": 300000}}
+{"0": {"enabled": true}, "1": {"enabled": false}}
+```
+
 ### CPU
 
-All endpoints under `/cpu` (Linux only). `cpu_ids` are RAPL package indices (the `N` in `/sys/class/powercap/intel-rapl/intel-rapl:N/`), not core or hyperthread IDs.
+All endpoints are under `/cpu` (Linux only). `cpu_ids` is a comma-separated list of RAPL package indices (the `N` in `/sys/class/powercap/intel-rapl/intel-rapl:N/`, not core or hyperthread IDs); optional on all endpoints (omit to read all CPUs).
 
-| Method | Path | Params |
+| Method | Path | Extra params / notes |
 |---|---|---|
-| `GET` | `/cpu/get_cumulative_energy` | `cpu_ids`, `cpu` (bool), `dram` (bool); all required |
-| `GET` | `/cpu/get_power[?cpu_ids=0,1]` | `cpu_ids` optional |
-| `GET` | `/cpu/stream_power[?cpu_ids=0,1]` | `cpu_ids` optional; SSE |
+| `GET` | `/cpu/get_cumulative_energy` | `cpu` (bool) and `dram` (bool), both required |
+| `GET` | `/cpu/get_power` | one-shot snapshot |
+| `GET` | `/cpu/stream_power` | SSE stream |
 
 `get_cumulative_energy` response (fields nullable):
 

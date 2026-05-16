@@ -95,6 +95,21 @@ impl GpuManager for TestGpu {
         Ok(())
     }
 
+    fn get_persistence_mode(&mut self) -> Result<bool, ZeusdError> {
+        // Always-on; the setter is verified separately by the observer.
+        Ok(true)
+    }
+
+    fn get_power_management_limit(&mut self) -> Result<u32, ZeusdError> {
+        // Pin at the bottom of the configured range; tests assert the
+        // route returns a value within constraints, not a specific one.
+        Ok(self.valid_power_limit_range.0)
+    }
+
+    fn get_power_management_limit_constraints(&mut self) -> Result<(u32, u32), ZeusdError> {
+        Ok(self.valid_power_limit_range)
+    }
+
     fn set_gpu_locked_clocks(
         &mut self,
         min_clock_mhz: u32,

@@ -80,6 +80,11 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Set persistence mode."""
         pass
 
+    @abc.abstractmethod
+    def get_persistence_mode(self) -> bool:
+        """Return whether persistence mode is currently enabled."""
+        pass
+
     @deprecated_alias("getSupportedMemoryClocks")
     @abc.abstractmethod
     def get_supported_memory_clocks(self) -> list[int]:
@@ -240,6 +245,10 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Set persistence mode for the specified GPU."""
         self.gpus[gpu_index].set_persistence_mode(enabled, block)
 
+    def get_persistence_mode(self, gpu_index: int) -> bool:
+        """Return whether persistence mode is currently enabled."""
+        return self.gpus[gpu_index].get_persistence_mode()
+
     @deprecated_alias("getSupportedMemoryClocks")
     def get_supported_memory_clocks(self, gpu_index: int) -> list[int]:
         """Return a list of supported memory clock frequencies. Units: MHz."""
@@ -383,6 +392,10 @@ class EmptyGPUs(GPUs):
 
     @deprecated_alias("setPersistenceMode")
     def set_persistence_mode(self, gpu_index: int, enabled: bool, block: bool = True) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def get_persistence_mode(self, gpu_index: int) -> bool:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 

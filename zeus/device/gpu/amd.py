@@ -220,6 +220,11 @@ class AMDGPU(gpu_common.GPU):
         raise gpu_common.ZeusGPUNotSupportedError("Persistence mode is not supported on AMD GPUs.")
 
     @_handle_amdsmi_errors
+    def get_persistence_mode(self) -> bool:
+        """Return whether persistence mode is currently enabled."""
+        raise gpu_common.ZeusGPUNotSupportedError("Persistence mode is not supported on AMD GPUs.")
+
+    @_handle_amdsmi_errors
     def get_supported_memory_clocks(self) -> list[int]:
         """Return a list of supported memory clock frequencies. Units: MHz."""
         info = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.MEM)  # returns MHz

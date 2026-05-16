@@ -20,17 +20,45 @@ pub struct CpuReadQuery {
     pub cpu_ids: Option<String>,
 }
 
-/// Parse a comma-separated list of device indices.
+/// Parse a comma-separated list of CPU indices.
 fn parse_cpu_ids(raw: &str) -> Vec<usize> {
     raw.split(',')
         .filter_map(|part| part.trim().parse().ok())
         .collect()
 }
 
+/// Resolve `cpu_ids` for a read endpoint: parse the optional comma-separated
+/// list, default to all CPUs if absent, reject empty lists or out-of-range
+/// indices.
+fn resolve_read_cpu_ids(
+    query: &Option<String>,
+    device_count: usize,
+) -> Result<Vec<usize>, HttpResponse> {
+    match query {
+        Some(raw) => {
+            let parsed = parse_cpu_ids(raw);
+            if parsed.is_empty() {
+                return Err(HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "cpu_ids must contain at least one CPU index"
+                })));
+            }
+            for &id in &parsed {
+                if id >= device_count {
+                    return Err(HttpResponse::BadRequest().json(serde_json::json!({
+                        "error": format!("CPU {id} not found"),
+                    })));
+                }
+            }
+            Ok(parsed)
+        }
+        None => Ok((0..device_count).collect()),
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct GetCumulativeEnergy {
-    pub cpu_ids: String,
+    pub cpu_ids: Option<String>,
     pub cpu: bool,
     pub dram: bool,
 }
@@ -48,7 +76,7 @@ impl From<GetCumulativeEnergy> for CpuCommand {
 #[tracing::instrument(
     skip(query, device_tasks),
     fields(
-        cpu_ids = %query.cpu_ids,
+        cpu_ids = ?query.cpu_ids,
         cpu = %query.cpu,
         dram = %query.dram,
     )
@@ -58,20 +86,11 @@ async fn get_cumulative_energy_handler(
     device_tasks: web::Data<CpuManagementTasks>,
 ) -> Result<HttpResponse, ZeusdError> {
     let now = Instant::now();
-    tracing::info!("Received request");
 
-    let cpu_ids = parse_cpu_ids(&query.cpu_ids);
-    if cpu_ids.is_empty() {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "cpu_ids must contain at least one CPU index"
-        })));
-    }
-    let device_count = device_tasks.device_count();
-    for &id in &cpu_ids {
-        if id >= device_count {
-            return Err(ZeusdError::CpuNotFoundError(id));
-        }
-    }
+    let cpu_ids = match resolve_read_cpu_ids(&query.cpu_ids, device_tasks.device_count()) {
+        Ok(ids) => ids,
+        Err(resp) => return Ok(resp),
+    };
 
     // Execute concurrently for all requested CPUs.
     let mut handles = Vec::with_capacity(cpu_ids.len());
@@ -133,7 +152,6 @@ async fn get_cpu_power_handler(
     query: web::Query<CpuReadQuery>,
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
-    tracing::info!("Received request");
     let cpu_ids = query.cpu_ids.as_ref().map(|s| parse_cpu_ids(s));
     if let Some(ref ids) = cpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {
@@ -161,7 +179,6 @@ async fn cpu_power_stream_handler(
     query: web::Query<CpuReadQuery>,
     broadcast: web::Data<CpuPowerBroadcast>,
 ) -> HttpResponse {
-    tracing::info!("Received request");
     let cpu_ids = query.cpu_ids.as_ref().map(|s| parse_cpu_ids(s));
     if let Some(ref ids) = cpu_ids {
         if let Err(unknown) = broadcast.validate_ids(ids) {

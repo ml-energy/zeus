@@ -409,6 +409,51 @@ class ZeusdClient:
         )
         self._check(resp, "set_persistence_mode")
 
+    def get_persistence_mode(self, gpu_ids: list[int] | None = None) -> dict[int, bool]:
+        """Return per-GPU persistence-mode state.
+
+        Args:
+            gpu_ids: GPU indices to query.  None means all.
+
+        Returns:
+            Mapping of GPU index to whether persistence mode is enabled.
+        """
+        params: dict[str, str] = {}
+        if gpu_ids is not None:
+            params["gpu_ids"] = ",".join(str(i) for i in gpu_ids)
+        resp = self._client.get(self._config.url("/gpu/get_persistence_mode"), params=params)
+        self._check(resp, "get_persistence_mode")
+        data = resp.json()
+        return {int(k): v["enabled"] for k, v in data.items()}
+
+    def get_power_limit(self, gpu_ids: list[int] | None = None) -> dict[int, int]:
+        """Return per-GPU power management limit in milliwatts.
+
+        Args:
+            gpu_ids: GPU indices to query.  None means all.
+        """
+        params: dict[str, str] = {}
+        if gpu_ids is not None:
+            params["gpu_ids"] = ",".join(str(i) for i in gpu_ids)
+        resp = self._client.get(self._config.url("/gpu/get_power_limit"), params=params)
+        self._check(resp, "get_power_limit")
+        data = resp.json()
+        return {int(k): v["power_limit_mw"] for k, v in data.items()}
+
+    def get_power_limit_constraints(self, gpu_ids: list[int] | None = None) -> dict[int, tuple[int, int]]:
+        """Return per-GPU power-limit constraints `(min_mw, max_mw)`.
+
+        Args:
+            gpu_ids: GPU indices to query.  None means all.
+        """
+        params: dict[str, str] = {}
+        if gpu_ids is not None:
+            params["gpu_ids"] = ",".join(str(i) for i in gpu_ids)
+        resp = self._client.get(self._config.url("/gpu/get_power_limit_constraints"), params=params)
+        self._check(resp, "get_power_limit_constraints")
+        data = resp.json()
+        return {int(k): (v["min_power_limit_mw"], v["max_power_limit_mw"]) for k, v in data.items()}
+
     def set_gpu_locked_clocks(
         self,
         gpu_ids: list[int],
@@ -471,27 +516,29 @@ class ZeusdClient:
 
     def get_cpu_energy(
         self,
-        cpu_ids: list[int],
+        cpu_ids: list[int] | None = None,
         cpu: bool = True,
         dram: bool = True,
     ) -> dict[int, CpuEnergyResult]:
         """Get cumulative energy consumption per CPU.
 
         Args:
-            cpu_ids: CPU indices to query.
+            cpu_ids: CPU indices to query.  None means all.
             cpu: Whether to include CPU package energy.
             dram: Whether to include DRAM energy.
 
         Returns:
             Mapping of CPU index to energy results.
         """
+        params: dict[str, str] = {
+            "cpu": "true" if cpu else "false",
+            "dram": "true" if dram else "false",
+        }
+        if cpu_ids is not None:
+            params["cpu_ids"] = ",".join(str(i) for i in cpu_ids)
         resp = self._client.get(
             self._config.url("/cpu/get_cumulative_energy"),
-            params={
-                "cpu_ids": ",".join(str(i) for i in cpu_ids),
-                "cpu": "true" if cpu else "false",
-                "dram": "true" if dram else "false",
-            },
+            params=params,
         )
         self._check(resp, "get_cpu_energy")
         data = resp.json()
