@@ -15,6 +15,7 @@
 ---
 **Project News** ⚡ 
 
+- \[2026/02\] Supported by [Laude Institute's Slingshots // TWO](https://www.laude.org/updates/slingshots-two)!
 - \[2025/12\] With NVIDIA, Google, and Meta, we led a NeurIPS 25 tutorial on [Energy and Power as First‑Class ML Design Metrics](https://ml.energy/tutorials/neurips25/)!
 - \[2025/12\] [The ML.ENERGY leaderboard](https://ml.energy/leaderboard) got a major upgrade to v3. Read our in-depth [technical analysis blog post](https://ml.energy/blog/measurement/energy/diagnosing-inference-energy-consumption-with-the-mlenergy-leaderboard-v30/).
 - \[2025/09\] We shared our experience and design philosophy for [The ML.ENERGY Benchmark](https://github.com/ml-energy/benchmark) in our [NeurIPS 25 D&B Spotlight paper](https://neurips.cc/virtual/2025/loc/san-diego/poster/121781).
