@@ -7,9 +7,11 @@ import pytest
 
 from zeus.device.exception import ZeusdError
 from zeus.utils.zeusd import (
+    CpuInfo,
     CpuDramPower,
     CpuEnergyResult,
     CpuPowerSnapshot,
+    GpuInfo,
     GpuPowerSnapshot,
     ZeusdAuthError,
     ZeusdCapabilityError,
@@ -73,9 +75,8 @@ def mock_zeusd(monkeypatch):
         _endpoint_errors = endpoint_errors or {}
 
         discover_body = {
-            "gpu_ids": list(gpu_ids),
-            "cpu_ids": list(cpu_ids),
-            "dram_available": list(dram_available),
+            "gpus": [{"id": i, "name": f"Mock GPU {i}"} for i in gpu_ids],
+            "cpus": [{"id": i, "dram_available": dram_available[j]} for j, i in enumerate(cpu_ids)],
             "enabled_api_groups": list(enabled_api_groups),
             "auth_required": auth_required,
         }
@@ -308,7 +309,9 @@ class TestZeusdClientInit:
             enabled_api_groups=("gpu-read",),
         )
         client = ZeusdClient(server.config)
+        assert client.gpus == [GpuInfo(id=0, name="Mock GPU 0"), GpuInfo(id=1, name="Mock GPU 1")]
         assert client.gpu_ids == [0, 1]
+        assert client.cpus == [CpuInfo(id=2, dram_available=True)]
         assert client.cpu_ids == [2]
         assert client.dram_available == [True]
         assert not client.auth_required

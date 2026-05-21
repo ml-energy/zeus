@@ -31,7 +31,10 @@ use crate::devices::cpu::{CpuManager, RaplCpu};
 use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcast, GpuPowerPoller};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
 use crate::routes::cpu_routes;
-use crate::routes::{gpu_control_routes, gpu_read_routes, server_routes, DiscoveryInfo};
+use crate::routes::{
+    gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
+    GpuDiscoveryInfo,
+};
 
 /// Initialize tracing with the given where to write logs to.
 pub fn init_tracing<S>(sink: S) -> anyhow::Result<()>
@@ -77,16 +80,22 @@ pub fn get_unix_listener(
 }
 
 /// Initialize NVML and start GPU management tasks.
-pub fn start_gpu_device_tasks() -> anyhow::Result<GpuManagementTasks> {
+pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
     tracing::info!("Starting NVML and GPU management tasks.");
     let num_gpus = NvmlGpu::device_count()?;
     let mut gpus = Vec::with_capacity(num_gpus as usize);
+    let mut gpu_info = Vec::with_capacity(num_gpus as usize);
     for gpu_id in 0..num_gpus {
         let gpu = NvmlGpu::init(gpu_id)?;
-        tracing::info!("Initialized NVML for GPU {}", gpu_id);
+        let name = gpu.name()?;
+        tracing::info!("Initialized NVML for GPU {} ({})", gpu_id, name);
+        gpu_info.push(GpuDiscoveryInfo {
+            id: gpu_id as usize,
+            name,
+        });
         gpus.push(gpu);
     }
-    Ok(GpuManagementTasks::start(gpus)?)
+    Ok((GpuManagementTasks::start(gpus)?, gpu_info))
 }
 
 /// Initialize a separate set of NVML handles and start the GPU power poller.
@@ -103,29 +112,33 @@ pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerPoller> {
 
 /// Initialize RAPL and start CPU management tasks.
 ///
-/// Returns the management tasks and a per-CPU DRAM availability vector.
+/// Returns the management tasks and per-CPU package discovery information.
 /// RAPL is Linux-specific; on other platforms this errors out.
 #[cfg(target_os = "linux")]
-pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<bool>)> {
+pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     tracing::info!("Starting Rapl and CPU management tasks.");
     let num_cpus = RaplCpu::device_count()?;
     let mut cpus = Vec::with_capacity(num_cpus);
-    let mut dram_available = Vec::with_capacity(num_cpus);
+    let mut cpu_info = Vec::with_capacity(num_cpus);
     for cpu_id in 0..num_cpus {
         let cpu = RaplCpu::init(cpu_id)?;
-        dram_available.push(cpu.is_dram_available());
+        let dram_available = cpu.is_dram_available();
         tracing::info!(
             "Initialized RAPL for CPU {} (DRAM: {})",
             cpu_id,
-            dram_available[cpu_id],
+            dram_available,
         );
+        cpu_info.push(CpuDiscoveryInfo {
+            id: cpu_id,
+            dram_available,
+        });
         cpus.push(cpu);
     }
-    Ok((CpuManagementTasks::start(cpus)?, dram_available))
+    Ok((CpuManagementTasks::start(cpus)?, cpu_info))
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<bool>)> {
+pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     anyhow::bail!(
         "CPU RAPL monitoring is only available on Linux. \
          Remove 'cpu-read' from --enable to start zeusd on this platform."

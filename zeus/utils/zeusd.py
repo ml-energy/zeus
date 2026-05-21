@@ -11,6 +11,7 @@ from zeus.utils.zeusd import ZeusdConfig, ZeusdClient
 
 client = ZeusdClient(ZeusdConfig.uds(socket_path="/run/zeusd/zeusd.sock"))
 print(client.gpu_ids)       # [0, 1, 2, 3]
+print(client.gpus[0].name)  # NVIDIA A40
 print(client.can_read_gpu)  # True
 
 snapshot = client.get_gpu_power()
@@ -41,6 +42,32 @@ class ZeusdAuthError(ZeusBaseError):
 
 class ZeusdCapabilityError(ZeusBaseError):
     """Requested capabilities exceed what the daemon offers."""
+
+
+@dataclass(frozen=True)
+class GpuInfo:
+    """GPU discovered by the daemon.
+
+    Attributes:
+        id: GPU index used by Zeusd endpoints.
+        name: GPU model name returned by NVML.
+    """
+
+    id: int
+    name: str
+
+
+@dataclass(frozen=True)
+class CpuInfo:
+    """CPU package discovered by the daemon.
+
+    Attributes:
+        id: RAPL package index used by Zeusd endpoints.
+        dram_available: Whether DRAM RAPL energy is available for this package.
+    """
+
+    id: int
+    dram_available: bool
 
 
 @dataclass(frozen=True)
@@ -252,11 +279,13 @@ class ZeusdClient:
                 f"Zeusd at {config.endpoint} returned HTTP {resp.status_code} on /discover: {resp.text}"
             )
         data = resp.json()
-        self._gpu_ids: list[int] = data.get("gpu_ids", [])
-        self._cpu_ids: list[int] = data.get("cpu_ids", [])
-        self._dram_available: list[bool] = data.get("dram_available", [])
-        self._enabled_api_groups: set[str] = set(data.get("enabled_api_groups", []))
-        self._auth_required: bool = data.get("auth_required", False)
+        self._gpus = [GpuInfo(id=item["id"], name=item["name"]) for item in data["gpus"]]
+        self._cpus = [CpuInfo(id=item["id"], dram_available=item["dram_available"]) for item in data["cpus"]]
+        self._gpu_ids = [gpu.id for gpu in self._gpus]
+        self._cpu_ids = [cpu.id for cpu in self._cpus]
+        self._dram_available = [cpu.dram_available for cpu in self._cpus]
+        self._enabled_api_groups: set[str] = set(data["enabled_api_groups"])
+        self._auth_required: bool = data["auth_required"]
 
         self._auth_error: str | None = None
         self._granted_scopes: frozenset[str] = frozenset()
@@ -299,9 +328,19 @@ class ZeusdClient:
         return self._config.endpoint
 
     @property
+    def gpus(self) -> list[GpuInfo]:
+        """GPUs available on this daemon."""
+        return list(self._gpus)
+
+    @property
     def gpu_ids(self) -> list[int]:
         """GPU device indices available on this daemon."""
         return list(self._gpu_ids)
+
+    @property
+    def cpus(self) -> list[CpuInfo]:
+        """CPU packages available on this daemon."""
+        return list(self._cpus)
 
     @property
     def cpu_ids(self) -> list[int]:

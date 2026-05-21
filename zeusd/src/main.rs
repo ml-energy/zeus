@@ -89,37 +89,34 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
     };
 
     // Conditionally initialize GPU devices.
-    let (gpu_device_tasks, gpu_power_broadcast, gpu_count) = if config.needs_gpu() {
-        let tasks = start_gpu_device_tasks()?;
-        let count = tasks.device_count();
+    let (gpu_device_tasks, gpu_power_broadcast, gpus) = if config.needs_gpu() {
+        let (tasks, gpus) = start_gpu_device_tasks()?;
         let broadcast = if config.is_enabled(ApiGroup::GpuRead) {
             let poller = start_gpu_power_poller(config.gpu_power_poll_hz)?;
             Some(poller.broadcast())
         } else {
             None
         };
-        (Some(tasks), broadcast, count)
+        (Some(tasks), broadcast, gpus)
     } else {
-        (None, None, 0)
+        (None, None, vec![])
     };
 
     // Conditionally initialize CPU devices.
-    let (cpu_device_tasks, cpu_power_broadcast, cpu_count, dram_available) = if config.needs_cpu() {
-        let (tasks, dram) = start_cpu_device_tasks()?;
-        let count = tasks.device_count();
+    let (cpu_device_tasks, cpu_power_broadcast, cpus) = if config.needs_cpu() {
+        let (tasks, cpus) = start_cpu_device_tasks()?;
         let poller = start_cpu_power_poller(config.cpu_power_poll_hz)?;
         let broadcast = poller.broadcast();
-        (Some(tasks), Some(broadcast), count, dram)
+        (Some(tasks), Some(broadcast), cpus)
     } else {
-        (None, None, 0, vec![])
+        (None, None, vec![])
     };
 
     tracing::info!("Started all device tasks");
 
     let discovery_info = DiscoveryInfo {
-        gpu_ids: (0..gpu_count).collect(),
-        cpu_ids: (0..cpu_count).collect(),
-        dram_available,
+        gpus,
+        cpus,
         enabled_api_groups: config.enable.iter().map(|g| g.to_string()).collect(),
         auth_required: signing_key_data.is_some(),
     };

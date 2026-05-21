@@ -19,7 +19,7 @@ use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
 use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
-use zeusd::routes::DiscoveryInfo;
+use zeusd::routes::{CpuDiscoveryInfo, DiscoveryInfo, GpuDiscoveryInfo};
 use zeusd::startup::{init_tracing, start_server_tcp, EnabledGroups, ServerState};
 
 pub static NUM_GPUS: u32 = 4;
@@ -441,9 +441,18 @@ impl TestApp {
         };
 
         let discovery_info = DiscoveryInfo {
-            gpu_ids: (0..gpu_count).collect(),
-            cpu_ids: (0..cpu_count).collect(),
-            dram_available,
+            gpus: (0..gpu_count)
+                .map(|id| GpuDiscoveryInfo {
+                    id,
+                    name: format!("Test GPU {id}"),
+                })
+                .collect(),
+            cpus: (0..cpu_count)
+                .map(|id| CpuDiscoveryInfo {
+                    id,
+                    dram_available: dram_available[id],
+                })
+                .collect(),
             enabled_api_groups: groups.iter().map(|g| g.to_string()).collect(),
             auth_required: false,
         };
@@ -541,9 +550,18 @@ impl TestApp {
         )));
 
         let discovery_info = DiscoveryInfo {
-            gpu_ids: (0..gpu_count).collect(),
-            cpu_ids: (0..cpu_count).collect(),
-            dram_available,
+            gpus: (0..gpu_count)
+                .map(|id| GpuDiscoveryInfo {
+                    id,
+                    name: format!("Test GPU {id}"),
+                })
+                .collect(),
+            cpus: (0..cpu_count)
+                .map(|id| CpuDiscoveryInfo {
+                    id,
+                    dram_available: dram_available[id],
+                })
+                .collect(),
             enabled_api_groups: groups.iter().map(|g| g.to_string()).collect(),
             auth_required: true,
         };
