@@ -105,9 +105,14 @@ Available devices, capabilities, and enabled API groups. Always available; never
 
 ```json
 {
-  "gpu_ids": [0, 1, 2, 3],
-  "cpu_ids": [0, 1],
-  "dram_available": [true, false],
+  "gpus": [
+    {"id": 0, "name": "NVIDIA A40"},
+    {"id": 1, "name": "NVIDIA A40"}
+  ],
+  "cpus": [
+    {"id": 0, "dram_available": true},
+    {"id": 1, "dram_available": false}
+  ],
   "enabled_api_groups": ["gpu-control", "gpu-read", "cpu-read"],
   "auth_required": false
 }

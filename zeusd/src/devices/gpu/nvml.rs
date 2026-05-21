@@ -44,6 +44,10 @@ impl NvmlGpu<'static> {
         let device = _nvml.device_by_index(index)?;
         Ok(Self { _nvml, device })
     }
+
+    pub fn name(&self) -> Result<String, ZeusdError> {
+        Ok(self.device.name()?)
+    }
 }
 
 impl GpuManager for NvmlGpu<'static> {

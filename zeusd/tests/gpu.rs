@@ -1042,15 +1042,15 @@ async fn test_discover_endpoint() {
         .expect("Failed to send request");
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
-    let gpu_ids = body["gpu_ids"].as_array().expect("gpu_ids should be array");
-    assert_eq!(gpu_ids.len(), NUM_GPUS as usize);
-    let cpu_ids = body["cpu_ids"].as_array().expect("cpu_ids should be array");
-    assert_eq!(cpu_ids.len(), 1);
-    let dram_available = body["dram_available"]
-        .as_array()
-        .expect("dram_available should be array");
-    assert_eq!(dram_available.len(), 1);
-    assert!(dram_available[0].as_bool().unwrap());
+    let gpus = body["gpus"].as_array().expect("gpus should be array");
+    assert_eq!(gpus.len(), NUM_GPUS as usize);
+    assert_eq!(gpus[0]["id"].as_u64().unwrap(), 0);
+    assert_eq!(gpus[0]["name"].as_str().unwrap(), "Test GPU 0");
+    assert!(gpus[0].get("vendor").is_none());
+    let cpus = body["cpus"].as_array().expect("cpus should be array");
+    assert_eq!(cpus.len(), 1);
+    assert_eq!(cpus[0]["id"].as_u64().unwrap(), 0);
+    assert!(cpus[0]["dram_available"].as_bool().unwrap());
     let groups = body["enabled_api_groups"]
         .as_array()
         .expect("enabled_api_groups should be array");
@@ -1132,11 +1132,11 @@ async fn test_gpu_read_only_mode() {
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].as_str().unwrap(), "gpu-read");
     // GPUs should still be discovered.
-    let gpu_ids = body["gpu_ids"].as_array().expect("gpu_ids should be array");
-    assert_eq!(gpu_ids.len(), NUM_GPUS as usize);
+    let gpus = body["gpus"].as_array().expect("gpus should be array");
+    assert_eq!(gpus.len(), NUM_GPUS as usize);
     // No CPUs should be discovered.
-    let cpu_ids = body["cpu_ids"].as_array().expect("cpu_ids should be array");
-    assert_eq!(cpu_ids.len(), 0);
+    let cpus = body["cpus"].as_array().expect("cpus should be array");
+    assert_eq!(cpus.len(), 0);
 }
 
 #[tokio::test]
@@ -1182,10 +1182,12 @@ async fn test_discover_with_no_gpu_groups() {
         .expect("Failed to send request");
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
-    let gpu_ids = body["gpu_ids"].as_array().expect("gpu_ids should be array");
-    assert_eq!(gpu_ids.len(), 0);
-    let cpu_ids = body["cpu_ids"].as_array().expect("cpu_ids should be array");
-    assert_eq!(cpu_ids.len(), 1);
+    let gpus = body["gpus"].as_array().expect("gpus should be array");
+    assert_eq!(gpus.len(), 0);
+    let cpus = body["cpus"].as_array().expect("cpus should be array");
+    assert_eq!(cpus.len(), 1);
+    assert_eq!(cpus[0]["id"].as_u64().unwrap(), 0);
+    assert!(cpus[0]["dram_available"].as_bool().unwrap());
     let groups = body["enabled_api_groups"]
         .as_array()
         .expect("enabled_api_groups should be array");

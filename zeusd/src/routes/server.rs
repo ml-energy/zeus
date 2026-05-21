@@ -8,12 +8,25 @@ use serde::Serialize;
 use crate::auth::Claims;
 use crate::config::ApiGroup;
 
+/// GPU information returned by `GET /discover`.
+#[derive(Clone, Debug, Serialize)]
+pub struct GpuDiscoveryInfo {
+    pub id: usize,
+    pub name: String,
+}
+
+/// CPU package information returned by `GET /discover`.
+#[derive(Clone, Debug, Serialize)]
+pub struct CpuDiscoveryInfo {
+    pub id: usize,
+    pub dram_available: bool,
+}
+
 /// Discovery information returned by `GET /discover`.
 #[derive(Clone, Debug, Serialize)]
 pub struct DiscoveryInfo {
-    pub gpu_ids: Vec<usize>,
-    pub cpu_ids: Vec<usize>,
-    pub dram_available: Vec<bool>,
+    pub gpus: Vec<GpuDiscoveryInfo>,
+    pub cpus: Vec<CpuDiscoveryInfo>,
     pub enabled_api_groups: Vec<String>,
     pub auth_required: bool,
 }

@@ -194,7 +194,7 @@ def show_env():
         zeusd_info = f"  Endpoint: {config.endpoint}\n"
         try:
             client = ZeusdClient(config)
-            zeusd_info += f"  GPU IDs: {client.gpu_ids}\n"
+            zeusd_info += f"  GPUs: {[(gpu.id, gpu.name) for gpu in client.gpus]}\n"
             zeusd_info += f"  CPU IDs: {client.cpu_ids}\n"
             zeusd_info += f"  DRAM available: {client.dram_available}\n"
             zeusd_info += f"  Auth required: {client.auth_required}\n"
