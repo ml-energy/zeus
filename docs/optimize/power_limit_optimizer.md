@@ -50,7 +50,7 @@ We provide [integration examples](https://github.com/ml-energy/zeus/tree/master/
 ## `HFGlobalPowerLimitOptimizer`
 
 For easy use with HuggingFace Transformers, [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] is implemented as a [HuggingFace Trainer Callback](https://huggingface.co/docs/transformers/en/main_classes/callback){.external} by inheriting from [`TrainerCallback`][transformers.TrainerCallback].
-When initializing a [HuggingFace Trainer][transformers.Trainer] or a [TFL SFTTrainer][trl.SFTTrainer], initialize and pass in [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] as shown below:
+When initializing a [HuggingFace Trainer][transformers.Trainer] or a [TRL SFTTrainer][trl.SFTTrainer], initialize and pass in [`HFGlobalPowerLimitOptimizer`][zeus.optimizer.power_limit.HFGlobalPowerLimitOptimizer] as shown below:
 
 ```python hl_lines="11"
 from transformers import Trainer
