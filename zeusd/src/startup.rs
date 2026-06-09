@@ -24,13 +24,13 @@ use crate::auth::{AuthMiddleware, SigningKeyData};
 use crate::config::ApiGroup;
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::power::start_cpu_poller;
-use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerPoller};
+use crate::devices::cpu::power::CpuPowerBroadcasts;
 use crate::devices::cpu::CpuManagementTasks;
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::{CpuManager, RaplCpu};
-use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcast, GpuPowerPoller};
+use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcasts};
 use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
-use crate::routes::cpu_routes;
+use crate::routes::{cpu_routes, CpuPowerSamplingPeriod};
 use crate::routes::{
     gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
     GpuDiscoveryInfo,
@@ -99,7 +99,7 @@ pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDi
 }
 
 /// Initialize a separate set of NVML handles and start the GPU power poller.
-pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerPoller> {
+pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerBroadcasts> {
     tracing::info!("Starting GPU power poller at {} Hz.", poll_hz);
     let num_gpus = NvmlGpu::device_count()?;
     let mut gpus = Vec::with_capacity(num_gpus as usize);
@@ -147,7 +147,7 @@ pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDi
 
 /// Initialize a separate set of RAPL handles and start the CPU power poller.
 #[cfg(target_os = "linux")]
-pub fn start_cpu_power_poller(poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
+pub fn start_cpu_power_poller(poll_hz: u32) -> anyhow::Result<CpuPowerBroadcasts> {
     tracing::info!("Starting CPU RAPL power poller at {} Hz.", poll_hz);
     let num_cpus = RaplCpu::device_count()?;
     let mut cpus = Vec::with_capacity(num_cpus);
@@ -159,7 +159,7 @@ pub fn start_cpu_power_poller(poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerPoller> {
+pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerBroadcasts> {
     anyhow::bail!("CPU RAPL monitoring is only available on Linux.")
 }
 
@@ -214,8 +214,9 @@ pub struct EnabledGroups(pub HashSet<ApiGroup>);
 pub struct ServerState {
     pub gpu_device_tasks: Option<GpuManagementTasks>,
     pub cpu_device_tasks: Option<CpuManagementTasks>,
-    pub gpu_power_broadcast: Option<GpuPowerBroadcast>,
-    pub cpu_power_broadcast: Option<CpuPowerBroadcast>,
+    pub gpu_power_broadcast: Option<GpuPowerBroadcasts>,
+    pub cpu_power_broadcast: Option<CpuPowerBroadcasts>,
+    pub cpu_power_sampling_period: Option<CpuPowerSamplingPeriod>,
     pub discovery_info: DiscoveryInfo,
     pub enabled_groups: EnabledGroups,
     pub signing_key: Option<SigningKeyData>,
@@ -264,6 +265,9 @@ macro_rules! build_app {
         }
         if let Some(ref broadcast) = state.cpu_power_broadcast {
             app = app.app_data(web::Data::new(broadcast.clone()));
+        }
+        if let Some(period) = state.cpu_power_sampling_period {
+            app = app.app_data(web::Data::new(period));
         }
 
         app

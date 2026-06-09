@@ -14,7 +14,7 @@ use zeusd::routes::gpu::{
     SetPersistenceMode, SetPowerLimit,
 };
 
-use crate::helpers::{TestApp, ZeusdRequest, NUM_GPUS};
+use crate::helpers::{TestApp, NUM_GPUS};
 
 #[tokio::test]
 async fn test_set_persistence_mode_single() {
@@ -930,8 +930,8 @@ async fn test_gpu_power_oneshot_returns_promptly_with_stable_mock() {
 async fn test_gpu_power_stream_receives_events() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/gpu/stream_power", _app.port);
-    let resp = client
+    let url = format!("http://127.0.0.1:{}/gpu/stream_power?gpu_ids=0", _app.port);
+    let mut resp = client
         .get(&url)
         .send()
         .await
@@ -945,6 +945,22 @@ async fn test_gpu_power_stream_receives_events() {
             .unwrap(),
         "text/event-stream"
     );
+
+    let chunk = tokio::time::timeout(tokio::time::Duration::from_secs(2), resp.chunk())
+        .await
+        .expect("Timed out waiting for GPU power event")
+        .expect("Failed to read GPU power event")
+        .expect("GPU power stream ended before first event");
+    let event = std::str::from_utf8(&chunk).expect("GPU power event should be UTF-8");
+    let json = event
+        .strip_prefix("data: ")
+        .and_then(|event| event.strip_suffix("\n\n"))
+        .expect("GPU power event should be an SSE data event");
+    let body: serde_json::Value =
+        serde_json::from_str(json).expect("GPU power event should contain JSON");
+    assert!(body["timestamp_ms"].is_number());
+    assert_eq!(body["gpu_id"].as_u64().unwrap(), 0);
+    assert_eq!(body["power_mw"].as_u64().unwrap(), 150_000);
 }
 
 /// A mock GPU that counts how many times `get_instant_power_mw` is called.
@@ -998,8 +1014,8 @@ async fn test_gpu_power_lazy_polling() {
     let gpu = PollCountingGpu {
         poll_count: poll_count.clone(),
     };
-    let poller = start_gpu_poller(vec![(0, gpu)], 100);
-    let broadcast = poller.broadcast();
+    let broadcasts = start_gpu_poller(vec![(0, gpu)], 100);
+    let broadcast = broadcasts.get(0).expect("Missing GPU 0 broadcast");
 
     // No subscribers: poller should be asleep.
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
@@ -1028,6 +1044,28 @@ async fn test_gpu_power_lazy_polling() {
         count_after_drop, count_later,
         "Poller should stop polling after the last subscriber disconnects"
     );
+}
+
+#[tokio::test]
+async fn test_gpu_power_polls_only_subscribed_gpu() {
+    let poll_count_0 = Arc::new(AtomicUsize::new(0));
+    let poll_count_1 = Arc::new(AtomicUsize::new(0));
+    let gpu_0 = PollCountingGpu {
+        poll_count: poll_count_0.clone(),
+    };
+    let gpu_1 = PollCountingGpu {
+        poll_count: poll_count_1.clone(),
+    };
+    let broadcasts = start_gpu_poller(vec![(0, gpu_0), (1, gpu_1)], 100);
+    let broadcast_1 = broadcasts.get(1).expect("Missing GPU 1 broadcast");
+
+    let guard = broadcast_1.add_subscriber();
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+    assert_eq!(poll_count_0.load(Ordering::Relaxed), 0);
+    assert!(poll_count_1.load(Ordering::Relaxed) > 0);
+
+    drop(guard);
 }
 
 #[tokio::test]

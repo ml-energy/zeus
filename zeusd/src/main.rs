@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use zeusd::auth::{issue_token, SigningKeyData};
 use zeusd::config::{get_cli, ApiGroup, Command, ConnectionMode, TokenCommand};
+use zeusd::routes::CpuPowerSamplingPeriod;
 use zeusd::routes::DiscoveryInfo;
 #[cfg(windows)]
 use zeusd::startup::run_server_named_pipe;
@@ -92,8 +93,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
     let (gpu_device_tasks, gpu_power_broadcast, gpus) = if config.needs_gpu() {
         let (tasks, gpus) = start_gpu_device_tasks()?;
         let broadcast = if config.is_enabled(ApiGroup::GpuRead) {
-            let poller = start_gpu_power_poller(config.gpu_power_poll_hz)?;
-            Some(poller.broadcast())
+            Some(start_gpu_power_poller(config.gpu_power_poll_hz)?)
         } else {
             None
         };
@@ -105,8 +105,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
     // Conditionally initialize CPU devices.
     let (cpu_device_tasks, cpu_power_broadcast, cpus) = if config.needs_cpu() {
         let (tasks, cpus) = start_cpu_device_tasks()?;
-        let poller = start_cpu_power_poller(config.cpu_power_poll_hz)?;
-        let broadcast = poller.broadcast();
+        let broadcast = start_cpu_power_poller(config.cpu_power_poll_hz)?;
         (Some(tasks), Some(broadcast), cpus)
     } else {
         (None, None, vec![])
@@ -127,6 +126,13 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
         cpu_device_tasks,
         gpu_power_broadcast,
         cpu_power_broadcast,
+        cpu_power_sampling_period: if config.needs_cpu() {
+            Some(CpuPowerSamplingPeriod::from_poll_hz(
+                config.cpu_power_poll_hz,
+            ))
+        } else {
+            None
+        },
         discovery_info,
         enabled_groups,
         signing_key: signing_key_data,

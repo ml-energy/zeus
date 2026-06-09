@@ -102,6 +102,7 @@ Depending on the Deep Learning framework you're using (currently PyTorch and JAX
 
 [`ZeusMonitor`][zeus.monitor.ZeusMonitor] is local to a single machine, but sometimes, you may want to monitor power across multiple nodes in a cluster.
 In this case, you can run the Zeus daemon (`zeusd`) on each machine and stream power readings over SSE (Server-Sent Events) to a central client ([`PowerStreamingClient`][zeus.monitor.power_streaming.PowerStreamingClient]) for real-time monitoring and aggregation.
+Each SSE event contains one device sample, and the client keeps the latest sample for each device.
 
 Each Zeus daemon endpoint is described by a [`ZeusdConfig`][zeus.utils.zeusd.ZeusdConfig], constructed via `ZeusdConfig.tcp(...)` or `ZeusdConfig.uds(...)`.
 Both `gpu_indices` and `cpu_indices` follow the same convention as [`ZeusMonitor`][zeus.monitor.ZeusMonitor]:
@@ -154,7 +155,7 @@ The client spawns one background thread per device type per zeusd endpoint on co
 Each thread holds an SSE connection and automatically reconnects on disconnection.
 Unless `cpu_indices` is set to `[]`, the client probes the zeusd one-shot CPU power endpoint on init; if RAPL is not available on that server, a warning is logged and CPU streaming is skipped.
 Call `stop()` when done to cleanly shut down background threads.
-zeusd uses demand-driven polling -- power is only read from the hardware while at least one client is connected, so idle endpoints consume no resources.
+zeusd uses demand-driven polling -- power is only read from requested devices while at least one client is connected, so idle endpoints and unrequested devices consume no polling resources.
 
 ## Thermally Stable Energy Profiling
 

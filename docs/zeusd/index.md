@@ -163,11 +163,19 @@ Writes (`POST`) also take `block` (bool): `true` waits for completion and report
 {"0": {"energy_mj": 123456}, "1": {"energy_mj": 789012}}
 ```
 
-`get_power` and `stream_power` payloads:
+`get_power` returns a snapshot keyed by GPU index:
 
 ```json
 {"timestamp_ms": 1762000000000, "power_mw": {"0": 75000, "1": 120000}}
 ```
+
+`stream_power` emits one SSE event per GPU sample:
+
+```text
+data: {"timestamp_ms": 1762000000000, "gpu_id": 0, "power_mw": 75000}
+```
+
+If `gpu_ids` is provided, only those GPUs are polled.
 
 `get_power_limit`, `get_power_limit_constraints`, and `get_persistence_mode` responses (keyed by GPU index as string):
 
@@ -196,7 +204,7 @@ All endpoints are under `/cpu` (Linux only). `cpu_ids` is a comma-separated list
 }
 ```
 
-`get_power` and `stream_power` payloads:
+`get_power` returns a snapshot keyed by CPU index:
 
 ```json
 {
@@ -207,3 +215,11 @@ All endpoints are under `/cpu` (Linux only). `cpu_ids` is a comma-separated list
   }
 }
 ```
+
+`stream_power` emits one SSE event per CPU package sample:
+
+```text
+data: {"timestamp_ms": 1762000000000, "cpu_id": 0, "cpu_mw": 85000, "dram_mw": 12000}
+```
+
+If `cpu_ids` is provided, only those CPU packages are polled.

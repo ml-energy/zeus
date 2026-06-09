@@ -9,14 +9,13 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tokio::sync::{watch, Notify};
 use tokio::time::{interval, Duration};
 
 use crate::devices::cpu::CpuManager;
-use crate::power_streaming::{PowerBroadcast, PowerPoller};
+use crate::power_streaming::{unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller};
 
 /// Per-CPU power reading (package + optional DRAM).
 #[derive(Clone, Debug, Serialize)]
@@ -36,11 +35,27 @@ pub struct CpuPowerSnapshot {
     pub power_mw: BTreeMap<usize, CpuDramPower>,
 }
 
-/// Broadcast handle for CPU power snapshots.
-pub type CpuPowerBroadcast = PowerBroadcast<CpuPowerSnapshot>;
+/// A single CPU power sample for SSE streaming.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct CpuPowerSample {
+    /// Unix timestamp in milliseconds.
+    pub timestamp_ms: u64,
+    /// CPU index.
+    pub cpu_id: usize,
+    /// CPU package power in milliwatts.
+    pub cpu_mw: u32,
+    /// DRAM power in milliwatts, if available.
+    pub dram_mw: Option<u32>,
+}
 
-/// Background poller for CPU power.
-pub type CpuPowerPoller = PowerPoller<CpuPowerSnapshot>;
+/// Broadcast handle for CPU power samples.
+pub type CpuPowerBroadcast = PowerBroadcast<CpuPowerSample>;
+
+/// CPU power broadcasts keyed by CPU index.
+pub type CpuPowerBroadcasts = PowerBroadcasts<CpuPowerSample>;
+
+/// Background poller for one CPU's power.
+pub type CpuPowerPoller = PowerPoller<CpuPowerSample>;
 
 /// Start the CPU power polling background task.
 ///
@@ -50,11 +65,15 @@ pub type CpuPowerPoller = PowerPoller<CpuPowerSnapshot>;
 pub fn start_cpu_poller<T: CpuManager + Send + 'static>(
     cpus: Vec<(usize, T)>,
     poll_hz: u32,
-) -> CpuPowerPoller {
-    let valid_ids = cpus.iter().map(|(idx, _)| *idx).collect();
-    PowerPoller::start(valid_ids, |tx, subscriber_count, wake| {
-        cpu_power_poll_task(cpus, tx, poll_hz, subscriber_count, wake)
-    })
+) -> CpuPowerBroadcasts {
+    let mut broadcasts = BTreeMap::new();
+    for (cpu_id, cpu) in cpus {
+        let poller = PowerPoller::start(move |tx, subscriber_count, wake| {
+            cpu_power_poll_task(cpu_id, cpu, tx, poll_hz, subscriber_count, wake)
+        });
+        broadcasts.insert(cpu_id, poller.broadcast());
+    }
+    PowerBroadcasts::new(broadcasts)
 }
 
 /// Per-CPU energy tracking state for computing power from energy deltas.
@@ -67,59 +86,63 @@ struct CpuEnergyState {
 }
 
 async fn cpu_power_poll_task<T: CpuManager>(
-    mut cpus: Vec<(usize, T)>,
-    tx: watch::Sender<CpuPowerSnapshot>,
+    cpu_id: usize,
+    mut cpu: T,
+    tx: watch::Sender<CpuPowerSample>,
     poll_hz: u32,
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
 ) {
-    if cpus.is_empty() {
-        tracing::info!("No CPUs to monitor, RAPL power poller idle");
-        std::future::pending::<()>().await;
-        return;
-    }
-
     let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
 
     tracing::info!(
-        "CPU RAPL power poller ready: {} CPUs at {} Hz when subscribers are present",
-        cpus.len(),
+        "CPU RAPL power poller ready for CPU {} at {} Hz when subscribers are present",
+        cpu_id,
         poll_hz
     );
 
-    loop {
+    'poller: loop {
         // Sleep until at least one subscriber connects.
         while subscriber_count.load(Ordering::Relaxed) == 0 {
             wake.notified().await;
         }
 
-        tracing::info!("CPU power poller starting");
+        tracing::info!("CPU power poller starting for CPU {}", cpu_id);
 
-        // Prime energy baselines so the first poll tick computes real deltas.
-        let mut states: BTreeMap<usize, CpuEnergyState> = BTreeMap::new();
-        for (idx, cpu) in cpus.iter_mut() {
+        let mut state = loop {
             match cpu.get_cpu_energy() {
                 Ok(cpu_energy) => {
                     let dram_energy = if cpu.is_dram_available() {
-                        cpu.get_dram_energy().ok()
+                        match cpu.get_dram_energy() {
+                            Ok(energy) => Some(energy),
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to prime CPU {} DRAM energy baseline: {}",
+                                    cpu_id,
+                                    e
+                                );
+                                None
+                            }
+                        }
                     } else {
                         None
                     };
-                    states.insert(
-                        *idx,
-                        CpuEnergyState {
-                            last_cpu_energy_uj: cpu_energy,
-                            last_dram_energy_uj: dram_energy,
-                            last_cpu_power_mw: 0,
-                            last_dram_power_mw: if dram_energy.is_some() { Some(0) } else { None },
-                        },
-                    );
+                    break CpuEnergyState {
+                        last_cpu_energy_uj: cpu_energy,
+                        last_dram_energy_uj: dram_energy,
+                        last_cpu_power_mw: 0,
+                        last_dram_power_mw: if dram_energy.is_some() { Some(0) } else { None },
+                    };
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to prime CPU {} energy baseline: {}", idx, e);
+                    tracing::warn!("Failed to prime CPU {} energy baseline: {}", cpu_id, e);
+                    if subscriber_count.load(Ordering::Relaxed) == 0 {
+                        continue 'poller;
+                    }
+                    tokio::time::sleep(Duration::from_micros(period_us)).await;
                 }
             }
-        }
+        };
 
         let mut tick = interval(Duration::from_micros(period_us));
         tick.tick().await; // consume the immediate first tick
@@ -128,75 +151,56 @@ async fn cpu_power_poll_task<T: CpuManager>(
         // Poll while subscribers are present.
         while subscriber_count.load(Ordering::Relaxed) > 0 {
             tick.tick().await;
-            let mut current_power = BTreeMap::new();
             let mut changed = false;
 
-            for (idx, cpu) in cpus.iter_mut() {
-                let Some(state) = states.get_mut(idx) else {
-                    continue;
-                };
+            let cpu_power_mw = match cpu.get_cpu_energy() {
+                Ok(energy_uj) => {
+                    let delta_uj = energy_uj.saturating_sub(state.last_cpu_energy_uj);
+                    let power_mw = (delta_uj * 1000 / period_us) as u32;
+                    if power_mw != state.last_cpu_power_mw {
+                        changed = true;
+                    }
+                    state.last_cpu_power_mw = power_mw;
+                    state.last_cpu_energy_uj = energy_uj;
+                    power_mw
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read CPU {} energy: {}", cpu_id, e);
+                    state.last_cpu_power_mw
+                }
+            };
 
-                // Read CPU package energy.
-                let cpu_power_mw = match cpu.get_cpu_energy() {
+            let dram_power_mw = match state.last_dram_energy_uj {
+                Some(last_dram) => match cpu.get_dram_energy() {
                     Ok(energy_uj) => {
-                        let delta_uj = energy_uj.saturating_sub(state.last_cpu_energy_uj);
+                        let delta_uj = energy_uj.saturating_sub(last_dram);
                         let power_mw = (delta_uj * 1000 / period_us) as u32;
-                        if power_mw != state.last_cpu_power_mw {
+                        if state.last_dram_power_mw != Some(power_mw) {
                             changed = true;
                         }
-                        state.last_cpu_power_mw = power_mw;
-                        state.last_cpu_energy_uj = energy_uj;
-                        power_mw
+                        state.last_dram_power_mw = Some(power_mw);
+                        state.last_dram_energy_uj = Some(energy_uj);
+                        Some(power_mw)
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to read CPU {} energy: {}", idx, e);
-                        state.last_cpu_power_mw
+                        tracing::warn!("Failed to read CPU {} DRAM energy: {}", cpu_id, e);
+                        state.last_dram_power_mw
                     }
-                };
-
-                // Read DRAM energy if available.
-                let dram_power_mw = match state.last_dram_energy_uj {
-                    Some(last_dram) => match cpu.get_dram_energy() {
-                        Ok(energy_uj) => {
-                            let delta_uj = energy_uj.saturating_sub(last_dram);
-                            let power_mw = (delta_uj * 1000 / period_us) as u32;
-                            if state.last_dram_power_mw != Some(power_mw) {
-                                changed = true;
-                            }
-                            state.last_dram_power_mw = Some(power_mw);
-                            state.last_dram_energy_uj = Some(energy_uj);
-                            Some(power_mw)
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to read CPU {} DRAM energy: {}", idx, e);
-                            state.last_dram_power_mw
-                        }
-                    },
-                    None => None,
-                };
-
-                current_power.insert(
-                    *idx,
-                    CpuDramPower {
-                        cpu_mw: cpu_power_mw,
-                        dram_mw: dram_power_mw,
-                    },
-                );
-            }
+                },
+                None => None,
+            };
 
             if changed || !has_broadcast {
                 has_broadcast = true;
-                let timestamp_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                let _ = tx.send(CpuPowerSnapshot {
-                    timestamp_ms,
-                    power_mw: current_power,
+                let _ = tx.send(CpuPowerSample {
+                    timestamp_ms: unix_timestamp_ms(),
+                    cpu_id,
+                    cpu_mw: cpu_power_mw,
+                    dram_mw: dram_power_mw,
                 });
             }
         }
 
-        tracing::info!("CPU power poller pausing (no subscribers)");
+        tracing::info!("CPU power poller pausing for CPU {}", cpu_id);
     }
 }
