@@ -50,6 +50,8 @@ def _push_reading(
 
 
 class TestIter:
+    """Tests for the blocking iterator interface."""
+
     def test_yields_on_update(self) -> None:
         """__iter__ yields a snapshot when a reading arrives."""
         client = _make_client()
@@ -157,6 +159,8 @@ class TestIter:
 
 
 class TestAiter:
+    """Tests for the async iterator interface."""
+
     def test_yields_on_update(self) -> None:
         """__aiter__ yields a snapshot when a reading arrives."""
         client = _make_client()
@@ -256,7 +260,50 @@ class TestAiter:
         assert other_ran
 
 
+class TestEventParsing:
+    """Tests for per-device SSE event parsing."""
+
+    def test_gpu_event_updates_one_device(self) -> None:
+        """GPU stream events update one device without clearing existing readings."""
+        client = _make_client()
+        client._clock_offsets["node1:4938"] = 0.5
+        client._readings["node1:4938"] = PowerReadings(
+            timestamp_s=0.5,
+            gpu_power_w={0: 100.0},
+        )
+
+        client._process_gpu_event(
+            'data: {"timestamp_ms": 1000, "gpu_id": 1, "power_mw": 250000}\n\n',
+            "node1:4938",
+        )
+
+        readings = client.get_power()["node1:4938"]
+        assert readings.timestamp_s == 1.5
+        assert readings.gpu_power_w == {0: 100.0, 1: 250.0}
+
+    def test_cpu_event_updates_one_device(self) -> None:
+        """CPU stream events update one device without clearing existing readings."""
+        client = _make_client()
+        client._clock_offsets["node1:4938"] = 0.25
+        client._readings["node1:4938"] = PowerReadings(
+            timestamp_s=0.5,
+            cpu_power_w={0: CpuPowerReading(cpu_w=70.0, dram_w=None)},
+        )
+
+        client._process_cpu_event(
+            'data: {"timestamp_ms": 2000, "cpu_id": 1, "cpu_mw": 85000, "dram_mw": null}\n\n',
+            "node1:4938",
+        )
+
+        readings = client.get_power()["node1:4938"]
+        assert readings.timestamp_s == 2.25
+        assert readings.cpu_power_w[0] == CpuPowerReading(cpu_w=70.0, dram_w=None)
+        assert readings.cpu_power_w[1] == CpuPowerReading(cpu_w=85.0, dram_w=None)
+
+
 class TestGetPower:
+    """Tests for snapshot reads from stored power data."""
+
     def test_empty_before_any_reading(self) -> None:
         """get_power returns an empty dict before any readings arrive."""
         client = _make_client()
@@ -289,13 +336,15 @@ class TestGetPower:
 
 
 class TestClockOffset:
+    """Tests for daemon-to-client timestamp alignment."""
+
     def test_gpu_event_applies_offset(self) -> None:
         """_process_gpu_event adjusts timestamp by the clock offset."""
         client = _make_client()
         client._clock_offsets["node1:4938"] = 2.0
 
         client._process_gpu_event(
-            'data: {"power_mw": {"0": 150000}, "timestamp_ms": 1000000}',
+            'data: {"timestamp_ms": 1000000, "gpu_id": 0, "power_mw": 150000}',
             "node1:4938",
         )
 
@@ -309,7 +358,7 @@ class TestClockOffset:
         client._clock_offsets["node1:4938"] = -1.5
 
         client._process_cpu_event(
-            'data: {"power_mw": {"0": {"cpu_mw": 45000, "dram_mw": 12000}}, "timestamp_ms": 2000000}',
+            'data: {"timestamp_ms": 2000000, "cpu_id": 0, "cpu_mw": 45000, "dram_mw": 12000}',
             "node1:4938",
         )
 
@@ -324,7 +373,7 @@ class TestClockOffset:
         client._clock_offsets["node1:4938"] = 0.0
 
         client._process_gpu_event(
-            'data: {"power_mw": {"0": 200000}, "timestamp_ms": 5000000}',
+            'data: {"timestamp_ms": 5000000, "gpu_id": 0, "power_mw": 200000}',
             "node1:4938",
         )
 
@@ -336,11 +385,11 @@ class TestClockOffset:
         client._clock_offsets["node1:4938"] = 10.0
 
         client._process_gpu_event(
-            'data: {"power_mw": {"0": 100000}, "timestamp_ms": 1000}',
+            'data: {"timestamp_ms": 1000, "gpu_id": 0, "power_mw": 100000}',
             "node1:4938",
         )
         client._process_gpu_event(
-            'data: {"power_mw": {"0": 200000}, "timestamp_ms": 2000}',
+            'data: {"timestamp_ms": 2000, "gpu_id": 0, "power_mw": 200000}',
             "node1:4938",
         )
 

@@ -6,15 +6,24 @@
 //! channel. Polling is demand-driven: the task sleeps when no subscribers are
 //! connected and wakes when the first subscriber arrives.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{watch, Notify};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::WatchStream;
 use tokio_stream::Stream;
+
+/// Current Unix time in milliseconds.
+pub fn unix_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
 
 /// RAII guard that decrements the subscriber count on drop.
 pub struct SubscriberGuard {
@@ -35,8 +44,6 @@ pub struct PowerBroadcast<T: Clone + Default + Send + Sync + 'static> {
     rx: watch::Receiver<T>,
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
-    /// Set of device indices being monitored.
-    valid_ids: Arc<BTreeSet<usize>>,
 }
 
 impl<T: Clone + Default + Send + Sync + 'static> PowerBroadcast<T> {
@@ -73,15 +80,31 @@ impl<T: Clone + Default + Send + Sync + 'static> PowerBroadcast<T> {
     pub fn stream(&self) -> impl Stream<Item = T> {
         WatchStream::from_changes(self.rx.clone())
     }
+}
 
-    /// Validate that all requested device indices are being monitored.
-    ///
-    /// Returns `Ok(())` if all indices are valid, or `Err` with the
-    /// set of unknown indices.
+/// Broadcast handles keyed by device index.
+#[derive(Clone)]
+pub struct PowerBroadcasts<T: Clone + Default + Send + Sync + 'static> {
+    broadcasts: BTreeMap<usize, PowerBroadcast<T>>,
+}
+
+impl<T: Clone + Default + Send + Sync + 'static> PowerBroadcasts<T> {
+    pub fn new(broadcasts: BTreeMap<usize, PowerBroadcast<T>>) -> Self {
+        Self { broadcasts }
+    }
+
+    pub fn get(&self, id: usize) -> Option<&PowerBroadcast<T>> {
+        self.broadcasts.get(&id)
+    }
+
+    pub fn valid_ids(&self) -> Vec<usize> {
+        self.broadcasts.keys().copied().collect()
+    }
+
     pub fn validate_ids(&self, ids: &[usize]) -> Result<(), Vec<usize>> {
         let unknown: Vec<usize> = ids
             .iter()
-            .filter(|id| !self.valid_ids.contains(id))
+            .filter(|id| !self.broadcasts.contains_key(id))
             .copied()
             .collect();
         if unknown.is_empty() {
@@ -89,11 +112,6 @@ impl<T: Clone + Default + Send + Sync + 'static> PowerBroadcast<T> {
         } else {
             Err(unknown)
         }
-    }
-
-    /// Get the set of valid device indices.
-    pub fn valid_ids(&self) -> &BTreeSet<usize> {
-        &self.valid_ids
     }
 }
 
@@ -110,7 +128,7 @@ impl<T: Clone + Default + Send + Sync + 'static> PowerPoller<T> {
     /// `spawn_task` receives the watch sender, subscriber count, and wake
     /// notifier, and should return a future that polls devices and sends
     /// snapshots on the watch channel.
-    pub fn start<F, Fut>(valid_ids: BTreeSet<usize>, spawn_task: F) -> Self
+    pub fn start<F, Fut>(spawn_task: F) -> Self
     where
         F: FnOnce(watch::Sender<T>, Arc<AtomicUsize>, Arc<Notify>) -> Fut,
         Fut: Future<Output = ()> + Send + 'static,
@@ -124,7 +142,6 @@ impl<T: Clone + Default + Send + Sync + 'static> PowerPoller<T> {
                 rx,
                 subscriber_count,
                 wake,
-                valid_ids: Arc::new(valid_ids),
             },
             _handle: handle,
         }

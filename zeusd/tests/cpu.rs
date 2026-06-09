@@ -1,10 +1,16 @@
 mod helpers;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::RaplResponse;
+use zeusd::devices::cpu::{CpuManager, PackageInfo};
+use zeusd::error::ZeusdError;
 use zeusd::routes::cpu::GetCumulativeEnergy;
 
-use crate::helpers::{TestApp, ZeusdRequest};
+use crate::helpers::TestApp;
 
 #[tokio::test]
 async fn test_only_cpu_measuremnt() {
@@ -172,24 +178,34 @@ async fn test_cpu_power_oneshot() {
     let power_mw = &body["power_mw"];
     assert!(power_mw.is_object());
 
-    // CPU 0 should have deterministic power based on the test constants.
     let cpu0 = &power_mw["0"];
     assert!(cpu0.is_object(), "Expected CPU 0 power data, got: {body}");
 
+    // The mock advances energy by a fixed increment per read, so the delta is
+    // exact, but power is the delta over the measured elapsed time, which is
+    // at least the configured sampling period.
     let period_us = 1_000_000u64 / POWER_TEST_POLL_HZ as u64;
-    let expected_cpu_mw = POWER_TEST_CPU_INCREMENT_UJ * 1000 / period_us;
-    let expected_dram_mw = POWER_TEST_DRAM_INCREMENT_UJ * 1000 / period_us;
+    let max_cpu_mw = POWER_TEST_CPU_INCREMENT_UJ * 1000 / period_us;
+    let max_dram_mw = POWER_TEST_DRAM_INCREMENT_UJ * 1000 / period_us;
 
-    assert_eq!(cpu0["cpu_mw"].as_u64().unwrap(), expected_cpu_mw);
-    assert_eq!(cpu0["dram_mw"].as_u64().unwrap(), expected_dram_mw);
+    let cpu_mw = cpu0["cpu_mw"].as_u64().unwrap();
+    let dram_mw = cpu0["dram_mw"].as_u64().unwrap();
+    assert!(
+        cpu_mw > 0 && cpu_mw <= max_cpu_mw,
+        "Expected CPU power in (0, {max_cpu_mw}] mW, got {cpu_mw}"
+    );
+    assert!(
+        dram_mw > 0 && dram_mw <= max_dram_mw,
+        "Expected DRAM power in (0, {max_dram_mw}] mW, got {dram_mw}"
+    );
 }
 
 #[tokio::test]
 async fn test_cpu_power_stream_receives_events() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
-    let url = format!("http://127.0.0.1:{}/cpu/stream_power", _app.port);
-    let resp = client
+    let url = format!("http://127.0.0.1:{}/cpu/stream_power?cpu_ids=0", _app.port);
+    let mut resp = client
         .get(&url)
         .send()
         .await
@@ -203,6 +219,101 @@ async fn test_cpu_power_stream_receives_events() {
             .unwrap(),
         "text/event-stream"
     );
+
+    let chunk = tokio::time::timeout(tokio::time::Duration::from_secs(2), resp.chunk())
+        .await
+        .expect("Timed out waiting for CPU power event")
+        .expect("Failed to read CPU power event")
+        .expect("CPU power stream ended before first event");
+    let event = std::str::from_utf8(&chunk).expect("CPU power event should be UTF-8");
+    let json = event
+        .strip_prefix("data: ")
+        .and_then(|event| event.strip_suffix("\n\n"))
+        .expect("CPU power event should be an SSE data event");
+    let body: serde_json::Value =
+        serde_json::from_str(json).expect("CPU power event should contain JSON");
+    assert!(body["timestamp_ms"].is_number());
+    assert_eq!(body["cpu_id"].as_u64().unwrap(), 0);
+    assert!(body["cpu_mw"].is_number());
+    assert!(body["dram_mw"].is_number());
+}
+
+struct PollCountingCpu {
+    poll_count: Arc<AtomicUsize>,
+    cpu_energy_uj: u64,
+    dram_energy_uj: u64,
+}
+
+impl CpuManager for PollCountingCpu {
+    fn device_count() -> Result<usize, ZeusdError> {
+        Ok(1)
+    }
+
+    fn get_available_fields(
+        index: usize,
+    ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError> {
+        Ok((
+            Arc::new(PackageInfo {
+                index,
+                name: "package-0".to_string(),
+                energy_uj_path: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
+                ),
+                max_energy_uj: 1_000_000,
+            }),
+            Some(Arc::new(PackageInfo {
+                index,
+                name: "dram".to_string(),
+                energy_uj_path: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
+                ),
+                max_energy_uj: 1_000_000,
+            })),
+        ))
+    }
+
+    fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
+        self.poll_count.fetch_add(1, Ordering::Relaxed);
+        let value = self.cpu_energy_uj;
+        self.cpu_energy_uj += 10_000;
+        Ok(value)
+    }
+
+    fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
+        let value = self.dram_energy_uj;
+        self.dram_energy_uj += 5_000;
+        Ok(value)
+    }
+
+    fn is_dram_available(&self) -> bool {
+        true
+    }
+}
+
+#[tokio::test]
+async fn test_cpu_power_polls_only_subscribed_cpu() {
+    let poll_count_0 = Arc::new(AtomicUsize::new(0));
+    let poll_count_1 = Arc::new(AtomicUsize::new(0));
+    let cpu_0 = PollCountingCpu {
+        poll_count: poll_count_0.clone(),
+        cpu_energy_uj: 0,
+        dram_energy_uj: 0,
+    };
+    let cpu_1 = PollCountingCpu {
+        poll_count: poll_count_1.clone(),
+        cpu_energy_uj: 0,
+        dram_energy_uj: 0,
+    };
+    let broadcasts = start_cpu_poller(vec![(0, cpu_0), (1, cpu_1)], 100);
+    let broadcast_1 = broadcasts.get(1).expect("Missing CPU 1 broadcast");
+
+    let guard = broadcast_1.add_subscriber();
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+    assert_eq!(poll_count_0.load(Ordering::Relaxed), 0);
+    assert!(poll_count_1.load(Ordering::Relaxed) > 0);
+
+    drop(guard);
 }
 
 #[tokio::test]

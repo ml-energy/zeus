@@ -8,14 +8,13 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tokio::sync::{watch, Notify};
 use tokio::time::{interval, Duration};
 
 use crate::devices::gpu::GpuManager;
-use crate::power_streaming::{PowerBroadcast, PowerPoller};
+use crate::power_streaming::{unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller};
 
 /// A snapshot of GPU power readings across all monitored GPUs.
 #[derive(Clone, Debug, Default, Serialize)]
@@ -26,11 +25,25 @@ pub struct GpuPowerSnapshot {
     pub power_mw: BTreeMap<usize, u32>,
 }
 
-/// Broadcast handle for GPU power snapshots.
-pub type GpuPowerBroadcast = PowerBroadcast<GpuPowerSnapshot>;
+/// A single GPU power sample for SSE streaming.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct GpuPowerSample {
+    /// Unix timestamp in milliseconds.
+    pub timestamp_ms: u64,
+    /// GPU index.
+    pub gpu_id: usize,
+    /// Power reading in milliwatts.
+    pub power_mw: u32,
+}
 
-/// Background poller for GPU power.
-pub type GpuPowerPoller = PowerPoller<GpuPowerSnapshot>;
+/// Broadcast handle for GPU power samples.
+pub type GpuPowerBroadcast = PowerBroadcast<GpuPowerSample>;
+
+/// GPU power broadcasts keyed by GPU index.
+pub type GpuPowerBroadcasts = PowerBroadcasts<GpuPowerSample>;
+
+/// Background poller for one GPU's power.
+pub type GpuPowerPoller = PowerPoller<GpuPowerSample>;
 
 /// Start the GPU power polling background task.
 ///
@@ -40,33 +53,31 @@ pub type GpuPowerPoller = PowerPoller<GpuPowerSnapshot>;
 pub fn start_gpu_poller<T: GpuManager + Send + 'static>(
     gpus: Vec<(usize, T)>,
     poll_hz: u32,
-) -> GpuPowerPoller {
-    let valid_ids = gpus.iter().map(|(idx, _)| *idx).collect();
-    PowerPoller::start(valid_ids, |tx, subscriber_count, wake| {
-        gpu_power_poll_task(gpus, tx, poll_hz, subscriber_count, wake)
-    })
+) -> GpuPowerBroadcasts {
+    let mut broadcasts = BTreeMap::new();
+    for (gpu_id, gpu) in gpus {
+        let poller = PowerPoller::start(move |tx, subscriber_count, wake| {
+            gpu_power_poll_task(gpu_id, gpu, tx, poll_hz, subscriber_count, wake)
+        });
+        broadcasts.insert(gpu_id, poller.broadcast());
+    }
+    PowerBroadcasts::new(broadcasts)
 }
 
 async fn gpu_power_poll_task<T: GpuManager>(
-    mut gpus: Vec<(usize, T)>,
-    tx: watch::Sender<GpuPowerSnapshot>,
+    gpu_id: usize,
+    mut gpu: T,
+    tx: watch::Sender<GpuPowerSample>,
     poll_hz: u32,
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
 ) {
-    if gpus.is_empty() {
-        tracing::info!("No GPUs to monitor, power poller idle");
-        // Hold tx alive so subscribers don't see RecvError.
-        std::future::pending::<()>().await;
-        return;
-    }
-
     let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
-    let mut last_power: BTreeMap<usize, u32> = BTreeMap::new();
+    let mut last_power: Option<u32> = None;
 
     tracing::info!(
-        "GPU power poller ready: {} GPUs at {} Hz when subscribers are present",
-        gpus.len(),
+        "GPU power poller ready for GPU {} at {} Hz when subscribers are present",
+        gpu_id,
         poll_hz
     );
 
@@ -76,47 +87,31 @@ async fn gpu_power_poll_task<T: GpuManager>(
             wake.notified().await;
         }
 
-        tracing::info!("GPU power poller starting");
+        tracing::info!("GPU power poller starting for GPU {}", gpu_id);
         let mut tick = interval(Duration::from_micros(period_us));
 
         // Poll while subscribers are present.
         while subscriber_count.load(Ordering::Relaxed) > 0 {
             tick.tick().await;
-            let mut current_power = BTreeMap::new();
-            let mut changed = false;
-
-            for (idx, gpu) in gpus.iter_mut() {
-                match gpu.get_instant_power_mw() {
-                    Ok(power_mw) => {
-                        if last_power.get(idx) != Some(&power_mw) {
-                            changed = true;
-                        }
-                        current_power.insert(*idx, power_mw);
+            match gpu.get_instant_power_mw() {
+                Ok(power_mw) => {
+                    if last_power == Some(power_mw) {
+                        continue;
                     }
-                    Err(e) => {
-                        tracing::warn!("Failed to read power for GPU {}: {}", idx, e);
-                        if let Some(&last) = last_power.get(idx) {
-                            current_power.insert(*idx, last);
-                        }
-                    }
+                    last_power = Some(power_mw);
+                    let _ = tx.send(GpuPowerSample {
+                        timestamp_ms: unix_timestamp_ms(),
+                        gpu_id,
+                        power_mw,
+                    });
                 }
-            }
-
-            // Send on first poll (last_power empty) or on any change.
-            if changed || last_power.is_empty() {
-                let timestamp_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                last_power.clone_from(&current_power);
-                let _ = tx.send(GpuPowerSnapshot {
-                    timestamp_ms,
-                    power_mw: current_power,
-                });
+                Err(e) => {
+                    tracing::warn!("Failed to read power for GPU {}: {}", gpu_id, e);
+                }
             }
         }
 
-        last_power.clear();
-        tracing::info!("GPU power poller pausing (no subscribers)");
+        last_power = None;
+        tracing::info!("GPU power poller pausing for GPU {}", gpu_id);
     }
 }

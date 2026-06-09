@@ -47,6 +47,8 @@ from zeus.utils.zeusd import ZeusdCapabilityError, ZeusdClient, ZeusdConfig
 
 logger = logging.getLogger(__name__)
 
+_V = typing.TypeVar("_V")
+
 
 @dataclass
 class CpuPowerReading:
@@ -484,72 +486,85 @@ class PowerStreamingClient:
                     event_text, buffer = buffer.split("\n\n", 1)
                     process_fn(event_text, endpoint)
 
-    def _process_gpu_event(self, event_text: str, endpoint: str) -> None:
-        """Parse a GPU SSE event and update readings."""
+    def _iter_event_data(
+        self,
+        event_text: str,
+        endpoint: str,
+        device: str,
+    ) -> Iterator[tuple[str, dict[str, typing.Any]]]:
+        """Yield `(raw_json, parsed)` pairs from the data lines of an SSE event."""
         for line in event_text.strip().split("\n"):
             if line.startswith("data: "):
-                data_str = line[6:]
+                data_str = line[len("data: ") :]
                 try:
                     data = json.loads(data_str)
                 except json.JSONDecodeError:
-                    logger.warning("Invalid JSON in GPU SSE event from %s: %s", endpoint, data_str[:100])
+                    logger.warning("Invalid JSON in %s SSE event from %s: %s", device, endpoint, data_str[:100])
                     continue
+                yield data_str, data
 
-                power_mw = data.get("power_mw", {})
-                timestamp_ms = data.get("timestamp_ms", 0)
-                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[endpoint]
+    def _store_reading(
+        self,
+        endpoint: str,
+        timestamp_s: float,
+        device_dict: typing.Callable[[PowerReadings], dict[int, _V]],
+        device_id: int,
+        value: _V,
+    ) -> None:
+        """Store one device's reading for the endpoint and notify waiters."""
+        with self._condition:
+            readings = self._readings.get(endpoint)
+            if readings is None:
+                readings = PowerReadings(timestamp_s=timestamp_s)
+                self._readings[endpoint] = readings
+            else:
+                readings.timestamp_s = max(readings.timestamp_s, timestamp_s)
+            device_dict(readings)[device_id] = value
+            self._condition.notify_all()
 
-                gpu_power_w: dict[int, float] = {}
-                for gpu_id_str, mw in power_mw.items():
-                    gpu_power_w[int(gpu_id_str)] = float(mw) / 1000.0  # mW -> W
+    def _process_gpu_event(self, event_text: str, endpoint: str) -> None:
+        """Parse a GPU SSE event and update readings.
 
-                with self._condition:
-                    existing = self._readings.get(endpoint)
-                    if existing is not None:
-                        existing.gpu_power_w = gpu_power_w
-                        existing.timestamp_s = max(existing.timestamp_s, timestamp_s)
-                    else:
-                        self._readings[endpoint] = PowerReadings(
-                            timestamp_s=timestamp_s,
-                            gpu_power_w=gpu_power_w,
-                        )
-                    self._condition.notify_all()
+        Expected JSON format: `{"timestamp_ms": N, "gpu_id": N, "power_mw": N}`.
+        """
+        for data_str, data in self._iter_event_data(event_text, endpoint, "GPU"):
+            gpu_id = data.get("gpu_id")
+            power_mw = data.get("power_mw")
+            timestamp_ms = data.get("timestamp_ms")
+            if gpu_id is None or power_mw is None or timestamp_ms is None:
+                logger.warning("Malformed GPU SSE event from %s: %s", endpoint, data_str[:100])
+                continue
+            try:
+                gpu_id_int = int(gpu_id)
+                power_w = float(power_mw) / 1000.0
+                timestamp_s = float(timestamp_ms) / 1000.0 + self._clock_offsets[endpoint]
+            except (TypeError, ValueError):
+                logger.warning("Malformed GPU SSE event from %s: %s", endpoint, data_str[:100])
+                continue
+
+            self._store_reading(endpoint, timestamp_s, lambda r: r.gpu_power_w, gpu_id_int, power_w)
 
     def _process_cpu_event(self, event_text: str, endpoint: str) -> None:
         """Parse a CPU SSE event and update readings.
 
-        Expected JSON format: `{"timestamp_ms": N, "power_mw": {"0": {"cpu_mw": N, "dram_mw": N|null}}}`.
+        Expected JSON format: `{"timestamp_ms": N, "cpu_id": N, "cpu_mw": N, "dram_mw": N|null}`.
         """
-        for line in event_text.strip().split("\n"):
-            if line.startswith("data: "):
-                data_str = line[6:]
-                try:
-                    data = json.loads(data_str)
-                except json.JSONDecodeError:
-                    logger.warning("Invalid JSON in CPU SSE event from %s: %s", endpoint, data_str[:100])
-                    continue
+        for data_str, data in self._iter_event_data(event_text, endpoint, "CPU"):
+            cpu_id = data.get("cpu_id")
+            cpu_mw = data.get("cpu_mw")
+            timestamp_ms = data.get("timestamp_ms")
+            if cpu_id is None or cpu_mw is None or timestamp_ms is None:
+                logger.warning("Malformed CPU SSE event from %s: %s", endpoint, data_str[:100])
+                continue
+            dram_mw = data.get("dram_mw")
+            try:
+                cpu_id_int = int(cpu_id)
+                cpu_w = float(cpu_mw) / 1000.0
+                dram_w = float(dram_mw) / 1000.0 if dram_mw is not None else None
+                timestamp_s = float(timestamp_ms) / 1000.0 + self._clock_offsets[endpoint]
+            except (TypeError, ValueError):
+                logger.warning("Malformed CPU SSE event from %s: %s", endpoint, data_str[:100])
+                continue
 
-                power_mw = data.get("power_mw", {})
-                timestamp_ms = data.get("timestamp_ms", 0)
-                timestamp_s = timestamp_ms / 1000.0 + self._clock_offsets[endpoint]
-
-                cpu_power_w: dict[int, CpuPowerReading] = {}
-                for cpu_id_str, readings in power_mw.items():
-                    cpu_mw = readings.get("cpu_mw", 0)
-                    dram_mw = readings.get("dram_mw")
-                    cpu_power_w[int(cpu_id_str)] = CpuPowerReading(
-                        cpu_w=float(cpu_mw) / 1000.0,
-                        dram_w=float(dram_mw) / 1000.0 if dram_mw is not None else None,
-                    )
-
-                with self._condition:
-                    existing = self._readings.get(endpoint)
-                    if existing is not None:
-                        existing.cpu_power_w = cpu_power_w
-                        existing.timestamp_s = max(existing.timestamp_s, timestamp_s)
-                    else:
-                        self._readings[endpoint] = PowerReadings(
-                            timestamp_s=timestamp_s,
-                            cpu_power_w=cpu_power_w,
-                        )
-                    self._condition.notify_all()
+            reading = CpuPowerReading(cpu_w=cpu_w, dram_w=dram_w)
+            self._store_reading(endpoint, timestamp_s, lambda r: r.cpu_power_w, cpu_id_int, reading)

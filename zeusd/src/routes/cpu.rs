@@ -1,16 +1,17 @@
 //! Routes for interacting with CPUs
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
-use actix_web::web::Bytes;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
-use tokio_stream::StreamExt;
+use tokio::time::{sleep, Duration};
 
-use crate::devices::cpu::power::{CpuPowerBroadcast, CpuPowerSnapshot};
+use super::{power_stream_response, resolve_read_device_ids, resolve_stream_device_ids};
+use crate::devices::cpu::power::{CpuDramPower, CpuPowerBroadcasts, CpuPowerSnapshot};
 use crate::devices::cpu::{CpuCommand, CpuManagementTasks, RaplResponse};
 use crate::error::{aggregate_error_response, ZeusdError};
+use crate::power_streaming::unix_timestamp_ms;
 
 /// Query parameters for CPU read endpoints.
 /// `cpu_ids` is optional; omit to read all CPUs.
@@ -20,38 +21,16 @@ pub struct CpuReadQuery {
     pub cpu_ids: Option<String>,
 }
 
-/// Parse a comma-separated list of CPU indices.
-fn parse_cpu_ids(raw: &str) -> Vec<usize> {
-    raw.split(',')
-        .filter_map(|part| part.trim().parse().ok())
-        .collect()
+#[derive(Clone, Copy)]
+pub struct CpuPowerSamplingPeriod {
+    period_us: u64,
 }
 
-/// Resolve `cpu_ids` for a read endpoint: parse the optional comma-separated
-/// list, default to all CPUs if absent, reject empty lists or out-of-range
-/// indices.
-fn resolve_read_cpu_ids(
-    query: &Option<String>,
-    device_count: usize,
-) -> Result<Vec<usize>, HttpResponse> {
-    match query {
-        Some(raw) => {
-            let parsed = parse_cpu_ids(raw);
-            if parsed.is_empty() {
-                return Err(HttpResponse::BadRequest().json(serde_json::json!({
-                    "error": "cpu_ids must contain at least one CPU index"
-                })));
-            }
-            for &id in &parsed {
-                if id >= device_count {
-                    return Err(HttpResponse::BadRequest().json(serde_json::json!({
-                        "error": format!("CPU {id} not found"),
-                    })));
-                }
-            }
-            Ok(parsed)
+impl CpuPowerSamplingPeriod {
+    pub fn from_poll_hz(poll_hz: u32) -> Self {
+        Self {
+            period_us: 1_000_000u64 / poll_hz.max(1) as u64,
         }
-        None => Ok((0..device_count).collect()),
     }
 }
 
@@ -87,7 +66,8 @@ async fn get_cumulative_energy_handler(
 ) -> Result<HttpResponse, ZeusdError> {
     let now = Instant::now();
 
-    let cpu_ids = match resolve_read_cpu_ids(&query.cpu_ids, device_tasks.device_count()) {
+    let cpu_ids = match resolve_read_device_ids(&query.cpu_ids, device_tasks.device_count(), "CPU")
+    {
         Ok(ids) => ids,
         Err(resp) => return Ok(resp),
     };
@@ -124,50 +104,145 @@ async fn get_cumulative_energy_handler(
     }
 }
 
-fn filter_cpu_snapshot(
-    snapshot: &CpuPowerSnapshot,
-    cpu_ids: &Option<Vec<usize>>,
-) -> CpuPowerSnapshot {
-    match cpu_ids {
-        None => snapshot.clone(),
-        Some(ids) => CpuPowerSnapshot {
-            timestamp_ms: snapshot.timestamp_ms,
-            power_mw: snapshot
-                .power_mw
-                .iter()
-                .filter(|(k, _)| ids.contains(k))
-                .map(|(&k, v)| (k, v.clone()))
-                .collect(),
-        },
+async fn read_cpu_energy_for_power(
+    cpu_ids: &[usize],
+    device_tasks: &CpuManagementTasks,
+) -> (HashMap<usize, RaplResponse>, HashMap<usize, ZeusdError>) {
+    let now = Instant::now();
+    let mut handles = Vec::with_capacity(cpu_ids.len());
+    for &cpu_id in cpu_ids {
+        let tasks = device_tasks.clone();
+        handles.push(async move {
+            (
+                cpu_id,
+                tasks
+                    .send_command_blocking(
+                        cpu_id,
+                        CpuCommand::GetIndexEnergy {
+                            cpu: true,
+                            dram: true,
+                        },
+                        now,
+                    )
+                    .await,
+            )
+        });
+    }
+
+    let results = futures::future::join_all(handles).await;
+    let mut responses = HashMap::new();
+    let mut errors = HashMap::new();
+    for (cpu_id, result) in results {
+        match result {
+            Ok(response) => {
+                responses.insert(cpu_id, response);
+            }
+            Err(e) => {
+                errors.insert(cpu_id, e);
+            }
+        }
+    }
+    (responses, errors)
+}
+
+fn compute_cpu_power(
+    cpu_id: usize,
+    first: &RaplResponse,
+    second: &RaplResponse,
+    elapsed_us: u64,
+) -> Result<CpuDramPower, ZeusdError> {
+    let first_cpu = first
+        .cpu_energy_uj
+        .ok_or(ZeusdError::CpuPowerMeasurementError(cpu_id))?;
+    let second_cpu = second
+        .cpu_energy_uj
+        .ok_or(ZeusdError::CpuPowerMeasurementError(cpu_id))?;
+    let cpu_mw = (second_cpu.saturating_sub(first_cpu) * 1000 / elapsed_us) as u32;
+
+    let dram_mw = match (first.dram_energy_uj, second.dram_energy_uj) {
+        (Some(first_dram), Some(second_dram)) => {
+            Some((second_dram.saturating_sub(first_dram) * 1000 / elapsed_us) as u32)
+        }
+        (None, None) => None,
+        _ => return Err(ZeusdError::CpuPowerMeasurementError(cpu_id)),
+    };
+
+    Ok(CpuDramPower { cpu_mw, dram_mw })
+}
+
+fn cpu_power_snapshot(
+    cpu_ids: &[usize],
+    first: &HashMap<usize, RaplResponse>,
+    second: &HashMap<usize, RaplResponse>,
+    elapsed_us: u64,
+) -> Result<CpuPowerSnapshot, HashMap<usize, ZeusdError>> {
+    let mut power_mw = BTreeMap::new();
+    let mut errors = HashMap::new();
+
+    for &cpu_id in cpu_ids {
+        match (first.get(&cpu_id), second.get(&cpu_id)) {
+            (Some(first), Some(second)) => {
+                match compute_cpu_power(cpu_id, first, second, elapsed_us) {
+                    Ok(power) => {
+                        power_mw.insert(cpu_id, power);
+                    }
+                    Err(e) => {
+                        errors.insert(cpu_id, e);
+                    }
+                }
+            }
+            _ => {
+                errors.insert(cpu_id, ZeusdError::CpuPowerMeasurementError(cpu_id));
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(CpuPowerSnapshot {
+            timestamp_ms: unix_timestamp_ms(),
+            power_mw,
+        })
+    } else {
+        Err(errors)
     }
 }
 
 /// One-shot CPU power reading (computed from RAPL energy deltas).
 ///
-/// Subscribes briefly to wake the poller, waits for a fresh reading (up to
-/// 200 ms), then returns the snapshot as JSON.
+/// Reads only the requested CPUs twice, separated by the configured power
+/// sampling period, and computes power over the measured elapsed time.
 #[actix_web::get("/get_power")]
-#[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
+#[tracing::instrument(skip(device_tasks, period), fields(cpu_ids = ?query.cpu_ids))]
 async fn get_cpu_power_handler(
     query: web::Query<CpuReadQuery>,
-    broadcast: web::Data<CpuPowerBroadcast>,
+    device_tasks: web::Data<CpuManagementTasks>,
+    period: web::Data<CpuPowerSamplingPeriod>,
 ) -> HttpResponse {
-    let cpu_ids = query.cpu_ids.as_ref().map(|s| parse_cpu_ids(s));
-    if let Some(ref ids) = cpu_ids {
-        if let Err(unknown) = broadcast.validate_ids(ids) {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!(
-                    "Unknown CPU indices: {:?}. Available: {:?}",
-                    unknown,
-                    broadcast.valid_ids(),
-                )
-            }));
-        }
+    let cpu_ids = match resolve_read_device_ids(&query.cpu_ids, device_tasks.device_count(), "CPU")
+    {
+        Ok(ids) => ids,
+        Err(resp) => return resp,
+    };
+
+    let (first, mut errors) = read_cpu_energy_for_power(&cpu_ids, device_tasks.get_ref()).await;
+    if !errors.is_empty() {
+        return aggregate_error_response(errors);
     }
-    let _guard = broadcast.add_subscriber();
-    let snapshot = broadcast.wait_for_fresh().await.unwrap_or_default();
-    let filtered = filter_cpu_snapshot(&snapshot, &cpu_ids);
-    HttpResponse::Ok().json(filtered)
+
+    let first_read_done = Instant::now();
+    sleep(Duration::from_micros(period.period_us)).await;
+
+    let (second, second_errors) = read_cpu_energy_for_power(&cpu_ids, device_tasks.get_ref()).await;
+    let elapsed_us = (first_read_done.elapsed().as_micros() as u64).max(1);
+    errors.extend(second_errors);
+    if !errors.is_empty() {
+        return aggregate_error_response(errors);
+    }
+
+    match cpu_power_snapshot(&cpu_ids, &first, &second, elapsed_us) {
+        Ok(snapshot) => HttpResponse::Ok().json(snapshot),
+        Err(errors) => aggregate_error_response(errors),
+    }
 }
 
 /// SSE stream of CPU power readings.
@@ -177,31 +252,12 @@ async fn get_cpu_power_handler(
 #[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
 async fn cpu_power_stream_handler(
     query: web::Query<CpuReadQuery>,
-    broadcast: web::Data<CpuPowerBroadcast>,
+    broadcast: web::Data<CpuPowerBroadcasts>,
 ) -> HttpResponse {
-    let cpu_ids = query.cpu_ids.as_ref().map(|s| parse_cpu_ids(s));
-    if let Some(ref ids) = cpu_ids {
-        if let Err(unknown) = broadcast.validate_ids(ids) {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!(
-                    "Unknown CPU indices: {:?}. Available: {:?}",
-                    unknown,
-                    broadcast.valid_ids(),
-                )
-            }));
-        }
+    match resolve_stream_device_ids(&query.cpu_ids, broadcast.get_ref(), "CPU") {
+        Ok(cpu_ids) => power_stream_response(cpu_ids, broadcast.get_ref()),
+        Err(response) => response,
     }
-    let guard = broadcast.add_subscriber();
-    let stream = broadcast.stream().map(move |snapshot| {
-        let _ = &guard;
-        let filtered = filter_cpu_snapshot(&snapshot, &cpu_ids);
-        let json = serde_json::to_string(&filtered).unwrap_or_default();
-        Ok::<_, actix_web::Error>(Bytes::from(format!("data: {json}\n\n")))
-    });
-    HttpResponse::Ok()
-        .insert_header(("Content-Type", "text/event-stream"))
-        .insert_header(("Cache-Control", "no-cache"))
-        .streaming(stream)
 }
 
 pub fn cpu_routes(cfg: &mut web::ServiceConfig) {

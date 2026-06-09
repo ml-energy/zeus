@@ -19,7 +19,7 @@ use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
 use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
-use zeusd::routes::{CpuDiscoveryInfo, DiscoveryInfo, GpuDiscoveryInfo};
+use zeusd::routes::{CpuDiscoveryInfo, CpuPowerSamplingPeriod, DiscoveryInfo, GpuDiscoveryInfo};
 use zeusd::startup::{init_tracing, start_server_tcp, EnabledGroups, ServerState};
 
 pub static NUM_GPUS: u32 = 4;
@@ -154,6 +154,8 @@ impl GpuManager for TestGpu {
 pub struct TestCpu {
     pub cpu: UnboundedReceiver<u64>,
     pub dram: UnboundedReceiver<u64>,
+    next_cpu_energy_uj: u64,
+    next_dram_energy_uj: u64,
 }
 
 pub struct TestCpuInjector {
@@ -169,6 +171,8 @@ impl TestCpu {
             TestCpu {
                 cpu: cpu_receiver,
                 dram: dram_receiver,
+                next_cpu_energy_uj: 0,
+                next_dram_energy_uj: 0,
             },
             TestCpuInjector {
                 cpu: cpu_sender,
@@ -207,11 +211,31 @@ impl CpuManager for TestCpu {
     }
 
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
-        Ok(self.cpu.try_recv().ok().unwrap())
+        match self.cpu.try_recv() {
+            Ok(value) => Ok(value),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                let value = self.next_cpu_energy_uj;
+                self.next_cpu_energy_uj += POWER_TEST_CPU_INCREMENT_UJ;
+                Ok(value)
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                Err(ZeusdError::CpuManagementTaskTerminatedError(0))
+            }
+        }
     }
 
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
-        Ok(self.dram.try_recv().ok().unwrap())
+        match self.dram.try_recv() {
+            Ok(value) => Ok(value),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                let value = self.next_dram_energy_uj;
+                self.next_dram_energy_uj += POWER_TEST_DRAM_INCREMENT_UJ;
+                Ok(value)
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                Err(ZeusdError::CpuManagementTaskTerminatedError(0))
+            }
+        }
     }
 
     fn is_dram_available(&self) -> bool {
@@ -405,8 +429,7 @@ impl TestApp {
             let test_power_gpus: Vec<(usize, TestGpu)> = (0..NUM_GPUS as usize)
                 .map(|i| (i, TestGpu::init().unwrap().0))
                 .collect();
-            let gpu_power_poller = start_gpu_poller(test_power_gpus, 10);
-            Some(gpu_power_poller.broadcast())
+            Some(start_gpu_poller(test_power_gpus, 10))
         } else {
             None
         };
@@ -434,8 +457,7 @@ impl TestApp {
                     )
                 })
                 .collect();
-            let cpu_power_poller = start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ);
-            Some(cpu_power_poller.broadcast())
+            Some(start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ))
         } else {
             None
         };
@@ -462,6 +484,11 @@ impl TestApp {
             cpu_device_tasks: cpu_test_tasks,
             gpu_power_broadcast,
             cpu_power_broadcast,
+            cpu_power_sampling_period: if needs_cpu {
+                Some(CpuPowerSamplingPeriod::from_poll_hz(POWER_TEST_POLL_HZ))
+            } else {
+                None
+            },
             discovery_info,
             enabled_groups,
             signing_key: None,
@@ -512,8 +539,7 @@ impl TestApp {
             let test_power_gpus: Vec<(usize, TestGpu)> = (0..NUM_GPUS as usize)
                 .map(|i| (i, TestGpu::init().unwrap().0))
                 .collect();
-            let gpu_power_poller = start_gpu_poller(test_power_gpus, 10);
-            Some(gpu_power_poller.broadcast())
+            Some(start_gpu_poller(test_power_gpus, 10))
         } else {
             None
         };
@@ -539,8 +565,7 @@ impl TestApp {
                     )
                 })
                 .collect();
-            let cpu_power_poller = start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ);
-            Some(cpu_power_poller.broadcast())
+            Some(start_cpu_poller(cpu_power_cpus, POWER_TEST_POLL_HZ))
         } else {
             None
         };
@@ -571,6 +596,11 @@ impl TestApp {
             cpu_device_tasks: cpu_test_tasks,
             gpu_power_broadcast,
             cpu_power_broadcast,
+            cpu_power_sampling_period: if needs_cpu {
+                Some(CpuPowerSamplingPeriod::from_poll_hz(POWER_TEST_POLL_HZ))
+            } else {
+                None
+            },
             discovery_info,
             enabled_groups,
             signing_key: Some(signing_key_data),

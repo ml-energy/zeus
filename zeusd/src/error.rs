@@ -32,6 +32,8 @@ pub enum ZeusdError {
     GpuManagementTaskTerminatedError(usize),
     #[error("Management task for CPU {0} unexpectedly terminated while handling the request.")]
     CpuManagementTaskTerminatedError(usize),
+    #[error("CPU {0} did not return the energy data required for power measurement.")]
+    CpuPowerMeasurementError(usize),
     #[error("Initialization for CPU {0} unexpectedly errored.")]
     CpuInitializationError(usize),
     #[error("IOError: {0}")]
@@ -60,6 +62,7 @@ impl ResponseError for ZeusdError {
             ZeusdError::CpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::GpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuPowerMeasurementError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuInitializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::IOError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::Unauthorized => StatusCode::UNAUTHORIZED,
