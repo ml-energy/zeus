@@ -44,6 +44,8 @@ fn parse_device_ids(raw: &str, device: &str) -> Result<Vec<usize>, HttpResponse>
             .map_err(|_| bad_request(format!("Invalid {device} index: {trimmed}")))?;
         ids.push(id);
     }
+    ids.sort_unstable();
+    ids.dedup();
     Ok(ids)
 }
 

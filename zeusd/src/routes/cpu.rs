@@ -151,6 +151,7 @@ fn compute_cpu_power(
     second: &RaplResponse,
     elapsed_us: u64,
 ) -> Result<CpuDramPower, ZeusdError> {
+    let elapsed_us = elapsed_us.max(1);
     let first_cpu = first
         .cpu_energy_uj
         .ok_or(ZeusdError::CpuPowerMeasurementError(cpu_id))?;
@@ -233,7 +234,7 @@ async fn get_cpu_power_handler(
     sleep(Duration::from_micros(period.period_us)).await;
 
     let (second, second_errors) = read_cpu_energy_for_power(&cpu_ids, device_tasks.get_ref()).await;
-    let elapsed_us = (first_read_done.elapsed().as_micros() as u64).max(1);
+    let elapsed_us = first_read_done.elapsed().as_micros() as u64;
     errors.extend(second_errors);
     if !errors.is_empty() {
         return aggregate_error_response(errors);
