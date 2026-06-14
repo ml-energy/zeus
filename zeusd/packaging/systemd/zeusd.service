@@ -27,7 +27,6 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
-ProtectClock=true
 ProtectHostname=true
 RestrictNamespaces=true
 LockPersonality=true

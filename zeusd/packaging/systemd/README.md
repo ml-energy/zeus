@@ -43,4 +43,4 @@ journalctl -u zeusd -f
 systemd-analyze security zeusd.service
 ```
 
-At the time of writing, `zeusd.service`'s systemd exposure level score is 2.9 OK.
+At the time of writing, `zeusd.service`'s systemd exposure level score is 3.1 OK.
