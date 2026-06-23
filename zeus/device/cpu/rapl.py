@@ -208,6 +208,7 @@ class RAPLFile:
 
     @property
     def wraparound_tracker(self) -> RaplWraparoundTracker:
+        """Return the RaplWraparoundTracker, creating it thread-safely on first access."""
         if self._wraparound_tracker is None:
             with self._lock:
                 if self._wraparound_tracker is None:
