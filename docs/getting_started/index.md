@@ -51,7 +51,7 @@ docker run -it \
     --cap-add SYS_ADMIN \   # (2)!
     --ipc host \          # (3)!
     -v /sys/class/powercap:/zeus_sys/class/powercap:ro \
-    -v /sys/devices/virtual/powercap:/zeus_sys/devices/powercap:ro \ # (4)!
+    -v /sys/devices/virtual/powercap:/zeus_sys/devices/virtual/powercap:ro \ # (4)!
     mlenergy/zeus:latest \
     bash
 ```
