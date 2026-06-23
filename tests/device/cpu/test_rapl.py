@@ -140,6 +140,50 @@ def test_rapl_file_class(mock_rapl_values, mock_rapl_wraparound_tracker):
     assert raplFile.read() == 580.0  # (80000+5*100000)/1000
 
 
+def test_rapl_file_lazily_initializes_wraparound_tracker():
+    """Test that RAPLFile defers RaplWraparoundTracker creation until the first read()."""
+    path = "/sys/class/powercap/intel-rapl/intel-rapl:0"
+
+    mock_tracker_instance = MagicMock()
+    mock_tracker_instance.get_num_wraparounds.return_value = 0
+
+    mock_name_open = mock_open(read_data="package")
+    mock_energy_open = mock_open(read_data="100000")
+    mock_max_energy_open = mock_open(read_data="200000")
+
+    def mock_file_open(filepath, *args, **kwargs):
+        basename = os.path.basename(filepath)
+        if basename == "name":
+            return mock_name_open()
+        if basename == "energy_uj":
+            return mock_energy_open()
+        if basename == "max_energy_range_uj":
+            return mock_max_energy_open()
+        raise FileNotFoundError(f"Unexpected file: {filepath}")
+
+    with (
+        patch("zeus.device.cpu.rapl.RaplWraparoundTracker") as mock_tracker_class,
+        patch("builtins.open", side_effect=mock_file_open),
+    ):
+        mock_tracker_class.return_value = mock_tracker_instance
+
+        rapl_file = RAPLFile(path)
+
+        # Tracker must not be created during __init__
+        mock_tracker_class.assert_not_called()
+        assert rapl_file._wraparound_tracker is None
+
+        # First read() must create the tracker exactly once
+        rapl_file.read()
+        mock_tracker_class.assert_called_once()
+        assert rapl_file._wraparound_tracker is mock_tracker_instance
+
+        # Subsequent read() calls must reuse the same tracker instance
+        rapl_file.read()
+        mock_tracker_class.assert_called_once()
+        assert rapl_file._wraparound_tracker is mock_tracker_instance
+
+
 def test_rapl_file_class_exceptions():
     """Test `RAPLFile` Init errors"""
     with patch("builtins.open", mock_open()) as mock_file:
