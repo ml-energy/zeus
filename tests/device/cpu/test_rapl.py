@@ -161,8 +161,10 @@ def test_rapl_file_lazily_initializes_wraparound_tracker():
             return mock_max_energy_open()
         raise FileNotFoundError(f"Unexpected file: {filepath}")
 
-    with patch("zeus.device.cpu.rapl.RaplWraparoundTracker") as mock_tracker_class, \
-         patch("builtins.open", side_effect=mock_file_open):
+    with (
+        patch("zeus.device.cpu.rapl.RaplWraparoundTracker") as mock_tracker_class,
+        patch("builtins.open", side_effect=mock_file_open),
+    ):
         mock_tracker_class.return_value = mock_tracker_instance
 
         rapl_file = RAPLFile(path)

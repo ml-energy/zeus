@@ -17,6 +17,7 @@ import atexit
 import logging
 import multiprocessing as mp
 import os
+import threading
 import time
 import warnings
 from functools import lru_cache
@@ -203,11 +204,14 @@ class RAPLFile:
             raise ZeusRAPLFileInitError("Error reading package max energy range") from err
 
         self._wraparound_tracker: RaplWraparoundTracker | None = None
+        self._lock = threading.Lock()
 
     @property
     def wraparound_tracker(self) -> RaplWraparoundTracker:
         if self._wraparound_tracker is None:
-            self._wraparound_tracker = RaplWraparoundTracker(self.energy_uj_path, self.max_energy_range_uj)
+            with self._lock:
+                if self._wraparound_tracker is None:
+                    self._wraparound_tracker = RaplWraparoundTracker(self.energy_uj_path, self.max_energy_range_uj)
         return self._wraparound_tracker
 
     def __str__(self) -> str:
