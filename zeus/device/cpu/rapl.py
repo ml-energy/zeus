@@ -202,7 +202,13 @@ class RAPLFile:
         except FileNotFoundError as err:
             raise ZeusRAPLFileInitError("Error reading package max energy range") from err
 
-        self.wraparound_tracker = RaplWraparoundTracker(self.energy_uj_path, self.max_energy_range_uj)
+        self._wraparound_tracker: RaplWraparoundTracker | None = None
+
+    @property
+    def wraparound_tracker(self) -> RaplWraparoundTracker:
+        if self._wraparound_tracker is None:
+            self._wraparound_tracker = RaplWraparoundTracker(self.energy_uj_path, self.max_energy_range_uj)
+        return self._wraparound_tracker
 
     def __str__(self) -> str:
         """Return a string representation of the RAPL file object."""
