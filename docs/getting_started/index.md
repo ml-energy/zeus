@@ -50,7 +50,8 @@ docker run -it \
     --gpus all \              # (1)!
     --cap-add SYS_ADMIN \   # (2)!
     --ipc host \          # (3)!
-    -v /sys/class/powercap/intel-rapl:/zeus_sys/class/powercap/intel-rapl \ # (4)!
+    -v /sys/class/powercap:/zeus_sys/class/powercap:ro \
+    -v /sys/devices/virtual/powercap:/zeus_sys/devices/powercap:ro \ # (4)!
     mlenergy/zeus:latest \
     bash
 ```
@@ -60,7 +61,7 @@ docker run -it \
 3. PyTorch DataLoader workers need enough shared memory for IPC. Without this, they may run out of shared memory and die.
 4. Zeus reads Intel RAPL metrics for CPU/DRAM energy measurement through the `sysfs` interface. Docker disables this by default, so we need to mount it into the container separately (under `/zeus_sys`).
 
-Especially, `--cap-add SYS_ADMIN` is to be able to change the GPU's power limit or frequency, and `-v /sys/class/powercap/intel-rapl:/zeus_sys/class/powercap/intel-rapl` is to be able to measure CPU/DRAM energy via Intel RAPL.
+Especially, `--cap-add SYS_ADMIN` is to be able to change the GPU's power limit or frequency, and mounting directories under `/sys` into `/zeus_sys` is expose Intel RAPL to inside the container for CPU/DRAM energy readings.
 See [System privileges](#system-privileges) for details.
 
 ### Pulling from Docker Hub

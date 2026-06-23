@@ -32,7 +32,8 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     && ln -sf /root/.local/miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 # Install PyTorch and CUDA Toolkit
-RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
+RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118 \
+    && pip install numpy<2
 
 # Place stuff under /workspace
 WORKDIR /workspace
