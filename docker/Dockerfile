@@ -34,11 +34,11 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
 # Install PyTorch and CUDA Toolkit
 RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
 
-# Place stuff under /workspace
-WORKDIR /workspace
+# Place stuff under /workspace/zeus
+WORKDIR /workspace/zeus
 
 # Snapshot of Zeus
 ADD . /workspace/zeus
 
 # When an outside zeus directory is mounted, have it apply immediately.
-RUN cd /workspace/zeus && pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e . && pip install --no-cache-dir "numpy<2"
