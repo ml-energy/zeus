@@ -204,13 +204,13 @@ class RAPLFile:
             raise ZeusRAPLFileInitError("Error reading package max energy range") from err
 
         self._wraparound_tracker: RaplWraparoundTracker | None = None
-        self._lock = threading.Lock()
+        self._wraparound_tracker_init_lock = threading.Lock()
 
     @property
     def wraparound_tracker(self) -> RaplWraparoundTracker:
         """Return the RaplWraparoundTracker, creating it thread-safely on first access."""
         if self._wraparound_tracker is None:
-            with self._lock:
+            with self._wraparound_tracker_init_lock:
                 if self._wraparound_tracker is None:
                     self._wraparound_tracker = RaplWraparoundTracker(self.energy_uj_path, self.max_energy_range_uj)
         return self._wraparound_tracker
