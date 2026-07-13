@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import builtins
 import glob
-import os
 import pytest
 import platform
 

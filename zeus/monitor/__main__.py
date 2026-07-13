@@ -28,9 +28,8 @@ def energy(gpu_indices: list[int] | None = None) -> None:
         # "Forever"
         time.sleep(365 * 24 * 60 * 60)
     except KeyboardInterrupt:
-        energy = monitor.end_window("zeus.monitor.energy", sync_execution=False)
-        if energy is not None:
-            rich.print("Total energy (J):", energy)
+        measurement = monitor.end_window("zeus.monitor.energy", sync_execution=False)
+        rich.print("Total energy (J):", measurement.total_energy)
 
 
 def power(

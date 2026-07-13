@@ -228,16 +228,18 @@ class NVIDIAGPU(gpu_common.GPU):
 
         scope = scopes[-1]
         for scope in scopes:
-            metric = pynvml.nvmlDeviceGetFieldValues(
-                self.handle, [(pynvml.NVML_FI_DEV_POWER_INSTANT, scope)]
-            )[0]
-            if metric.nvmlReturn == pynvml.NVML_SUCCESS:
-                break
-            logger.info(
-                "Power scope %d is not supported on GPU %d, falling back to the next scope.",
-                scope,
-                self.gpu_index,
-            )
+            try:
+                metric = pynvml.nvmlDeviceGetFieldValues(self.handle, [(pynvml.NVML_FI_DEV_POWER_INSTANT, scope)])[0]
+                if metric.nvmlReturn == pynvml.NVML_SUCCESS:
+                    break
+            except pynvml.NVMLError:
+                pass
+            if scope != scopes[-1]:
+                logger.info(
+                    "Power scope %d is not supported on GPU %d, falling back to the next scope.",
+                    scope,
+                    self.gpu_index,
+                )
 
         self._power_field_scope = scope
         return scope

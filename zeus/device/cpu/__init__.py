@@ -15,6 +15,10 @@ from zeus.device.cpu.rapl import rapl_is_available, RAPLCPUs
 
 _cpus: CPUs | None = None
 
+# Sorted list of unique physical package (socket) IDs on the system, populated
+# lazily on the first call to `get_current_cpu_index` and cached thereafter.
+_package_ids: list[int] | None = None
+
 
 def get_current_cpu_index(pid: int | Literal["current"] = "current") -> int:
     """Retrieves the specific CPU index (socket) where the given PID is running.
@@ -36,16 +40,25 @@ def get_current_cpu_index(pid: int | Literal["current"] = "current") -> int:
 
     # Some platforms (e.g., ARM) use arbitrary identifiers rather than 0-based
     # socket indices for physical package IDs, so the socket index is the rank
-    # of the package ID among all unique package IDs on the system.
-    package_ids = {package_id}
-    for path in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/topology/physical_package_id"):
-        try:
-            with open(path) as f:
-                package_ids.add(int(f.read().strip()))
-        except (OSError, ValueError):
-            continue
+    # of the package ID among all unique package IDs on the system. The set of
+    # package IDs is scanned once and cached to avoid re-reading sysfs on every
+    # call, which matters on machines with many cores.
+    global _package_ids
+    if _package_ids is None:
+        package_ids = set()
+        for path in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/topology/physical_package_id"):
+            try:
+                with open(path) as f:
+                    package_ids.add(int(f.read().strip()))
+            except (OSError, ValueError):
+                continue
+        _package_ids = sorted(package_ids)
 
-    return sorted(package_ids).index(package_id)
+    # Fall back to inserting the package ID if it was somehow missed by the scan.
+    if package_id not in _package_ids:
+        _package_ids = sorted(set(_package_ids) | {package_id})
+
+    return _package_ids.index(package_id)
 
 
 def get_cpus() -> CPUs:
