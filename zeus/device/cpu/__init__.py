@@ -58,7 +58,13 @@ def _get_current_cpu_index_windows() -> int:
 
     kernel32 = windll.kernel32
     kernel32.GetCurrentProcessorNumber.restype = wintypes.DWORD
+    kernel32.GetCurrentProcessorNumber.argtypes = []
     kernel32.GetLogicalProcessorInformationEx.restype = wintypes.BOOL
+    kernel32.GetLogicalProcessorInformationEx.argtypes = [
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
 
     current_processor = kernel32.GetCurrentProcessorNumber()
 
@@ -95,7 +101,13 @@ def _get_current_cpu_index_windows() -> int:
     group_affinity_size = ptr_size + 2 + 6  # Mask + Group + Reserved[3]
 
     while offset < buf_size.value:
+        if offset + 8 > len(raw):
+            break
         record_size = int.from_bytes(raw[offset + 4 : offset + 8], "little")
+        # A zero or out-of-range record size means the buffer is malformed; stop
+        # here rather than looping forever or reading past the end.
+        if record_size <= 0 or offset + record_size > len(raw):
+            break
 
         # PROCESSOR_RELATIONSHIP starts at offset + 8.
         # GroupCount is at offset 22 within PROCESSOR_RELATIONSHIP (1+1+20 = 22).

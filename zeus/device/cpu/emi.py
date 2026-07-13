@@ -20,6 +20,7 @@ See: https://learn.microsoft.com/en-us/windows-hardware/drivers/powermeter/energ
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import ctypes.wintypes
 import logging
@@ -37,52 +38,58 @@ logger = logging.getLogger(__name__)
 # EMI is a Windows-only interface. windll/wintypes are only available on Windows.
 _WINDOWS = sys.platform == "win32"
 
+# -----------------------------------------------------------------------
+# Constants
+#
+# These are plain integer/float values that do not depend on the Windows-only
+# ``windll``/``wintypes`` imports, so they are defined unconditionally. This lets
+# the platform-independent helpers (metadata parsing, energy conversion) run and
+# be unit tested on any OS, not just Windows.
+# -----------------------------------------------------------------------
+
+# GUID for the EMI device interface: {45BD8344-7ED6-49CF-A440-C276C933B053}
+_EMI_GUID_DATA1: int = 0x45BD8344
+_EMI_GUID_DATA2: int = 0x7ED6
+_EMI_GUID_DATA3: int = 0x49CF
+_EMI_GUID_DATA4: tuple[int, ...] = (0xA4, 0x40, 0xC2, 0x76, 0xC9, 0x33, 0xB0, 0x53)
+
+# IOCTLs — CTL_CODE(FILE_DEVICE_UNKNOWN=0x22, func, METHOD_BUFFERED=0, FILE_READ_ACCESS=1)
+# = (0x22 << 16) | (1 << 14) | (func << 2) | 0
+_IOCTL_EMI_GET_VERSION: int = 0x00224000  # func = 0
+_IOCTL_EMI_GET_METADATA_SIZE: int = 0x00224004  # func = 1
+_IOCTL_EMI_GET_METADATA: int = 0x00224008  # func = 2
+_IOCTL_EMI_GET_MEASUREMENT: int = 0x0022400C  # func = 3
+
+_EMI_VERSION_V1: int = 1
+_EMI_VERSION_V2: int = 2
+
+# EMI_NAME_MAX: maximum WCHAR count for OEM/Model fields in metadata (= 16 WCHARs = 32 bytes)
+_EMI_NAME_MAX: int = 16
+
+# EmiMeasurementUnitPicowattHours = 0
+_EMI_MEASUREMENT_UNIT_PICOWATT_HOURS: int = 0
+
+# 1 picowatt-hour = 1e-12 W * 3600 s = 3.6e-9 J = 3.6e-6 mJ
+_PICOWATT_HOURS_TO_MILLIJOULES: float = 3.6e-6
+
+_GENERIC_READ: int = 0x80000000
+_FILE_SHARE_READ: int = 0x00000001
+_OPEN_EXISTING: int = 3
+# INVALID_HANDLE_VALUE: all bits set, platform-width.
+# Using bit arithmetic avoids the Optional[int] return type of ctypes.c_void_p.value.
+_INVALID_HANDLE_VALUE: int = 2 ** (ctypes.sizeof(ctypes.c_void_p) * 8) - 1
+_DIGCF_PRESENT: int = 0x00000002
+_DIGCF_DEVICEINTERFACE: int = 0x00000010
+
+# cbSize value for SP_DEVICE_INTERFACE_DETAIL_DATA_W.
+# The struct contains DWORD cbSize (4 bytes) + WCHAR DevicePath[1] (2 bytes).
+# MSVC pads the struct to the largest-member alignment (DWORD = 4 bytes),
+# making the total sizeof() = 8 on both 32- and 64-bit Windows.
+_DETAIL_DATA_CBSIZE: int = 8
+
+
 if _WINDOWS:
     from ctypes import windll, wintypes
-
-    # -----------------------------------------------------------------------
-    # Constants
-    # -----------------------------------------------------------------------
-
-    # GUID for the EMI device interface: {45BD8344-7ED6-49CF-A440-C276C933B053}
-    _EMI_GUID_DATA1: int = 0x45BD8344
-    _EMI_GUID_DATA2: int = 0x7ED6
-    _EMI_GUID_DATA3: int = 0x49CF
-    _EMI_GUID_DATA4: tuple[int, ...] = (0xA4, 0x40, 0xC2, 0x76, 0xC9, 0x33, 0xB0, 0x53)
-
-    # IOCTLs — CTL_CODE(FILE_DEVICE_UNKNOWN=0x22, func, METHOD_BUFFERED=0, FILE_READ_ACCESS=1)
-    # = (0x22 << 16) | (1 << 14) | (func << 2) | 0
-    _IOCTL_EMI_GET_VERSION: int = 0x00224000  # func = 0
-    _IOCTL_EMI_GET_METADATA_SIZE: int = 0x00224004  # func = 1
-    _IOCTL_EMI_GET_METADATA: int = 0x00224008  # func = 2
-    _IOCTL_EMI_GET_MEASUREMENT: int = 0x0022400C  # func = 3
-
-    _EMI_VERSION_V1: int = 1
-    _EMI_VERSION_V2: int = 2
-
-    # EMI_NAME_MAX: maximum WCHAR count for OEM/Model fields in metadata (= 16 WCHARs = 32 bytes)
-    _EMI_NAME_MAX: int = 16
-
-    # EmiMeasurementUnitPicowattHours = 0
-    _EMI_MEASUREMENT_UNIT_PICOWATT_HOURS: int = 0
-
-    # 1 picowatt-hour = 1e-12 W * 3600 s = 3.6e-9 J = 3.6e-6 mJ
-    _PICOWATT_HOURS_TO_MILLIJOULES: float = 3.6e-6
-
-    _GENERIC_READ: int = 0x80000000
-    _FILE_SHARE_READ: int = 0x00000001
-    _OPEN_EXISTING: int = 3
-    # INVALID_HANDLE_VALUE: all bits set, platform-width.
-    # Using bit arithmetic avoids the Optional[int] return type of ctypes.c_void_p.value.
-    _INVALID_HANDLE_VALUE: int = 2 ** (ctypes.sizeof(ctypes.c_void_p) * 8) - 1
-    _DIGCF_PRESENT: int = 0x00000002
-    _DIGCF_DEVICEINTERFACE: int = 0x00000010
-
-    # cbSize value for SP_DEVICE_INTERFACE_DETAIL_DATA_W.
-    # The struct contains DWORD cbSize (4 bytes) + WCHAR DevicePath[1] (2 bytes).
-    # MSVC pads the struct to the largest-member alignment (DWORD = 4 bytes),
-    # making the total sizeof() = 8 on both 32- and 64-bit Windows.
-    _DETAIL_DATA_CBSIZE: int = 8
 
     # -----------------------------------------------------------------------
     # ctypes structures
@@ -119,11 +126,47 @@ if _WINDOWS:
         wintypes.DWORD,
     ]
     _setupapi.SetupDiEnumDeviceInterfaces.restype = wintypes.BOOL
+    _setupapi.SetupDiEnumDeviceInterfaces.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(_Guid),
+        wintypes.DWORD,
+        ctypes.POINTER(_SpDeviceInterfaceData),
+    ]
     _setupapi.SetupDiGetDeviceInterfaceDetailW.restype = wintypes.BOOL
+    _setupapi.SetupDiGetDeviceInterfaceDetailW.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_SpDeviceInterfaceData),
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.c_void_p,
+    ]
     _setupapi.SetupDiDestroyDeviceInfoList.restype = wintypes.BOOL
+    _setupapi.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
     _kernel32.CreateFileW.restype = ctypes.c_void_p
+    _kernel32.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+    ]
     _kernel32.DeviceIoControl.restype = wintypes.BOOL
+    _kernel32.DeviceIoControl.argtypes = [
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.c_void_p,
+    ]
     _kernel32.CloseHandle.restype = wintypes.BOOL
+    _kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
 
 
 # -----------------------------------------------------------------------
@@ -394,8 +437,13 @@ class EMIFile:
             offset = _oem_size + _model_size + 4  # skip OEM, Model, Revision, ChannelCount
 
             for i in range(channel_count):
+                # Stop if the buffer is truncated rather than reading past its end.
+                if offset + 6 > len(raw):
+                    break
                 unit = int.from_bytes(raw[offset : offset + 4], "little")
                 name_size = int.from_bytes(raw[offset + 4 : offset + 6], "little")
+                if offset + 6 + name_size > len(raw):
+                    break
                 name = (
                     raw[offset + 6 : offset + 6 + name_size].decode("utf-16-le").rstrip("\x00") if name_size > 0 else ""
                 )
@@ -410,14 +458,19 @@ class EMIFile:
                 offset += 4 + 2 + name_size
 
         elif version == _EMI_VERSION_V1:
-            # Single channel: the whole device is one domain.
-            unit = int.from_bytes(raw[0:4], "little")
             _oem_size = _EMI_NAME_MAX * 2
             _model_size = _EMI_NAME_MAX * 2
+            header_size = 4 + _oem_size + _model_size + 4  # unit, OEM, Model, revision, name size
+            if len(raw) < header_size:
+                raise ZeusEMIInitError(f"EMI V1 metadata is too short ({len(raw)} bytes).")
+            # Single channel: the whole device is one domain.
+            unit = int.from_bytes(raw[0:4], "little")
             name_size = int.from_bytes(
                 raw[4 + _oem_size + _model_size + 2 : 4 + _oem_size + _model_size + 4],
                 "little",
             )
+            if len(raw) < header_size + name_size:
+                raise ZeusEMIInitError(f"EMI V1 metadata is truncated for the channel name ({len(raw)} bytes).")
             name = (
                 raw[4 + _oem_size + _model_size + 4 : 4 + _oem_size + _model_size + 4 + name_size]
                 .decode("utf-16-le")
@@ -455,16 +508,27 @@ class EMIFile:
         # EMI_MEASUREMENT_DATA_V2: ChannelData[ChannelCount]
         # Each EMI_CHANNEL_MEASUREMENT_DATA: AbsoluteEnergy (8 bytes) + AbsoluteTime (8 bytes)
         offset = channel_index * 16
+        if len(meas_bytes) < offset + 8:
+            raise ZeusEMIInitError(
+                f"Measurement data from '{self.path}' is too short "
+                f"({len(meas_bytes)} bytes, expected at least {offset + 8})."
+            )
         energy_pwh = int.from_bytes(meas_bytes[offset : offset + 8], "little")
         return energy_pwh * _PICOWATT_HOURS_TO_MILLIJOULES
 
     def __del__(self) -> None:
-        """Close the device handle."""
-        if not _WINDOWS:
+        """Close the device handle.
+
+        During interpreter shutdown module globals may already be cleared, so we
+        guard against ``_kernel32``/``ctypes`` being ``None`` and swallow any
+        error rather than raising from a finalizer.
+        """
+        if not _WINDOWS or _kernel32 is None or ctypes is None:
             return
         handle = getattr(self, "_handle", 0)
         if isinstance(handle, int) and handle and handle != _INVALID_HANDLE_VALUE:
-            _kernel32.CloseHandle(ctypes.c_void_p(handle))
+            with contextlib.suppress(Exception):
+                _kernel32.CloseHandle(ctypes.c_void_p(handle))
             self._handle = 0
 
 

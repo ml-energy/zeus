@@ -105,5 +105,11 @@ pydocstyle.convention = "google"
 "zeus/device/common.py" = ["N804"]
 "zeus/utils/testing.py" = ["N802"]
 
+[tool.ty.environment]
+# Zeus supports multiple platforms (RAPL on Linux, EMI on Windows). Setting the
+# platform to "all" keeps ty from assuming a single platform and lets it check
+# platform-specific code (e.g. the Windows-only ctypes calls) on any host.
+python-platform = "all"
+
 [tool.pytest.ini_options]
 addopts = "--numprocesses auto"
