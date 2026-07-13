@@ -54,11 +54,11 @@ def get_current_cpu_index(pid: int | Literal["current"] = "current") -> int:
                 continue
         _package_ids = sorted(package_ids)
 
-    # Fall back to inserting the package ID if it was somehow missed by the scan.
-    if package_id not in _package_ids:
-        _package_ids = sorted(set(_package_ids) | {package_id})
+    # If the package ID was somehow missed by the scan, rank it against a local
+    # copy without mutating the cache (which would pollute it with a queried ID).
+    known_ids = _package_ids if package_id in _package_ids else sorted(set(_package_ids) | {package_id})
 
-    return _package_ids.index(package_id)
+    return known_ids.index(package_id)
 
 
 def get_cpus() -> CPUs:
