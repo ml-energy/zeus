@@ -6,6 +6,7 @@ which returns a CPU Manager object specific to the platform.
 
 from __future__ import annotations
 
+import glob
 import os
 from typing import Literal
 
@@ -31,7 +32,20 @@ def get_current_cpu_index(pid: int | Literal["current"] = "current") -> int:
         cpu_core = int(stat_file.read().split()[38])
 
     with open(f"/sys/devices/system/cpu/cpu{cpu_core}/topology/physical_package_id") as phys_package_file:
-        return int(phys_package_file.read().strip())
+        package_id = int(phys_package_file.read().strip())
+
+    # Some platforms (e.g., ARM) use arbitrary identifiers rather than 0-based
+    # socket indices for physical package IDs, so the socket index is the rank
+    # of the package ID among all unique package IDs on the system.
+    package_ids = {package_id}
+    for path in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/topology/physical_package_id"):
+        try:
+            with open(path) as f:
+                package_ids.add(int(f.read().strip()))
+        except (OSError, ValueError):
+            continue
+
+    return sorted(package_ids).index(package_id)
 
 
 def get_cpus() -> CPUs:

@@ -71,23 +71,24 @@ class NVIDIAGPU(gpu_common.GPU):
         super().__init__(gpu_index)
         self._get_handle()
         self._supportsGetTotalEnergyConsumption = None
+        self._power_field_scope: int | None = None
 
-        # Check if it's a Grace Hopper chip
+        # Check if it's a C2C superchip (e.g., Grace Hopper, DGX Spark's GB10)
         try:
             c2c_mode_info = pynvml.nvmlDeviceGetC2cModeInfoV(self.handle)
-            self._is_grace_hopper = c2c_mode_info.isC2cEnabled
+            self._is_c2c_superchip = bool(c2c_mode_info.isC2cEnabled)
         except pynvml.NVMLError as e:
             e_value = e.value  # ty: ignore[unresolved-attribute]
             if e_value != pynvml.NVML_ERROR_NOT_SUPPORTED:
                 logger.warning(
-                    "Attempted to check whether the current chip is a Grace Hopper chip "
+                    "Attempted to check whether the current chip is a C2C superchip "
                     "by calling `nvmlDeviceGetC2cModeInfoV`, which we expected to either "
                     "return a valid response or raise `NVML_ERROR_NOT_SUPPORTED`. "
                     "Instead, it raised an unexpected error: '%s'. Treating this as "
-                    "not a Grace Hopper chip.",
+                    "not a C2C superchip.",
                     e,
                 )
-            self._is_grace_hopper = False
+            self._is_c2c_superchip = False
 
     _exception_map = {
         pynvml.NVML_ERROR_UNINITIALIZED: gpu_common.ZeusGPUInitError,
@@ -208,13 +209,43 @@ class NVIDIAGPU(gpu_common.GPU):
         self._warn_sys_admin()
         pynvml.nvmlDeviceResetGpuLockedClocks(self.handle)
 
+    def _resolve_power_field_scope(self) -> int:
+        """Determine the NVML power scope to use for power field value queries.
+
+        C2C superchips like Grace Hopper report power for the entire module
+        (CPU + GPU) under `NVML_POWER_SCOPE_MODULE`. However, not every C2C
+        superchip supports the MODULE scope (e.g., the GB10 on DGX Spark only
+        supports `NVML_POWER_SCOPE_GPU`), so probe MODULE first and fall back
+        to GPU. The resolved scope is cached.
+        """
+        if self._power_field_scope is not None:
+            return self._power_field_scope
+
+        if self._is_c2c_superchip:
+            scopes = [pynvml.NVML_POWER_SCOPE_MODULE, pynvml.NVML_POWER_SCOPE_GPU]
+        else:
+            scopes = [pynvml.NVML_POWER_SCOPE_GPU]
+
+        scope = scopes[-1]
+        for scope in scopes:
+            metric = pynvml.nvmlDeviceGetFieldValues(
+                self.handle, [(pynvml.NVML_FI_DEV_POWER_INSTANT, scope)]
+            )[0]
+            if metric.nvmlReturn == pynvml.NVML_SUCCESS:
+                break
+            logger.info(
+                "Power scope %d is not supported on GPU %d, falling back to the next scope.",
+                scope,
+                self.gpu_index,
+            )
+
+        self._power_field_scope = scope
+        return scope
+
     @_handle_nvml_errors
     def get_average_power_usage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
-        if self._is_grace_hopper:
-            fields = [(pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_MODULE)]
-        else:
-            fields = [(pynvml.NVML_FI_DEV_POWER_AVERAGE, pynvml.NVML_POWER_SCOPE_GPU)]
+        fields = [(pynvml.NVML_FI_DEV_POWER_AVERAGE, self._resolve_power_field_scope())]
 
         metric = pynvml.nvmlDeviceGetFieldValues(self.handle, fields)[0]
         if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
@@ -224,10 +255,7 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def get_instant_power_usage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
-        if self._is_grace_hopper:
-            fields = [(pynvml.NVML_FI_DEV_POWER_INSTANT, pynvml.NVML_POWER_SCOPE_MODULE)]
-        else:
-            fields = [(pynvml.NVML_FI_DEV_POWER_INSTANT, pynvml.NVML_POWER_SCOPE_GPU)]
+        fields = [(pynvml.NVML_FI_DEV_POWER_INSTANT, self._resolve_power_field_scope())]
 
         metric = pynvml.nvmlDeviceGetFieldValues(self.handle, fields)[0]
         if (ret := metric.nvmlReturn) != pynvml.NVML_SUCCESS:
@@ -365,6 +393,8 @@ class NVIDIAGPUs(gpu_common.GPUs):
 
     !!! Note
         For Grace Hopper, the power and energy values are for the entire superchip/module.
+        Some C2C superchips (e.g., the GB10 on DGX Spark) do not support module-scope
+        power queries, in which case GPU-scope values are reported instead.
     """
 
     def __init__(self, ensure_homogeneous: bool = False) -> None:

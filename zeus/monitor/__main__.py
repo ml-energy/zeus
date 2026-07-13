@@ -22,13 +22,13 @@ def energy(gpu_indices: list[int] | None = None) -> None:
         gpu_indices: Indices of GPUs to monitor. Not ommitted, all GPUs will be monitored.
     """
     monitor = ZeusMonitor(gpu_indices)
-    monitor.begin_window("zeus.monitor.energy")
+    monitor.begin_window("zeus.monitor.energy", sync_execution=False)
 
     try:
         # "Forever"
         time.sleep(365 * 24 * 60 * 60)
     except KeyboardInterrupt:
-        energy = monitor.end_window("zeus.monitor.energy")
+        energy = monitor.end_window("zeus.monitor.energy", sync_execution=False)
         if energy is not None:
             rich.print("Total energy (J):", energy)
 

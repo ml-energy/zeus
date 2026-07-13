@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import glob
 import os
 import pytest
 import platform
@@ -64,13 +65,12 @@ def test_get_current_cpu_index(mock_linux_files):
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific test")
 def test_get_current_cpu_index_linux():
     assert platform.system() == "Linux"
-    assert os.path.exists("/proc/cpuinfo")
+    # `/proc/cpuinfo`'s "physical id" field is x86-only, so count sockets from
+    # sysfs CPU topology, which also exists on other platforms (e.g., ARM).
     socket_ids = set()
-    with open("/proc/cpuinfo") as f:
-        for line in f:
-            if "physical id" in line:
-                socket_id = line.strip().split(":")[1].strip()
-                socket_ids.add(socket_id)
+    for path in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/topology/physical_package_id"):
+        with open(path) as f:
+            socket_ids.add(f.read().strip())
 
     cpu_index = get_current_cpu_index()
     assert cpu_index >= 0 and cpu_index < len(socket_ids)
