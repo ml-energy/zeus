@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import builtins
-import glob
+import os
 import pytest
 import platform
 
 from unittest.mock import patch
 
-from zeus.device.cpu import get_current_cpu_index
+from zeus.device.cpu.rapl import (
+    RAPL_DIR,
+    CONTAINER_RAPL_DIR,
+    rapl_is_available,
+    get_current_rapl_zone_id,
+)
 
 
 class MockFile:
@@ -33,43 +38,46 @@ def mock_linux_files():
         "94288847043296 94288847044712 94288866566144 140727519913901 "
         "140727519913921 140727519913921 140727519916011 0"
     )
-    PHYSICAL_PACKAGE_CONTENT = "0"
-
-    mocked_stat_file = MockFile(STAT_CONTENT)
-    mocked_phys_package_file = MockFile(PHYSICAL_PACKAGE_CONTENT)
+    # The 39th field (index 38) of the stat content above is the logical CPU, 24.
+    files = {
+        "/proc/515/stat": STAT_CONTENT,
+        "/sys/devices/system/cpu/cpu24/topology/physical_package_id": "1",
+        "/sys/devices/system/cpu/cpu24/topology/die_id": "0",
+        f"{RAPL_DIR}:0/name": "package-0",
+        f"{RAPL_DIR}:1/name": "package-1",
+    }
 
     real_open = builtins.open
 
     def mock_file_open(filepath, *args, **kwargs):
-        if filepath == "/proc/515/stat":
-            return mocked_stat_file
-        elif filepath == "/sys/devices/system/cpu/cpu24/topology/physical_package_id":
-            return mocked_phys_package_file
-        else:
-            return real_open(filepath, *args, **kwargs)
+        if filepath in files:
+            return MockFile(files[filepath])
+        return real_open(filepath, *args, **kwargs)
 
-    patch_open = patch("builtins.open", side_effect=mock_file_open)
+    def mock_glob(pattern):
+        # Emulate globbing the top-level RAPL package zones.
+        return [f"{RAPL_DIR}:0", f"{RAPL_DIR}:1"]
 
-    patch_open.start()
+    with (
+        patch("builtins.open", side_effect=mock_file_open),
+        patch("zeus.device.cpu.rapl.glob", side_effect=mock_glob),
+        patch("os.path.exists", return_value=True),
+    ):
+        yield
 
-    yield
 
-    patch_open.stop()
-
-
-def test_get_current_cpu_index(mock_linux_files):
-    assert get_current_cpu_index(515) == 0
+def test_get_current_rapl_zone_id(mock_linux_files):
+    # The process runs on package 1, whose RAPL zone (name "package-1") is zone 1.
+    assert get_current_rapl_zone_id(515) == 1
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux specific test")
-def test_get_current_cpu_index_linux():
+def test_get_current_rapl_zone_id_linux():
     assert platform.system() == "Linux"
-    # `/proc/cpuinfo`'s "physical id" field is x86-only, so count sockets from
-    # sysfs CPU topology, which also exists on other platforms (e.g., ARM).
-    socket_ids = set()
-    for path in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/topology/physical_package_id"):
-        with open(path) as f:
-            socket_ids.add(f.read().strip())
+    if not rapl_is_available():
+        pytest.skip("RAPL is not available on this machine")
 
-    cpu_index = get_current_cpu_index()
-    assert cpu_index >= 0 and cpu_index < len(socket_ids)
+    zone_id = get_current_rapl_zone_id()
+    # The returned zone must be a real top-level RAPL package zone.
+    rapl_dir = RAPL_DIR if os.path.exists(RAPL_DIR) else CONTAINER_RAPL_DIR
+    assert os.path.exists(f"{rapl_dir}:{zone_id}/name")
