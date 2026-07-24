@@ -23,7 +23,7 @@ import warnings
 from functools import lru_cache
 from glob import glob
 from multiprocessing.sharedctypes import Synchronized
-from typing import Sequence
+from typing import Literal, Sequence
 
 import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
@@ -169,6 +169,75 @@ class ZeusRAPLPermissionError(ZeusBaseCPUError):
     def __init__(self, message: str) -> None:
         """Intialize the exception object."""
         super().__init__(message)
+
+
+def get_current_rapl_zone_id(pid: int | Literal["current"] = "current") -> int:
+    """Return the RAPL package zone ID for the socket the given process runs on.
+
+    RAPL exposes one top-level power zone per CPU package (socket) under
+    `/sys/class/powercap/intel-rapl:*`. This helper maps a running process to the
+    RAPL zone ID of the package it is currently executing on, so that zone ID can
+    be passed as a `cpu_indices` entry to only measure that socket.
+
+    The physical package ID reported by sysfs topology is an arbitrary platform
+    identifier and is not guaranteed to equal the RAPL zone ID, so the mapping is
+    resolved via RAPL's own zone naming:
+
+    1. Read the logical CPU the process last ran on from `/proc/{pid}/stat`.
+    2. Read that CPU's physical package ID `N` from sysfs topology.
+    3. Read that CPU's die ID `D` from sysfs topology (if available).
+    4. Find the RAPL zone whose `name` file reads `package-N` or `package-N-die-D`
+       and return its zone ID.
+
+    Args:
+        pid: The process ID to look up, or "current" for the current process.
+
+    !!! Note
+        Linux schedulers can preempt and reschedule processes to different CPUs. To
+        prevent this from happening during monitoring, use `taskset` to pin
+        processes to specific CPUs.
+    """
+    if pid == "current":
+        pid = os.getpid()
+
+    # The logical CPU the process last executed on is the 39th field (index 38) of
+    # /proc/{pid}/stat.
+    with open(f"/proc/{pid}/stat") as stat_file:
+        cpu_core = int(stat_file.read().split()[38])
+
+    topology_dir = f"/sys/devices/system/cpu/cpu{cpu_core}/topology"
+    with open(f"{topology_dir}/physical_package_id") as phys_package_file:
+        package_id = int(phys_package_file.read().strip())
+
+    # RAPL zone names are either "package-N" or "package-N-die-D", so accept both.
+    # die_id may not exist on all kernels/platforms.
+    acceptable_names = {f"package-{package_id}"}
+    try:
+        with open(f"{topology_dir}/die_id") as die_id_file:
+            die_id = int(die_id_file.read().strip())
+        acceptable_names.add(f"package-{package_id}-die-{die_id}")
+    except (OSError, ValueError):
+        pass
+
+    rapl_dir = RAPL_DIR if os.path.exists(RAPL_DIR) else CONTAINER_RAPL_DIR
+    for zone_dir in glob(f"{rapl_dir}/intel-rapl:[0-9]*"):
+        # Only consider top-level package zones (intel-rapl:N), not sub-zones like
+        # intel-rapl:N:M (e.g., core, dram).
+        base = os.path.basename(zone_dir)
+        if base.count(":") != 1:
+            continue
+        try:
+            with open(os.path.join(zone_dir, "name")) as name_file:
+                name = name_file.read().strip()
+        except OSError:
+            continue
+        if name in acceptable_names:
+            return int(base.split(":")[1])
+
+    raise ZeusRAPLNotSupportedError(
+        f"Could not find a RAPL package zone matching physical package ID {package_id} "
+        f"(process {pid} last ran on CPU {cpu_core}) under {rapl_dir}."
+    )
 
 
 class RAPLFile:

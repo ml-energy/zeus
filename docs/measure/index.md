@@ -215,7 +215,7 @@ Note that on some nodes (e.g., MI350X) the HIP index space differs from `amd-smi
 ### NUMA CPUs
 
 If you have more than one CPU sockets, for instance, running our [environment validation script](../getting_started/index.md#verifying-installation) will show two RAPL devices.
-To only measure the energy consumption of the CPU used by the current Python process, you can use the [`get_current_cpu_index`][zeus.device.cpu.get_current_cpu_index] helper function to retrieve the CPU index where the specified process ID is running and pass in only that index to the `cpu_indices` argument.
+To only measure the energy consumption of the CPU used by the current Python process, you can use the [`get_current_rapl_zone_id`][zeus.device.cpu.rapl.get_current_rapl_zone_id] helper function to retrieve the RAPL package zone ID of the socket where the specified process ID is running and pass in only that index to the `cpu_indices` argument.
 
 ### Apple Silicon
 
