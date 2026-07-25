@@ -50,8 +50,11 @@ def mock_linux_files():
     real_open = builtins.open
 
     def mock_file_open(filepath, *args, **kwargs):
-        if filepath in files:
-            return MockFile(files[filepath])
+        # Normalize separators so the mock matches regardless of the host OS
+        # (os.path.join uses "\" on Windows), since the paths are Linux-style.
+        key = str(filepath).replace("\\", "/")
+        if key in files:
+            return MockFile(files[key])
         return real_open(filepath, *args, **kwargs)
 
     def mock_glob(pattern):
