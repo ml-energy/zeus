@@ -201,10 +201,11 @@ class ZeusMonitor:
         except ZeusCPUNoPermissionError as err:
             if cpu_indices:
                 raise RuntimeError(
-                    "Root privilege is required to read RAPL metrics. See "
+                    "Permission error while initializing CPU energy monitoring. "
+                    "On Linux, RAPL requires root privileges; see "
                     "https://ml.energy/zeus/getting_started/#system-privileges "
-                    "for more information or disable CPU measurement by passing cpu_indices=[] to "
-                    "ZeusMonitor"
+                    "for more information. Alternatively, disable CPU measurement "
+                    "by passing cpu_indices=[] to ZeusMonitor."
                 ) from err
             self.cpus = EmptyCPUs()
 

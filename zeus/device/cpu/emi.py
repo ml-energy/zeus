@@ -35,8 +35,13 @@ from zeus.device.exception import ZeusBaseCPUError
 
 logger = logging.getLogger(__name__)
 
-# EMI is a Windows-only interface. windll/wintypes are only available on Windows.
+# EMI is a Windows-only interface. WinDLL/wintypes are only usable on Windows.
 _WINDOWS = sys.platform == "win32"
+
+# Channel name patterns exposed by Intel RAPL-backed EMI devices:
+# RAPL_Package{N}_PKG and RAPL_Package{N}_DRAM.
+_PKG_CHANNEL_RE = re.compile(r"RAPL_Package(\d+)_PKG$", re.IGNORECASE)
+_DRAM_CHANNEL_RE = re.compile(r"RAPL_Package(\d+)_DRAM$", re.IGNORECASE)
 
 # -----------------------------------------------------------------------
 # Constants
@@ -81,15 +86,15 @@ _INVALID_HANDLE_VALUE: int = 2 ** (ctypes.sizeof(ctypes.c_void_p) * 8) - 1
 _DIGCF_PRESENT: int = 0x00000002
 _DIGCF_DEVICEINTERFACE: int = 0x00000010
 
-# cbSize value for SP_DEVICE_INTERFACE_DETAIL_DATA_W.
-# The struct contains DWORD cbSize (4 bytes) + WCHAR DevicePath[1] (2 bytes).
-# MSVC pads the struct to the largest-member alignment (DWORD = 4 bytes),
-# making the total sizeof() = 8 on both 32- and 64-bit Windows.
-_DETAIL_DATA_CBSIZE: int = 8
+# cbSize value for SP_DEVICE_INTERFACE_DETAIL_DATA_W (DWORD cbSize + WCHAR DevicePath[1]).
+# setupapi.h packs its structs with pack(8) on 64-bit Windows (sizeof = 8 after
+# padding) and pack(1) on 32-bit Windows (sizeof = 6), so the correct value
+# depends on the pointer width of the running Python interpreter.
+_DETAIL_DATA_CBSIZE: int = 8 if ctypes.sizeof(ctypes.c_void_p) == 8 else 6
 
 
 if _WINDOWS:
-    from ctypes import windll, wintypes
+    from ctypes import WinDLL, get_last_error, wintypes
 
     # -----------------------------------------------------------------------
     # ctypes structures
@@ -111,12 +116,23 @@ if _WINDOWS:
             ("Reserved", ctypes.c_size_t),
         ]
 
+    class _ProcessorNumber(ctypes.Structure):  # noqa: N801 (Windows PROCESSOR_NUMBER)
+        _fields_ = [
+            ("Group", wintypes.WORD),
+            ("Number", ctypes.c_ubyte),
+            ("Reserved", ctypes.c_ubyte),
+        ]
+
     # -----------------------------------------------------------------------
     # Windows API setup
     # -----------------------------------------------------------------------
 
-    _setupapi = windll.setupapi
-    _kernel32 = windll.kernel32
+    # Private WinDLL instances with use_last_error=True so ctypes captures the
+    # Win32 error code immediately after each call, retrievable via
+    # get_last_error(). Calling GetLastError() manually is unreliable because
+    # the interpreter may make its own Win32 calls in between.
+    _setupapi = WinDLL("setupapi", use_last_error=True)
+    _kernel32 = WinDLL("kernel32", use_last_error=True)
 
     _setupapi.SetupDiGetClassDevsW.restype = ctypes.c_void_p
     _setupapi.SetupDiGetClassDevsW.argtypes = [
@@ -167,6 +183,14 @@ if _WINDOWS:
     ]
     _kernel32.CloseHandle.restype = wintypes.BOOL
     _kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    _kernel32.GetCurrentProcessorNumberEx.restype = None
+    _kernel32.GetCurrentProcessorNumberEx.argtypes = [ctypes.POINTER(_ProcessorNumber)]
+    _kernel32.GetLogicalProcessorInformationEx.restype = wintypes.BOOL
+    _kernel32.GetLogicalProcessorInformationEx.argtypes = [
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
 
 
 # -----------------------------------------------------------------------
@@ -300,6 +324,47 @@ def _ioctl(handle: "ctypes.c_void_p", code: int, out_size: int) -> bytes | None:
     return bytes(buf)[: bytes_returned.value]
 
 
+def _find_package_of_processor(raw: bytes, group: int, number: int, ptr_size: int) -> int | None:
+    """Find the index of the processor package containing a logical processor.
+
+    Parses the SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX records returned by
+    `GetLogicalProcessorInformationEx` with `RelationProcessorPackage` and
+    returns the zero-based index of the package whose group affinity contains
+    the logical processor identified by processor group `group` and
+    within-group number `number`, or `None` if no package matches.
+
+    Record layout: DWORD Relationship, DWORD Size, then PROCESSOR_RELATIONSHIP
+    (BYTE Flags, BYTE EfficiencyClass, BYTE Reserved[20], WORD GroupCount,
+    GROUP_AFFINITY GroupMask[GroupCount]). Each GROUP_AFFINITY is a
+    pointer-sized KAFFINITY Mask, WORD Group, and WORD Reserved[3].
+
+    Raises:
+        ValueError: If the buffer is malformed.
+    """
+    group_affinity_size = ptr_size + 2 + 6  # Mask + Group + Reserved[3]
+    offset = 0
+    package_index = 0
+    while offset < len(raw):
+        if offset + 8 > len(raw):
+            raise ValueError("Truncated SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX record header.")
+        record_size = int.from_bytes(raw[offset + 4 : offset + 8], "little")
+        # 8-byte header + 24 bytes of PROCESSOR_RELATIONSHIP before the group array.
+        if record_size < 8 + 24 or offset + record_size > len(raw):
+            raise ValueError("Malformed SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX record size.")
+        group_count = int.from_bytes(raw[offset + 8 + 22 : offset + 8 + 24], "little")
+        for g in range(group_count):
+            ga_offset = offset + 8 + 24 + g * group_affinity_size
+            if ga_offset + group_affinity_size > offset + record_size:
+                raise ValueError("GROUP_AFFINITY entries extend past their record.")
+            mask = int.from_bytes(raw[ga_offset : ga_offset + ptr_size], "little")
+            ga_group = int.from_bytes(raw[ga_offset + ptr_size : ga_offset + ptr_size + 2], "little")
+            if ga_group == group and (mask >> number) & 1:
+                return package_index
+        package_index += 1
+        offset += record_size
+    return None
+
+
 # -----------------------------------------------------------------------
 # Channel metadata dataclass (plain class to keep it lightweight)
 # -----------------------------------------------------------------------
@@ -354,7 +419,7 @@ class EMIFile:
             None,
         )
         if handle == _INVALID_HANDLE_VALUE:
-            err = _kernel32.GetLastError()
+            err = get_last_error()
             raise ZeusEMIInitError(f"Failed to open EMI device '{path}' (Windows error {err}).")
         # Store the raw integer handle value so that __del__ can safely check
         # ``isinstance(self._handle, int)`` and avoid calling CloseHandle on
@@ -430,30 +495,28 @@ class EMIFile:
             # _EMI_NAME_MAX = 16 WCHARs = 32 bytes each for OEM and Model.
             _oem_size = _EMI_NAME_MAX * 2
             _model_size = _EMI_NAME_MAX * 2
-            channel_count = int.from_bytes(
-                raw[_oem_size + _model_size + 2 : _oem_size + _model_size + 4],
-                "little",
-            )
-            offset = _oem_size + _model_size + 4  # skip OEM, Model, Revision, ChannelCount
+            header_size = _oem_size + _model_size + 4  # OEM, Model, Revision, ChannelCount
+            if len(raw) < header_size:
+                raise ZeusEMIInitError(f"EMI V2 metadata is too short ({len(raw)} bytes).")
+            channel_count = int.from_bytes(raw[header_size - 2 : header_size], "little")
+            offset = header_size
 
             for i in range(channel_count):
-                # Stop if the buffer is truncated rather than reading past its end.
                 if offset + 6 > len(raw):
-                    break
+                    raise ZeusEMIInitError(
+                        f"EMI V2 metadata is truncated: expected {channel_count} channels, "
+                        f"but the buffer ({len(raw)} bytes) ends inside channel {i}."
+                    )
                 unit = int.from_bytes(raw[offset : offset + 4], "little")
                 name_size = int.from_bytes(raw[offset + 4 : offset + 6], "little")
                 if offset + 6 + name_size > len(raw):
-                    break
+                    raise ZeusEMIInitError(
+                        f"EMI V2 metadata is truncated: channel {i}'s name extends past "
+                        f"the end of the buffer ({len(raw)} bytes)."
+                    )
                 name = (
                     raw[offset + 6 : offset + 6 + name_size].decode("utf-16-le").rstrip("\x00") if name_size > 0 else ""
                 )
-                if unit != _EMI_MEASUREMENT_UNIT_PICOWATT_HOURS:
-                    logger.warning(
-                        "EMI channel %d ('%s') uses unexpected unit %d; expected picowatt-hours (0).",
-                        i,
-                        name,
-                        unit,
-                    )
                 channels.append(_EMIChannel(index=i, name=name, unit=unit))
                 offset += 4 + 2 + name_size
 
@@ -478,12 +541,6 @@ class EMIFile:
                 if name_size > 0
                 else "EMI_V1"
             )
-            if unit != _EMI_MEASUREMENT_UNIT_PICOWATT_HOURS:
-                logger.warning(
-                    "EMI V1 channel ('%s') uses unexpected unit %d; expected picowatt-hours (0).",
-                    name,
-                    unit,
-                )
             channels.append(_EMIChannel(index=0, name=name, unit=unit))
 
         return channels
@@ -498,12 +555,23 @@ class EMIFile:
             The accumulated energy in millijoules.
 
         Raises:
-            ZeusEMIInitError: If the IOCTL call fails.
+            ZeusEMIInitError: If the channel is invalid, the channel's measurement
+                unit is not picowatt-hours, or the IOCTL call fails.
         """
+        if not 0 <= channel_index < len(self.channels):
+            raise ZeusEMIInitError(
+                f"Channel index {channel_index} is out of range for '{self.path}' ({len(self.channels)} channels)."
+            )
+        channel = self.channels[channel_index]
+        if channel.unit != _EMI_MEASUREMENT_UNIT_PICOWATT_HOURS:
+            raise ZeusEMIInitError(
+                f"EMI channel '{channel.name}' reports measurement unit {channel.unit}, "
+                "not picowatt-hours (0); refusing to convert to millijoules."
+            )
         meas_size = len(self.channels) * 16  # 16 bytes per EMI_CHANNEL_MEASUREMENT_DATA
         meas_bytes = _ioctl(ctypes.c_void_p(self._handle), _IOCTL_EMI_GET_MEASUREMENT, meas_size)
         if meas_bytes is None:
-            err = _kernel32.GetLastError()
+            err = get_last_error()
             raise ZeusEMIInitError(f"IOCTL_EMI_GET_MEASUREMENT failed for '{self.path}' (Windows error {err}).")
         # EMI_MEASUREMENT_DATA_V2: ChannelData[ChannelCount]
         # Each EMI_CHANNEL_MEASUREMENT_DATA: AbsoluteEnergy (8 bytes) + AbsoluteTime (8 bytes)
@@ -597,7 +665,9 @@ class EMICPUs(cpu_common.CPUs):
             ZeusEMIInitError: If device metadata cannot be queried.
         """
         if not emi_is_available():
-            raise ZeusEMINotSupportedError("No EMI-compatible energy meter devices were found on this system.")
+            raise ZeusEMINotSupportedError(
+                "No EMI energy meter devices exposing RAPL package channels were found on this system."
+            )
         self._cpus: list[EMICPU] = []
         self._init_cpus()
 
@@ -608,10 +678,6 @@ class EMICPUs(cpu_common.CPUs):
         # pkg_index → (EMIFile, pkg_channel_idx, dram_channel_idx | None)
         packages: dict[int, tuple[EMIFile, int, int | None]] = {}
 
-        # Pattern: RAPL_Package{N}_PKG  or  RAPL_Package{N}_DRAM
-        _pkg_re = re.compile(r"RAPL_Package(\d+)_PKG$", re.IGNORECASE)
-        _dram_re = re.compile(r"RAPL_Package(\d+)_DRAM$", re.IGNORECASE)
-
         for path in paths:
             try:
                 emi_file = EMIFile(path)
@@ -620,16 +686,27 @@ class EMICPUs(cpu_common.CPUs):
                 continue
 
             # Locate PKG and DRAM channels for each package on this device.
+            # Channels with a non-picowatt-hour unit cannot be converted to
+            # millijoules, so they are excluded rather than misconverted.
             pkg_channels: dict[int, int] = {}
             dram_channels: dict[int, int] = {}
             for ch in emi_file.channels:
-                m = _pkg_re.match(ch.name)
-                if m:
-                    pkg_channels[int(m.group(1))] = ch.index
+                m = _PKG_CHANNEL_RE.match(ch.name)
+                target = pkg_channels
+                if m is None:
+                    m = _DRAM_CHANNEL_RE.match(ch.name)
+                    target = dram_channels
+                if m is None:
                     continue
-                m = _dram_re.match(ch.name)
-                if m:
-                    dram_channels[int(m.group(1))] = ch.index
+                if ch.unit != _EMI_MEASUREMENT_UNIT_PICOWATT_HOURS:
+                    logger.warning(
+                        "Ignoring EMI channel '%s' on '%s': unexpected measurement unit %d (expected picowatt-hours).",
+                        ch.name,
+                        path,
+                        ch.unit,
+                    )
+                    continue
+                target[int(m.group(1))] = ch.index
 
             for pkg_num, pkg_idx in pkg_channels.items():
                 dram_idx = dram_channels.get(pkg_num)
@@ -670,12 +747,66 @@ class EMICPUs(cpu_common.CPUs):
 # -----------------------------------------------------------------------
 
 
+def get_current_emi_cpu_index() -> int:
+    """Return the EMI CPU index of the package the calling thread is running on.
+
+    This is the EMI counterpart of `get_current_rapl_zone_id` in the RAPL module:
+    the returned index can be passed as a `cpu_indices` entry to only measure the
+    CPU package the current thread is running on.
+
+    The current logical processor (processor group and within-group number) is
+    resolved with `GetCurrentProcessorNumberEx` and mapped to a package index
+    with `GetLogicalProcessorInformationEx`. Package records are assumed to be
+    enumerated in the same order as the EMI `RAPL_Package{N}` channel numbering.
+
+    !!! Note
+        The scheduler can migrate threads across packages at any time. To prevent
+        this from happening during monitoring, pin the process to specific CPUs
+        (e.g., with `SetProcessAffinityMask` or `start /affinity`).
+    """
+    if not _WINDOWS:
+        raise ZeusEMINotSupportedError("EMI is only supported on Windows.")
+
+    proc_number = _ProcessorNumber()
+    _kernel32.GetCurrentProcessorNumberEx(ctypes.byref(proc_number))
+
+    # RelationProcessorPackage (= 3) returns one record per physical CPU package.
+    relation_processor_package = 3
+    buf_size = wintypes.DWORD(0)
+    _kernel32.GetLogicalProcessorInformationEx(relation_processor_package, None, ctypes.byref(buf_size))
+    if buf_size.value == 0:
+        raise RuntimeError(
+            f"GetLogicalProcessorInformationEx did not report a buffer size (Windows error {get_last_error()})."
+        )
+    buf = ctypes.create_string_buffer(buf_size.value)
+    if not _kernel32.GetLogicalProcessorInformationEx(relation_processor_package, buf, ctypes.byref(buf_size)):
+        raise RuntimeError(f"GetLogicalProcessorInformationEx failed (Windows error {get_last_error()}).")
+
+    package_index = _find_package_of_processor(
+        bytes(buf)[: buf_size.value],
+        proc_number.Group,
+        proc_number.Number,
+        ctypes.sizeof(ctypes.c_void_p),
+    )
+    if package_index is None:
+        raise RuntimeError(
+            f"Could not map logical processor (group {proc_number.Group}, "
+            f"number {proc_number.Number}) to a CPU package."
+        )
+    return package_index
+
+
 @lru_cache(maxsize=1)
 def emi_is_available() -> bool:
-    """Return ``True`` if at least one EMI energy meter device is present.
+    """Return ``True`` if CPU energy can be measured through EMI on this system.
 
-    This function is cached — the check runs at most once per process.
-    On non-Windows platforms it always returns ``False``.
+    A device only counts as usable if it exposes a RAPL-style package channel
+    (`RAPL_Package{N}_PKG`), since EMI is also used for other kinds of energy
+    meters (e.g., battery rails) that do not map to CPU packages.
+
+    This function never raises; any failure during probing is logged and
+    treated as EMI being unavailable. It is cached — the check runs at most
+    once per process. On non-Windows platforms it always returns ``False``.
     """
     if not _WINDOWS:
         logger.info("EMI is not supported on non-Windows platforms.")
@@ -685,11 +816,24 @@ def emi_is_available() -> bool:
     except Exception as err:
         logger.info("EMI device enumeration failed: %s", err)
         return False
-    if paths:
-        logger.info(
-            "EMI is available: found %d device(s).",
-            len(paths),
-        )
-        return True
-    logger.info("No EMI energy meter devices found.")
+    if not paths:
+        logger.info("No EMI energy meter devices found.")
+        return False
+    for path in paths:
+        try:
+            emi_file = EMIFile(path)
+        except Exception as err:
+            logger.info("Cannot open EMI device '%s': %s", path, err)
+            continue
+        if any(
+            _PKG_CHANNEL_RE.match(ch.name) and ch.unit == _EMI_MEASUREMENT_UNIT_PICOWATT_HOURS
+            for ch in emi_file.channels
+        ):
+            logger.info("EMI is available: found a RAPL package channel on '%s'.", path)
+            return True
+    logger.info(
+        "Found %d EMI device(s), but none expose RAPL_Package PKG channels. "
+        "CPU energy measurement through EMI is unavailable.",
+        len(paths),
+    )
     return False
