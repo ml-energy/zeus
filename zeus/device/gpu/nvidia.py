@@ -72,12 +72,11 @@ class NVIDIAGPU(gpu_common.GPU):
         self._get_handle()
         self._supportsGetTotalEnergyConsumption = None
 
-        # Resolve the NVML power scope to use for instant and average power field
-        # value queries. These don't change over the lifetime of the GPU, so we
-        # resolve them once at construction. The two fields may resolve to
-        # different scopes, so they're probed independently.
-        self._instant_power_scope = self._resolve_power_field_scope(pynvml.NVML_FI_DEV_POWER_INSTANT)
-        self._average_power_scope = self._resolve_power_field_scope(pynvml.NVML_FI_DEV_POWER_AVERAGE)
+        # NVML power scopes for instant and average power field value queries,
+        # resolved lazily on first use by `_resolve_power_field_scope`. The two
+        # fields may resolve to different scopes, so they're probed independently.
+        self._instant_power_scope: int | None = None
+        self._average_power_scope: int | None = None
 
     _exception_map = {
         pynvml.NVML_ERROR_UNINITIALIZED: gpu_common.ZeusGPUInitError,
@@ -210,6 +209,9 @@ class NVIDIAGPU(gpu_common.GPU):
         `NVML_POWER_SCOPE_MODULE`. If neither scope works, something is wrong
         and we raise.
 
+        The scope does not change over the lifetime of the GPU, so callers cache
+        the result and only probe on the first power query.
+
         Args:
             field: The NVML power field to resolve the scope for, e.g.,
                 `NVML_FI_DEV_POWER_INSTANT` or `NVML_FI_DEV_POWER_AVERAGE`.
@@ -233,6 +235,8 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def get_average_power_usage(self) -> int:
         """Return the average power draw of the GPU. Units: mW."""
+        if self._average_power_scope is None:
+            self._average_power_scope = self._resolve_power_field_scope(pynvml.NVML_FI_DEV_POWER_AVERAGE)
         fields = [(pynvml.NVML_FI_DEV_POWER_AVERAGE, self._average_power_scope)]
 
         metric = pynvml.nvmlDeviceGetFieldValues(self.handle, fields)[0]
@@ -243,6 +247,8 @@ class NVIDIAGPU(gpu_common.GPU):
     @_handle_nvml_errors
     def get_instant_power_usage(self) -> int:
         """Return the current power draw of the GPU. Units: mW."""
+        if self._instant_power_scope is None:
+            self._instant_power_scope = self._resolve_power_field_scope(pynvml.NVML_FI_DEV_POWER_INSTANT)
         fields = [(pynvml.NVML_FI_DEV_POWER_INSTANT, self._instant_power_scope)]
 
         metric = pynvml.nvmlDeviceGetFieldValues(self.handle, fields)[0]

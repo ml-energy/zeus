@@ -75,22 +75,6 @@ def pynvml_mock(mocker: MockerFixture):
     mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
     mock.NVML_DEVICE_ARCH_AMPERE = pynvml.NVML_DEVICE_ARCH_AMPERE
 
-    # `NVIDIAGPU._resolve_power_field_scope` probes power field values during
-    # construction and uses GPU scope when the query succeeds, like a normal
-    # (non-C2C) GPU. `NVML_SUCCESS` must be the real value so the return-code
-    # comparison in the resolver works.
-    mock.NVML_SUCCESS = pynvml.NVML_SUCCESS
-
-    def mock_get_field_values(handle, fields):
-        metrics = []
-        for _ in fields:
-            metric = mocker.Mock()
-            metric.nvmlReturn = pynvml.NVML_SUCCESS
-            metrics.append(metric)
-        return metrics
-
-    mock.nvmlDeviceGetFieldValues.side_effect = mock_get_field_values
-
     return mock
 
 

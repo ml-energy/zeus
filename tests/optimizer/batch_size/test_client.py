@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pynvml
 import pytest
 from pytest_mock import MockerFixture
 from zeus.monitor.energy import Measurement, ZeusMonitor
@@ -38,19 +37,6 @@ def mock_monitor(mocker: MockerFixture):
         100000,
         300000,
     ]
-
-    # `NVIDIAGPU._resolve_power_field_scope` probes power field values during
-    # construction and uses GPU scope when the query succeeds, like a normal
-    # (non-C2C) GPU.
-    def mock_get_field_values(handle, fields):
-        metrics = []
-        for _ in fields:
-            metric = MagicMock()
-            metric.nvmlReturn = pynvml.NVML_SUCCESS
-            metrics.append(metric)
-        return metrics
-
-    mocker.patch("pynvml.nvmlDeviceGetFieldValues", side_effect=mock_get_field_values)
     return zeus_monitor_mock_instance
 
 

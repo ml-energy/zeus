@@ -32,13 +32,12 @@ class MockFile:
 @pytest.fixture
 def mock_linux_files():
     STAT_CONTENT = (
-        "6511 (cat) R 6501 6511 6501 34816 6511 4194304 95 0 0 0 0 "
+        "6511 (tmux: server (1)) R 6501 6511 6501 34816 6511 4194304 95 0 0 0 0 "
         "0 0 0 20 0 1 0 7155 6053888 255 18446744073709551615 94288847015936 "
         "94288847031350 140727519907328 0 0 0 0 0 0 0 0 0 17 24 0 0 0 0 0 "
         "94288847043296 94288847044712 94288866566144 140727519913901 "
         "140727519913921 140727519913921 140727519916011 0"
     )
-    # The 39th field (index 38) of the stat content above is the logical CPU, 24.
     files = {
         "/proc/515/stat": STAT_CONTENT,
         "/sys/devices/system/cpu/cpu24/topology/physical_package_id": "1",

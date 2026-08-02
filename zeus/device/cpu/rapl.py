@@ -200,10 +200,12 @@ def get_current_rapl_zone_id(pid: int | Literal["current"] = "current") -> int:
     if pid == "current":
         pid = os.getpid()
 
-    # The logical CPU the process last executed on is the 39th field (index 38) of
-    # /proc/{pid}/stat.
+    # The logical CPU the process last executed on is the 39th field of
+    # /proc/{pid}/stat. The second field (comm) can contain spaces and
+    # parentheses, so split off everything up to the last ")" first; the
+    # processor field is then at index 36 of the remaining fields.
     with open(f"/proc/{pid}/stat") as stat_file:
-        cpu_core = int(stat_file.read().split()[38])
+        cpu_core = int(stat_file.read().rsplit(")", 1)[1].split()[36])
 
     topology_dir = f"/sys/devices/system/cpu/cpu{cpu_core}/topology"
     with open(f"{topology_dir}/physical_package_id") as phys_package_file:

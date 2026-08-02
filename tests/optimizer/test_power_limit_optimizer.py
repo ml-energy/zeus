@@ -130,22 +130,6 @@ def test_power_limit_optimizer(
         max(replay_log.power_limits) * 1000,
     )
 
-    # `NVIDIAGPU._resolve_power_field_scope` probes power field values during
-    # construction and uses GPU scope when the query succeeds, like a normal
-    # (non-C2C) GPU. `NVML_SUCCESS` must be the real value so the return-code
-    # comparison in the resolver works.
-    pynvml_mock.NVML_SUCCESS = pynvml.NVML_SUCCESS
-
-    def mock_get_field_values(handle, fields):
-        metrics = []
-        for _ in fields:
-            metric = mocker.Mock()
-            metric.nvmlReturn = pynvml.NVML_SUCCESS
-            metrics.append(metric)
-        return metrics
-
-    pynvml_mock.nvmlDeviceGetFieldValues.side_effect = mock_get_field_values
-
     # Mock away the atexit hook, which raises an NVML error when testing finishes.
     mocker.patch("zeus.optimizer.power_limit.atexit", autospec=True)
 
