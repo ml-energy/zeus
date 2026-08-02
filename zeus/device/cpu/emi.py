@@ -43,14 +43,10 @@ _WINDOWS = sys.platform == "win32"
 _PKG_CHANNEL_RE = re.compile(r"RAPL_Package(\d+)_PKG$", re.IGNORECASE)
 _DRAM_CHANNEL_RE = re.compile(r"RAPL_Package(\d+)_DRAM$", re.IGNORECASE)
 
-# -----------------------------------------------------------------------
-# Constants
-#
-# These are plain integer/float values that do not depend on the Windows-only
-# ``windll``/``wintypes`` imports, so they are defined unconditionally. This lets
-# the platform-independent helpers (metadata parsing, energy conversion) run and
-# be unit tested on any OS, not just Windows.
-# -----------------------------------------------------------------------
+# The constants below are plain integer/float values that do not depend on the
+# Windows-only imports, so they are defined unconditionally. This lets the
+# platform-independent helpers (metadata parsing, energy conversion) run and be
+# unit tested on any OS, not just Windows.
 
 # GUID for the EMI device interface: {45BD8344-7ED6-49CF-A440-C276C933B053}
 _EMI_GUID_DATA1: int = 0x45BD8344
@@ -58,7 +54,7 @@ _EMI_GUID_DATA2: int = 0x7ED6
 _EMI_GUID_DATA3: int = 0x49CF
 _EMI_GUID_DATA4: tuple[int, ...] = (0xA4, 0x40, 0xC2, 0x76, 0xC9, 0x33, 0xB0, 0x53)
 
-# IOCTLs — CTL_CODE(FILE_DEVICE_UNKNOWN=0x22, func, METHOD_BUFFERED=0, FILE_READ_ACCESS=1)
+# IOCTLs: CTL_CODE(FILE_DEVICE_UNKNOWN=0x22, func, METHOD_BUFFERED=0, FILE_READ_ACCESS=1)
 # = (0x22 << 16) | (1 << 14) | (func << 2) | 0
 _IOCTL_EMI_GET_VERSION: int = 0x00224000  # func = 0
 _IOCTL_EMI_GET_METADATA_SIZE: int = 0x00224004  # func = 1
@@ -96,10 +92,6 @@ _DETAIL_DATA_CBSIZE: int = 8 if ctypes.sizeof(ctypes.c_void_p) == 8 else 6
 if _WINDOWS:
     from ctypes import WinDLL, get_last_error, wintypes
 
-    # -----------------------------------------------------------------------
-    # ctypes structures
-    # -----------------------------------------------------------------------
-
     class _Guid(ctypes.Structure):  # noqa: N801 (Windows API name)
         _fields_ = [
             ("Data1", wintypes.DWORD),
@@ -122,10 +114,6 @@ if _WINDOWS:
             ("Number", ctypes.c_ubyte),
             ("Reserved", ctypes.c_ubyte),
         ]
-
-    # -----------------------------------------------------------------------
-    # Windows API setup
-    # -----------------------------------------------------------------------
 
     # Private WinDLL instances with use_last_error=True so ctypes captures the
     # Win32 error code immediately after each call, retrievable via
@@ -193,11 +181,6 @@ if _WINDOWS:
     ]
 
 
-# -----------------------------------------------------------------------
-# Exception classes
-# -----------------------------------------------------------------------
-
-
 class ZeusEMINotSupportedError(ZeusBaseCPUError):
     """Raised when EMI is not available on this system."""
 
@@ -212,11 +195,6 @@ class ZeusEMIInitError(ZeusBaseCPUError):
     def __init__(self, message: str) -> None:
         """Initialize Zeus Exception."""
         super().__init__(message)
-
-
-# -----------------------------------------------------------------------
-# Internal helpers (Windows-only)
-# -----------------------------------------------------------------------
 
 
 def _build_emi_guid() -> "_Guid":
@@ -365,11 +343,6 @@ def _find_package_of_processor(raw: bytes, group: int, number: int, ptr_size: in
     return None
 
 
-# -----------------------------------------------------------------------
-# Channel metadata dataclass (plain class to keep it lightweight)
-# -----------------------------------------------------------------------
-
-
 class _EMIChannel:
     """Metadata for a single EMI channel."""
 
@@ -379,11 +352,6 @@ class _EMIChannel:
         self.index = index
         self.name = name
         self.unit = unit
-
-
-# -----------------------------------------------------------------------
-# EMIFile — manages one open EMI device handle
-# -----------------------------------------------------------------------
 
 
 class EMIFile:
@@ -600,11 +568,6 @@ class EMIFile:
             self._handle = 0
 
 
-# -----------------------------------------------------------------------
-# EMICPU — one CPU package
-# -----------------------------------------------------------------------
-
-
 class EMICPU(cpu_common.CPU):
     """Reads energy for a single Intel CPU package via the Windows EMI interface.
 
@@ -643,11 +606,6 @@ class EMICPU(cpu_common.CPU):
     def supports_get_dram_energy_consumption(self) -> bool:
         """Return ``True`` if DRAM energy data is available for this package."""
         return self._dram_channel_index is not None
-
-
-# -----------------------------------------------------------------------
-# EMICPUs — manager for all packages
-# -----------------------------------------------------------------------
 
 
 class EMICPUs(cpu_common.CPUs):
@@ -742,11 +700,6 @@ class EMICPUs(cpu_common.CPUs):
         pass
 
 
-# -----------------------------------------------------------------------
-# Availability check
-# -----------------------------------------------------------------------
-
-
 def get_current_emi_cpu_index() -> int:
     """Return the EMI CPU index of the package the calling thread is running on.
 
@@ -803,10 +756,6 @@ def emi_is_available() -> bool:
     A device only counts as usable if it exposes a RAPL-style package channel
     (`RAPL_Package{N}_PKG`), since EMI is also used for other kinds of energy
     meters (e.g., battery rails) that do not map to CPU packages.
-
-    This function never raises; any failure during probing is logged and
-    treated as EMI being unavailable. It is cached — the check runs at most
-    once per process. On non-Windows platforms it always returns ``False``.
     """
     if not _WINDOWS:
         logger.info("EMI is not supported on non-Windows platforms.")

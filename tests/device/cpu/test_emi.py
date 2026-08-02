@@ -20,10 +20,6 @@ from zeus.device.cpu.emi import (
     get_current_emi_cpu_index,
 )
 
-# ---------------------------------------------------------------------------
-# Helpers for building raw metadata / measurement bytes
-# ---------------------------------------------------------------------------
-
 _EMI_NAME_MAX = 16  # WCHARs
 
 
@@ -73,11 +69,6 @@ def _make_measurement(energy_values: list[int]) -> bytes:
         buf += energy.to_bytes(8, "little")
         buf += (0).to_bytes(8, "little")  # AbsoluteTime placeholder
     return buf
-
-
-# ---------------------------------------------------------------------------
-# Availability check
-# ---------------------------------------------------------------------------
 
 
 def test_emi_available_false_on_non_windows():
@@ -185,11 +176,6 @@ def test_get_cpus_raises_cpu_init_error_when_no_interface():
         cpu_module.get_cpus()
 
 
-# ---------------------------------------------------------------------------
-# Metadata parsing (static method — platform-independent)
-# ---------------------------------------------------------------------------
-
-
 class TestParseChannelsV2:
     """Tests for EMIFile._parse_channels with EMI version 2."""
 
@@ -276,11 +262,6 @@ class TestParseChannelsV1:
         assert channels[0].name == "EMI_V1"
 
 
-# ---------------------------------------------------------------------------
-# EMICPU tests (EMIFile is mocked)
-# ---------------------------------------------------------------------------
-
-
 def _make_mock_emi_file(channel_energies: list[float]) -> MagicMock:
     """Return a mock EMIFile whose read() returns successive energy values."""
     mock_file = MagicMock(spec=EMIFile)
@@ -337,11 +318,6 @@ class TestEMICPU:
         mock_file = _make_mock_emi_file([])
         cpu = EMICPU(3, mock_file, pkg_channel_index=2, dram_channel_index=None)
         assert cpu.cpu_index == 3
-
-
-# ---------------------------------------------------------------------------
-# EMICPUs tests (EMIFile and device paths are mocked)
-# ---------------------------------------------------------------------------
 
 
 def _make_emi_file_with_channels(channel_specs: list[tuple]) -> MagicMock:
@@ -499,11 +475,6 @@ class TestEMICPUs:
         assert result.dram_mj == pytest.approx(500.0)
 
 
-# ---------------------------------------------------------------------------
-# EMIFile.read — energy unit conversion
-# ---------------------------------------------------------------------------
-
-
 class TestEMIFileRead:
     """Tests for energy conversion in EMIFile.read."""
 
@@ -517,7 +488,7 @@ class TestEMIFileRead:
         # Construct an EMIFile without calling __init__ (Windows API not available in CI).
         emi_file = object.__new__(EMIFile)
         emi_file.path = "fake"
-        emi_file._handle = 0  # null sentinel — __del__ skips CloseHandle for handle == 0
+        emi_file._handle = 0  # null sentinel; __del__ skips CloseHandle for handle == 0
         emi_file.version = 2
         emi_file.channels = [_EMIChannel(index=0, name="RAPL_Package0_PKG", unit=0)]
 
@@ -573,11 +544,6 @@ class TestEMIFileRead:
             pytest.raises(ZeusEMIInitError),
         ):
             emi_file.read(channel_index=1)
-
-
-# ---------------------------------------------------------------------------
-# Current CPU package lookup
-# ---------------------------------------------------------------------------
 
 
 def test_get_current_emi_cpu_index_raises_off_windows():
@@ -654,11 +620,6 @@ class TestFindPackageOfProcessor:
         record[8 + 22 : 8 + 24] = (2).to_bytes(2, "little")
         with pytest.raises(ValueError):
             _find_package_of_processor(bytes(record), group=0, number=5, ptr_size=8)
-
-
-# ---------------------------------------------------------------------------
-# Windows-only integration test
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="EMI is Windows-only")
