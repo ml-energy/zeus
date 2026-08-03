@@ -241,6 +241,21 @@ def test_zeusd_gpu_rejects_single_domain_clock_resets(fresh_amd_module):
     client.reset_mem_locked_clocks.assert_not_called()
 
 
+def test_zeusd_gpu_accepts_control_only_daemon(fresh_amd_module):
+    """Initialize against a daemon that exposes only gpu-control."""
+    amdsmi_mock = _make_amdsmi_mock({"h0": 0})
+    amdsmi_mock.amdsmi_get_gpu_device_bdf.return_value = "0000:8e:00.0"
+    amd = fresh_amd_module(amdsmi_mock)
+    client = _make_zeusd_client(
+        [GpuInfo(id=3, name="GPU 0", pci_address="0000:8e:00.0", cumulative_energy_available=True)]
+    )
+    client.can_read_gpu = False
+
+    gpu = amd.ZeusdAMDGPU(0, client)
+
+    assert gpu._daemon_gpu_id == 3
+
+
 def test_zeusd_gpu_resets_all_clock_domains_through_daemon(fresh_amd_module):
     """Relay the combined clock reset to the daemon with the daemon GPU ID."""
     amdsmi_mock = _make_amdsmi_mock({"h0": 0})

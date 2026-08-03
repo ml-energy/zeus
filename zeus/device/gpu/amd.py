@@ -433,7 +433,9 @@ class ZeusdAMDGPU(AMDGPU):
         """
         super().__init__(gpu_index)
         self._client = client
-        require_capabilities(client, read_gpu=True, control_gpu=True)
+        # Reads stay local to AMD SMI (they are unprivileged), so only the
+        # gpu-control API group is required from the daemon.
+        require_capabilities(client, control_gpu=True)
 
         local_pci_address = self._get_pci_address().lower()
         daemon_gpus = client.gpus
