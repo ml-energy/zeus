@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from zeus.utils.zeusd import GpuInfo
+
 
 def _make_base_amdsmi_mock(handles: list[str]) -> MagicMock:
     """Build a fake `amdsmi` module without either index-mapping API."""
@@ -54,6 +56,18 @@ def _make_kfd_amdsmi_mock(node_id_by_handle: dict[str, int | str]) -> MagicMock:
     amdsmi = _make_base_amdsmi_mock(handles)
     amdsmi.amdsmi_get_gpu_kfd_info = MagicMock(side_effect=lambda h: {"node_id": node_id_by_handle[h]})
     return amdsmi
+
+
+def _make_zeusd_client(gpus: list[GpuInfo]) -> MagicMock:
+    """Build a fake ZeusdClient with GPU capabilities enabled."""
+    client = MagicMock()
+    client.gpus = gpus
+    client.gpu_ids = [gpu.id for gpu in gpus]
+    client.endpoint = "/run/zeusd/zeusd.sock"
+    client.auth_error = None
+    client.can_read_gpu = True
+    client.can_control_gpu = True
+    return client
 
 
 @pytest.fixture
@@ -151,3 +165,92 @@ def test_get_handle_requires_amdsmi_6_3_mapping_api(fresh_amd_module):
 
     with pytest.raises(gpu_common.ZeusGPUInitError, match="6\\.3"):
         amd.AMDGPU(0)
+
+
+def test_zeusd_gpu_matches_daemon_id_by_pci_address(fresh_amd_module):
+    """Resolve a reordered daemon GPU ID by PCI address."""
+    amdsmi_mock = _make_amdsmi_mock({"h0": 0, "h1": 1})
+    amdsmi_mock.amdsmi_get_gpu_device_bdf.side_effect = {
+        "h0": "0000:11:00.0",
+        "h1": "0000:10:00.0",
+    }.__getitem__
+    amd = fresh_amd_module(amdsmi_mock)
+    client = _make_zeusd_client(
+        [
+            GpuInfo(id=0, name="GPU 1", pci_address="0000:10:00.0", cumulative_energy_available=True),
+            GpuInfo(id=2, name="GPU 0", pci_address="0000:11:00.0", cumulative_energy_available=True),
+        ]
+    )
+
+    gpu = amd.ZeusdAMDGPU(0, client)
+    gpu.set_gpu_locked_clocks(500, 1700, block=False)
+
+    assert gpu._daemon_gpu_id == 2
+    client.set_gpu_locked_clocks.assert_called_once_with([2], 500, 1700, False)
+
+
+def test_zeusd_gpu_raises_when_local_pci_address_is_missing(fresh_amd_module):
+    """Reject a local GPU that discovery does not contain."""
+    amdsmi_mock = _make_amdsmi_mock({"h0": 0})
+    amdsmi_mock.amdsmi_get_gpu_device_bdf.return_value = "0000:8e:00.0"
+    amd = fresh_amd_module(amdsmi_mock)
+    client = _make_zeusd_client(
+        [GpuInfo(id=0, name="GPU 0", pci_address="0000:10:00.0", cumulative_energy_available=True)]
+    )
+
+    import zeus.device.gpu.common as gpu_common
+
+    with pytest.raises(gpu_common.ZeusGPUInitError, match="0000:8e:00.0"):
+        amd.ZeusdAMDGPU(0, client)
+
+
+def test_zeusd_gpu_skips_unchanged_power_limit(fresh_amd_module):
+    """Skip a daemon call when the requested power limit is current."""
+    amdsmi_mock = _make_amdsmi_mock({"h0": 0})
+    amdsmi_mock.amdsmi_get_gpu_device_bdf.return_value = "0000:8e:00.0"
+    amdsmi_mock.amdsmi_get_power_cap_info.return_value = {"power_cap": 250_000_000}
+    amd = fresh_amd_module(amdsmi_mock)
+    client = _make_zeusd_client(
+        [GpuInfo(id=3, name="GPU 0", pci_address="0000:8e:00.0", cumulative_energy_available=True)]
+    )
+    gpu = amd.ZeusdAMDGPU(0, client)
+
+    gpu.set_power_management_limit(250_000, block=False)
+
+    client.set_power_limit.assert_not_called()
+
+
+def test_zeusd_gpu_rejects_single_domain_clock_resets(fresh_amd_module):
+    """Reject AMD single-domain reset requests without daemon calls."""
+    amdsmi_mock = _make_amdsmi_mock({"h0": 0})
+    amdsmi_mock.amdsmi_get_gpu_device_bdf.return_value = "0000:8e:00.0"
+    amd = fresh_amd_module(amdsmi_mock)
+    client = _make_zeusd_client(
+        [GpuInfo(id=3, name="GPU 0", pci_address="0000:8e:00.0", cumulative_energy_available=True)]
+    )
+    gpu = amd.ZeusdAMDGPU(0, client)
+
+    import zeus.device.gpu.common as gpu_common
+
+    with pytest.raises(gpu_common.ZeusGPUNotSupportedError, match="cannot reset a single clock domain"):
+        gpu.reset_gpu_locked_clocks(block=False)
+    with pytest.raises(gpu_common.ZeusGPUNotSupportedError, match="cannot reset a single clock domain"):
+        gpu.reset_memory_locked_clocks(block=False)
+
+    client.reset_gpu_locked_clocks.assert_not_called()
+    client.reset_mem_locked_clocks.assert_not_called()
+
+
+def test_zeusd_gpu_resets_all_clock_domains_through_daemon(fresh_amd_module):
+    """Relay the combined clock reset to the daemon with the daemon GPU ID."""
+    amdsmi_mock = _make_amdsmi_mock({"h0": 0})
+    amdsmi_mock.amdsmi_get_gpu_device_bdf.return_value = "0000:8e:00.0"
+    amd = fresh_amd_module(amdsmi_mock)
+    client = _make_zeusd_client(
+        [GpuInfo(id=3, name="GPU 0", pci_address="0000:8e:00.0", cumulative_energy_available=True)]
+    )
+    gpu = amd.ZeusdAMDGPU(0, client)
+
+    gpu.reset_locked_clocks(block=False)
+
+    client.reset_locked_clocks.assert_called_once_with([3], False)

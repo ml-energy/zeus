@@ -50,11 +50,16 @@ class GpuInfo:
 
     Attributes:
         id: GPU index used by Zeusd endpoints.
-        name: GPU model name returned by NVML.
+        name: GPU model name reported by the daemon.
+        pci_address: PCI `domain:bus:device.function` address as in `lspci -D`.
+        cumulative_energy_available: Whether `GET /gpu/get_cumulative_energy`
+            serves trustworthy values for this GPU.
     """
 
     id: int
     name: str
+    pci_address: str
+    cumulative_energy_available: bool
 
 
 @dataclass(frozen=True)
@@ -279,7 +284,21 @@ class ZeusdClient:
                 f"Zeusd at {config.endpoint} returned HTTP {resp.status_code} on /discover: {resp.text}"
             )
         data = resp.json()
-        self._gpus = [GpuInfo(id=item["id"], name=item["name"]) for item in data["gpus"]]
+        try:
+            self._gpus = [
+                GpuInfo(
+                    id=item["id"],
+                    name=item["name"],
+                    pci_address=item["pci_address"],
+                    cumulative_energy_available=item["cumulative_energy_available"],
+                )
+                for item in data["gpus"]
+            ]
+        except KeyError as exc:
+            raise ZeusdConnectionError(
+                f"Zeusd at {config.endpoint} did not report {exc} in /discover; "
+                "the daemon is older than this version of Zeus. Upgrade zeusd."
+            ) from exc
         self._cpus = [CpuInfo(id=item["id"], dram_available=item["dram_available"]) for item in data["cpus"]]
         self._gpu_ids = [gpu.id for gpu in self._gpus]
         self._cpu_ids = [cpu.id for cpu in self._cpus]
@@ -522,6 +541,21 @@ class ZeusdClient:
             },
         )
         self._check(resp, "reset_gpu_locked_clocks")
+
+    def reset_locked_clocks(self, gpu_ids: list[int], block: bool = True) -> None:
+        """Reset all GPU and memory clock domains to their defaults.
+
+        This is the only clock reset AMD GPUs support. On NVIDIA GPUs, it is
+        equivalent to resetting both clock domains individually.
+        """
+        resp = self._client.post(
+            self._config.url("/gpu/reset_locked_clocks"),
+            params={
+                "gpu_ids": ",".join(str(i) for i in gpu_ids),
+                "block": "true" if block else "false",
+            },
+        )
+        self._check(resp, "reset_locked_clocks")
 
     def set_mem_locked_clocks(
         self,

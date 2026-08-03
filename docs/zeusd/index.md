@@ -55,7 +55,7 @@ export ZEUSD_SOCK_PATH=/run/zeusd/zeusd.sock     # UDS (Unix)
 export ZEUSD_HOST_PORT=node1:4938                # TCP
 ```
 
-When set, [`NVIDIAGPUs`][zeus.device.gpu.nvidia.NVIDIAGPUs] and [`RAPLCPUs`][zeus.device.cpu.rapl.RAPLCPUs] auto-switch to [`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU] / [`ZeusdRAPLCPU`][zeus.device.cpu.rapl.ZeusdRAPLCPU] backends; privileged GPU calls and CPU/DRAM reads are relayed through the daemon transparently.
+When set, [`NVIDIAGPUs`][zeus.device.gpu.nvidia.NVIDIAGPUs], [`AMDGPUs`][zeus.device.gpu.amd.AMDGPUs], and [`RAPLCPUs`][zeus.device.cpu.rapl.RAPLCPUs] auto-switch to [`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU] / [`ZeusdAMDGPU`][zeus.device.gpu.amd.ZeusdAMDGPU] / [`ZeusdRAPLCPU`][zeus.device.cpu.rapl.ZeusdRAPLCPU] backends; privileged GPU calls and CPU/DRAM reads are relayed through the daemon transparently.
 
 For lower-level access: [`ZeusdClient`][zeus.utils.zeusd.ZeusdClient] is a typed wrapper over every HTTP endpoint, and [`require_capabilities`][zeus.utils.zeusd.require_capabilities] fails fast if the daemon's capabilities don't match what your code needs.
 

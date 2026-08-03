@@ -71,11 +71,21 @@ def mock_zeusd(monkeypatch):
         whoami_status: int = 200,
         token: str | None = None,
         endpoint_errors: dict[str, int] | None = None,
+        discover_extra_gpu_fields: bool = True,
     ) -> MockZeusdServer:
         _endpoint_errors = endpoint_errors or {}
 
+        discover_gpus = []
+        for i in gpu_ids:
+            gpu = {"id": i, "name": f"Mock GPU {i}"}
+            if discover_extra_gpu_fields:
+                gpu.update(
+                    pci_address=f"0000:{16 + i:02x}:00.0",
+                    cumulative_energy_available=True,
+                )
+            discover_gpus.append(gpu)
         discover_body = {
-            "gpus": [{"id": i, "name": f"Mock GPU {i}"} for i in gpu_ids],
+            "gpus": discover_gpus,
             "cpus": [{"id": i, "dram_available": dram_available[j]} for j, i in enumerate(cpu_ids)],
             "enabled_api_groups": list(enabled_api_groups),
             "auth_required": auth_required,
@@ -309,12 +319,32 @@ class TestZeusdClientInit:
             enabled_api_groups=("gpu-read",),
         )
         client = ZeusdClient(server.config)
-        assert client.gpus == [GpuInfo(id=0, name="Mock GPU 0"), GpuInfo(id=1, name="Mock GPU 1")]
+        assert client.gpus == [
+            GpuInfo(
+                id=0,
+                name="Mock GPU 0",
+                pci_address="0000:10:00.0",
+                cumulative_energy_available=True,
+            ),
+            GpuInfo(
+                id=1,
+                name="Mock GPU 1",
+                pci_address="0000:11:00.0",
+                cumulative_energy_available=True,
+            ),
+        ]
         assert client.gpu_ids == [0, 1]
         assert client.cpus == [CpuInfo(id=2, dram_available=True)]
         assert client.cpu_ids == [2]
         assert client.dram_available == [True]
         assert not client.auth_required
+
+    def test_discover_rejects_old_daemon_without_gpu_metadata(self, mock_zeusd):
+        """Fail discovery when the daemon does not report the GPU metadata fields."""
+        server = mock_zeusd(gpu_ids=(0,), discover_extra_gpu_fields=False)
+
+        with pytest.raises(ZeusdConnectionError, match="Upgrade zeusd"):
+            ZeusdClient(server.config)
 
     def test_no_auth_required(self, mock_zeusd):
         server = mock_zeusd(auth_required=False)
@@ -566,6 +596,14 @@ class TestZeusdClientGpuControl:
         params = server.last_params()
         assert params["gpu_ids"] == "2,3"
         assert params["block"] == "true"
+
+    def test_reset_locked_clocks(self, mock_zeusd):
+        """Reset all clock domains through the combined endpoint."""
+        server = mock_zeusd()
+        client = ZeusdClient(server.config)
+        client.reset_locked_clocks([1, 3], block=False)
+        assert server.last_request().url.path == "/gpu/reset_locked_clocks"
+        assert server.last_params() == {"gpu_ids": "1,3", "block": "false"}
 
     def test_set_mem_locked_clocks(self, mock_zeusd):
         server = mock_zeusd()
