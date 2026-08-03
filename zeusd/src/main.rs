@@ -10,8 +10,9 @@ use zeusd::routes::DiscoveryInfo;
 #[cfg(windows)]
 use zeusd::startup::run_server_named_pipe;
 use zeusd::startup::{
-    check_privileges, init_tracing, start_cpu_device_tasks, start_cpu_power_poller,
-    start_gpu_device_tasks, start_gpu_power_poller, start_server_tcp, EnabledGroups, ServerState,
+    check_privileges, init_tracing, resolve_gpu_backend, start_cpu_device_tasks,
+    start_cpu_power_poller, start_gpu_device_tasks, start_gpu_power_poller, start_server_tcp,
+    EnabledGroups, ServerState,
 };
 #[cfg(unix)]
 use zeusd::startup::{get_unix_listener, start_server_uds};
@@ -55,6 +56,12 @@ fn handle_token_command(action: TokenCommand) -> anyhow::Result<()> {
 async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> {
     tracing::info!("Loaded {:?}", config);
 
+    let resolved_gpu_backend = if config.needs_gpu() {
+        Some(resolve_gpu_backend(config.gpu_backend)?)
+    } else {
+        None
+    };
+
     // Validate privileges for the requested API groups.
     check_privileges(&config.enable)?;
 
@@ -91,9 +98,10 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
 
     // Conditionally initialize GPU devices.
     let (gpu_device_tasks, gpu_power_broadcast, gpus) = if config.needs_gpu() {
-        let (tasks, gpus) = start_gpu_device_tasks()?;
+        let backend = resolved_gpu_backend.expect("GPU backend must be resolved");
+        let (tasks, gpus) = start_gpu_device_tasks(backend)?;
         let broadcast = if config.is_enabled(ApiGroup::GpuRead) {
-            Some(start_gpu_power_poller(config.gpu_power_poll_hz)?)
+            Some(start_gpu_power_poller(backend, config.gpu_power_poll_hz)?)
         } else {
             None
         };

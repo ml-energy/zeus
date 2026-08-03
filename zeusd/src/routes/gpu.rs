@@ -160,6 +160,8 @@ impl_write_handler_for_gpu_command!(
 
 impl_write_handler_for_gpu_command!(reset_mem_locked_clocks, "/reset_mem_locked_clocks",);
 
+impl_write_handler_for_gpu_command!(reset_locked_clocks, "/reset_locked_clocks",);
+
 /// Macro for a read endpoint that fans a `GpuCommand` out to each requested
 /// GPU and returns a JSON map keyed by GPU id.
 ///
@@ -360,5 +362,6 @@ pub fn gpu_control_routes(cfg: &mut web::ServiceConfig) {
         .service(set_gpu_locked_clocks_handler)
         .service(reset_gpu_locked_clocks_handler)
         .service(set_mem_locked_clocks_handler)
-        .service(reset_mem_locked_clocks_handler);
+        .service(reset_mem_locked_clocks_handler)
+        .service(reset_locked_clocks_handler);
 }

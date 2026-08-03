@@ -12,13 +12,23 @@ Energy optimizers in Zeus need to change GPU configuration (power limit, clocks,
 
 ## Platform support
 
-- **Linux:** UDS default. All API groups work (NVML + RAPL).
+- **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
 - **Windows:** named pipe default. NVML only; `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp`.
+
+AMD GPU support covers AMD SMI from ROCm 6.3.
+An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
 
 ## Install
 
 ```sh
 cargo install zeusd
+```
+
+Build AMD GPU support with `ROCM_PATH` selecting the ROCm installation.
+Cargo features are additive, so this includes NVML support as well; on an AMD-only node, `--no-default-features` drops NVML entirely:
+
+```sh
+ROCM_PATH=/opt/rocm-7.2.0 cargo install zeusd --no-default-features --features amdsmi
 ```
 
 For a hardened systemd deployment, see [`packaging/systemd/`](packaging/systemd/).

@@ -8,6 +8,10 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "amdsmi")]
+use crate::devices::gpu::amdsmi::ffi::{
+    AMDSMI_STATUS_INVAL, AMDSMI_STATUS_NOT_SUPPORTED, AMDSMI_STATUS_NO_PERM,
+};
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
 #[cfg(feature = "nvml")]
@@ -28,6 +32,9 @@ pub enum ZeusdError {
     #[cfg(feature = "nvml")]
     #[error("NVML error: {0}")]
     NvmlError(#[from] NvmlError),
+    #[cfg(feature = "amdsmi")]
+    #[error("AMDSMI error {status}: {msg}")]
+    AmdSmiError { status: u32, msg: String },
     #[error("GPU command send error: {0}")]
     GpuCommandSendError(#[from] SendError<GpuCommandRequest>),
     #[error("CPU command send error: {0}")]
@@ -62,6 +69,12 @@ impl ResponseError for ZeusdError {
                 NvmlError::NoPermission => StatusCode::FORBIDDEN,
                 NvmlError::InvalidArg => StatusCode::BAD_REQUEST,
                 NvmlError::NotSupported => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            #[cfg(feature = "amdsmi")]
+            ZeusdError::AmdSmiError { status, .. } => match *status {
+                AMDSMI_STATUS_NO_PERM => StatusCode::FORBIDDEN,
+                AMDSMI_STATUS_INVAL | AMDSMI_STATUS_NOT_SUPPORTED => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ZeusdError::GpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,

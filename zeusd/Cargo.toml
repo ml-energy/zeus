@@ -39,6 +39,7 @@ humantime = "2"
 
 [features]
 default = ["nvml"]
+amdsmi = []
 nvml = ["dep:nvml-wrapper"]
 
 [target.'cfg(unix)'.dependencies]

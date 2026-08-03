@@ -21,19 +21,23 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::auth::{AuthMiddleware, SigningKeyData};
-use crate::config::ApiGroup;
+use crate::config::{ApiGroup, GpuBackend};
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::power::start_cpu_poller;
 use crate::devices::cpu::power::CpuPowerBroadcasts;
 use crate::devices::cpu::CpuManagementTasks;
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::{CpuManager, RaplCpu};
-#[cfg(feature = "nvml")]
+#[cfg(any(feature = "nvml", feature = "amdsmi"))]
 use crate::devices::gpu::power::start_gpu_poller;
 use crate::devices::gpu::power::GpuPowerBroadcasts;
+#[cfg(feature = "amdsmi")]
+use crate::devices::gpu::AmdsmiGpu;
 use crate::devices::gpu::GpuManagementTasks;
+#[cfg(any(feature = "nvml", feature = "amdsmi"))]
+use crate::devices::gpu::GpuManager;
 #[cfg(feature = "nvml")]
-use crate::devices::gpu::{GpuManager, NvmlGpu};
+use crate::devices::gpu::NvmlGpu;
 use crate::routes::{cpu_routes, CpuPowerSamplingPeriod};
 use crate::routes::{
     gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
@@ -83,17 +87,135 @@ pub fn get_unix_listener(
     Ok(listener)
 }
 
-/// Initialize NVML and start GPU management tasks.
+#[cfg(any(feature = "nvml", feature = "amdsmi"))]
+trait StartupGpu: GpuManager + Send + Sized + 'static {
+    fn init(index: u32) -> Result<Self, crate::error::ZeusdError>;
+    fn name(&self) -> Result<String, crate::error::ZeusdError>;
+}
+
 #[cfg(feature = "nvml")]
-pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
-    tracing::info!("Starting NVML and GPU management tasks.");
-    let num_gpus = NvmlGpu::device_count()?;
+impl StartupGpu for NvmlGpu<'static> {
+    fn init(index: u32) -> Result<Self, crate::error::ZeusdError> {
+        NvmlGpu::init(index)
+    }
+
+    fn name(&self) -> Result<String, crate::error::ZeusdError> {
+        NvmlGpu::name(self)
+    }
+}
+
+#[cfg(feature = "amdsmi")]
+impl StartupGpu for AmdsmiGpu {
+    fn init(index: u32) -> Result<Self, crate::error::ZeusdError> {
+        AmdsmiGpu::init(index)
+    }
+
+    fn name(&self) -> Result<String, crate::error::ZeusdError> {
+        AmdsmiGpu::name(self)
+    }
+}
+
+/// A GPU backend available in this build, or no backend when none reports GPUs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResolvedGpuBackend {
+    #[cfg(feature = "nvml")]
+    Nvml,
+    #[cfg(feature = "amdsmi")]
+    Amdsmi,
+    None,
+}
+
+/// Resolve a requested backend according to compiled features and GPU discovery.
+pub fn resolve_gpu_backend(requested: GpuBackend) -> anyhow::Result<ResolvedGpuBackend> {
+    match requested {
+        GpuBackend::Nvml => {
+            #[cfg(feature = "nvml")]
+            {
+                let count = NvmlGpu::device_count()?;
+                tracing::info!("NVML backend was selected with {} GPU(s)", count);
+                Ok(ResolvedGpuBackend::Nvml)
+            }
+            #[cfg(not(feature = "nvml"))]
+            {
+                anyhow::bail!(
+                    "this zeusd binary was built without the NVML backend; rebuild with --features nvml"
+                )
+            }
+        }
+        GpuBackend::Amdsmi => {
+            #[cfg(feature = "amdsmi")]
+            {
+                let count = AmdsmiGpu::device_count()?;
+                tracing::info!("AMDSMI backend was selected with {} GPU(s)", count);
+                Ok(ResolvedGpuBackend::Amdsmi)
+            }
+            #[cfg(not(feature = "amdsmi"))]
+            {
+                anyhow::bail!(
+                    "this zeusd binary was built without the AMDSMI backend; rebuild with --features amdsmi"
+                )
+            }
+        }
+        GpuBackend::Auto => {
+            #[cfg(feature = "nvml")]
+            let nvml_count = match NvmlGpu::device_count() {
+                Ok(count) => count,
+                Err(error) => {
+                    tracing::warn!(
+                        "NVML backend probe failed: {}. Treating it as zero GPUs.",
+                        error
+                    );
+                    0
+                }
+            };
+            #[cfg(not(feature = "nvml"))]
+            let nvml_count = 0;
+
+            #[cfg(feature = "amdsmi")]
+            let amdsmi_count = match AmdsmiGpu::device_count() {
+                Ok(count) => count,
+                Err(error) => {
+                    tracing::warn!(
+                        "AMDSMI backend probe failed: {}. Treating it as zero GPUs.",
+                        error
+                    );
+                    0
+                }
+            };
+            #[cfg(not(feature = "amdsmi"))]
+            let amdsmi_count = 0;
+
+            if nvml_count > 0 && amdsmi_count > 0 {
+                anyhow::bail!("both NVIDIA and AMD GPUs detected; pick one with --gpu-backend");
+            }
+            if nvml_count > 0 {
+                tracing::info!("NVML backend was selected with {} GPU(s)", nvml_count);
+                #[cfg(feature = "nvml")]
+                return Ok(ResolvedGpuBackend::Nvml);
+            }
+            if amdsmi_count > 0 {
+                tracing::info!("AMDSMI backend was selected with {} GPU(s)", amdsmi_count);
+                #[cfg(feature = "amdsmi")]
+                return Ok(ResolvedGpuBackend::Amdsmi);
+            }
+            tracing::info!("No GPU backend reported any GPUs");
+            Ok(ResolvedGpuBackend::None)
+        }
+    }
+}
+
+#[cfg(any(feature = "nvml", feature = "amdsmi"))]
+fn start_gpu_device_tasks_for<T: StartupGpu>(
+    backend_name: &str,
+) -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
+    tracing::info!("Starting {} and GPU management tasks.", backend_name);
+    let num_gpus = T::device_count()?;
     let mut gpus = Vec::with_capacity(num_gpus as usize);
     let mut gpu_info = Vec::with_capacity(num_gpus as usize);
     for gpu_id in 0..num_gpus {
-        let gpu = NvmlGpu::init(gpu_id)?;
+        let gpu = T::init(gpu_id)?;
         let name = gpu.name()?;
-        tracing::info!("Initialized NVML for GPU {} ({})", gpu_id, name);
+        tracing::info!("Initialized {} for GPU {} ({})", backend_name, gpu_id, name);
         gpu_info.push(GpuDiscoveryInfo {
             id: gpu_id as usize,
             name,
@@ -103,33 +225,44 @@ pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDi
     Ok((GpuManagementTasks::start(gpus)?, gpu_info))
 }
 
-#[cfg(not(feature = "nvml"))]
-pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
-    anyhow::bail!(
-        "This zeusd binary was built without a GPU backend. \
-         Rebuild with --features nvml, or remove 'gpu-control' and 'gpu-read' from --enable."
-    )
+/// Initialize the resolved backend and start GPU management tasks.
+pub fn start_gpu_device_tasks(
+    backend: ResolvedGpuBackend,
+) -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
+    match backend {
+        #[cfg(feature = "nvml")]
+        ResolvedGpuBackend::Nvml => start_gpu_device_tasks_for::<NvmlGpu<'static>>("NVML"),
+        #[cfg(feature = "amdsmi")]
+        ResolvedGpuBackend::Amdsmi => start_gpu_device_tasks_for::<AmdsmiGpu>("AMD SMI"),
+        ResolvedGpuBackend::None => Ok((GpuManagementTasks::empty(), Vec::new())),
+    }
 }
 
-/// Initialize a separate set of NVML handles and start the GPU power poller.
-#[cfg(feature = "nvml")]
-pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerBroadcasts> {
+#[cfg(any(feature = "nvml", feature = "amdsmi"))]
+fn start_gpu_power_poller_for<T: StartupGpu>(poll_hz: u32) -> anyhow::Result<GpuPowerBroadcasts> {
     tracing::info!("Starting GPU power poller at {} Hz.", poll_hz);
-    let num_gpus = NvmlGpu::device_count()?;
+    let num_gpus = T::device_count()?;
     let mut gpus = Vec::with_capacity(num_gpus as usize);
     for gpu_id in 0..num_gpus {
-        let gpu = NvmlGpu::init(gpu_id)?;
+        let gpu = T::init(gpu_id)?;
         gpus.push((gpu_id as usize, gpu));
     }
     Ok(start_gpu_poller(gpus, poll_hz))
 }
 
-#[cfg(not(feature = "nvml"))]
-pub fn start_gpu_power_poller(_poll_hz: u32) -> anyhow::Result<GpuPowerBroadcasts> {
-    anyhow::bail!(
-        "This zeusd binary was built without a GPU backend. \
-         Rebuild with --features nvml, or remove 'gpu-control' and 'gpu-read' from --enable."
-    )
+/// Initialize separate handles for the resolved backend and start power polling.
+pub fn start_gpu_power_poller(
+    backend: ResolvedGpuBackend,
+    poll_hz: u32,
+) -> anyhow::Result<GpuPowerBroadcasts> {
+    let _ = poll_hz;
+    match backend {
+        #[cfg(feature = "nvml")]
+        ResolvedGpuBackend::Nvml => start_gpu_power_poller_for::<NvmlGpu<'static>>(poll_hz),
+        #[cfg(feature = "amdsmi")]
+        ResolvedGpuBackend::Amdsmi => start_gpu_power_poller_for::<AmdsmiGpu>(poll_hz),
+        ResolvedGpuBackend::None => Ok(GpuPowerBroadcasts::new(Default::default())),
+    }
 }
 
 /// Initialize RAPL and start CPU management tasks.
@@ -189,14 +322,17 @@ pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerBroadcast
 /// daemon lacks the privileges for.
 #[allow(unused_variables)]
 pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
-    #[cfg(all(not(target_os = "linux"), not(feature = "nvml")))]
+    #[cfg(all(
+        not(target_os = "linux"),
+        not(any(feature = "nvml", feature = "amdsmi"))
+    ))]
     {
         if enabled_groups.is_empty() {
             anyhow::bail!("No API groups are enabled. Specify at least one group with --enable.");
         }
     }
 
-    #[cfg(not(feature = "nvml"))]
+    #[cfg(not(any(feature = "nvml", feature = "amdsmi")))]
     {
         if enabled_groups.contains(&ApiGroup::GpuControl)
             || enabled_groups.contains(&ApiGroup::GpuRead)
@@ -204,7 +340,8 @@ pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
             tracing::error!("GPU API groups require a zeusd binary built with a GPU backend.");
             anyhow::bail!(
                 "This zeusd binary was built without a GPU backend. \
-                 Rebuild with --features nvml, or remove 'gpu-control' and 'gpu-read' from --enable."
+                 Rebuild with --features nvml or --features amdsmi, or remove 'gpu-control' and \
+                 'gpu-read' from --enable."
             );
         }
     }

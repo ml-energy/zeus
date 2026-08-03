@@ -61,6 +61,27 @@ impl std::fmt::Display for ApiGroup {
     }
 }
 
+/// GPU management backend selection.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum GpuBackend {
+    /// Probe compiled backends and select the one that reports GPUs.
+    Auto,
+    /// Use NVIDIA Management Library.
+    Nvml,
+    /// Use AMD SMI.
+    Amdsmi,
+}
+
+impl std::fmt::Display for GpuBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GpuBackend::Auto => write!(f, "auto"),
+            GpuBackend::Nvml => write!(f, "nvml"),
+            GpuBackend::Amdsmi => write!(f, "amdsmi"),
+        }
+    }
+}
+
 /// The Zeus daemon manages and monitors compute devices on the node.
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -140,6 +161,11 @@ pub struct ServeConfig {
     #[clap(long, default_value = "20")]
     pub gpu_power_poll_hz: u32,
 
+    /// GPU backend to use. `auto` probes compiled backends and picks the one
+    /// that reports GPUs; an explicit choice fails fast if unavailable.
+    #[clap(long, default_value = "auto")]
+    pub gpu_backend: GpuBackend,
+
     /// CPU RAPL power polling frequency in Hz for the streaming endpoint.
     #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
@@ -148,10 +174,10 @@ pub struct ServeConfig {
     /// exit at startup if not running as root. Defaults include the API groups
     /// supported by the platform and compiled device backends.
     #[clap(long, value_delimiter = ',')]
-    #[cfg_attr(all(target_os = "linux", feature = "nvml"), clap(
+    #[cfg_attr(all(target_os = "linux", any(feature = "nvml", feature = "amdsmi")), clap(
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
     ))]
-    #[cfg_attr(all(target_os = "linux", not(feature = "nvml")), clap(
+    #[cfg_attr(all(target_os = "linux", not(any(feature = "nvml", feature = "amdsmi"))), clap(
         default_values_t = [ApiGroup::CpuRead],
     ))]
     #[cfg_attr(all(not(target_os = "linux"), feature = "nvml"), clap(

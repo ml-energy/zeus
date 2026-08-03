@@ -6,13 +6,24 @@ Reach for `zeusd` when you need privilege isolation for GPU configuration, CPU/D
 
 ## Platform support
 
-- **Linux:** UDS default. All API groups work (NVML + RAPL).
+- **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
 - **Windows:** named pipe default. NVML only -- `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp` (no `httpx` transport for named pipes yet).
+
+AMD GPU support covers AMD SMI from ROCm 6.3.
+An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
+Resetting locked clocks on AMD restores the driver's automatic frequency management for all clock domains at once, and per-domain resets are rejected.
 
 ## Install
 
 ```sh
 cargo install zeusd
+```
+
+Build AMD GPU support with `ROCM_PATH` selecting the ROCm installation.
+Specifying `--no-default-features` drops the default NVML support entirely.
+
+```sh
+ROCM_PATH=/opt/rocm-7.2.0 cargo install zeusd --no-default-features --features amdsmi
 ```
 
 Linux deployments: see [`zeusd/packaging/systemd/`](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd){.external} for a hardened systemd unit.
@@ -147,9 +158,10 @@ Writes (`POST`) also take `block` (bool): `true` waits for completion and report
 | `POST` | `/gpu/set_power_limit` | `power_limit_mw` |
 | `POST` | `/gpu/set_persistence_mode` | `enabled` (see [Windows quirk](#windows-quirk)) |
 | `POST` | `/gpu/set_gpu_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
-| `POST` | `/gpu/reset_gpu_locked_clocks` | -- |
+| `POST` | `/gpu/reset_gpu_locked_clocks` | On AMD GPUs, returns 400 (no per-domain reset exists); use `reset_locked_clocks`. |
 | `POST` | `/gpu/set_mem_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
-| `POST` | `/gpu/reset_mem_locked_clocks` | -- |
+| `POST` | `/gpu/reset_mem_locked_clocks` | On AMD GPUs, returns 400 (no per-domain reset exists); use `reset_locked_clocks`. |
+| `POST` | `/gpu/reset_locked_clocks` | resets all clock domains |
 | `GET`  | `/gpu/get_cumulative_energy` | -- |
 | `GET`  | `/gpu/get_power` | one-shot snapshot |
 | `GET`  | `/gpu/stream_power` | SSE stream |
