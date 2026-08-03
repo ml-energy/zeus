@@ -67,12 +67,28 @@ pub fn get_unix_listener(
     uid: Option<u32>,
     gid: Option<u32>,
 ) -> anyhow::Result<UnixListener> {
-    if fs::metadata(socket_path).is_ok() {
-        tracing::error!(
-            "Socket file {} already exists. Please remove it and restart Zeusd.",
-            socket_path,
-        );
-        anyhow::bail!("Socket file already exists");
+    if let Ok(metadata) = fs::metadata(socket_path) {
+        use std::os::unix::fs::FileTypeExt;
+        if !metadata.file_type().is_socket() {
+            tracing::error!(
+                "{} already exists and is not a socket. Please remove it and restart Zeusd.",
+                socket_path,
+            );
+            anyhow::bail!("Socket path is occupied by a non-socket file");
+        }
+        // A socket file left behind by an unclean shutdown (e.g., a killed
+        // container) is safe to remove, but a live listener is not.
+        match std::os::unix::net::UnixStream::connect(socket_path) {
+            Ok(_) => {
+                tracing::error!("Another process is listening on {}.", socket_path);
+                anyhow::bail!("Socket is in use by another process");
+            }
+            Err(_) => {
+                tracing::warn!("Removing stale socket file {}.", socket_path);
+                fs::remove_file(socket_path)
+                    .with_context(|| format!("Failed to remove stale socket {socket_path}"))?;
+            }
+        }
     }
     if let Some(parent) = Path::new(socket_path).parent() {
         if !parent.as_os_str().is_empty() {
@@ -671,4 +687,44 @@ pub async fn run_server_named_pipe(
             Ok::<(), anyhow::Error>(())
         })
         .await
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_socket_file_is_removed_and_rebound() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("zeusd.sock");
+        let path = path.to_str().unwrap();
+
+        let listener = get_unix_listener(path, 0o666, None, None).unwrap();
+        drop(listener);
+        assert!(fs::metadata(path).is_ok());
+
+        // The socket file is left behind, but no one is listening on it.
+        get_unix_listener(path, 0o666, None, None).unwrap();
+    }
+
+    #[test]
+    fn live_socket_is_not_stolen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("zeusd.sock");
+        let path = path.to_str().unwrap();
+
+        let _listener = get_unix_listener(path, 0o666, None, None).unwrap();
+        assert!(get_unix_listener(path, 0o666, None, None).is_err());
+        assert!(fs::metadata(path).is_ok());
+    }
+
+    #[test]
+    fn non_socket_file_is_not_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("zeusd.sock");
+        fs::write(&path, "not a socket").unwrap();
+
+        assert!(get_unix_listener(path.to_str().unwrap(), 0o666, None, None).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "not a socket");
+    }
 }
