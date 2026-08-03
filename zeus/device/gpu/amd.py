@@ -33,6 +33,8 @@ except Exception:
     amdsmi = MockAMDSMI()  # ty: ignore[invalid-assignment]
 
 import zeus.device.gpu.common as gpu_common
+from zeus.exception import ZeusBaseError
+from zeus.utils.zeusd import ZeusdClient, ZeusdConfig, require_capabilities
 
 logger = logging.getLogger(__name__)
 
@@ -410,11 +412,125 @@ class AMDGPU(gpu_common.GPU):
         return temp_millidegrees // 1000
 
 
+class ZeusdAMDGPU(AMDGPU):
+    """An AMDGPU that sets GPU knobs that require `SYS_ADMIN` via zeusd.
+
+    Some AMD SMI APIs, including setting the power limit and clock frequencies,
+    require the Linux security capability `SYS_ADMIN`, which is virtually `sudo`.
+    This class overrides those methods so that they send a request to the Zeus
+    daemon.
+
+    See [here](https://ml.energy/zeus/getting_started/#system-privileges)
+    for details on system privileges required.
+    """
+
+    def __init__(self, gpu_index: int, client: ZeusdClient) -> None:
+        """Initialize the GPU object backed by a Zeusd daemon.
+
+        Args:
+            gpu_index: HIP index of the GPU.
+            client: ZeusdClient connected to the daemon.
+        """
+        super().__init__(gpu_index)
+        self._client = client
+        # Reads stay local to AMD SMI (they are unprivileged), so only the
+        # gpu-control API group is required from the daemon.
+        require_capabilities(client, control_gpu=True)
+
+        local_pci_address = self._get_pci_address().lower()
+        daemon_gpus = client.gpus
+        matches = [gpu for gpu in daemon_gpus if gpu.pci_address.lower() == local_pci_address]
+        daemon_addresses = [(gpu.id, gpu.pci_address) for gpu in daemon_gpus]
+        if len(matches) == 0:
+            raise gpu_common.ZeusGPUInitError(
+                f"HIP GPU {gpu_index} has PCI address {local_pci_address}, which is not present on the "
+                f"zeusd daemon at {client.endpoint}. Daemon GPUs: {daemon_addresses}."
+            )
+        if len(matches) > 1:
+            raise gpu_common.ZeusGPUInitError(
+                f"HIP GPU {gpu_index} has PCI address {local_pci_address}, which matches more than one GPU "
+                f"on the zeusd daemon at {client.endpoint}. Daemon GPUs: {daemon_addresses}."
+            )
+        self._daemon_gpu_id = matches[0].id
+
+    @_handle_amdsmi_errors
+    def _get_pci_address(self) -> str:
+        """Return the GPU PCI address."""
+        return amdsmi.amdsmi_get_gpu_device_bdf(self.handle)
+
+    @property
+    def supports_nonblocking_setters(self) -> bool:
+        """Return True if the GPU object supports non-blocking configuration setters."""
+        return True
+
+    def set_power_management_limit(self, power_limit_mw: int, block: bool = True) -> None:
+        """Set the GPU's power management limit. Unit: mW."""
+        if self.get_power_management_limit() == power_limit_mw:
+            return
+        self._client.set_power_limit([self._daemon_gpu_id], power_limit_mw, block)
+
+    @_handle_amdsmi_errors
+    def _get_default_power_management_limit(self) -> int:
+        """Return the default power management limit. Unit: mW."""
+        info = amdsmi.amdsmi_get_power_cap_info(self.handle)
+        default_power_cap, remainder = divmod(info["default_power_cap"], 1000)
+        if remainder != 0:
+            logger.warning(
+                "Default power cap for GPU %d is not a multiple of 1000 uW: %d uW",
+                self.gpu_index,
+                info["default_power_cap"],
+            )
+        return int(default_power_cap)
+
+    def reset_power_management_limit(self, block: bool = True) -> None:
+        """Reset the GPU's power management limit to the default value."""
+        self.set_power_management_limit(self._get_default_power_management_limit(), block)
+
+    def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
+        """Lock the memory clock to a specified range. Units: MHz."""
+        self._client.set_mem_locked_clocks(
+            [self._daemon_gpu_id],
+            min_clock_mhz,
+            max_clock_mhz,
+            block,
+        )
+
+    def reset_memory_locked_clocks(self, block: bool = True) -> None:
+        """Raise because AMD GPUs cannot reset only the memory clock domain."""
+        raise gpu_common.ZeusGPUNotSupportedError(
+            "AMD GPUs cannot reset a single clock domain. Use `reset_locked_clocks` to reset all clock domains."
+        )
+
+    def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
+        """Lock the GPU clock to a specified range. Units: MHz."""
+        self._client.set_gpu_locked_clocks(
+            [self._daemon_gpu_id],
+            min_clock_mhz,
+            max_clock_mhz,
+            block,
+        )
+
+    def reset_gpu_locked_clocks(self, block: bool = True) -> None:
+        """Raise because AMD GPUs cannot reset only the GPU clock domain."""
+        raise gpu_common.ZeusGPUNotSupportedError(
+            "AMD GPUs cannot reset a single clock domain. Use `reset_locked_clocks` to reset all clock domains."
+        )
+
+    def reset_locked_clocks(self, block: bool = True) -> None:
+        """Reset all clock domains to their defaults through zeusd."""
+        self._client.reset_locked_clocks([self._daemon_gpu_id], block)
+
+
 class AMDGPUs(gpu_common.GPUs):
     """AMD GPU Manager object, containing individual AMDGPU objects, abstracting amdsmi calls and handling related exceptions.
 
     !!! Important
         Currently only ROCm >= 6.3 is supported.
+
+    If you have the Zeus daemon deployed, make sure you have set the `ZEUSD_SOCK_PATH`
+    environment variable to the path of the Zeus daemon socket. This class will
+    automatically use [`ZeusdAMDGPU`][zeus.device.gpu.amd.ZeusdAMDGPU] if
+    `ZEUSD_SOCK_PATH` is set.
 
     ## Index resolution
 
@@ -498,8 +614,18 @@ class AMDGPUs(gpu_common.GPUs):
         else:
             visible_indices = list(range(len(amdsmi.amdsmi_get_processor_handles())))
 
-        # create the number of visible GPUs
-        self._gpus = [AMDGPU(gpu_num) for gpu_num in visible_indices]
+        # If Zeusd env vars are set, use ZeusdAMDGPU backed by a shared client.
+        config = ZeusdConfig.from_env()
+        if config is not None:
+            try:
+                client = ZeusdClient(config)
+                self._gpus = [ZeusdAMDGPU(gpu_num, client) for gpu_num in visible_indices]
+            except ZeusBaseError as e:
+                raise gpu_common.ZeusGPUInitError(str(e)) from e
+            for gpu in self._gpus:
+                gpu._disable_sys_admin_warning = True
+        else:
+            self._gpus = [AMDGPU(gpu_num) for gpu_num in visible_indices]
 
         # set _supports_instant_power_usage for all GPUs
         # amdsmi.amdsmi_get_power_info["current_socket_power"] returns "N/A" if not supported

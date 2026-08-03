@@ -126,6 +126,15 @@ class GPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Reset the locked GPU clocks to the default."""
         pass
 
+    def reset_locked_clocks(self, block: bool = True) -> None:
+        """Reset both the GPU and memory locked clocks to the default.
+
+        The default implementation resets each clock domain individually.
+        GPUs that can only reset all clock domains at once override this.
+        """
+        self.reset_gpu_locked_clocks(block)
+        self.reset_memory_locked_clocks(block)
+
     @deprecated_alias("getAveragePowerUsage")
     @abc.abstractmethod
     def get_average_power_usage(self) -> int:
@@ -297,6 +306,10 @@ class GPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Reset the locked GPU clocks to the default."""
         self.gpus[gpu_index].reset_gpu_locked_clocks(block)
 
+    def reset_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
+        """Reset both the GPU and memory locked clocks to the default."""
+        self.gpus[gpu_index].reset_locked_clocks(block)
+
     @deprecated_alias("getAveragePowerUsage")
     def get_average_power_usage(self, gpu_index: int) -> int:
         """Return the average power usage of the GPU. Units: mW."""
@@ -438,6 +451,10 @@ class EmptyGPUs(GPUs):
 
     @deprecated_alias("resetGpuLockedClocks")
     def reset_gpu_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
+        """Raise a ValueError as no GPUs are available."""
+        raise ValueError("No GPUs available.")
+
+    def reset_locked_clocks(self, gpu_index: int, block: bool = True) -> None:
         """Raise a ValueError as no GPUs are available."""
         raise ValueError("No GPUs available.")
 

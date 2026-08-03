@@ -325,7 +325,9 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
         super().__init__(gpu_index)
         self._client = client
         self._gpu_index = gpu_index
-        require_capabilities(client, read_gpu=True, control_gpu=True)
+        # Reads stay local to NVML (they are unprivileged), so only the
+        # gpu-control API group is required from the daemon.
+        require_capabilities(client, control_gpu=True)
 
     @property
     def supports_nonblocking_setters(self) -> bool:
@@ -350,10 +352,6 @@ class ZeusdNVIDIAGPU(NVIDIAGPU):
     def set_persistence_mode(self, enabled: bool, block: bool = True) -> None:
         """Set persistence mode."""
         self._client.set_persistence_mode([self._gpu_index], enabled, block)
-
-    def get_persistence_mode(self) -> bool:
-        """Return whether persistence mode is currently enabled."""
-        return self._client.get_persistence_mode([self._gpu_index])[self._gpu_index]
 
     def set_memory_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the memory clock to a specified range. Units: MHz."""

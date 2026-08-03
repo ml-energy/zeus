@@ -44,8 +44,9 @@ Check [`GPU.supports_non_blocking`][zeus.device.gpu.common.GPU.supports_nonblock
 to see if non-blocking calls are supported.
 Note that non-blocking calls will not raise exceptions even if the call fails.
 
-Currently, only [`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU] supports non-blocking calls
-to methods that set the GPU's power limit, GPU frequency, memory frequency, and persistence mode.
+[`ZeusdNVIDIAGPU`][zeus.device.gpu.nvidia.ZeusdNVIDIAGPU] and
+[`ZeusdAMDGPU`][zeus.device.gpu.amd.ZeusdAMDGPU] support non-blocking calls to methods that
+set the GPU's configurations (e.g., power limit, core frequency, memory frequency).
 This is possible because the Zeus daemon supports a `block: bool` parameter in HTTP requests,
 which can be set to `False` to make the call return immediately without checking the result.
 
