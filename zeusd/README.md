@@ -15,7 +15,7 @@ Energy optimizers in Zeus need to change GPU configuration (power limit, clocks,
 - **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
 - **Windows:** named pipe default. NVML only; `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp`.
 
-AMD GPU support covers AMD SMI from ROCm 6.3 through 7.2.
+AMD GPU support covers AMD SMI from ROCm 6.3+.
 An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
 
 ## Install
