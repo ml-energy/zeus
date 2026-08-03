@@ -145,16 +145,16 @@ pub struct ServeConfig {
     pub cpu_power_poll_hz: u32,
 
     /// API groups to enable. Groups that require root cause the daemon to
-    /// exit at startup if not running as root. Linux default includes all
-    /// three; non-Linux omits `cpu-read` (Linux-only RAPL interface).
-    #[cfg_attr(target_os = "linux", clap(
-        long,
-        value_delimiter = ',',
+    /// exit at startup if not running as root. Defaults include the API groups
+    /// supported by the platform and compiled device backends.
+    #[clap(long, value_delimiter = ',')]
+    #[cfg_attr(all(target_os = "linux", feature = "nvml"), clap(
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
     ))]
-    #[cfg_attr(not(target_os = "linux"), clap(
-        long,
-        value_delimiter = ',',
+    #[cfg_attr(all(target_os = "linux", not(feature = "nvml")), clap(
+        default_values_t = [ApiGroup::CpuRead],
+    ))]
+    #[cfg_attr(all(not(target_os = "linux"), feature = "nvml"), clap(
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead],
     ))]
     pub enable: Vec<ApiGroup>,
@@ -178,7 +178,7 @@ impl ServeConfig {
         self.enable.contains(&group)
     }
 
-    /// Whether any GPU API group is enabled (requiring NVML initialization).
+    /// Whether any GPU API group is enabled.
     pub fn needs_gpu(&self) -> bool {
         self.is_enabled(ApiGroup::GpuControl) || self.is_enabled(ApiGroup::GpuRead)
     }

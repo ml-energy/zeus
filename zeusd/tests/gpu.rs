@@ -217,9 +217,7 @@ async fn test_set_power_limit_multiple() {
 async fn test_set_power_limit_invalid() {
     let mut app = TestApp::start().await;
 
-    // Valid requests with invalid power limits (blocking). Out-of-range
-    // values yield NvmlError::InvalidArg, which the error layer maps to
-    // 400 BAD_REQUEST.
+    // Valid requests with out-of-range power limits map to 400 BAD_REQUEST.
     let resp = app
         .send(SetPowerLimit {
             gpu_ids: "0".to_string(),
@@ -242,8 +240,8 @@ async fn test_set_power_limit_invalid() {
 
     assert_eq!(resp.status(), 400);
     let text = resp.text().await.expect("Failed to read response");
-    assert!(text.contains("NVML error"));
-    assert!(text.contains("invalid"));
+    assert!(text.contains("Invalid request"));
+    assert!(text.contains("100000-300000 mW"));
 
     let resp = app
         .send(SetPowerLimit {
@@ -320,7 +318,7 @@ async fn test_set_power_limit_bulk() {
     }
 
     // After this blocking request finishes, all non-blocking ones should have completed.
-    // 350_000 exceeds the valid range -> NvmlError::InvalidArg -> 400.
+    // 350_000 exceeds the valid range and maps to 400 BAD_REQUEST.
     assert_eq!(
         app.send(SetPowerLimit {
             gpu_ids: "0".to_string(),

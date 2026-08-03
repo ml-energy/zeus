@@ -67,3 +67,9 @@ jobs:
       - name: Run tests
         run: cargo test
         working-directory: zeusd
+      - name: Run clippy without default features
+        run: cargo clippy --all --no-default-features -- -D warnings
+        working-directory: zeusd
+      - name: Run tests without default features
+        run: cargo test --no-default-features
+        working-directory: zeusd

@@ -18,7 +18,7 @@ path = "src/main.rs"
 name = "zeusd"
 
 [dependencies]
-nvml-wrapper = "0.12"
+nvml-wrapper = { version = "0.12", optional = true }
 actix-web = "4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "net"] }
 thiserror = "1"
@@ -36,6 +36,10 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 jsonwebtoken = "9"
 humantime = "2"
+
+[features]
+default = ["nvml"]
+nvml = ["dep:nvml-wrapper"]
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", default-features = false, features = ["user"] }
