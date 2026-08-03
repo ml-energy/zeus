@@ -1,10 +1,10 @@
 """Tests for AMD GPU index resolution.
 
-These tests focus on the HIP-index → amdsmi-handle translation in
+These tests focus on the HIP-index to amdsmi-handle translation in
 `AMDGPU._get_handle`. On some nodes (notably MI350X) the HIP index space
 that PyTorch and `HIP_VISIBLE_DEVICES` use does not coincide with
 `amdsmi_get_processor_handles()`'s BDF-sorted ordering, so the mapping
-must come from `amdsmi_get_gpu_enumeration_info(handle)["hip_id"]`.
+must come from amdsmi's enumeration or KFD topology information.
 """
 
 from __future__ import annotations
@@ -15,20 +15,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def _make_amdsmi_mock(hip_id_by_handle: dict[str, int]) -> MagicMock:
-    """Build a fake `amdsmi` module.
-
-    Args:
-        hip_id_by_handle: Maps amd-smi handle (a sentinel string standing in
-            for an opaque processor handle) to its HIP index. The order of
-            this dict is the order `amdsmi_get_processor_handles()` returns,
-            i.e., amd-smi's own GPU index space (BDF-sorted on real hardware).
-    """
+def _make_base_amdsmi_mock(handles: list[str]) -> MagicMock:
+    """Build a fake `amdsmi` module without either index-mapping API."""
     amdsmi = MagicMock()
-
-    handles = list(hip_id_by_handle.keys())
     amdsmi.amdsmi_get_processor_handles.return_value = handles
-    amdsmi.amdsmi_get_gpu_enumeration_info.side_effect = lambda h: {"hip_id": hip_id_by_handle[h]}
+    del amdsmi.amdsmi_get_gpu_enumeration_info
+    del amdsmi.amdsmi_get_gpu_kfd_info
 
     class _AmdSmiLibraryException(Exception):
         def get_error_code(self):
@@ -38,6 +30,29 @@ def _make_amdsmi_mock(hip_id_by_handle: dict[str, int]) -> MagicMock:
             return "mock error"
 
     amdsmi.AmdSmiLibraryException = _AmdSmiLibraryException
+    return amdsmi
+
+
+def _make_amdsmi_mock(hip_id_by_handle: dict[str, int]) -> MagicMock:
+    """Build a fake `amdsmi` module with the enumeration-info API.
+
+    Args:
+        hip_id_by_handle: Maps amd-smi handle (a sentinel string standing in
+            for an opaque processor handle) to its HIP index. The order of
+            this dict is the order `amdsmi_get_processor_handles()` returns,
+            i.e., amd-smi's own GPU index space (BDF-sorted on real hardware).
+    """
+    handles = list(hip_id_by_handle.keys())
+    amdsmi = _make_base_amdsmi_mock(handles)
+    amdsmi.amdsmi_get_gpu_enumeration_info = MagicMock(side_effect=lambda h: {"hip_id": hip_id_by_handle[h]})
+    return amdsmi
+
+
+def _make_kfd_amdsmi_mock(node_id_by_handle: dict[str, int | str]) -> MagicMock:
+    """Build a fake `amdsmi` module with the KFD-info API."""
+    handles = list(node_id_by_handle.keys())
+    amdsmi = _make_base_amdsmi_mock(handles)
+    amdsmi.amdsmi_get_gpu_kfd_info = MagicMock(side_effect=lambda h: {"node_id": node_id_by_handle[h]})
     return amdsmi
 
 
@@ -107,3 +122,32 @@ def test_get_handle_raises_for_missing_hip_index(fresh_amd_module):
     # `HIP_VISIBLE_DEVICES` mismatches.
     assert "HIP index 7" in str(exc_info.value)
     assert "[0, 1]" in str(exc_info.value)
+
+
+def test_get_handle_maps_kfd_node_order_to_hip_indices(fresh_amd_module):
+    amdsmi_mock = _make_kfd_amdsmi_mock({"h_a": 2, "h_b": 0, "h_c": 1})
+    amd = fresh_amd_module(amdsmi_mock)
+
+    assert amd.AMDGPU(0).handle == "h_b"
+    assert amd.AMDGPU(1).handle == "h_c"
+    assert amd.AMDGPU(2).handle == "h_a"
+
+
+def test_get_handle_raises_for_non_integer_kfd_node_id(fresh_amd_module):
+    amdsmi_mock = _make_kfd_amdsmi_mock({"h0": 0, "h1": "N/A"})
+    amd = fresh_amd_module(amdsmi_mock)
+
+    import zeus.device.gpu.common as gpu_common
+
+    with pytest.raises(gpu_common.ZeusGPUInitError, match="N/A"):
+        amd.AMDGPU(0)
+
+
+def test_get_handle_requires_amdsmi_6_3_mapping_api(fresh_amd_module):
+    amdsmi_mock = _make_base_amdsmi_mock(["h0"])
+    amd = fresh_amd_module(amdsmi_mock)
+
+    import zeus.device.gpu.common as gpu_common
+
+    with pytest.raises(gpu_common.ZeusGPUInitError, match="6\\.3"):
+        amd.AMDGPU(0)

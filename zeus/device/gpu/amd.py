@@ -79,7 +79,34 @@ def _hip_to_amdsmi_handle() -> dict[int, c_void_p]:
 
     The mapping is invariant for the life of the process, so it's cached.
     """
-    return {amdsmi.amdsmi_get_gpu_enumeration_info(h)["hip_id"]: h for h in amdsmi.amdsmi_get_processor_handles()}
+    handles = amdsmi.amdsmi_get_processor_handles()
+    # Version dispatch uses getattr instead of hasattr so type checkers do not
+    # mark later branches unreachable based on the locally installed amdsmi.
+    # ROCm/amdsmi 6.4+: enumeration info reports each handle's HIP index directly.
+    get_enumeration_info = getattr(amdsmi, "amdsmi_get_gpu_enumeration_info", None)
+    if get_enumeration_info is not None:
+        return {get_enumeration_info(h)["hip_id"]: h for h in handles}
+
+    # ROCm/amdsmi 6.3: no enumeration info. HIP enumerates devices in KFD
+    # topology order, so sorting handles by KFD node_id reconstructs it.
+    get_kfd_info = getattr(amdsmi, "amdsmi_get_gpu_kfd_info", None)
+    if get_kfd_info is not None:
+        logger.info("Resolving HIP indices from amdsmi KFD node IDs")
+        handles_by_node_id = []
+        for handle in handles:
+            node_id = get_kfd_info(handle)["node_id"]
+            if type(node_id) is not int:
+                raise gpu_common.ZeusGPUInitError(
+                    f"Expected an integer KFD node_id from amdsmi, but received {node_id!r}."
+                )
+            handles_by_node_id.append((node_id, handle))
+        handles_by_node_id.sort(key=lambda item: item[0])
+        return {hip_index: handle for hip_index, (_, handle) in enumerate(handles_by_node_id)}
+
+    raise gpu_common.ZeusGPUInitError(
+        "Zeus requires ROCm/amdsmi 6.3 or newer, but the installed amdsmi exposes neither "
+        "amdsmi_get_gpu_enumeration_info nor amdsmi_get_gpu_kfd_info."
+    )
 
 
 def _handle_amdsmi_errors(func):
@@ -133,12 +160,8 @@ class AMDGPU(gpu_common.GPU):
 
     @_handle_amdsmi_errors
     def _get_handle(self):
-        # `self.gpu_index` is a HIP index (what PyTorch sees), but
-        # `amdsmi_get_processor_handles()` returns handles ordered by amd-smi's
-        # own GPU index (BDF-sorted). On some nodes (e.g., MI350X) these two
-        # index spaces differ. Map HIP index -> handle via
-        # `amdsmi_get_gpu_enumeration_info`, the same source `amd-smi monitor`
-        # uses to print its HIP-ID column.
+        # Zeus accepts HIP indices, while processor handles follow amd-smi's
+        # GPU ordering. Resolve the HIP index before making amdsmi calls.
         hip_to_handle = _hip_to_amdsmi_handle()
         if self.gpu_index not in hip_to_handle:
             raise gpu_common.ZeusGPUNotFoundError(
@@ -391,45 +414,45 @@ class AMDGPUs(gpu_common.GPUs):
     """AMD GPU Manager object, containing individual AMDGPU objects, abstracting amdsmi calls and handling related exceptions.
 
     !!! Important
-        Currently only ROCm >= 6.2 is supported.
+        Currently only ROCm >= 6.3 is supported.
 
     ## Index resolution
 
     AMD systems simultaneously expose several index spaces for the same
     physical GPU, and they do not all agree:
 
-    - **HIP index** — what the HIP runtime hands out. This is what PyTorch
+    - **HIP index** - what the HIP runtime hands out. This is what PyTorch
       sees as `cuda:N`, what `torch.cuda.current_device()` returns, and what
       `HIP_VISIBLE_DEVICES` / `CUDA_VISIBLE_DEVICES` refer to.
-    - **amd-smi GPU index** — the slot number `amd-smi` and `rocm-smi` use
+    - **amd-smi GPU index** - the slot number `amd-smi` and `rocm-smi` use
       (ordered by PCI BDF). This is what appears in `amd-smi monitor`'s
       `GPU` column, what `amdsmi_get_processor_handles()` is ordered by, and
       what node-local admin scripts like `set_powercap.sh -gpu N` expect.
-    - **OAM-ID** — physical OAM tray position; not used by Zeus but shown
+    - **OAM-ID** - physical OAM tray position; not used by Zeus but shown
       by `amd-smi monitor`.
 
     On most nodes these orderings happen to coincide, but on some (e.g.,
     MI350X in SPX/NPS1), the HIP runtime enumerates GPUs in a different
-    order than PCI BDF — so HIP index 0 may be amd-smi GPU 3, and so on.
+    order than PCI BDF, so HIP index 0 may be amd-smi GPU 3, and so on.
     Mixing up the two spaces results in silently operating on the wrong
     physical GPU.
 
     Zeus sits at the application layer, so **all indices passed to Zeus are
     HIP indices** (matching PyTorch). Internally, `AMDGPU._get_handle` uses
     `amdsmi_get_gpu_enumeration_info(handle)["hip_id"]` to translate each
-    HIP index to the correct `amdsmi` processor handle before any query or
-    set — same data source `amd-smi monitor` uses to populate its `HIP-ID`
-    column.
+    HIP index to the correct `amdsmi` processor handle. On ROCm 6.3 where
+    that API is unavailable, Zeus reconstructs HIP order by sorting
+    processor handles by `amdsmi_get_gpu_kfd_info(handle)["node_id"]`.
 
     ## HIP_VISIBLE_DEVICES / CUDA_VISIBLE_DEVICES
 
     `HIP_VISIBLE_DEVICES` is respected exactly as HIP itself interprets it:
     a comma-separated list of HIP indices to expose, in order. The remaining
     GPUs are hidden; the exposed GPUs are re-numbered densely starting at 0
-    within the process (matching what PyTorch shows as `cuda:0`, `cuda:1`, …).
+    within the process (matching what PyTorch shows as `cuda:0`, `cuda:1`, ...).
 
     The index you pass to `AMDGPUs` / `GPUs` methods is this dense,
-    post-masking index — the same one PyTorch uses. Example: on a 4-GPU
+    post-masking index, the same one PyTorch uses. Example: on a 4-GPU
     node with `HIP_VISIBLE_DEVICES=0,2`, Zeus tracks two GPUs, and the
     call `gpus.get_power_management_limit(1)` hits the physical GPU whose
     HIP index (as seen by the driver before masking) was 2, i.e.,
