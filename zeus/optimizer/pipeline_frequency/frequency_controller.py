@@ -64,5 +64,4 @@ class FrequencyController:
 
         # Reset everything.
         with contextlib.suppress(ZeusGPUNotSupportedError):
-            gpus.reset_memory_locked_clocks(device_id)
-        gpus.reset_gpu_locked_clocks(device_id)
+            gpus.reset_locked_clocks(device_id)
