@@ -3,6 +3,8 @@
 //! It has to be under `tests/helpers/mod.rs` instead of `tests/helpers.rs`
 //! to avoid it from being treated as another test module.
 
+#![allow(dead_code)]
+
 use once_cell::sync::Lazy;
 use paste::paste;
 use std::collections::HashSet;
@@ -476,6 +478,8 @@ impl TestApp {
                 .map(|id| GpuDiscoveryInfo {
                     id,
                     name: format!("Test GPU {id}"),
+                    pci_address: format!("0000:{:02x}:00.0", id),
+                    cumulative_energy_available: true,
                 })
                 .collect(),
             cpus: (0..cpu_count)
@@ -506,7 +510,7 @@ impl TestApp {
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
         let server = start_server_tcp(listener, state, 2).expect("Failed to start server");
-        let _ = tokio::spawn(server);
+        drop(tokio::spawn(server));
 
         TestApp {
             port,
@@ -588,6 +592,8 @@ impl TestApp {
                 .map(|id| GpuDiscoveryInfo {
                     id,
                     name: format!("Test GPU {id}"),
+                    pci_address: format!("0000:{:02x}:00.0", id),
+                    cumulative_energy_available: true,
                 })
                 .collect(),
             cpus: (0..cpu_count)
@@ -618,7 +624,7 @@ impl TestApp {
         let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
         let port = listener.local_addr().unwrap().port();
         let server = start_server_tcp(listener, state, 2).expect("Failed to start server");
-        let _ = tokio::spawn(server);
+        drop(tokio::spawn(server));
 
         TestApp {
             port,

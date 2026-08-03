@@ -96,9 +96,35 @@ zeusd token issue --signing-key-path /etc/zeusd/signing.key \
 
 `--expires` accepts `1h`, `7d`, `30d`, or `never`. Hand the token to applications via `ZEUSD_TOKEN`, or `-H "Authorization: Bearer ..."` for curl. `/discover` and `/time` never require auth.
 
-## Windows quirk
+## Notes on Platforms
+
+### Windows
 
 NVML's persistence-mode API is Linux-only. On Windows the kernel driver is always loaded, so `POST /gpu/set_persistence_mode?enabled=true` is a 200 no-op (logged once); `enabled=false` returns 400. All other GPU operations behave identically across platforms.
+
+### NVIDIA GPU
+
+The cumulative energy counter requires Volta or newer.
+On older GPUs, `cumulative_energy_available` is false in `/discover` and `GET /gpu/get_cumulative_energy` returns 400.
+
+### AMD GPU
+
+GPU indices follow PCI bus order sorted by PCI address, which is the same order used by the `amd-smi` CLI.
+The reported GPU name is AMD SMI's market name and can differ across ROCm versions for the same GPU.
+
+On some AMD GPUs, the driver's cumulative energy counter advances at the wrong rate; see [ROCm/amdsmi #38](https://github.com/ROCm/amdsmi/issues/38).
+At startup, `zeusd` integrates power over 0.5 seconds, compares it with the counter delta, and marks GPUs that fail validation as `cumulative_energy_available: false`.
+
+MI250 and MI250X are dual-die GPUs, and from AMD SMI, each die looks like an individual GPU, one even indexed and the other odd indexed.
+The driver reports the combined power of both dies on the even-indexed die, and nothing (either unavailable or zero) on the odd-indexed die.
+
+Per AMD SMI's platform support, clock locking and the energy counter work only on bare-metal Linux.
+Power capping additionally works on virtualization hosts and single-VF (SR-IOV) guests, but not on multi-VF or Windows guests.
+On virtualized AMD GPUs, these operations return 400.
+
+When ROCm is outside the default search locations, point the daemon at it in `/etc/default/zeusd`.
+`ROCM_PATH` is a ROCm installation root whose `lib/` contains `libamd_smi.so.<abi>`, e.g., `ROCM_PATH=/opt/rocm-7.2.0`.
+`AMDSMI_LIB_DIR` is any directory that directly contains `libamd_smi.so.<abi>`, e.g., `AMDSMI_LIB_DIR=/opt/rocm-7.2.0/lib`.
 
 ## Troubleshooting
 
@@ -121,8 +147,8 @@ Available devices, capabilities, and enabled API groups. Always available; never
 ```json
 {
   "gpus": [
-    {"id": 0, "name": "NVIDIA A40"},
-    {"id": 1, "name": "NVIDIA A40"}
+    {"id": 0, "name": "NVIDIA A40", "pci_address": "0000:01:00.0", "cumulative_energy_available": true},
+    {"id": 1, "name": "NVIDIA A40", "pci_address": "0000:41:00.0", "cumulative_energy_available": true}
   ],
   "cpus": [
     {"id": 0, "dram_available": true},
@@ -132,6 +158,9 @@ Available devices, capabilities, and enabled API groups. Always available; never
   "auth_required": false
 }
 ```
+
+`pci_address` is the PCI domain:bus:device.function address, formatted as in `lspci -D`.
+`cumulative_energy_available` states whether the GPU has a trustworthy cumulative energy counter; when false, `GET /gpu/get_cumulative_energy` returns 400 for that GPU (see [Notes on Platforms](#notes-on-platforms)).
 
 ### `GET /time`
 
@@ -160,18 +189,18 @@ Writes (`POST`) also take `block` (bool): `true` waits for completion and report
 | Method | Path | Extra params / notes |
 |---|---|---|
 | `POST` | `/gpu/set_power_limit` | `power_limit_mw` |
-| `POST` | `/gpu/set_persistence_mode` | `enabled` (see [Windows quirk](#windows-quirk)) |
+| `POST` | `/gpu/set_persistence_mode` | `enabled`; AMD GPUs return 400 because persistence mode is an NVML concept (see [Windows notes](#windows)). |
 | `POST` | `/gpu/set_gpu_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
 | `POST` | `/gpu/reset_gpu_locked_clocks` | On AMD GPUs, returns 400 (no per-domain reset exists); use `reset_locked_clocks`. |
 | `POST` | `/gpu/set_mem_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
 | `POST` | `/gpu/reset_mem_locked_clocks` | On AMD GPUs, returns 400 (no per-domain reset exists); use `reset_locked_clocks`. |
 | `POST` | `/gpu/reset_locked_clocks` | resets all clock domains |
-| `GET`  | `/gpu/get_cumulative_energy` | -- |
+| `GET`  | `/gpu/get_cumulative_energy` | GPUs whose `cumulative_energy_available` is false in `/discover` return 400. |
 | `GET`  | `/gpu/get_power` | one-shot snapshot |
 | `GET`  | `/gpu/stream_power` | SSE stream |
 | `GET`  | `/gpu/get_power_limit` | -- |
 | `GET`  | `/gpu/get_power_limit_constraints` | -- |
-| `GET`  | `/gpu/get_persistence_mode` | always `true` on Windows |
+| `GET`  | `/gpu/get_persistence_mode` | AMD GPUs return 400 because persistence mode is an NVML concept; always `true` on Windows. |
 
 `get_cumulative_energy` response (keyed by GPU index as string):
 

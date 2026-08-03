@@ -13,6 +13,10 @@ use crate::config::ApiGroup;
 pub struct GpuDiscoveryInfo {
     pub id: usize,
     pub name: String,
+    /// PCI address in domain:bus:device.function form.
+    pub pci_address: String,
+    /// Whether the GPU provides a trustworthy cumulative energy counter.
+    pub cumulative_energy_available: bool,
 }
 
 /// CPU package information returned by `GET /discover`.

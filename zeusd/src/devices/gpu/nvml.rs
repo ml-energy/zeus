@@ -48,6 +48,32 @@ impl NvmlGpu<'static> {
     pub fn name(&self) -> Result<String, ZeusdError> {
         Ok(self.device.name()?)
     }
+
+    /// Read the GPU PCI address in domain:bus:device.function form.
+    pub fn pci_address(&self) -> Result<String, ZeusdError> {
+        let pci_info = self.device.pci_info()?;
+        Ok(format!(
+            "{:04x}:{:02x}:{:02x}.0",
+            pci_info.domain, pci_info.bus, pci_info.device
+        ))
+    }
+
+    pub(crate) fn validate_energy_counters(gpus: &mut [Self]) -> Result<Vec<bool>, ZeusdError> {
+        gpus.iter()
+            .enumerate()
+            .map(|(index, gpu)| match gpu.device.total_energy_consumption() {
+                Ok(_) => Ok(true),
+                Err(NvmlError::NotSupported) => {
+                    tracing::info!(
+                        "GPU {} driver does not support the total energy counter (pre-Volta GPU)",
+                        index
+                    );
+                    Ok(false)
+                }
+                Err(error) => Err(error.into()),
+            })
+            .collect()
+    }
 }
 
 impl GpuManager for NvmlGpu<'static> {

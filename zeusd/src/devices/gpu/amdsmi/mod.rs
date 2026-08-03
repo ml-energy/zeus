@@ -8,6 +8,7 @@ use std::ffi::{CStr, OsStr};
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::time::Duration;
 
 use libloading::Library;
 use once_cell::sync::OnceCell;
@@ -400,11 +401,29 @@ enum PowerReading {
     Unsupported,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EnergyCounterVerdict {
+    CannotValidate,
+    Reliable,
+    Unreliable,
+}
+
+fn energy_counter_verdict(expected_mj: f64, measured_mj: f64) -> EnergyCounterVerdict {
+    if expected_mj < 0.001 {
+        EnergyCounterVerdict::CannotValidate
+    } else if 0.1 < measured_mj / expected_mj && measured_mj / expected_mj < 10.0 {
+        EnergyCounterVerdict::Reliable
+    } else {
+        EnergyCounterVerdict::Unreliable
+    }
+}
+
 /// A GPU managed through AMD SMI.
 pub struct AmdsmiGpu {
     api: &'static AmdsmiApi,
     handle: ffi::AmdsmiProcessorHandle,
     power_reading: PowerReading,
+    cumulative_energy_available: bool,
     // Single-task ownership serializes cache updates; failed writes requery bounds to cover external changes.
     gfx_clock_bounds: Option<(u32, u32)>,
     mem_clock_bounds: Option<(u32, u32)>,
@@ -590,13 +609,14 @@ impl AmdsmiGpu {
             api,
             handle,
             power_reading,
+            cumulative_energy_available: false,
             gfx_clock_bounds,
             mem_clock_bounds,
         };
         let name = gpu.name()?;
         let bdf = gpu.bdf()?;
         tracing::info!(
-            "Initialized AMD SMI for GPU {} ({}, BDF {})",
+            "Initialized AMD SMI for GPU {} ({}, PCI address {})",
             index,
             name,
             bdf
@@ -634,6 +654,22 @@ impl AmdsmiGpu {
         })?;
         // SAFETY: AMD SMI initialized the output value after returning success.
         Ok(unsafe { bdf.assume_init() })
+    }
+
+    fn raw_total_energy_consumption(&self) -> Result<u64, ZeusdError> {
+        let mut energy_accumulator = 0;
+        let mut counter_resolution = 0.0;
+        let mut timestamp = 0;
+        // SAFETY: All output pointers refer to writable values of the expected types.
+        check_status(self.api, unsafe {
+            (self.api.get_energy_count)(
+                self.handle,
+                &mut energy_accumulator,
+                &mut counter_resolution,
+                &mut timestamp,
+            )
+        })?;
+        Ok((energy_accumulator as f64 * counter_resolution as f64 / 1000.0) as u64)
     }
 
     fn clock_bounds(&self, clock_type: u32) -> Option<(u32, u32)> {
@@ -744,6 +780,106 @@ impl AmdsmiGpu {
     }
 }
 
+pub(crate) fn validate_energy_counters(gpus: &mut [AmdsmiGpu]) -> Result<Vec<bool>, ZeusdError> {
+    if gpus.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    tracing::info!("Starting AMD energy counter validation; this takes 0.5 seconds");
+    for gpu in gpus.iter_mut() {
+        gpu.cumulative_energy_available = false;
+    }
+
+    let powers_mw = gpus
+        .iter_mut()
+        .map(|gpu| match gpu.get_instant_power_mw() {
+            Ok(power_mw) => Ok(power_mw),
+            Err(ZeusdError::AmdSmiError {
+                status: ffi::AMDSMI_STATUS_NOT_SUPPORTED,
+                ..
+            }) => Ok(0),
+            Err(error) => Err(error),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut initial_energies = Vec::with_capacity(gpus.len());
+    for (index, gpu) in gpus.iter().enumerate() {
+        match gpu.raw_total_energy_consumption() {
+            Ok(energy_mj) => initial_energies.push(Some(energy_mj)),
+            Err(ZeusdError::AmdSmiError {
+                status: ffi::AMDSMI_STATUS_NOT_SUPPORTED,
+                ..
+            }) => {
+                tracing::info!("GPU {} cumulative energy counter is not supported", index);
+                initial_energies.push(None);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    std::thread::sleep(Duration::from_millis(500));
+
+    let mut final_energies = Vec::with_capacity(gpus.len());
+    for (index, (gpu, initial_energy)) in gpus.iter().zip(&initial_energies).enumerate() {
+        if initial_energy.is_none() {
+            final_energies.push(None);
+            continue;
+        }
+        match gpu.raw_total_energy_consumption() {
+            Ok(energy_mj) => final_energies.push(Some(energy_mj)),
+            Err(ZeusdError::AmdSmiError {
+                status: ffi::AMDSMI_STATUS_NOT_SUPPORTED,
+                ..
+            }) => {
+                tracing::info!("GPU {} cumulative energy counter is not supported", index);
+                final_energies.push(None);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    let mut flags = Vec::with_capacity(gpus.len());
+    for (index, gpu) in gpus.iter_mut().enumerate() {
+        let Some((initial_mj, final_mj)) = initial_energies[index].zip(final_energies[index])
+        else {
+            flags.push(false);
+            continue;
+        };
+        let expected_mj = powers_mw[index] as f64 * 0.5;
+        let measured_mj = final_mj as f64 - initial_mj as f64;
+        let available = match energy_counter_verdict(expected_mj, measured_mj) {
+            EnergyCounterVerdict::Reliable => {
+                tracing::info!(
+                    "GPU {} cumulative energy counter passed validation: expected {:.3} mJ, measured {:.3} mJ",
+                    index,
+                    expected_mj,
+                    measured_mj
+                );
+                true
+            }
+            EnergyCounterVerdict::CannotValidate => {
+                tracing::info!(
+                    "GPU {} power reading is zero or unsupported, so the cumulative energy counter cannot be validated; energy is disabled for this GPU; clients can poll power and integrate instead",
+                    index
+                );
+                false
+            }
+            EnergyCounterVerdict::Unreliable => {
+                tracing::info!(
+                    "GPU {} cumulative energy counter failed validation: expected {:.3} mJ, measured {:.3} mJ; see https://github.com/ROCm/amdsmi/issues/38; clients can poll power and integrate instead",
+                    index,
+                    expected_mj,
+                    measured_mj
+                );
+                false
+            }
+        };
+        gpu.cumulative_energy_available = available;
+        flags.push(available);
+    }
+    Ok(flags)
+}
+
 impl GpuManager for AmdsmiGpu {
     fn device_count() -> Result<u32, ZeusdError> {
         let api = amdsmi_api()?;
@@ -840,19 +976,16 @@ impl GpuManager for AmdsmiGpu {
     }
 
     fn get_total_energy_consumption(&mut self) -> Result<u64, ZeusdError> {
-        let mut energy_accumulator = 0;
-        let mut counter_resolution = 0.0;
-        let mut timestamp = 0;
-        // SAFETY: All output pointers refer to writable values of the expected types.
-        check_status(self.api, unsafe {
-            (self.api.get_energy_count)(
-                self.handle,
-                &mut energy_accumulator,
-                &mut counter_resolution,
-                &mut timestamp,
-            )
-        })?;
-        Ok((energy_accumulator as f64 * counter_resolution as f64 / 1000.0) as u64)
+        if !self.cumulative_energy_available {
+            return Err(ZeusdError::InvalidRequest(
+                "The cumulative energy counter of this GPU is not available. It is either \
+                 unsupported or failed validation at zeusd startup \
+                 (see https://github.com/ROCm/amdsmi/issues/38). Poll /gpu/get_power and \
+                 integrate over time instead."
+                    .into(),
+            ));
+        }
+        self.raw_total_energy_consumption()
     }
 }
 
@@ -1041,5 +1174,31 @@ mod tests {
             clk_write_order(Some((1_000, 1_500)), 1_500, 1_800),
             WriteOrder::MinFirst
         );
+    }
+
+    #[test]
+    fn energy_counter_cannot_be_validated_below_expected_threshold() {
+        assert_eq!(
+            energy_counter_verdict(0.0009, 0.0009),
+            EnergyCounterVerdict::CannotValidate
+        );
+    }
+
+    #[test]
+    fn energy_counter_is_reliable_inside_ratio_bounds() {
+        assert_eq!(
+            energy_counter_verdict(100.0, 100.0),
+            EnergyCounterVerdict::Reliable
+        );
+    }
+
+    #[test]
+    fn energy_counter_is_unreliable_at_or_beyond_ratio_bounds() {
+        for measured_mj in [9.0, 10.0, 1_000.0, 1_001.0] {
+            assert_eq!(
+                energy_counter_verdict(100.0, measured_mj),
+                EnergyCounterVerdict::Unreliable
+            );
+        }
     }
 }
