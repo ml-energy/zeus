@@ -4,7 +4,8 @@
 - Package availability and versions: Zeus, PyTorch, JAX, CuPy.
 - NVIDIA GPU availability: Number of GPUs and models.
 - AMD GPU availability: Number of GPUs and models.
-- Intel RAPL availability: Number of CPUs and whether DRAM measurements are available.
+- Intel RAPL availability (Linux): Number of CPUs and whether DRAM measurements are available.
+- EMI availability (Windows): Number of CPUs and whether DRAM measurements are available.
 - Zeusd daemon connectivity and capabilities (when configured).
 """
 
@@ -18,12 +19,12 @@ import shutil
 import time
 
 import zeus
+from zeus.device.cpu.emi import EMICPU
 from zeus.device.cpu.rapl import RAPLCPU, ZeusdRAPLCPU
 from zeus.device.exception import ZeusBaseCPUError, ZeusBaseGPUError, ZeusBaseSoCError
 from zeus.utils.zeusd import ZeusdClient, ZeusdConfig
 from zeus.utils import framework
 from zeus.device import get_gpus, get_cpus, get_soc
-from zeus.device.cpu import RAPLCPUs
 from zeus.device.gpu.common import ZeusGPUInitError, EmptyGPUs
 from zeus.device.cpu.common import ZeusCPUInitError, EmptyCPUs
 from zeus.device.soc.common import ZeusSoCInitError, EmptySoC
@@ -128,7 +129,6 @@ def show_env():
         cpus = EmptyCPUs()
 
     if len(cpus) > 0:
-        assert isinstance(cpus, RAPLCPUs)
         for i, cpu in enumerate(cpus.cpus):
             if isinstance(cpu, ZeusdRAPLCPU):
                 cpu_availability += f"  CPU {i}:\n    CPU measurements available (Zeusd at {cpu._client.endpoint})\n"
@@ -142,6 +142,17 @@ def show_env():
                     dram = cpu.dram
                     assert dram is not None
                     cpu_availability += f"    DRAM measurements available ({dram.path})\n"
+                else:
+                    cpu_availability += "    DRAM measurements unavailable\n"
+            elif isinstance(cpu, EMICPU):
+                emi_path = cpu._emi_file.path
+                cpu_availability += (
+                    f"  CPU {i}:\n    CPU measurements available (EMI channel {cpu._pkg_channel_index} on {emi_path})\n"
+                )
+                if cpu.supports_get_dram_energy_consumption():
+                    cpu_availability += (
+                        f"    DRAM measurements available (EMI channel {cpu._dram_channel_index} on {emi_path})\n"
+                    )
                 else:
                     cpu_availability += "    DRAM measurements unavailable\n"
             else:
