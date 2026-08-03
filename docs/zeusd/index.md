@@ -6,13 +6,23 @@ Reach for `zeusd` when you need privilege isolation for GPU configuration, CPU/D
 
 ## Platform support
 
-- **Linux:** UDS default. All API groups work (NVML + RAPL).
+- **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
 - **Windows:** named pipe default. NVML only -- `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp` (no `httpx` transport for named pipes yet).
+
+AMD GPU support covers AMD SMI from ROCm 6.3 through 7.2.
+An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
 
 ## Install
 
 ```sh
 cargo install zeusd
+```
+
+Build AMD GPU support with `ROCM_PATH` selecting the ROCm installation.
+Specifying `--no-default-features` drops the default NVML support entirely.
+
+```sh
+ROCM_PATH=/opt/rocm-7.2.0 cargo install zeusd --no-default-features --features amdsmi
 ```
 
 Linux deployments: see [`zeusd/packaging/systemd/`](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd){.external} for a hardened systemd unit.

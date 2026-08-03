@@ -4,6 +4,10 @@
 mod nvml;
 #[cfg(feature = "nvml")]
 pub use nvml::NvmlGpu;
+#[cfg(feature = "amdsmi")]
+pub mod amdsmi;
+#[cfg(feature = "amdsmi")]
+pub use amdsmi::AmdsmiGpu;
 
 pub mod power;
 
@@ -106,6 +110,13 @@ pub struct GpuManagementTasks {
 }
 
 impl GpuManagementTasks {
+    /// Create an empty collection of GPU management tasks.
+    pub fn empty() -> Self {
+        Self {
+            senders: Vec::new(),
+        }
+    }
+
     /// Start GPU management tasks for the given GPUs.
     /// It's generic over the type of GPU manager to allow for testing.
     pub fn start<T>(gpus: Vec<T>) -> Result<Self, ZeusdError>

@@ -73,3 +73,48 @@ jobs:
       - name: Run tests without default features
         run: cargo test --no-default-features
         working-directory: zeusd
+
+  clippy_and_test_amdsmi:
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository }}
+    name: clippy + test (AMD SMI)
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: zeusd
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            zeusd/target/
+          key: ${{ github.event.repository.name }}-${{ runner.os }}-zeusd-cargo-v3
+      - name: Install AMD SMI
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2 noble main" | sudo tee /etc/apt/sources.list.d/rocm.list
+          sudo apt-get update
+          sudo apt-get install -y amd-smi-lib
+      - name: Select the installed ROCm tree
+        run: echo "ROCM_PATH=$(ls -d /opt/rocm-*)" >> "$GITHUB_ENV"
+      - name: Run clippy with AMD SMI
+        run: cargo clippy --all --features amdsmi -- -D warnings
+        working-directory: zeusd
+      - name: Run tests with AMD SMI
+        run: cargo test --features amdsmi
+        working-directory: zeusd
+      - name: Run clippy with only AMD SMI
+        run: cargo clippy --all --no-default-features --features amdsmi -- -D warnings
+        working-directory: zeusd
+      - name: Run tests with only AMD SMI
+        run: cargo test --no-default-features --features amdsmi
+        working-directory: zeusd
