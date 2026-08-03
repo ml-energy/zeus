@@ -96,27 +96,35 @@ zeusd token issue --signing-key-path /etc/zeusd/signing.key \
 
 `--expires` accepts `1h`, `7d`, `30d`, or `never`. Hand the token to applications via `ZEUSD_TOKEN`, or `-H "Authorization: Bearer ..."` for curl. `/discover` and `/time` never require auth.
 
-## Windows quirk
+## Notes on Platforms
+
+### Windows
 
 NVML's persistence-mode API is Linux-only. On Windows the kernel driver is always loaded, so `POST /gpu/set_persistence_mode?enabled=true` is a 200 no-op (logged once); `enabled=false` returns 400. All other GPU operations behave identically across platforms.
 
-## AMD GPU notes
+### NVIDIA GPU
+
+The cumulative energy counter requires Volta or newer.
+On older GPUs, `cumulative_energy_available` is false in `/discover` and `GET /gpu/get_cumulative_energy` returns 400.
+
+### AMD GPU
 
 GPU indices follow PCI bus order sorted by PCI address, which is the same order used by the `amd-smi` CLI.
 The reported GPU name is AMD SMI's market name and can differ across ROCm versions for the same GPU.
 
-On some AMD GPUs, the driver's cumulative energy counter advances at the wrong rate; see [ROCm/amdsmi issue 38](https://github.com/ROCm/amdsmi/issues/38).
+On some AMD GPUs, the driver's cumulative energy counter advances at the wrong rate; see [ROCm/amdsmi #38](https://github.com/ROCm/amdsmi/issues/38).
 At startup, `zeusd` integrates power over 0.5 seconds, compares it with the counter delta, and marks GPUs that fail validation as `cumulative_energy_available: false`.
 
-MI250 and MI250X are dual-die GPUs, and the driver reports the combined power of both dies on the even-indexed die and nothing on the odd-indexed die.
-Power and energy for the odd die are unavailable or zero, while the even die's readings cover both dies.
+MI250 and MI250X are dual-die GPUs, and from AMD SMI, each die looks like an individual GPU, one even indexed and the other odd indexed.
+The driver reports the combined power of both dies on the even-indexed die, and nothing (either unavailable or zero) on the odd-indexed die.
 
-Per AMD SMI's platform support, clock locking and the energy counter work only on bare-metal Linux, and power capping is unavailable on most guest types.
+Per AMD SMI's platform support, clock locking and the energy counter work only on bare-metal Linux.
+Power capping additionally works on virtualization hosts and single-VF (SR-IOV) guests, but not on multi-VF or Windows guests.
 On virtualized AMD GPUs, these operations return 400.
 
-AMD GPU control writes go through the amdgpu driver's sysfs files, so systemd's `ProtectKernelTunables=true` (which mounts `/sys` read-only) breaks them.
-The unit shipped in `zeusd/packaging/systemd/` leaves it off so AMD control works out of the box; if you run zeusd under your own hardened unit, make sure that directive is not set (see the [systemd packaging README](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd#amd-gpus){.external}).
-When ROCm is outside the default search locations, set `ROCM_PATH` or `AMDSMI_LIB_DIR` in `/etc/default/zeusd`.
+When ROCm is outside the default search locations, point the daemon at it in `/etc/default/zeusd`.
+`ROCM_PATH` is a ROCm installation root whose `lib/` contains `libamd_smi.so.<abi>`, e.g., `ROCM_PATH=/opt/rocm-7.2.0`.
+`AMDSMI_LIB_DIR` is any directory that directly contains `libamd_smi.so.<abi>`, e.g., `AMDSMI_LIB_DIR=/opt/rocm-7.2.0/lib`.
 
 ## Troubleshooting
 
@@ -124,7 +132,6 @@ When ROCm is outside the default search locations, set `ROCM_PATH` or `AMDSMI_LI
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
 - **Daemon exits immediately at startup.** On Linux, a root-required group is enabled but `zeusd` isn't running as root. Either `sudo` or `--enable gpu-read`.
 - **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
-- **AMD GPU control fails under systemd.** If clock or power limit writes fail while the same daemon works when started manually as root, the unit probably sets `ProtectKernelTunables=true`, which blocks amdgpu sysfs writes. The [shipped unit](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd#amd-gpus){.external} leaves it off.
 - **Logs.** `journalctl -u zeusd -f` under systemd; stderr otherwise.
 
 ## HTTP API reference
@@ -153,9 +160,7 @@ Available devices, capabilities, and enabled API groups. Always available; never
 ```
 
 `pci_address` is the PCI domain:bus:device.function address, formatted as in `lspci -D`.
-`cumulative_energy_available` states whether `GET /gpu/get_cumulative_energy` serves trustworthy values for that GPU, and the endpoint returns 400 for that GPU when the field is false.
-For NVIDIA GPUs, it is false when the driver does not support the total energy counter, as on pre-Volta GPUs.
-For AMD GPUs, it is false when the counter is unsupported or failed the [startup validation](#amd-gpu-notes).
+`cumulative_energy_available` states whether the GPU has a trustworthy cumulative energy counter; when false, `GET /gpu/get_cumulative_energy` returns 400 for that GPU (see [Notes on Platforms](#notes-on-platforms)).
 
 ### `GET /time`
 
@@ -184,7 +189,7 @@ Writes (`POST`) also take `block` (bool): `true` waits for completion and report
 | Method | Path | Extra params / notes |
 |---|---|---|
 | `POST` | `/gpu/set_power_limit` | `power_limit_mw` |
-| `POST` | `/gpu/set_persistence_mode` | `enabled`; AMD GPUs return 400 because persistence mode is an NVML concept (see [Windows quirk](#windows-quirk)). |
+| `POST` | `/gpu/set_persistence_mode` | `enabled`; AMD GPUs return 400 because persistence mode is an NVML concept (see [Windows notes](#windows)). |
 | `POST` | `/gpu/set_gpu_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
 | `POST` | `/gpu/reset_gpu_locked_clocks` | On AMD GPUs, returns 400 (no per-domain reset exists); use `reset_locked_clocks`. |
 | `POST` | `/gpu/set_mem_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |

@@ -20,7 +20,8 @@ RuntimeDirectoryMode=0755
 # CAP_CHOWN is needed only when --socket-uid/--socket-gid are passed.
 # ProtectKernelTunables stays off because AMD GPU control writes go
 # through the amdgpu driver's sysfs files, which it would mount read-only.
-# NVIDIA-only nodes can re-enable it (see the README's AMD GPUs section).
+# Nodes without AMD GPU control can re-enable it (see the README's
+# Additional hardening section).
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_CHOWN
 NoNewPrivileges=true
 ProtectSystem=strict
