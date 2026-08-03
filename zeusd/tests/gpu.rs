@@ -10,8 +10,8 @@ use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::GpuManager;
 use zeusd::error::ZeusdError;
 use zeusd::routes::gpu::{
-    ResetGpuLockedClocks, ResetMemLockedClocks, SetGpuLockedClocks, SetMemLockedClocks,
-    SetPersistenceMode, SetPowerLimit,
+    ResetGpuLockedClocks, ResetLockedClocks, ResetMemLockedClocks, SetGpuLockedClocks,
+    SetMemLockedClocks, SetPersistenceMode, SetPowerLimit,
 };
 
 use crate::helpers::{TestApp, NUM_GPUS};
@@ -724,6 +724,23 @@ async fn test_mem_locked_clocks_bulk() {
 }
 
 #[tokio::test]
+async fn test_reset_locked_clocks() {
+    let mut app = TestApp::start().await;
+
+    let resp = app
+        .send(ResetLockedClocks {
+            gpu_ids: "0".to_string(),
+            block: true,
+        })
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(app.gpu_locked_clocks_history_for_gpu(0), vec![(0, 0)]);
+    assert_eq!(app.mem_locked_clocks_history_for_gpu(0), vec![(0, 0)]);
+}
+
+#[tokio::test]
 async fn test_gpu_cumulative_energy() {
     let _app = TestApp::start().await;
     let client = reqwest::Client::new();
@@ -986,6 +1003,9 @@ impl GpuManager for PollCountingGpu {
         Ok(())
     }
     fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        Ok(())
+    }
+    fn reset_locked_clocks(&mut self) -> Result<(), ZeusdError> {
         Ok(())
     }
     fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {

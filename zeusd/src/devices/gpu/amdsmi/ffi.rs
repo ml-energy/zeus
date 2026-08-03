@@ -22,6 +22,11 @@ pub const AMDSMI_CLK_TYPE_MEM: u32 = 4;
 pub const AMDSMI_CLK_LIMIT_MIN: u32 = 0;
 pub const AMDSMI_CLK_LIMIT_MAX: u32 = 1;
 
+/// Unavailable power value originating from u16 GPU metrics fields, which the library pre-fills with 0xFFFF.
+pub const AMDSMI_POWER_NA: u32 = 0xFFFF;
+
+pub const AMDSMI_DEV_PERF_LEVEL_AUTO: u32 = 0;
+
 /// GPU power-cap information in uW.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -219,6 +224,12 @@ extern "C" {
         clk_type: u32,
         limit_type: u32,
         clk_value: u64,
+    ) -> AmdsmiStatus;
+
+    /// Sets the GPU performance level. Leaving manual mode restores default clock limits, while clock-limit writes force manual mode.
+    pub fn amdsmi_set_gpu_perf_level(
+        processor_handle: AmdsmiProcessorHandle,
+        perf_level: u32,
     ) -> AmdsmiStatus;
 }
 

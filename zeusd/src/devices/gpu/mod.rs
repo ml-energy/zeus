@@ -56,6 +56,8 @@ pub trait GpuManager {
     ) -> Result<(), ZeusdError>;
     /// Reset the memory locked clocks.
     fn reset_mem_locked_clocks(&mut self) -> Result<(), ZeusdError>;
+    /// Reset locked clocks for all clock domains.
+    fn reset_locked_clocks(&mut self) -> Result<(), ZeusdError>;
     /// Read instantaneous power draw in milliwatts.
     fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError>;
     /// Get total energy consumption since driver load in millijoules.
@@ -218,6 +220,8 @@ pub enum GpuCommand {
     },
     /// Reset the GPU's memory locked clocks.
     ResetMemLockedClocks,
+    /// Reset locked clocks for all clock domains.
+    ResetLockedClocks,
     /// Get total energy consumption since driver load.
     GetTotalEnergyConsumption,
     /// Read instantaneous power draw in milliwatts.
@@ -341,6 +345,17 @@ impl GpuCommand {
                     command_start_time,
                     "Memory locked clocks reset",
                     "Cannot reset memory locked clocks",
+                );
+                result.map(|_| GpuResponse::Ok)
+            }
+            Self::ResetLockedClocks => {
+                let result = device.reset_locked_clocks();
+                log_command_result(
+                    &result,
+                    request_arrival_time,
+                    command_start_time,
+                    "All locked clocks reset",
+                    "Cannot reset locked clocks",
                 );
                 result.map(|_| GpuResponse::Ok)
             }

@@ -11,6 +11,7 @@ Reach for `zeusd` when you need privilege isolation for GPU configuration, CPU/D
 
 AMD GPU support covers AMD SMI from ROCm 6.3.
 An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
+Resetting locked clocks on AMD restores the driver's automatic frequency management for all clock domains at once, and per-domain resets are rejected.
 
 ## Install
 
@@ -157,9 +158,10 @@ Writes (`POST`) also take `block` (bool): `true` waits for completion and report
 | `POST` | `/gpu/set_power_limit` | `power_limit_mw` |
 | `POST` | `/gpu/set_persistence_mode` | `enabled` (see [Windows quirk](#windows-quirk)) |
 | `POST` | `/gpu/set_gpu_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
-| `POST` | `/gpu/reset_gpu_locked_clocks` | -- |
+| `POST` | `/gpu/reset_gpu_locked_clocks` | On AMD GPUs, returns 400 (no per-domain reset exists); use `reset_locked_clocks`. |
 | `POST` | `/gpu/set_mem_locked_clocks` | `min_clock_mhz`, `max_clock_mhz` |
-| `POST` | `/gpu/reset_mem_locked_clocks` | -- |
+| `POST` | `/gpu/reset_mem_locked_clocks` | On AMD GPUs, returns 400 (no per-domain reset exists); use `reset_locked_clocks`. |
+| `POST` | `/gpu/reset_locked_clocks` | resets all clock domains |
 | `GET`  | `/gpu/get_cumulative_energy` | -- |
 | `GET`  | `/gpu/get_power` | one-shot snapshot |
 | `GET`  | `/gpu/stream_power` | SSE stream |

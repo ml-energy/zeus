@@ -153,6 +153,16 @@ impl GpuManager for NvmlGpu<'static> {
     }
 
     #[inline]
+    fn reset_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        // Attempt both resets regardless of individual failures so one domain
+        // failing does not leave the other locked; report the first error.
+        let gpu_result = self.device.reset_gpu_locked_clocks();
+        let mem_result = self.device.reset_mem_locked_clocks();
+        gpu_result?;
+        Ok(mem_result?)
+    }
+
+    #[inline]
     fn get_total_energy_consumption(&mut self) -> Result<u64, ZeusdError> {
         Ok(self.device.total_energy_consumption()?)
     }

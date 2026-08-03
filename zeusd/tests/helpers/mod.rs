@@ -144,6 +144,12 @@ impl GpuManager for TestGpu {
         Ok(())
     }
 
+    fn reset_locked_clocks(&mut self) -> Result<(), ZeusdError> {
+        self.gpu_locked_clocks_tx.send((0, 0)).unwrap();
+        self.mem_locked_clocks_tx.send((0, 0)).unwrap();
+        Ok(())
+    }
+
     fn get_instant_power_mw(&mut self) -> Result<u32, ZeusdError> {
         Ok(150_000)
     }
@@ -389,6 +395,7 @@ impl_zeusd_request_gpu!(SetGpuLockedClocks);
 impl_zeusd_request_gpu!(ResetGpuLockedClocks);
 impl_zeusd_request_gpu!(SetMemLockedClocks);
 impl_zeusd_request_gpu!(ResetMemLockedClocks);
+impl_zeusd_request_gpu!(ResetLockedClocks);
 
 impl_zeusd_request_cpu!(GetCumulativeEnergy);
 

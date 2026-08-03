@@ -158,7 +158,16 @@ pub fn resolve_gpu_backend(requested: GpuBackend) -> anyhow::Result<ResolvedGpuB
         }
         GpuBackend::Auto => {
             #[cfg(feature = "nvml")]
-            let nvml_count = NvmlGpu::device_count()?;
+            let nvml_count = match NvmlGpu::device_count() {
+                Ok(count) => count,
+                Err(error) => {
+                    tracing::warn!(
+                        "NVML backend probe failed: {}. Treating it as zero GPUs.",
+                        error
+                    );
+                    0
+                }
+            };
             #[cfg(not(feature = "nvml"))]
             let nvml_count = 0;
 

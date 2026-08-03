@@ -96,7 +96,18 @@ fn locate_library_dir() -> Option<PathBuf> {
                     .and_then(|name| name.to_str())
                     .is_some_and(|name| name.starts_with("rocm-"))
         })
-        .max()
+        .max_by_key(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.strip_prefix("rocm-"))
+                .and_then(|version| {
+                    let mut components = version.split('.');
+                    let major: u32 = components.next()?.parse().ok()?;
+                    let minor: u32 = components.next().unwrap_or("0").parse().ok()?;
+                    Some((major, minor))
+                })
+                .unwrap_or((0, 0))
+        })
         .map(|path| path.join("lib"))
 }
 
