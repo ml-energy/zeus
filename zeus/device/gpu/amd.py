@@ -266,19 +266,11 @@ class AMDGPU(gpu_common.GPU):
             clk_type=amdsmi.AmdSmiClkType.MEM,
         )
 
-    @_handle_amdsmi_errors
     def reset_memory_locked_clocks(self, block: bool = True) -> None:
-        """Reset the locked memory clocks to the default."""
-        # Get default MEM clock values
-        info = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.MEM)  # returns MHz
-
-        self._warn_sys_admin()
-        amdsmi.amdsmi_set_gpu_clk_range(
-            self.handle,
-            info["min_clk"],
-            info["max_clk"],
-            clk_type=amdsmi.AmdSmiClkType.MEM,
-        )  # expects MHz
+        """Raise because AMD GPUs cannot reset only the memory clock domain."""
+        raise gpu_common.ZeusGPUNotSupportedError(
+            "AMD GPUs cannot reset a single clock domain. Use `reset_locked_clocks` to reset all clock domains."
+        )
 
     @_handle_amdsmi_errors
     def get_supported_graphics_clocks(self, memory_clock_mhz: int | None = None) -> list[int]:
@@ -303,19 +295,21 @@ class AMDGPU(gpu_common.GPU):
             clk_type=amdsmi.AmdSmiClkType.GFX,
         )
 
-    @_handle_amdsmi_errors
     def reset_gpu_locked_clocks(self, block: bool = True) -> None:
-        """Reset the locked GPU clocks to the default."""
-        # Get default GPU clock values
-        info = amdsmi.amdsmi_get_clock_info(self.handle, amdsmi.AmdSmiClkType.GFX)  # returns MHz
+        """Raise because AMD GPUs cannot reset only the GPU clock domain."""
+        raise gpu_common.ZeusGPUNotSupportedError(
+            "AMD GPUs cannot reset a single clock domain. Use `reset_locked_clocks` to reset all clock domains."
+        )
 
+    @_handle_amdsmi_errors
+    def reset_locked_clocks(self, block: bool = True) -> None:
+        """Reset all clock domains to their defaults.
+
+        AMD GPUs offer no per-domain clock reset. Setting the performance level
+        back to automatic restores default frequency management for all domains.
+        """
         self._warn_sys_admin()
-        amdsmi.amdsmi_set_gpu_clk_range(
-            self.handle,
-            info["min_clk"],
-            info["max_clk"],
-            clk_type=amdsmi.AmdSmiClkType.GFX,
-        )  # expects MHz
+        amdsmi.amdsmi_set_gpu_perf_level(self.handle, amdsmi.AmdSmiDevPerfLevel.AUTO)
 
     def _ensure_not_dual_die_odd_chiplet(self) -> None:
         """Raise an error if the GPU is a chiplet of a dual-die AMD Instinct MI250/MI250X GPU."""
@@ -495,12 +489,6 @@ class ZeusdAMDGPU(AMDGPU):
             block,
         )
 
-    def reset_memory_locked_clocks(self, block: bool = True) -> None:
-        """Raise because AMD GPUs cannot reset only the memory clock domain."""
-        raise gpu_common.ZeusGPUNotSupportedError(
-            "AMD GPUs cannot reset a single clock domain. Use `reset_locked_clocks` to reset all clock domains."
-        )
-
     def set_gpu_locked_clocks(self, min_clock_mhz: int, max_clock_mhz: int, block: bool = True) -> None:
         """Lock the GPU clock to a specified range. Units: MHz."""
         self._client.set_gpu_locked_clocks(
@@ -508,12 +496,6 @@ class ZeusdAMDGPU(AMDGPU):
             min_clock_mhz,
             max_clock_mhz,
             block,
-        )
-
-    def reset_gpu_locked_clocks(self, block: bool = True) -> None:
-        """Raise because AMD GPUs cannot reset only the GPU clock domain."""
-        raise gpu_common.ZeusGPUNotSupportedError(
-            "AMD GPUs cannot reset a single clock domain. Use `reset_locked_clocks` to reset all clock domains."
         )
 
     def reset_locked_clocks(self, block: bool = True) -> None:

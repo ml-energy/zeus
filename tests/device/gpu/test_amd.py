@@ -220,6 +220,22 @@ def test_zeusd_gpu_skips_unchanged_power_limit(fresh_amd_module):
     client.set_power_limit.assert_not_called()
 
 
+def test_local_gpu_rejects_single_domain_clock_resets(fresh_amd_module):
+    """Reject AMD single-domain reset requests without amdsmi calls."""
+    amdsmi_mock = _make_amdsmi_mock({"h0": 0})
+    amd = fresh_amd_module(amdsmi_mock)
+    gpu = amd.AMDGPU(0)
+
+    import zeus.device.gpu.common as gpu_common
+
+    with pytest.raises(gpu_common.ZeusGPUNotSupportedError, match="cannot reset a single clock domain"):
+        gpu.reset_gpu_locked_clocks(block=False)
+    with pytest.raises(gpu_common.ZeusGPUNotSupportedError, match="cannot reset a single clock domain"):
+        gpu.reset_memory_locked_clocks(block=False)
+
+    amdsmi_mock.amdsmi_set_gpu_clk_range.assert_not_called()
+
+
 def test_zeusd_gpu_rejects_single_domain_clock_resets(fresh_amd_module):
     """Reject AMD single-domain reset requests without daemon calls."""
     amdsmi_mock = _make_amdsmi_mock({"h0": 0})
