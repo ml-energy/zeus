@@ -52,18 +52,7 @@ impl NvmlGpu<'static> {
 
 impl GpuManager for NvmlGpu<'static> {
     fn device_count() -> Result<u32, ZeusdError> {
-        match init_nvml() {
-            Ok(nvml) => match nvml.device_count() {
-                Ok(count) => Ok(count),
-                Err(e) => Err(ZeusdError::NvmlError(e)),
-            },
-            // Specifically catch this error that is thrown when GPU is not available
-            Err(NvmlError::LibloadingError(e)) => {
-                tracing::error!("Error initializing NVML, {}", e);
-                Ok(0)
-            }
-            Err(e) => Err(ZeusdError::NvmlError(e)),
-        }
+        Ok(init_nvml()?.device_count()?)
     }
 
     #[inline]

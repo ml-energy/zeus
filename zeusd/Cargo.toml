@@ -19,6 +19,7 @@ name = "zeusd"
 
 [dependencies]
 nvml-wrapper = { version = "0.12", optional = true }
+libloading = { version = "0.8", optional = true }
 actix-web = "4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "net"] }
 thiserror = "1"
@@ -38,8 +39,8 @@ jsonwebtoken = "9"
 humantime = "2"
 
 [features]
-default = ["nvml"]
-amdsmi = []
+default = ["nvml", "amdsmi"]
+amdsmi = ["dep:libloading"]
 nvml = ["dep:nvml-wrapper"]
 
 [target.'cfg(unix)'.dependencies]

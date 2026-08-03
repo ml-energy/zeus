@@ -15,8 +15,9 @@ Energy optimizers in Zeus need to change GPU configuration (power limit, clocks,
 - **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
 - **Windows:** named pipe default. NVML only; `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp`.
 
-AMD GPU support covers AMD SMI from ROCm 6.3.
-An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
+NVIDIA GPU support loads NVML at runtime.
+AMD GPU support loads AMD SMI at runtime, but the ABI is not stable across versions.
+At the moment, ABI 24, 25, and 26 are supported (ROCm 6.3 to latest), and we will add support for future versions as they stabilize and release.
 
 ## Install
 
@@ -24,11 +25,12 @@ An AMD-enabled binary is tied to the ROCm ABI major it was built against, so reb
 cargo install zeusd
 ```
 
-Build AMD GPU support with `ROCM_PATH` selecting the ROCm installation.
-Cargo features are additive, so this includes NVML support as well; on an AMD-only node, `--no-default-features` drops NVML entirely:
+NVML and AMD SMI support are both enabled by default.
+To build with only one backend:
 
 ```sh
-ROCM_PATH=/opt/rocm-7.2.0 cargo install zeusd --no-default-features --features amdsmi
+cargo install zeusd --no-default-features --features nvml
+cargo install zeusd --no-default-features --features amdsmi
 ```
 
 For a hardened systemd deployment, see [`packaging/systemd/`](packaging/systemd/).
@@ -47,6 +49,8 @@ sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
 # Windows named pipe (Windows default; from an elevated PowerShell)
 zeusd serve --pipe-name \\.\pipe\zeusd
 ```
+
+The daemon locates `libamd_smi.so` at startup via the dynamic loader paths and `/opt/rocm*/lib`; set `ROCM_PATH` (or `AMDSMI_LIB_DIR` to name the library directory directly) to select a specific installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
 
 To let the Zeus Python library auto-detect the daemon, set one of:
 

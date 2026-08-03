@@ -9,9 +9,9 @@ Reach for `zeusd` when you need privilege isolation for GPU configuration, CPU/D
 - **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
 - **Windows:** named pipe default. NVML only -- `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp` (no `httpx` transport for named pipes yet).
 
-AMD GPU support covers AMD SMI from ROCm 6.3.
-An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
-Resetting locked clocks on AMD restores the driver's automatic frequency management for all clock domains at once, and per-domain resets are rejected.
+NVIDIA GPU support loads NVML at runtime.
+AMD GPU support loads AMD SMI at runtime, but the ABI is not stable across versions.
+At the moment, ABI 24, 25, and 26 are supported (ROCm 6.3 to latest), and we will add support for future versions as they stabilize and release.
 
 ## Install
 
@@ -19,11 +19,12 @@ Resetting locked clocks on AMD restores the driver's automatic frequency managem
 cargo install zeusd
 ```
 
-Build AMD GPU support with `ROCM_PATH` selecting the ROCm installation.
-Specifying `--no-default-features` drops the default NVML support entirely.
+NVML and AMD SMI support are both enabled by default.
+To build with only one backend:
 
 ```sh
-ROCM_PATH=/opt/rocm-7.2.0 cargo install zeusd --no-default-features --features amdsmi
+cargo install zeusd --no-default-features --features nvml
+cargo install zeusd --no-default-features --features amdsmi
 ```
 
 Linux deployments: see [`zeusd/packaging/systemd/`](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd){.external} for a hardened systemd unit.
@@ -42,6 +43,8 @@ sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
 ```
 
 Defaults to all API groups on Linux, GPU only on Windows.
+
+The daemon locates `libamd_smi.so` at startup via the dynamic loader paths and `/opt/rocm*/lib`; set `ROCM_PATH` (or `AMDSMI_LIB_DIR` to name the library directory directly) to select a specific installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
 
 ## API groups
 
