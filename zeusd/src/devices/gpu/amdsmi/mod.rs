@@ -8,6 +8,8 @@ use std::ffi::{CStr, OsStr};
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use libloading::Library;
@@ -21,6 +23,18 @@ pub mod ffi;
 static AMDSMI_API: OnceCell<Result<AmdsmiApi, String>> = OnceCell::new();
 static AMDSMI_INIT_STATUS: OnceCell<ffi::AmdsmiStatus> = OnceCell::new();
 static AMDSMI_VERSION_VALIDATION: OnceCell<Result<(), String>> = OnceCell::new();
+// Before 26.2, libamd_smi can segfault on ABI 24 or scramble values across GPUs
+// on ABI 25/26.1. Upstream fixes: 03a23686, d25c01e8, and a64e9b4a.
+static AMDSMI_CALL_LOCK: Mutex<()> = Mutex::new(());
+static AMDSMI_NEEDS_SERIALIZATION: AtomicBool = AtomicBool::new(true);
+
+fn amdsmi_call_guard() -> Option<MutexGuard<'static, ()>> {
+    AMDSMI_NEEDS_SERIALIZATION.load(Ordering::Relaxed).then(|| {
+        AMDSMI_CALL_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    })
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AmdsmiAbi {
@@ -170,7 +184,10 @@ impl AmdsmiApi {
             AmdsmiAbi::V24 | AmdsmiAbi::V25 => {
                 let mut version = MaybeUninit::<ffi::AmdsmiVersion24And25>::zeroed();
                 // SAFETY: The ABI-specific output buffer matches the loaded library's SONAME.
-                let status = unsafe { (self.get_lib_version)(version.as_mut_ptr().cast()) };
+                let status = {
+                    let _guard = amdsmi_call_guard();
+                    unsafe { (self.get_lib_version)(version.as_mut_ptr().cast()) }
+                };
                 self.check_version_status(status)?;
                 // SAFETY: AMD SMI initialized the output structure after returning success.
                 let version = unsafe { version.assume_init() };
@@ -184,7 +201,10 @@ impl AmdsmiApi {
             AmdsmiAbi::V26 => {
                 let mut version = MaybeUninit::<ffi::AmdsmiVersion26>::zeroed();
                 // SAFETY: The ABI-specific output buffer matches the loaded library's SONAME.
-                let status = unsafe { (self.get_lib_version)(version.as_mut_ptr().cast()) };
+                let status = {
+                    let _guard = amdsmi_call_guard();
+                    unsafe { (self.get_lib_version)(version.as_mut_ptr().cast()) }
+                };
                 self.check_version_status(status)?;
                 // SAFETY: AMD SMI initialized the output structure after returning success.
                 let version = unsafe { version.assume_init() };
@@ -212,7 +232,10 @@ impl AmdsmiApi {
     fn status_message(&self, status: ffi::AmdsmiStatus) -> String {
         let mut message_ptr = ptr::null();
         // SAFETY: AMD SMI writes a borrowed pointer to a static status string.
-        let message_status = unsafe { (self.status_code_to_string)(status, &mut message_ptr) };
+        let message_status = {
+            let _guard = amdsmi_call_guard();
+            unsafe { (self.status_code_to_string)(status, &mut message_ptr) }
+        };
         if message_status == ffi::AMDSMI_STATUS_SUCCESS && !message_ptr.is_null() {
             // SAFETY: A successful call returns a valid NUL-terminated string.
             unsafe { CStr::from_ptr(message_ptr) }
@@ -231,7 +254,10 @@ impl AmdsmiApi {
             AmdsmiAbi::V24 => {
                 let mut info = MaybeUninit::<ffi::AmdsmiPowerInfo24>::zeroed();
                 // SAFETY: The ABI-specific output buffer matches the loaded library's SONAME.
-                let status = unsafe { (self.get_power_info)(handle, info.as_mut_ptr().cast()) };
+                let status = {
+                    let _guard = amdsmi_call_guard();
+                    unsafe { (self.get_power_info)(handle, info.as_mut_ptr().cast()) }
+                };
                 check_status(self, status)?;
                 // SAFETY: AMD SMI initialized the output structure after returning success.
                 let info = unsafe { info.assume_init() };
@@ -240,7 +266,10 @@ impl AmdsmiApi {
             AmdsmiAbi::V25 => {
                 let mut info = MaybeUninit::<ffi::AmdsmiPowerInfo25>::zeroed();
                 // SAFETY: The ABI-specific output buffer matches the loaded library's SONAME.
-                let status = unsafe { (self.get_power_info)(handle, info.as_mut_ptr().cast()) };
+                let status = {
+                    let _guard = amdsmi_call_guard();
+                    unsafe { (self.get_power_info)(handle, info.as_mut_ptr().cast()) }
+                };
                 check_status(self, status)?;
                 // SAFETY: AMD SMI initialized the output structure after returning success.
                 let info = unsafe { info.assume_init() };
@@ -249,7 +278,10 @@ impl AmdsmiApi {
             AmdsmiAbi::V26 => {
                 let mut info = MaybeUninit::<ffi::AmdsmiPowerInfo26>::zeroed();
                 // SAFETY: The ABI-specific output buffer matches the loaded library's SONAME.
-                let status = unsafe { (self.get_power_info)(handle, info.as_mut_ptr().cast()) };
+                let status = {
+                    let _guard = amdsmi_call_guard();
+                    unsafe { (self.get_power_info)(handle, info.as_mut_ptr().cast()) }
+                };
                 check_status(self, status)?;
                 // SAFETY: AMD SMI initialized the output structure after returning success.
                 let info = unsafe { info.assume_init() };
@@ -279,6 +311,13 @@ fn validate_library_version(abi: AmdsmiAbi, version: &AmdsmiLibraryVersion) -> R
         abi.number(),
         version
     ))
+}
+
+fn needs_call_serialization(abi: AmdsmiAbi, version: &AmdsmiLibraryVersion) -> bool {
+    match abi {
+        AmdsmiAbi::V24 | AmdsmiAbi::V25 => true,
+        AmdsmiAbi::V26 => (version.major, version.minor) < (26, 2),
+    }
 }
 
 unsafe fn load_symbol<T: Copy>(library: &Library, symbol: &[u8], path: &Path) -> Result<T, String> {
@@ -429,8 +468,8 @@ pub struct AmdsmiGpu {
     mem_clock_bounds: Option<(u32, u32)>,
 }
 
-// SAFETY: Processor handles are process-wide identifiers into the thread-safe
-// AMD SMI library, not thread-local resources.
+// SAFETY: Processor handles are process-wide identifiers, not thread-local
+// resources, and calls into thread-unsafe library versions are serialized.
 unsafe impl Send for AmdsmiGpu {}
 
 fn amdsmi_error(api: &AmdsmiApi, status: ffi::AmdsmiStatus) -> ZeusdError {
@@ -451,6 +490,7 @@ fn check_status(api: &AmdsmiApi, status: ffi::AmdsmiStatus) -> Result<(), ZeusdE
 fn init_amdsmi(api: &AmdsmiApi) -> Result<(), ZeusdError> {
     let status = AMDSMI_INIT_STATUS.get_or_init(|| {
         // SAFETY: This process-global call is executed exactly once by `OnceCell`.
+        let _guard = amdsmi_call_guard();
         unsafe { (api.init)(ffi::AMDSMI_INIT_AMD_GPUS) }
     });
     check_status(api, *status)?;
@@ -458,6 +498,14 @@ fn init_amdsmi(api: &AmdsmiApi) -> Result<(), ZeusdError> {
         .get_or_init(|| {
             let version = api.library_version()?;
             validate_library_version(api.abi, &version)?;
+            let serialize = needs_call_serialization(api.abi, &version);
+            AMDSMI_NEEDS_SERIALIZATION.store(serialize, Ordering::Relaxed);
+            if serialize {
+                tracing::info!(
+                    "AMD SMI {} calls are serialized to work around the pre-26.2 libamd_smi thread-safety bug",
+                    version
+                );
+            }
             tracing::info!(
                 "Initialized AMD SMI {} from {} using ABI {}",
                 version,
@@ -474,15 +522,19 @@ fn init_amdsmi(api: &AmdsmiApi) -> Result<(), ZeusdError> {
 fn socket_handles(api: &AmdsmiApi) -> Result<Vec<ffi::AmdsmiSocketHandle>, ZeusdError> {
     let mut count = 0;
     // SAFETY: A null buffer requests the required socket count.
-    check_status(api, unsafe {
-        (api.get_socket_handles)(&mut count, ptr::null_mut())
-    })?;
+    let status = {
+        let _guard = amdsmi_call_guard();
+        unsafe { (api.get_socket_handles)(&mut count, ptr::null_mut()) }
+    };
+    check_status(api, status)?;
     let mut handles = vec![ptr::null_mut(); count as usize];
     if count > 0 {
         // SAFETY: `handles` has room for the count returned by the first call.
-        check_status(api, unsafe {
-            (api.get_socket_handles)(&mut count, handles.as_mut_ptr())
-        })?;
+        let status = {
+            let _guard = amdsmi_call_guard();
+            unsafe { (api.get_socket_handles)(&mut count, handles.as_mut_ptr()) }
+        };
+        check_status(api, status)?;
         handles.truncate(count as usize);
     }
     Ok(handles)
@@ -494,15 +546,19 @@ fn processor_handles(
 ) -> Result<Vec<ffi::AmdsmiProcessorHandle>, ZeusdError> {
     let mut count = 0;
     // SAFETY: A null buffer requests the required processor count.
-    check_status(api, unsafe {
-        (api.get_processor_handles)(socket, &mut count, ptr::null_mut())
-    })?;
+    let status = {
+        let _guard = amdsmi_call_guard();
+        unsafe { (api.get_processor_handles)(socket, &mut count, ptr::null_mut()) }
+    };
+    check_status(api, status)?;
     let mut handles = vec![ptr::null_mut(); count as usize];
     if count > 0 {
         // SAFETY: `handles` has room for the count returned by the first call.
-        check_status(api, unsafe {
-            (api.get_processor_handles)(socket, &mut count, handles.as_mut_ptr())
-        })?;
+        let status = {
+            let _guard = amdsmi_call_guard();
+            unsafe { (api.get_processor_handles)(socket, &mut count, handles.as_mut_ptr()) }
+        };
+        check_status(api, status)?;
         handles.truncate(count as usize);
     }
     Ok(handles)
@@ -523,9 +579,11 @@ fn power_cap_info(
 ) -> Result<ffi::AmdsmiPowerCapInfo, ZeusdError> {
     let mut info = MaybeUninit::zeroed();
     // SAFETY: `info` points to writable storage for the output structure.
-    check_status(api, unsafe {
-        (api.get_power_cap_info)(handle, 0, info.as_mut_ptr())
-    })?;
+    let status = {
+        let _guard = amdsmi_call_guard();
+        unsafe { (api.get_power_cap_info)(handle, 0, info.as_mut_ptr()) }
+    };
+    check_status(api, status)?;
     // SAFETY: AMD SMI initialized the output structure after returning success.
     Ok(unsafe { info.assume_init() })
 }
@@ -537,9 +595,11 @@ fn clock_info(
 ) -> Result<ffi::AmdsmiClkInfo, ZeusdError> {
     let mut info = MaybeUninit::zeroed();
     // SAFETY: `info` points to writable storage for the output structure.
-    check_status(api, unsafe {
-        (api.get_clock_info)(handle, clock_type, info.as_mut_ptr())
-    })?;
+    let status = {
+        let _guard = amdsmi_call_guard();
+        unsafe { (api.get_clock_info)(handle, clock_type, info.as_mut_ptr()) }
+    };
+    check_status(api, status)?;
     // SAFETY: AMD SMI initialized the output structure after returning success.
     Ok(unsafe { info.assume_init() })
 }
@@ -558,6 +618,13 @@ fn clk_write_order(cached: Option<(u32, u32)>, new_min: u32, _new_max: u32) -> W
     }
 }
 
+// The implementation writes 0xFFFF for unsupported power fields (a u16
+// sentinel inherited from gpu_metrics), while the 7.2 header documents
+// UINT32_MAX. Accept both; neither is a plausible wattage.
+fn power_value_is_na(power_w: u32) -> bool {
+    power_w == ffi::AMDSMI_POWER_NA || power_w == u32::MAX
+}
+
 impl AmdsmiGpu {
     /// Initialize an AMD SMI handle for a GPU index.
     pub fn init(index: u32) -> Result<Self, ZeusdError> {
@@ -568,9 +635,9 @@ impl AmdsmiGpu {
             .copied()
             .ok_or(ZeusdError::GpuNotFoundError(index as usize))?;
         let power = api.power_info(handle)?;
-        let power_reading = if power.current_socket_power != ffi::AMDSMI_POWER_NA {
+        let power_reading = if !power_value_is_na(power.current_socket_power) {
             PowerReading::Current
-        } else if power.average_socket_power != ffi::AMDSMI_POWER_NA {
+        } else if !power_value_is_na(power.average_socket_power) {
             PowerReading::Average
         } else {
             PowerReading::Unsupported
@@ -628,9 +695,11 @@ impl AmdsmiGpu {
     pub fn name(&self) -> Result<String, ZeusdError> {
         let mut info = MaybeUninit::zeroed();
         // SAFETY: `info` points to writable storage for the output structure.
-        check_status(self.api, unsafe {
-            (self.api.get_gpu_asic_info)(self.handle, info.as_mut_ptr())
-        })?;
+        let status = {
+            let _guard = amdsmi_call_guard();
+            unsafe { (self.api.get_gpu_asic_info)(self.handle, info.as_mut_ptr()) }
+        };
+        check_status(self.api, status)?;
         // SAFETY: AMD SMI initialized the output structure after returning success.
         let info = unsafe { info.assume_init() };
         let end = info
@@ -649,9 +718,11 @@ impl AmdsmiGpu {
     pub fn bdf(&self) -> Result<ffi::Bdf, ZeusdError> {
         let mut bdf = MaybeUninit::zeroed();
         // SAFETY: `bdf` points to writable storage for the output value.
-        check_status(self.api, unsafe {
-            (self.api.get_gpu_device_bdf)(self.handle, bdf.as_mut_ptr())
-        })?;
+        let status = {
+            let _guard = amdsmi_call_guard();
+            unsafe { (self.api.get_gpu_device_bdf)(self.handle, bdf.as_mut_ptr()) }
+        };
+        check_status(self.api, status)?;
         // SAFETY: AMD SMI initialized the output value after returning success.
         Ok(unsafe { bdf.assume_init() })
     }
@@ -661,14 +732,18 @@ impl AmdsmiGpu {
         let mut counter_resolution = 0.0;
         let mut timestamp = 0;
         // SAFETY: All output pointers refer to writable values of the expected types.
-        check_status(self.api, unsafe {
-            (self.api.get_energy_count)(
-                self.handle,
-                &mut energy_accumulator,
-                &mut counter_resolution,
-                &mut timestamp,
-            )
-        })?;
+        let status = {
+            let _guard = amdsmi_call_guard();
+            unsafe {
+                (self.api.get_energy_count)(
+                    self.handle,
+                    &mut energy_accumulator,
+                    &mut counter_resolution,
+                    &mut timestamp,
+                )
+            }
+        };
+        check_status(self.api, status)?;
         Ok((energy_accumulator as f64 * counter_resolution as f64 / 1000.0) as u64)
     }
 
@@ -707,14 +782,18 @@ impl AmdsmiGpu {
         };
         for (limit_type, clock_mhz) in limits {
             // SAFETY: `self.handle` is a valid process-wide AMD SMI processor handle.
-            check_status(self.api, unsafe {
-                (self.api.set_gpu_clk_limit)(
-                    self.handle,
-                    clock_type,
-                    limit_type,
-                    u64::from(clock_mhz),
-                )
-            })?;
+            let status = {
+                let _guard = amdsmi_call_guard();
+                unsafe {
+                    (self.api.set_gpu_clk_limit)(
+                        self.handle,
+                        clock_type,
+                        limit_type,
+                        u64::from(clock_mhz),
+                    )
+                }
+            };
+            check_status(self.api, status)?;
         }
         Ok(())
     }
@@ -900,9 +979,11 @@ impl GpuManager for AmdsmiGpu {
 
     fn set_power_management_limit(&mut self, power_limit_mw: u32) -> Result<(), ZeusdError> {
         // SAFETY: `self.handle` is valid and AMD SMI accepts the cap in uW.
-        check_status(self.api, unsafe {
-            (self.api.set_power_cap)(self.handle, 0, u64::from(power_limit_mw) * 1000)
-        })
+        let status = {
+            let _guard = amdsmi_call_guard();
+            unsafe { (self.api.set_power_cap)(self.handle, 0, u64::from(power_limit_mw) * 1000) }
+        };
+        check_status(self.api, status)
     }
 
     fn get_power_management_limit(&mut self) -> Result<u32, ZeusdError> {
@@ -952,9 +1033,11 @@ impl GpuManager for AmdsmiGpu {
     /// default limits.
     fn reset_locked_clocks(&mut self) -> Result<(), ZeusdError> {
         // SAFETY: `self.handle` is a valid process-wide AMD SMI processor handle.
-        check_status(self.api, unsafe {
-            (self.api.set_gpu_perf_level)(self.handle, ffi::AMDSMI_DEV_PERF_LEVEL_AUTO)
-        })?;
+        let status = {
+            let _guard = amdsmi_call_guard();
+            unsafe { (self.api.set_gpu_perf_level)(self.handle, ffi::AMDSMI_DEV_PERF_LEVEL_AUTO) }
+        };
+        check_status(self.api, status)?;
         self.gfx_clock_bounds = None;
         self.mem_clock_bounds = None;
         Ok(())
@@ -969,7 +1052,7 @@ impl GpuManager for AmdsmiGpu {
                 return Err(amdsmi_error(self.api, ffi::AMDSMI_STATUS_NOT_SUPPORTED));
             }
         };
-        if power_w == ffi::AMDSMI_POWER_NA {
+        if power_value_is_na(power_w) {
             return Err(amdsmi_error(self.api, ffi::AMDSMI_STATUS_NOT_SUPPORTED));
         }
         Ok(power_w * 1000)
@@ -1084,6 +1167,39 @@ mod tests {
     }
 
     #[test]
+    fn serialization_matches_library_thread_safety() {
+        let version_24 = AmdsmiLibraryVersion {
+            year: Some(24),
+            major: 7,
+            minor: 0,
+            release: 0,
+        };
+        let version_25 = AmdsmiLibraryVersion {
+            year: Some(25),
+            major: 25,
+            minor: 4,
+            release: 0,
+        };
+        assert!(needs_call_serialization(AmdsmiAbi::V24, &version_24));
+        assert!(needs_call_serialization(AmdsmiAbi::V25, &version_25));
+
+        for (major, minor, release, expected) in [
+            (26, 1, 2, true),
+            (26, 2, 0, false),
+            (26, 2, 1, false),
+            (27, 0, 0, false),
+        ] {
+            let version = AmdsmiLibraryVersion {
+                year: None,
+                major,
+                minor,
+                release,
+            };
+            assert_eq!(needs_call_serialization(AmdsmiAbi::V26, &version), expected);
+        }
+    }
+
+    #[test]
     fn abi_24_rejects_rocm_6_2() {
         let error = validate_library_version(
             AmdsmiAbi::V24,
@@ -1174,6 +1290,14 @@ mod tests {
             clk_write_order(Some((1_000, 1_500)), 1_500, 1_800),
             WriteOrder::MinFirst
         );
+    }
+
+    #[test]
+    fn power_na_accepts_both_documented_sentinels() {
+        assert!(power_value_is_na(0xFFFF));
+        assert!(power_value_is_na(u32::MAX));
+        assert!(!power_value_is_na(0));
+        assert!(!power_value_is_na(41));
     }
 
     #[test]
