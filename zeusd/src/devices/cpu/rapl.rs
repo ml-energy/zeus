@@ -6,12 +6,26 @@ use std::path::{Path, PathBuf};
 use std::string::String;
 use std::sync::Arc;
 
+use once_cell::sync::Lazy;
+
 use crate::devices::cpu::{CpuManager, PackageInfo};
 use crate::error::ZeusdError;
 
-// NOTE: To support Zeusd deployment in a docker container, this should support
-//       sysfs mounts under places like `/zeus_sys`.
-static RAPL_DIR: &str = "/sys/class/powercap/intel-rapl";
+static SYS_RAPL_DIR: &str = "/sys/class/powercap/intel-rapl";
+
+// Docker masks `/sys/devices/virtual/powercap` by default, so containerized
+// deployments bind-mount the host's RAPL directories under `/zeus_sys` instead.
+// Same convention as the Zeus Python package.
+static CONTAINER_RAPL_DIR: &str = "/zeus_sys/class/powercap/intel-rapl";
+
+static RAPL_DIR: Lazy<&'static str> = Lazy::new(|| {
+    if Path::new(CONTAINER_RAPL_DIR).exists() {
+        tracing::info!("Reading RAPL through the container mount at {CONTAINER_RAPL_DIR}");
+        CONTAINER_RAPL_DIR
+    } else {
+        SYS_RAPL_DIR
+    }
+});
 
 pub struct RaplCpu {
     cpu: Arc<PackageInfo>,
@@ -61,7 +75,7 @@ impl PackageInfo {
 impl CpuManager for RaplCpu {
     fn device_count() -> Result<usize, ZeusdError> {
         let mut index_count = 0;
-        let base_path = PathBuf::from(RAPL_DIR);
+        let base_path = PathBuf::from(*RAPL_DIR);
 
         match fs::read_dir(&base_path) {
             Ok(entries) => {
@@ -87,7 +101,7 @@ impl CpuManager for RaplCpu {
     fn get_available_fields(
         index: usize,
     ) -> Result<(Arc<PackageInfo>, Option<Arc<PackageInfo>>), ZeusdError> {
-        let base_path = PathBuf::from(format!("{RAPL_DIR}/intel-rapl:{index}"));
+        let base_path = PathBuf::from(format!("{}/intel-rapl:{index}", *RAPL_DIR));
         let cpu_info = PackageInfo::new(&base_path, index)?;
 
         match fs::read_dir(&base_path) {
@@ -365,7 +379,7 @@ mod tests {
         let (mut cpu, path, _) = make_test_cpu(tmp.path(), max, false);
 
         // Simulate many rapid wraparounds with a small max_energy_uj.
-        // The raw counter cycles: 0 → 80 → 30 → 90 → 10 → 70 → ...
+        // The raw counter cycles: 0 -> 80 -> 30 -> 90 -> 10 -> 70 -> ...
         let raw_sequence = [80, 30, 90, 10, 70, 20, 60, 5, 95, 0];
         write_energy(&path, raw_sequence[0]);
         let mut last_compensated = cpu.get_cpu_energy().unwrap();

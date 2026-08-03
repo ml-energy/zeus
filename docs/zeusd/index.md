@@ -27,20 +27,83 @@ cargo install zeusd --no-default-features --features nvml
 cargo install zeusd --no-default-features --features amdsmi
 ```
 
-Linux deployments: see [`zeusd/packaging/systemd/`](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd){.external} for a hardened systemd unit.
-
 ## Running it
 
-```sh
-# Linux (UDS, default)
-sudo zeusd serve --socket-path /run/zeusd/zeusd.sock --socket-permissions 666
+=== "Command line"
 
-# Windows (named pipe, default; from elevated PowerShell)
-zeusd serve --pipe-name \\.\pipe\zeusd
+    ```sh
+    # Linux (UDS, default)
+    sudo zeusd serve --socket-path /run/zeusd/zeusd.sock --socket-permissions 666
 
-# TCP for cluster-wide monitoring, or for Python clients on Windows
-sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
-```
+    # Windows (named pipe, default; from elevated PowerShell)
+    zeusd serve --pipe-name \\.\pipe\zeusd
+
+    # TCP for cluster-wide monitoring, or for Python clients on Windows
+    sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
+    ```
+
+=== "systemd"
+
+    [`zeusd/packaging/systemd/`](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd){.external} ships a hardened unit file and an example `/etc/default/zeusd` for daemon arguments and environment variables.
+    From a clone of the Zeus repository, with `zeusd` installed at `/usr/local/bin/zeusd`:
+
+    ```sh
+    cd zeusd/packaging/systemd
+    sudo install -m 0644 zeusd.service /etc/systemd/system/zeusd.service
+    sudo install -m 0644 zeusd.defaults /etc/default/zeusd
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now zeusd
+    ```
+
+=== "Docker"
+
+    Multi-arch images (amd64, arm64) are published to [Docker Hub](https://hub.docker.com/r/mlenergy/zeusd){.external} as `mlenergy/zeusd`.
+    Version tags (e.g., `0.5.0`) and `latest` track releases; `master` tracks the master branch.
+    The image bundles the AMD SMI library on amd64 (arm64 is NVIDIA-only since ROCm has no arm64 packages), and NVML is injected at runtime by the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/index.html){.external}.
+
+    The default command serves all API groups over UDS at `/run/zeusd/zeusd.sock`, so mount `/run/zeusd` to share the socket with the host and other containers.
+    The privileges the container needs depend on the API groups and the GPU vendor.
+
+    GPU monitoring (`gpu-read`) needs nothing beyond device access:
+
+    ```sh
+    # NVIDIA
+    docker run -d --gpus all -v /run/zeusd:/run/zeusd \
+        mlenergy/zeusd serve --enable gpu-read
+
+    # AMD
+    docker run -d --device /dev/dri --device /dev/kfd -v /run/zeusd:/run/zeusd \
+        mlenergy/zeusd serve --enable gpu-read
+    ```
+
+    CPU/DRAM energy (`cpu-read`): Docker masks the RAPL sysfs directory, so bind-mount it under `/zeus_sys` (the same mounts as in [System privileges](../getting_started/index.md#system-privileges)):
+
+    ```sh
+    docker run -d \
+        -v /sys/class/powercap:/zeus_sys/class/powercap:ro \
+        -v /sys/devices/virtual/powercap:/zeus_sys/devices/virtual/powercap:ro \
+        -v /run/zeusd:/run/zeusd \
+        mlenergy/zeusd serve --enable cpu-read
+    ```
+
+    GPU control (`gpu-control`): NVML control ioctls need `CAP_SYS_ADMIN`, while AMD control writes go through the amdgpu driver's sysfs files, which Docker mounts read-only by default.
+
+    ```sh
+    # NVIDIA
+    docker run -d --gpus all --cap-add SYS_ADMIN \
+        -v /run/zeusd:/run/zeusd mlenergy/zeusd
+
+    # AMD: writable sysfs, and AppArmor's default profile blocks sysfs writes.
+    docker run -d --device /dev/dri --device /dev/kfd \
+        -v /sys:/sys --security-opt apparmor=unconfined \
+        -v /run/zeusd:/run/zeusd mlenergy/zeusd
+    ```
+
+    On SELinux hosts, use `--security-opt label=disable` instead of the AppArmor flag.
+    `--privileged` also works for AMD control if the fine-grained flags give you trouble.
+
+    For TCP instead of UDS, publish the port: `docker run -d -p 4938:4938 mlenergy/zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938`.
+    To use a host ROCm installation instead of the bundled AMD SMI library, mount it and point `AMDSMI_LIB_DIR` at it, e.g., `-v /opt/rocm-7.2.0:/opt/rocm-7.2.0:ro -e AMDSMI_LIB_DIR=/opt/rocm-7.2.0/lib`.
 
 Defaults to all API groups on Linux, GPU only on Windows.
 

@@ -34,6 +34,7 @@ cargo install zeusd --no-default-features --features amdsmi
 ```
 
 For a hardened systemd deployment, see [`packaging/systemd/`](packaging/systemd/).
+Docker images are published as [`mlenergy/zeusd`](https://hub.docker.com/r/mlenergy/zeusd); see the [documentation](https://ml.energy/zeus/zeusd/#running-it) for run recipes.
 
 ## Quick start
 
