@@ -77,16 +77,26 @@ pub fn get_unix_listener(
             anyhow::bail!("Socket path is occupied by a non-socket file");
         }
         // A socket file left behind by an unclean shutdown (e.g., a killed
-        // container) is safe to remove, but a live listener is not.
+        // container) is safe to remove, but a live listener is not. Only a
+        // refused connection proves that no one is listening.
         match std::os::unix::net::UnixStream::connect(socket_path) {
             Ok(_) => {
                 tracing::error!("Another process is listening on {}.", socket_path);
                 anyhow::bail!("Socket is in use by another process");
             }
-            Err(_) => {
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
                 tracing::warn!("Removing stale socket file {}.", socket_path);
                 fs::remove_file(socket_path)
                     .with_context(|| format!("Failed to remove stale socket {socket_path}"))?;
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Cannot determine whether the socket {} is live (connecting to it failed: {}). \
+                     Please inspect and remove it manually.",
+                    socket_path,
+                    e,
+                );
+                anyhow::bail!("Socket file already exists");
             }
         }
     }
@@ -716,6 +726,21 @@ mod tests {
         let _listener = get_unix_listener(path, 0o666, None, None).unwrap();
         assert!(get_unix_listener(path, 0o666, None, None).is_err());
         assert!(fs::metadata(path).is_ok());
+    }
+
+    #[test]
+    fn unconnectable_live_socket_is_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("zeusd.sock");
+        let path_str = path.to_str().unwrap();
+
+        let _listener = get_unix_listener(path_str, 0o666, None, None).unwrap();
+        // Connecting fails without proving staleness (unless running as root,
+        // where the connection succeeds and the socket counts as in use).
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        assert!(get_unix_listener(path_str, 0o666, None, None).is_err());
+        assert!(fs::metadata(path_str).is_ok());
     }
 
     #[test]

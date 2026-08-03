@@ -45,9 +45,10 @@ cargo install zeusd --no-default-features --features amdsmi
 === "systemd"
 
     [`zeusd/packaging/systemd/`](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd){.external} ships a hardened unit file and an example `/etc/default/zeusd` for daemon arguments and environment variables.
-    With `zeusd` installed at `/usr/local/bin/zeusd`:
+    From a clone of the Zeus repository, with `zeusd` installed at `/usr/local/bin/zeusd`:
 
     ```sh
+    cd zeusd/packaging/systemd
     sudo install -m 0644 zeusd.service /etc/systemd/system/zeusd.service
     sudo install -m 0644 zeusd.defaults /etc/default/zeusd
     sudo systemctl daemon-reload

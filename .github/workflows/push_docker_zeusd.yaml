@@ -1,7 +1,6 @@
 name: Push zeusd Docker image
 permissions:
   contents: read
-  actions: write
 
 on:
   push:
