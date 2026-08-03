@@ -1,11 +1,11 @@
 //! GPU management
 
 #[cfg(feature = "nvml")]
-mod nvml;
+pub(crate) mod nvml;
 #[cfg(feature = "nvml")]
 pub use nvml::NvmlGpu;
 #[cfg(feature = "amdsmi")]
-pub mod amdsmi;
+pub(crate) mod amdsmi;
 #[cfg(feature = "amdsmi")]
 pub use amdsmi::AmdsmiGpu;
 

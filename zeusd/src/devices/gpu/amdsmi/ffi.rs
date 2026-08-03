@@ -11,7 +11,9 @@ pub const AMDSMI_STATUS_SUCCESS: AmdsmiStatus = 0;
 pub const AMDSMI_STATUS_INVAL: AmdsmiStatus = 1;
 pub const AMDSMI_STATUS_NOT_SUPPORTED: AmdsmiStatus = 2;
 pub const AMDSMI_STATUS_NO_PERM: AmdsmiStatus = 10;
+#[allow(dead_code)]
 pub const AMDSMI_STATUS_NOT_FOUND: AmdsmiStatus = 31;
+#[allow(dead_code)]
 pub const AMDSMI_STATUS_NOT_INIT: AmdsmiStatus = 32;
 
 pub const AMDSMI_INIT_AMD_GPUS: u64 = 2;
@@ -51,11 +53,10 @@ pub struct AmdsmiClkInfo {
     pub reserved: [u32; 4],
 }
 
-/// GPU power information with power fields in W and voltage fields in mV.
-#[cfg(amdsmi_abi = "24")]
+/// ABI 24 GPU power information with power fields in W and voltage fields in mV.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct AmdsmiPowerInfo {
+pub struct AmdsmiPowerInfo24 {
     pub current_socket_power: u32,
     pub average_socket_power: u32,
     pub gfx_voltage: u32,
@@ -65,11 +66,10 @@ pub struct AmdsmiPowerInfo {
     pub reserved: [u32; 11],
 }
 
-/// GPU power information with power fields in W and voltage fields in mV.
-#[cfg(amdsmi_abi = "25")]
+/// ABI 25 GPU power information with power fields in W and voltage fields in mV.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct AmdsmiPowerInfo {
+pub struct AmdsmiPowerInfo25 {
     pub socket_power: u64,
     pub current_socket_power: u32,
     pub average_socket_power: u32,
@@ -80,11 +80,10 @@ pub struct AmdsmiPowerInfo {
     pub reserved: [u32; 2],
 }
 
-/// GPU power information with power fields in W and voltage fields in mV.
-#[cfg(amdsmi_abi = "26")]
+/// ABI 26 GPU power information with power fields in W and voltage fields in mV.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct AmdsmiPowerInfo {
+pub struct AmdsmiPowerInfo26 {
     pub socket_power: u64,
     pub current_socket_power: u32,
     pub average_socket_power: u32,
@@ -95,10 +94,9 @@ pub struct AmdsmiPowerInfo {
     pub reserved: [u64; 18],
 }
 
-#[cfg(any(amdsmi_abi = "24", amdsmi_abi = "25"))]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct AmdsmiVersion {
+pub struct AmdsmiVersion24And25 {
     pub year: u32,
     pub major: u32,
     pub minor: u32,
@@ -106,10 +104,9 @@ pub struct AmdsmiVersion {
     pub build: *const c_char,
 }
 
-#[cfg(amdsmi_abi = "26")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct AmdsmiVersion {
+pub struct AmdsmiVersion26 {
     pub major: u32,
     pub minor: u32,
     pub release: u32,
@@ -161,77 +158,32 @@ impl fmt::Display for Bdf {
     }
 }
 
-extern "C" {
-    pub fn amdsmi_init(init_flags: u64) -> AmdsmiStatus;
-    pub fn amdsmi_shut_down() -> AmdsmiStatus;
-    pub fn amdsmi_get_socket_handles(
-        socket_count: *mut u32,
-        socket_handles: *mut AmdsmiSocketHandle,
-    ) -> AmdsmiStatus;
-    pub fn amdsmi_get_processor_handles(
-        socket_handle: AmdsmiSocketHandle,
-        processor_count: *mut u32,
-        processor_handles: *mut AmdsmiProcessorHandle,
-    ) -> AmdsmiStatus;
-    pub fn amdsmi_get_gpu_asic_info(
-        processor_handle: AmdsmiProcessorHandle,
-        info: *mut AmdsmiAsicInfo,
-    ) -> AmdsmiStatus;
-    pub fn amdsmi_get_gpu_device_bdf(
-        processor_handle: AmdsmiProcessorHandle,
-        bdf: *mut Bdf,
-    ) -> AmdsmiStatus;
-    /// Writes power-cap information in uW.
-    pub fn amdsmi_get_power_cap_info(
-        processor_handle: AmdsmiProcessorHandle,
-        sensor_ind: u32,
-        info: *mut AmdsmiPowerCapInfo,
-    ) -> AmdsmiStatus;
-    /// Sets the power cap in uW.
-    pub fn amdsmi_set_power_cap(
-        processor_handle: AmdsmiProcessorHandle,
-        sensor_ind: u32,
-        cap: u64,
-    ) -> AmdsmiStatus;
-    /// Writes power information whose power fields are in W.
-    pub fn amdsmi_get_power_info(
-        processor_handle: AmdsmiProcessorHandle,
-        info: *mut AmdsmiPowerInfo,
-    ) -> AmdsmiStatus;
-    /// Writes an energy count, its resolution in uJ per count, and a timestamp in ns.
-    pub fn amdsmi_get_energy_count(
-        processor_handle: AmdsmiProcessorHandle,
-        energy_accumulator: *mut u64,
-        counter_resolution: *mut f32,
-        timestamp: *mut u64,
-    ) -> AmdsmiStatus;
-    /// Writes GPU clock information in MHz.
-    pub fn amdsmi_get_clock_info(
-        processor_handle: AmdsmiProcessorHandle,
-        clk_type: u32,
-        info: *mut AmdsmiClkInfo,
-    ) -> AmdsmiStatus;
-    pub fn amdsmi_get_lib_version(version: *mut AmdsmiVersion) -> AmdsmiStatus;
-    pub fn amdsmi_status_code_to_string(
-        status: AmdsmiStatus,
-        status_string: *mut *const c_char,
-    ) -> AmdsmiStatus;
-
-    /// Sets one GPU clock limit in MHz. Exported by libamd_smi since 24.7 (ROCm 6.3),
-    /// which is zeusd's build floor, and the only clock setter remaining in ABI 27.
-    pub fn amdsmi_set_gpu_clk_limit(
-        processor_handle: AmdsmiProcessorHandle,
-        clk_type: u32,
-        limit_type: u32,
-        clk_value: u64,
-    ) -> AmdsmiStatus;
-
-    /// Sets the GPU performance level. Leaving manual mode restores default clock limits, while clock-limit writes force manual mode.
-    pub fn amdsmi_set_gpu_perf_level(
-        processor_handle: AmdsmiProcessorHandle,
-        perf_level: u32,
-    ) -> AmdsmiStatus;
-}
+pub type AmdsmiInitFn = unsafe extern "C" fn(u64) -> AmdsmiStatus;
+pub type AmdsmiShutDownFn = unsafe extern "C" fn() -> AmdsmiStatus;
+pub type AmdsmiGetSocketHandlesFn =
+    unsafe extern "C" fn(*mut u32, *mut AmdsmiSocketHandle) -> AmdsmiStatus;
+pub type AmdsmiGetProcessorHandlesFn =
+    unsafe extern "C" fn(AmdsmiSocketHandle, *mut u32, *mut AmdsmiProcessorHandle) -> AmdsmiStatus;
+pub type AmdsmiGetGpuAsicInfoFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, *mut AmdsmiAsicInfo) -> AmdsmiStatus;
+pub type AmdsmiGetGpuDeviceBdfFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, *mut Bdf) -> AmdsmiStatus;
+pub type AmdsmiGetPowerCapInfoFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, u32, *mut AmdsmiPowerCapInfo) -> AmdsmiStatus;
+pub type AmdsmiSetPowerCapFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, u32, u64) -> AmdsmiStatus;
+pub type AmdsmiGetPowerInfoFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, *mut c_void) -> AmdsmiStatus;
+pub type AmdsmiGetEnergyCountFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, *mut u64, *mut f32, *mut u64) -> AmdsmiStatus;
+pub type AmdsmiGetClockInfoFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, u32, *mut AmdsmiClkInfo) -> AmdsmiStatus;
+pub type AmdsmiGetLibVersionFn = unsafe extern "C" fn(*mut c_void) -> AmdsmiStatus;
+pub type AmdsmiStatusCodeToStringFn =
+    unsafe extern "C" fn(AmdsmiStatus, *mut *const c_char) -> AmdsmiStatus;
+pub type AmdsmiSetGpuClkLimitFn =
+    unsafe extern "C" fn(AmdsmiProcessorHandle, u32, u32, u64) -> AmdsmiStatus;
+pub type AmdsmiSetGpuPerfLevelFn = unsafe extern "C" fn(AmdsmiProcessorHandle, u32) -> AmdsmiStatus;
 
 #[cfg(test)]
 mod tests {
@@ -248,34 +200,29 @@ mod tests {
         assert_eq!(size_of::<Bdf>(), 8);
     }
 
-    #[cfg(amdsmi_abi = "24")]
     #[test]
     fn abi_24_struct_layouts() {
-        assert_eq!(size_of::<AmdsmiPowerInfo>(), 68);
-        assert_eq!(offset_of!(AmdsmiPowerInfo, current_socket_power), 0);
-        assert_eq!(offset_of!(AmdsmiPowerInfo, average_socket_power), 4);
-        assert_eq!(size_of::<AmdsmiVersion>(), 24);
-        assert_eq!(offset_of!(AmdsmiVersion, major), 4);
+        assert_eq!(size_of::<AmdsmiPowerInfo24>(), 68);
+        assert_eq!(offset_of!(AmdsmiPowerInfo24, current_socket_power), 0);
+        assert_eq!(offset_of!(AmdsmiPowerInfo24, average_socket_power), 4);
+        assert_eq!(size_of::<AmdsmiVersion24And25>(), 24);
+        assert_eq!(offset_of!(AmdsmiVersion24And25, major), 4);
     }
 
-    #[cfg(amdsmi_abi = "25")]
     #[test]
     fn abi_25_struct_layouts() {
-        assert_eq!(size_of::<AmdsmiPowerInfo>(), 40);
-        assert_eq!(offset_of!(AmdsmiPowerInfo, current_socket_power), 8);
-        assert_eq!(offset_of!(AmdsmiPowerInfo, average_socket_power), 12);
-        assert_eq!(size_of::<AmdsmiVersion>(), 24);
-        assert_eq!(offset_of!(AmdsmiVersion, major), 4);
+        assert_eq!(size_of::<AmdsmiPowerInfo25>(), 40);
+        assert_eq!(offset_of!(AmdsmiPowerInfo25, current_socket_power), 8);
+        assert_eq!(offset_of!(AmdsmiPowerInfo25, average_socket_power), 12);
     }
 
-    #[cfg(amdsmi_abi = "26")]
     #[test]
     fn abi_26_struct_layouts() {
-        assert_eq!(size_of::<AmdsmiPowerInfo>(), 192);
-        assert_eq!(offset_of!(AmdsmiPowerInfo, current_socket_power), 8);
-        assert_eq!(offset_of!(AmdsmiPowerInfo, average_socket_power), 12);
-        assert_eq!(size_of::<AmdsmiVersion>(), 24);
-        assert_eq!(offset_of!(AmdsmiVersion, major), 0);
+        assert_eq!(size_of::<AmdsmiPowerInfo26>(), 192);
+        assert_eq!(offset_of!(AmdsmiPowerInfo26, current_socket_power), 8);
+        assert_eq!(offset_of!(AmdsmiPowerInfo26, average_socket_power), 12);
+        assert_eq!(size_of::<AmdsmiVersion26>(), 24);
+        assert_eq!(offset_of!(AmdsmiVersion26, major), 0);
     }
 
     #[test]

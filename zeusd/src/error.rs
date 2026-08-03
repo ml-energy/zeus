@@ -35,6 +35,9 @@ pub enum ZeusdError {
     #[cfg(feature = "amdsmi")]
     #[error("AMDSMI error {status}: {msg}")]
     AmdSmiError { status: u32, msg: String },
+    #[cfg(feature = "amdsmi")]
+    #[error("Failed to load AMD SMI: {0}")]
+    AmdSmiLoadError(String),
     #[error("GPU command send error: {0}")]
     GpuCommandSendError(#[from] SendError<GpuCommandRequest>),
     #[error("CPU command send error: {0}")]
@@ -77,6 +80,8 @@ impl ResponseError for ZeusdError {
                 AMDSMI_STATUS_INVAL | AMDSMI_STATUS_NOT_SUPPORTED => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
+            #[cfg(feature = "amdsmi")]
+            ZeusdError::AmdSmiLoadError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::GpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuCommandSendError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::GpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,

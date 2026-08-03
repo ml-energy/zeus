@@ -61,10 +61,10 @@ jobs:
             ~/.cargo/git/db/
             zeusd/target/
           key: ${{ github.event.repository.name }}-${{ runner.os }}-zeusd-cargo-v3
-      - name: Run clippy
+      - name: Run clippy with default features
         run: cargo clippy --all -- -D warnings
         working-directory: zeusd
-      - name: Run tests
+      - name: Run tests with default features
         run: cargo test
         working-directory: zeusd
       - name: Run clippy without default features
@@ -73,10 +73,22 @@ jobs:
       - name: Run tests without default features
         run: cargo test --no-default-features
         working-directory: zeusd
+      - name: Run clippy with only NVML
+        run: cargo clippy --all --no-default-features --features nvml -- -D warnings
+        working-directory: zeusd
+      - name: Run tests with only NVML
+        run: cargo test --no-default-features --features nvml
+        working-directory: zeusd
+      - name: Run clippy with only AMD SMI
+        run: cargo clippy --all --no-default-features --features amdsmi -- -D warnings
+        working-directory: zeusd
+      - name: Run tests with only AMD SMI
+        run: cargo test --no-default-features --features amdsmi
+        working-directory: zeusd
 
-  clippy_and_test_amdsmi:
+  clippy_and_test_runtime_libs:
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository }}
-    name: clippy + test (AMD SMI)
+    name: clippy + test (runtime libraries)
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
@@ -104,17 +116,13 @@ jobs:
           echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2 noble main" | sudo tee /etc/apt/sources.list.d/rocm.list
           sudo apt-get update
           sudo apt-get install -y amd-smi-lib
+      - name: Install NVML
+        run: sudo apt-get install -y libnvidia-compute-550
       - name: Select the installed ROCm tree
         run: echo "ROCM_PATH=$(ls -d /opt/rocm-*)" >> "$GITHUB_ENV"
-      - name: Run clippy with AMD SMI
-        run: cargo clippy --all --features amdsmi -- -D warnings
+      - name: Run tests with runtime libraries
+        run: cargo test
         working-directory: zeusd
-      - name: Run tests with AMD SMI
-        run: cargo test --features amdsmi
-        working-directory: zeusd
-      - name: Run clippy with only AMD SMI
-        run: cargo clippy --all --no-default-features --features amdsmi -- -D warnings
-        working-directory: zeusd
-      - name: Run tests with only AMD SMI
-        run: cargo test --no-default-features --features amdsmi
+      - name: Run clippy with runtime libraries
+        run: cargo clippy --all -- -D warnings
         working-directory: zeusd

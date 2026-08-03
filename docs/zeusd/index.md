@@ -9,9 +9,9 @@ Reach for `zeusd` when you need privilege isolation for GPU configuration, CPU/D
 - **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
 - **Windows:** named pipe default. NVML only -- `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp` (no `httpx` transport for named pipes yet).
 
-AMD GPU support covers AMD SMI from ROCm 6.3.
-An AMD-enabled binary is tied to the ROCm ABI major it was built against, so rebuild after major ROCm upgrades; a mismatch appears as a loader error at startup.
-Resetting locked clocks on AMD restores the driver's automatic frequency management for all clock domains at once, and per-domain resets are rejected.
+NVIDIA GPU support loads NVML at runtime.
+AMD GPU support loads AMD SMI at runtime, but the ABI is not stable across versions.
+At the moment, ABI 24, 25, and 26 are supported (ROCm 6.3 to latest), and we will add support for future versions as they stabilize and release.
 
 ## Install
 
@@ -19,11 +19,12 @@ Resetting locked clocks on AMD restores the driver's automatic frequency managem
 cargo install zeusd
 ```
 
-Build AMD GPU support with `ROCM_PATH` selecting the ROCm installation.
-Specifying `--no-default-features` drops the default NVML support entirely.
+NVML and AMD SMI support are both enabled by default.
+To build with only one backend:
 
 ```sh
-ROCM_PATH=/opt/rocm-7.2.0 cargo install zeusd --no-default-features --features amdsmi
+cargo install zeusd --no-default-features --features nvml
+cargo install zeusd --no-default-features --features amdsmi
 ```
 
 Linux deployments: see [`zeusd/packaging/systemd/`](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd){.external} for a hardened systemd unit.
@@ -42,6 +43,8 @@ sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
 ```
 
 Defaults to all API groups on Linux, GPU only on Windows.
+
+The daemon searches for `libamd_smi.so` once at startup: `/opt/rocm/lib`, then the newest `/opt/rocm-*/lib`, then the dynamic loader paths. Setting `AMDSMI_LIB_DIR` (a library directory) or `ROCM_PATH` (a ROCm installation root) restricts the search to that installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
 
 ## API groups
 
@@ -102,6 +105,7 @@ NVML's persistence-mode API is Linux-only. On Windows the kernel driver is alway
 - **Python doesn't pick up `zeusd`.** Confirm `ZEUSD_SOCK_PATH` or `ZEUSD_HOST_PORT` is in the *application's* environment (not just the shell that started the daemon). Then run `python -m zeus.show_env`.
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
 - **Daemon exits immediately at startup.** On Linux, a root-required group is enabled but `zeusd` isn't running as root. Either `sudo` or `--enable gpu-read`.
+- **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
 - **Logs.** `journalctl -u zeusd -f` under systemd; stderr otherwise.
 
 ## HTTP API reference
