@@ -44,7 +44,7 @@ sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
 
 Defaults to all API groups on Linux, GPU only on Windows.
 
-The daemon locates `libamd_smi.so` at startup via the dynamic loader paths and `/opt/rocm*/lib`; set `ROCM_PATH` (or `AMDSMI_LIB_DIR` to name the library directory directly) to select a specific installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
+The daemon searches for `libamd_smi.so` once at startup: `/opt/rocm/lib`, then the newest `/opt/rocm-*/lib`, then the dynamic loader paths. Setting `AMDSMI_LIB_DIR` (a library directory) or `ROCM_PATH` (a ROCm installation root) restricts the search to that installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
 
 ## API groups
 
@@ -105,6 +105,7 @@ NVML's persistence-mode API is Linux-only. On Windows the kernel driver is alway
 - **Python doesn't pick up `zeusd`.** Confirm `ZEUSD_SOCK_PATH` or `ZEUSD_HOST_PORT` is in the *application's* environment (not just the shell that started the daemon). Then run `python -m zeus.show_env`.
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
 - **Daemon exits immediately at startup.** On Linux, a root-required group is enabled but `zeusd` isn't running as root. Either `sudo` or `--enable gpu-read`.
+- **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
 - **Logs.** `journalctl -u zeusd -f` under systemd; stderr otherwise.
 
 ## HTTP API reference

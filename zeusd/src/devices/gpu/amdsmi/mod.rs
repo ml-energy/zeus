@@ -97,31 +97,35 @@ impl AmdsmiApi {
         for (abi, path) in candidates {
             // SAFETY: The returned library is retained by `AmdsmiApi` for as long as any loaded symbol can be called.
             match unsafe { Library::new(&path) } {
-                Ok(library) => {
-                    let api = Self::from_library(library, abi, &path).map_err(|error| {
+                Ok(library) => match Self::from_library(library, abi, &path) {
+                    Ok(api) => {
+                        tracing::info!(
+                            "Loaded AMD SMI from {} using ABI {}",
+                            path.display(),
+                            abi.number()
+                        );
+                        return Ok(api);
+                    }
+                    // A library that opens but fails symbol resolution must not
+                    // abort the search; a later candidate can still be usable.
+                    Err(error) => {
                         // ROCm 6.2 ships libamd_smi.so.24 without this symbol, so
                         // resolution fails before the version floor check can run.
                         if abi == AmdsmiAbi::V24 && error.contains("amdsmi_set_gpu_clk_limit") {
-                            format!(
+                            errors.push(format!(
                                 "{error}; a libamd_smi.so.24 without this symbol is ROCm 6.2, \
                                  which zeusd does not support (ROCm 6.3 is the minimum)"
-                            )
+                            ));
                         } else {
-                            error
+                            errors.push(error);
                         }
-                    })?;
-                    tracing::info!(
-                        "Loaded AMD SMI from {} using ABI {}",
-                        path.display(),
-                        abi.number()
-                    );
-                    return Ok(api);
-                }
+                    }
+                },
                 Err(error) => errors.push(format!("{}: {}", path.display(), error)),
             }
         }
         Err(format!(
-            "no supported AMD SMI library found; searched libamd_smi.so.26, libamd_smi.so.25, and libamd_smi.so.24 via AMDSMI_LIB_DIR, ROCM_PATH, /opt/rocm*/lib, and the dynamic loader paths: {}",
+            "no supported AMD SMI library found (AMDSMI_LIB_DIR and ROCM_PATH restrict the search when set; otherwise /opt/rocm*/lib and the dynamic loader paths are searched): {}",
             errors.join("; ")
         ))
     }
@@ -288,41 +292,51 @@ unsafe fn load_symbol<T: Copy>(library: &Library, symbol: &[u8], path: &Path) ->
         })
 }
 
+/// Parse the numeric version components of an `/opt/rocm-<version>` directory
+/// name so that, e.g., `rocm-6.10.0` orders after `rocm-6.9.0`.
+fn rocm_dir_version(path: &Path) -> Option<Vec<u32>> {
+    path.file_name()?
+        .to_str()?
+        .strip_prefix("rocm-")?
+        .split('.')
+        .map(|part| part.parse().ok())
+        .collect()
+}
+
 fn newest_opt_rocm_lib() -> Option<PathBuf> {
     std::fs::read_dir("/opt")
         .ok()?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter(|path| {
-            path.is_dir()
-                && path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("rocm-"))
-        })
-        .max()
-        .map(|path| path.join("lib"))
+        .filter(|path| path.is_dir())
+        .filter_map(|path| rocm_dir_version(&path).map(|version| (version, path)))
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, path)| path.join("lib"))
 }
 
+/// Build the ordered list of library paths to try. `AMDSMI_LIB_DIR` and
+/// `ROCM_PATH` are authoritative when set: the search is restricted to the
+/// named installation instead of falling back to default locations, so a
+/// misconfigured override fails loudly rather than silently using another
+/// library.
 fn library_candidates(
     lib_dir: Option<&OsStr>,
     rocm_path: Option<&OsStr>,
 ) -> Vec<(AmdsmiAbi, PathBuf)> {
     let mut roots = Vec::new();
+    let mut search_loader_paths = false;
     if let Some(lib_dir) = lib_dir {
         roots.push(PathBuf::from(lib_dir));
-    }
-    if let Some(rocm_path) = rocm_path {
+    } else if let Some(rocm_path) = rocm_path {
         roots.push(PathBuf::from(rocm_path).join("lib"));
-    }
-    let default_root = PathBuf::from("/opt/rocm/lib");
-    if !roots.contains(&default_root) {
-        roots.push(default_root);
-    }
-    if let Some(newest) = newest_opt_rocm_lib() {
-        if !roots.contains(&newest) {
-            roots.push(newest);
+    } else {
+        roots.push(PathBuf::from("/opt/rocm/lib"));
+        if let Some(newest) = newest_opt_rocm_lib() {
+            if !roots.contains(&newest) {
+                roots.push(newest);
+            }
         }
+        search_loader_paths = true;
     }
 
     let mut candidates = Vec::new();
@@ -333,11 +347,13 @@ fn library_candidates(
                 .map(|(abi, name)| (abi, root.join(name))),
         );
     }
-    candidates.extend(
-        AmdsmiAbi::SUPPORTED
-            .into_iter()
-            .map(|(abi, name)| (abi, PathBuf::from(name))),
-    );
+    if search_loader_paths {
+        candidates.extend(
+            AmdsmiAbi::SUPPORTED
+                .into_iter()
+                .map(|(abi, name)| (abi, PathBuf::from(name))),
+        );
+    }
     candidates
 }
 
@@ -845,13 +861,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lib_dir_candidates_precede_rocm_path_and_default_candidates() {
+    fn lib_dir_override_restricts_the_search() {
         let candidates = library_candidates(
             Some(OsStr::new("/custom/libs")),
             Some(OsStr::new("/custom/rocm")),
         );
         assert_eq!(
-            candidates[..6],
+            candidates,
             [
                 (
                     AmdsmiAbi::V26,
@@ -865,6 +881,16 @@ mod tests {
                     AmdsmiAbi::V24,
                     PathBuf::from("/custom/libs/libamd_smi.so.24")
                 ),
+            ]
+        );
+    }
+
+    #[test]
+    fn rocm_path_override_restricts_the_search() {
+        let candidates = library_candidates(None, Some(OsStr::new("/custom/rocm")));
+        assert_eq!(
+            candidates,
+            [
                 (
                     AmdsmiAbi::V26,
                     PathBuf::from("/custom/rocm/lib/libamd_smi.so.26")
@@ -879,6 +905,15 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn rocm_dir_versions_compare_numerically() {
+        assert!(
+            rocm_dir_version(Path::new("/opt/rocm-6.10.0")).unwrap()
+                > rocm_dir_version(Path::new("/opt/rocm-6.9.0")).unwrap()
+        );
+        assert!(rocm_dir_version(Path::new("/opt/rocm-custom")).is_none());
     }
 
     #[test]

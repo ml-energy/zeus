@@ -50,7 +50,7 @@ sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
 zeusd serve --pipe-name \\.\pipe\zeusd
 ```
 
-The daemon locates `libamd_smi.so` at startup via the dynamic loader paths and `/opt/rocm*/lib`; set `ROCM_PATH` (or `AMDSMI_LIB_DIR` to name the library directory directly) to select a specific installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
+The daemon searches for `libamd_smi.so` once at startup: `/opt/rocm/lib`, then the newest `/opt/rocm-*/lib`, then the dynamic loader paths. Setting `AMDSMI_LIB_DIR` (a library directory) or `ROCM_PATH` (a ROCm installation root) restricts the search to that installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
 
 To let the Zeus Python library auto-detect the daemon, set one of:
 
