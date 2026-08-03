@@ -113,7 +113,7 @@ GPU indices follow PCI bus order sorted by PCI address, which is the same order 
 The reported GPU name is AMD SMI's market name and can differ across ROCm versions for the same GPU.
 On ROCm older than 7.2, `zeusd` serializes AMD SMI calls to work around a thread-safety bug in `libamd_smi` that was fixed upstream in ROCm 7.2.[^1]
 
-[^1]: AMD SMI read operations are typically very fast and the serialization overhead is negligible, but write operations that take long might experience noticeable slowdowns when done concurrently and would want to uograde AMD SMI.
+[^1]: AMD SMI read operations are typically very fast and the serialization overhead is negligible, but write operations that take long might experience noticeable slowdowns when done concurrently; in that case, upgrade AMD SMI.
 
 On some AMD GPUs, the driver's cumulative energy counter advances at the wrong rate; see [ROCm/amdsmi #38](https://github.com/ROCm/amdsmi/issues/38).
 At startup, `zeusd` integrates power over 0.5 seconds, compares it with the counter delta, and marks GPUs that fail validation as `cumulative_energy_available: false`.
