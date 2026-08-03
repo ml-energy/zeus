@@ -174,6 +174,9 @@ On older GPUs, `cumulative_energy_available` is false in `/discover` and `GET /g
 
 GPU indices follow PCI bus order sorted by PCI address, which is the same order used by the `amd-smi` CLI.
 The reported GPU name is AMD SMI's market name and can differ across ROCm versions for the same GPU.
+On ROCm older than 7.2, `zeusd` serializes AMD SMI calls to work around a thread-safety bug in `libamd_smi` that was fixed upstream in ROCm 7.2.[^1]
+
+[^1]: AMD SMI read operations are typically very fast and the serialization overhead is negligible, but write operations that take long might experience noticeable slowdowns when done concurrently; in that case, upgrade AMD SMI.
 
 On some AMD GPUs, the driver's cumulative energy counter advances at the wrong rate; see [ROCm/amdsmi #38](https://github.com/ROCm/amdsmi/issues/38).
 At startup, `zeusd` integrates power over 0.5 seconds, compares it with the counter delta, and marks GPUs that fail validation as `cumulative_energy_available: false`.
@@ -195,6 +198,7 @@ When ROCm is outside the default search locations, point the daemon at it in `/e
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
 - **Daemon exits immediately at startup.** On Linux, a root-required group is enabled but `zeusd` isn't running as root. Either `sudo` or `--enable gpu-read`.
 - **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
+- **AMD SMI startup fails with `AMDSMI_STATUS_UNEXPECTED_DATA` (error 43).** The AMD SMI library is older than the GPU it is reading (e.g., ROCm 6.4 userspace on an MI300X). Point `ROCM_PATH` or `AMDSMI_LIB_DIR` at a ROCm release that supports the GPU.
 - **Logs.** `journalctl -u zeusd -f` under systemd; stderr otherwise.
 
 ## HTTP API reference
