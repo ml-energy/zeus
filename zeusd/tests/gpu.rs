@@ -1102,6 +1102,8 @@ async fn test_discover_endpoint() {
     assert_eq!(gpus.len(), NUM_GPUS as usize);
     assert_eq!(gpus[0]["id"].as_u64().unwrap(), 0);
     assert_eq!(gpus[0]["name"].as_str().unwrap(), "Test GPU 0");
+    assert_eq!(gpus[0]["pci_address"].as_str().unwrap(), "0000:00:00.0");
+    assert!(gpus[0]["cumulative_energy_available"].as_bool().unwrap());
     assert!(gpus[0].get("vendor").is_none());
     let cpus = body["cpus"].as_array().expect("cpus should be array");
     assert_eq!(cpus.len(), 1);

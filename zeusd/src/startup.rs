@@ -91,6 +91,8 @@ pub fn get_unix_listener(
 trait StartupGpu: GpuManager + Send + Sized + 'static {
     fn init(index: u32) -> Result<Self, crate::error::ZeusdError>;
     fn name(&self) -> Result<String, crate::error::ZeusdError>;
+    fn pci_address(&self) -> Result<String, crate::error::ZeusdError>;
+    fn validate_energy_counters(gpus: &mut [Self]) -> Result<Vec<bool>, crate::error::ZeusdError>;
 }
 
 #[cfg(feature = "nvml")]
@@ -102,6 +104,14 @@ impl StartupGpu for NvmlGpu<'static> {
     fn name(&self) -> Result<String, crate::error::ZeusdError> {
         NvmlGpu::name(self)
     }
+
+    fn pci_address(&self) -> Result<String, crate::error::ZeusdError> {
+        NvmlGpu::pci_address(self)
+    }
+
+    fn validate_energy_counters(gpus: &mut [Self]) -> Result<Vec<bool>, crate::error::ZeusdError> {
+        NvmlGpu::validate_energy_counters(gpus)
+    }
 }
 
 #[cfg(feature = "amdsmi")]
@@ -112,6 +122,14 @@ impl StartupGpu for AmdsmiGpu {
 
     fn name(&self) -> Result<String, crate::error::ZeusdError> {
         AmdsmiGpu::name(self)
+    }
+
+    fn pci_address(&self) -> Result<String, crate::error::ZeusdError> {
+        Ok(AmdsmiGpu::bdf(self)?.to_string())
+    }
+
+    fn validate_energy_counters(gpus: &mut [Self]) -> Result<Vec<bool>, crate::error::ZeusdError> {
+        crate::devices::gpu::amdsmi::validate_energy_counters(gpus)
     }
 }
 
@@ -215,13 +233,25 @@ fn start_gpu_device_tasks_for<T: StartupGpu>(
     for gpu_id in 0..num_gpus {
         let gpu = T::init(gpu_id)?;
         let name = gpu.name()?;
+        let pci_address = gpu.pci_address()?;
         tracing::info!("Initialized {} for GPU {} ({})", backend_name, gpu_id, name);
-        gpu_info.push(GpuDiscoveryInfo {
-            id: gpu_id as usize,
-            name,
-        });
+        gpu_info.push((name, pci_address));
         gpus.push(gpu);
     }
+    let energy_flags = T::validate_energy_counters(&mut gpus)?;
+    let gpu_info = gpu_info
+        .into_iter()
+        .zip(energy_flags)
+        .enumerate()
+        .map(
+            |(id, ((name, pci_address), cumulative_energy_available))| GpuDiscoveryInfo {
+                id,
+                name,
+                pci_address,
+                cumulative_energy_available,
+            },
+        )
+        .collect();
     Ok((GpuManagementTasks::start(gpus)?, gpu_info))
 }
 
