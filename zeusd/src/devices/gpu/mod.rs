@@ -1,6 +1,8 @@
 //! GPU management
 
+#[cfg(feature = "nvml")]
 mod nvml;
+#[cfg(feature = "nvml")]
 pub use nvml::NvmlGpu;
 
 pub mod power;

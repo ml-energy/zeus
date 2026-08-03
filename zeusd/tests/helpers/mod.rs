@@ -3,7 +3,6 @@
 //! It has to be under `tests/helpers/mod.rs` instead of `tests/helpers.rs`
 //! to avoid it from being treated as another test module.
 
-use nvml_wrapper::error::NvmlError;
 use once_cell::sync::Lazy;
 use paste::paste;
 use std::collections::HashSet;
@@ -89,7 +88,10 @@ impl GpuManager for TestGpu {
         if power_limit < self.valid_power_limit_range.0
             || power_limit > self.valid_power_limit_range.1
         {
-            return Err(ZeusdError::from(NvmlError::InvalidArg));
+            return Err(ZeusdError::InvalidRequest(format!(
+                "Power limit {power_limit} mW is outside the valid range {}-{} mW",
+                self.valid_power_limit_range.0, self.valid_power_limit_range.1,
+            )));
         }
         self.power_limit_tx.send(power_limit).unwrap();
         Ok(())

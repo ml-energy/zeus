@@ -28,8 +28,12 @@ use crate::devices::cpu::power::CpuPowerBroadcasts;
 use crate::devices::cpu::CpuManagementTasks;
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::{CpuManager, RaplCpu};
-use crate::devices::gpu::power::{start_gpu_poller, GpuPowerBroadcasts};
-use crate::devices::gpu::{GpuManagementTasks, GpuManager, NvmlGpu};
+#[cfg(feature = "nvml")]
+use crate::devices::gpu::power::start_gpu_poller;
+use crate::devices::gpu::power::GpuPowerBroadcasts;
+use crate::devices::gpu::GpuManagementTasks;
+#[cfg(feature = "nvml")]
+use crate::devices::gpu::{GpuManager, NvmlGpu};
 use crate::routes::{cpu_routes, CpuPowerSamplingPeriod};
 use crate::routes::{
     gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
@@ -80,6 +84,7 @@ pub fn get_unix_listener(
 }
 
 /// Initialize NVML and start GPU management tasks.
+#[cfg(feature = "nvml")]
 pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
     tracing::info!("Starting NVML and GPU management tasks.");
     let num_gpus = NvmlGpu::device_count()?;
@@ -98,7 +103,16 @@ pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDi
     Ok((GpuManagementTasks::start(gpus)?, gpu_info))
 }
 
+#[cfg(not(feature = "nvml"))]
+pub fn start_gpu_device_tasks() -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
+    anyhow::bail!(
+        "This zeusd binary was built without a GPU backend. \
+         Rebuild with --features nvml, or remove 'gpu-control' and 'gpu-read' from --enable."
+    )
+}
+
 /// Initialize a separate set of NVML handles and start the GPU power poller.
+#[cfg(feature = "nvml")]
 pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerBroadcasts> {
     tracing::info!("Starting GPU power poller at {} Hz.", poll_hz);
     let num_gpus = NvmlGpu::device_count()?;
@@ -108,6 +122,14 @@ pub fn start_gpu_power_poller(poll_hz: u32) -> anyhow::Result<GpuPowerBroadcasts
         gpus.push((gpu_id as usize, gpu));
     }
     Ok(start_gpu_poller(gpus, poll_hz))
+}
+
+#[cfg(not(feature = "nvml"))]
+pub fn start_gpu_power_poller(_poll_hz: u32) -> anyhow::Result<GpuPowerBroadcasts> {
+    anyhow::bail!(
+        "This zeusd binary was built without a GPU backend. \
+         Rebuild with --features nvml, or remove 'gpu-control' and 'gpu-read' from --enable."
+    )
 }
 
 /// Initialize RAPL and start CPU management tasks.
@@ -167,6 +189,26 @@ pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerBroadcast
 /// daemon lacks the privileges for.
 #[allow(unused_variables)]
 pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
+    #[cfg(all(not(target_os = "linux"), not(feature = "nvml")))]
+    {
+        if enabled_groups.is_empty() {
+            anyhow::bail!("No API groups are enabled. Specify at least one group with --enable.");
+        }
+    }
+
+    #[cfg(not(feature = "nvml"))]
+    {
+        if enabled_groups.contains(&ApiGroup::GpuControl)
+            || enabled_groups.contains(&ApiGroup::GpuRead)
+        {
+            tracing::error!("GPU API groups require a zeusd binary built with a GPU backend.");
+            anyhow::bail!(
+                "This zeusd binary was built without a GPU backend. \
+                 Rebuild with --features nvml, or remove 'gpu-control' and 'gpu-read' from --enable."
+            );
+        }
+    }
+
     #[cfg(not(target_os = "linux"))]
     {
         if enabled_groups.contains(&ApiGroup::CpuRead) {

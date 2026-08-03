@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, ResponseError};
+#[cfg(feature = "nvml")]
 use nvml_wrapper::error::NvmlError;
 use tokio::sync::mpsc::error::SendError;
 
@@ -22,6 +23,9 @@ pub enum ZeusdError {
     GpuNotFoundError(usize),
     #[error("CPU index {0} does not exist.")]
     CpuNotFoundError(usize),
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+    #[cfg(feature = "nvml")]
     #[error("NVML error: {0}")]
     NvmlError(#[from] NvmlError),
     #[error("GPU command send error: {0}")]
@@ -52,6 +56,8 @@ impl ResponseError for ZeusdError {
         match self {
             ZeusdError::GpuNotFoundError(_) => StatusCode::BAD_REQUEST,
             ZeusdError::CpuNotFoundError(_) => StatusCode::BAD_REQUEST,
+            ZeusdError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+            #[cfg(feature = "nvml")]
             ZeusdError::NvmlError(e) => match e {
                 NvmlError::NoPermission => StatusCode::FORBIDDEN,
                 NvmlError::InvalidArg => StatusCode::BAD_REQUEST,
