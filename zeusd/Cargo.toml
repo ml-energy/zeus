@@ -37,6 +37,9 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 jsonwebtoken = "9"
 humantime = "2"
+regex = "1"
+shell-words = "1"
+toml = "0.8"
 
 [features]
 default = ["nvml", "amdsmi"]

@@ -115,13 +115,64 @@ Selectively enable with `--enable`:
 
 | Group | What | Needs root |
 |---|---|:---:|
-| `gpu-control` | `POST /gpu/{set,reset}_*` (power limit, locked clocks, persistence) | Yes |
+| `gpu-control` | `POST /gpu/{set,reset}_*` (power limit, locked clocks, persistence) | Unless command overrides are configured |
 | `gpu-read` | `GET /gpu/{get,stream}_power`, `get_cumulative_energy` | No |
 | `cpu-read` (Linux) | `GET /cpu/{get,stream}_power`, `get_cumulative_energy` | Yes |
 
 `/discover`, `/time`, and `/auth/whoami` are always available. On Linux, the daemon refuses to start if a root-required group is enabled without root; on Windows there's no admin check, and unprivileged NVML writes surface as HTTP 403.
 
 For read-only monitoring without root: `--enable gpu-read`.
+
+### GPU command overrides
+
+`--gpu-command-overrides PATH` replaces selected privileged GPU writes with commands from a TOML file.
+This lets `gpu-control` run without root when privilege is available only through commands such as passwordless sudoers scripts.
+
+```toml
+[set_power_limit]
+commands = ["sudo /usr/local/bin/set_powercap.sh -value {power_limit_w} -gpu {gpu_id}"]
+error_pattern = "(?i)error|fail|cannot|unable|not supported"
+
+[set_gpu_locked_clocks]
+commands = [
+  "sudo /usr/local/bin/set_gpu_clockfreq.sh -clock sclk -limit min -value 500 -gpu {gpu_id}",
+  "sudo /usr/local/bin/set_gpu_clockfreq.sh -clock sclk -limit max -value {max_clock_mhz} -gpu {gpu_id}",
+  "sudo /usr/local/bin/set_gpu_clockfreq.sh -clock sclk -limit min -value {min_clock_mhz} -gpu {gpu_id}",
+]
+error_pattern = "(?i)error|fail|cannot|unable|not supported"
+
+[reset_locked_clocks]
+commands = ["sudo /usr/local/bin/reset_gpu_clocks.sh"]
+error_pattern = "(?i)error|fail|cannot|unable|not supported"
+```
+
+Any subset of the seven operations may be configured.
+Each operation requires a nonempty `commands` array and accepts an optional `timeout_s` per command, which defaults to 60 seconds.
+
+| Operations | Valid placeholders |
+|---|---|
+| All operations | `{gpu_id}` |
+| `set_power_limit` | `{power_limit_mw}`, `{power_limit_w}` |
+| `set_gpu_locked_clocks`, `set_mem_locked_clocks` | `{min_clock_mhz}`, `{max_clock_mhz}` |
+| `set_persistence_mode` | `{enabled}` (`1` or `0`) |
+| `reset_gpu_locked_clocks`, `reset_mem_locked_clocks`, `reset_locked_clocks` | Only `{gpu_id}` |
+
+Commands are word-split and executed directly, without a shell.
+Use a wrapper script when pipes, redirection, or other shell behavior is needed.
+Commands run as the zeusd user, so the command must perform any required privilege escalation, such as passwordless `sudo`; no TTY is available.
+
+An `error_pattern` is matched against combined stdout and stderr, and a match fails the operation even after a zero exit status.
+This is useful for tools such as `amd-smi`, which can exit zero when the kernel rejects a write.
+Commands run sequentially and stop at the first failure.
+There is no rollback: the effects of commands that already ran persist.
+
+A command without `{gpu_id}` affects whatever scope the command implements.
+For example, the reset script above resets every GPU in the node.
+For CLIs that set one clock bound per call, the three-command sequence above first lowers the minimum to the hardware floor, then sets the maximum and target minimum.
+This widen-then-narrow order handles valid target ranges whose new minimum is above the current maximum.
+
+When at least one override is configured, `gpu-control` no longer requires zeusd itself to run as root.
+Without root, control operations that lack an override use the native driver path and will fail with driver permission errors.
 
 ## Python integration
 

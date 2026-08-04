@@ -6,12 +6,13 @@ use serde::{Deserialize, Serialize};
 
 /// API groups that can be independently enabled or disabled.
 ///
-/// Each group maps to a set of HTTP endpoints. Groups that require root
-/// will cause the daemon to exit at startup if it is not running as root.
+/// Each group maps to a set of HTTP endpoints. Groups that require root will
+/// cause the daemon to exit at startup if it is not running as root, unless
+/// GPU command overrides relax the requirement for `gpu-control`.
 ///
 /// Available groups:
 ///   - `gpu-control`: GPU control operations (set power limit, locked clocks,
-///     persistence mode). Requires root.
+///     persistence mode). Requires root unless command overrides are configured.
 ///     - `POST /gpu/set_persistence_mode`
 ///     - `POST /gpu/set_power_limit`
 ///     - `POST /gpu/set_gpu_locked_clocks`
@@ -35,7 +36,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 pub enum ApiGroup {
     /// GPU control operations (set power limit, clocks, persistence mode).
-    /// Requires root.
+    /// Requires root unless command overrides are configured.
     GpuControl,
     /// GPU read operations (power reading, energy consumption).
     GpuRead,
@@ -45,7 +46,7 @@ pub enum ApiGroup {
 }
 
 impl ApiGroup {
-    /// Whether this API group requires root privileges.
+    /// Whether this API group normally requires root privileges.
     pub fn requires_root(&self) -> bool {
         matches!(self, ApiGroup::GpuControl | ApiGroup::CpuRead)
     }
@@ -170,9 +171,10 @@ pub struct ServeConfig {
     #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
 
-    /// API groups to enable. Groups that require root cause the daemon to
-    /// exit at startup if not running as root. Defaults include the API groups
-    /// supported by the platform and compiled device backends.
+    /// API groups to enable. Groups that require root cause the daemon to exit
+    /// at startup if not running as root, unless GPU command overrides are
+    /// configured for `gpu-control`. Defaults include the API groups supported
+    /// by the platform and compiled device backends.
     #[clap(long, value_delimiter = ',')]
     #[cfg_attr(all(target_os = "linux", any(feature = "nvml", feature = "amdsmi")), clap(
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
@@ -184,6 +186,12 @@ pub struct ServeConfig {
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead],
     ))]
     pub enable: Vec<ApiGroup>,
+
+    /// Path to a TOML file mapping GPU control operations to external commands
+    /// that are executed instead of the native library call. When at least one
+    /// operation is overridden, the gpu-control API group no longer requires root.
+    #[clap(long)]
+    pub gpu_command_overrides: Option<String>,
 
     /// Path to the HMAC-SHA256 signing key file for JWT authentication.
     /// If not provided, authentication is disabled.

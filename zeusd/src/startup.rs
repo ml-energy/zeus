@@ -14,6 +14,7 @@ use std::os::unix::fs::{chown, PermissionsExt};
 use std::os::unix::net::UnixListener;
 #[cfg(unix)]
 use std::path::Path;
+use std::sync::Arc;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::fmt::MakeWriter;
@@ -28,6 +29,9 @@ use crate::devices::cpu::power::CpuPowerBroadcasts;
 use crate::devices::cpu::CpuManagementTasks;
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::{CpuManager, RaplCpu};
+use crate::devices::gpu::command_override::GpuCommandOverrides;
+#[cfg(any(feature = "nvml", feature = "amdsmi"))]
+use crate::devices::gpu::command_override::OverriddenGpu;
 #[cfg(any(feature = "nvml", feature = "amdsmi"))]
 use crate::devices::gpu::power::start_gpu_poller;
 use crate::devices::gpu::power::GpuPowerBroadcasts;
@@ -251,6 +255,7 @@ pub fn resolve_gpu_backend(requested: GpuBackend) -> anyhow::Result<ResolvedGpuB
 #[cfg(any(feature = "nvml", feature = "amdsmi"))]
 fn start_gpu_device_tasks_for<T: StartupGpu>(
     backend_name: &str,
+    overrides: Option<Arc<GpuCommandOverrides>>,
 ) -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
     tracing::info!("Starting {} and GPU management tasks.", backend_name);
     let num_gpus = T::device_count()?;
@@ -278,18 +283,32 @@ fn start_gpu_device_tasks_for<T: StartupGpu>(
             },
         )
         .collect();
-    Ok((GpuManagementTasks::start(gpus)?, gpu_info))
+    let tasks = if let Some(overrides) = overrides {
+        let gpus = gpus
+            .into_iter()
+            .enumerate()
+            .map(|(gpu_id, gpu)| OverriddenGpu::new(gpu_id, gpu, overrides.clone()))
+            .collect();
+        GpuManagementTasks::start(gpus)?
+    } else {
+        GpuManagementTasks::start(gpus)?
+    };
+    Ok((tasks, gpu_info))
 }
 
 /// Initialize the resolved backend and start GPU management tasks.
 pub fn start_gpu_device_tasks(
     backend: ResolvedGpuBackend,
+    overrides: Option<Arc<GpuCommandOverrides>>,
 ) -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
+    let _ = &overrides;
     match backend {
         #[cfg(feature = "nvml")]
-        ResolvedGpuBackend::Nvml => start_gpu_device_tasks_for::<NvmlGpu<'static>>("NVML"),
+        ResolvedGpuBackend::Nvml => {
+            start_gpu_device_tasks_for::<NvmlGpu<'static>>("NVML", overrides)
+        }
         #[cfg(feature = "amdsmi")]
-        ResolvedGpuBackend::Amdsmi => start_gpu_device_tasks_for::<AmdsmiGpu>("AMD SMI"),
+        ResolvedGpuBackend::Amdsmi => start_gpu_device_tasks_for::<AmdsmiGpu>("AMD SMI", overrides),
         ResolvedGpuBackend::None => Ok((GpuManagementTasks::empty(), Vec::new())),
     }
 }
@@ -377,7 +396,10 @@ pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerBroadcast
 /// Reject API groups that aren't supported on this platform or that the
 /// daemon lacks the privileges for.
 #[allow(unused_variables)]
-pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
+pub fn check_privileges(
+    enabled_groups: &[ApiGroup],
+    overrides: Option<&GpuCommandOverrides>,
+) -> anyhow::Result<()> {
     #[cfg(all(
         not(target_os = "linux"),
         not(any(feature = "nvml", feature = "amdsmi"))
@@ -421,6 +443,23 @@ pub fn check_privileges(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
         let is_root = nix::unistd::geteuid().is_root();
         for &group in enabled_groups {
             if group.requires_root() && !is_root {
+                if group == ApiGroup::GpuControl && overrides.is_some_and(|value| !value.is_empty())
+                {
+                    let operation_names = overrides
+                        .expect("nonempty overrides were checked")
+                        .overridden_operation_names()
+                        .join(", ");
+                    tracing::info!(
+                        "API group 'gpu-control' is enabled without root because command overrides \
+                         are configured for: {}",
+                        operation_names,
+                    );
+                    tracing::warn!(
+                        "GPU control operations without a command override will use the native \
+                         driver path and may fail with permission errors."
+                    );
+                    continue;
+                }
                 tracing::error!(
                     "API group '{}' requires root privileges. \
                      Either run as root or remove it from --enable.",
@@ -714,7 +753,19 @@ mod tests {
         assert!(fs::metadata(path).is_ok());
 
         // The socket file is left behind, but no one is listening on it.
-        get_unix_listener(path, 0o666, None, None).unwrap();
+        // Other tests in this binary spawn subprocesses, and between a
+        // concurrent fork and exec the child holds a duplicate of the dropped
+        // listener's file descriptor, briefly making the socket look live.
+        // Retry to ride out that window.
+        let mut result = get_unix_listener(path, 0o666, None, None);
+        for _ in 0..10 {
+            if result.is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            result = get_unix_listener(path, 0o666, None, None);
+        }
+        result.unwrap();
     }
 
     #[test]
