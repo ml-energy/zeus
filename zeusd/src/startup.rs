@@ -301,6 +301,8 @@ pub fn start_gpu_device_tasks(
     backend: ResolvedGpuBackend,
     overrides: Option<Arc<GpuCommandOverrides>>,
 ) -> anyhow::Result<(GpuManagementTasks, Vec<GpuDiscoveryInfo>)> {
+    // Suppresses the unused-variable warning when no GPU backend feature is
+    // compiled and only the `None` match arm remains.
     let _ = &overrides;
     match backend {
         #[cfg(feature = "nvml")]
@@ -443,22 +445,19 @@ pub fn check_privileges(
         let is_root = nix::unistd::geteuid().is_root();
         for &group in enabled_groups {
             if group.requires_root() && !is_root {
-                if group == ApiGroup::GpuControl && overrides.is_some_and(|value| !value.is_empty())
-                {
-                    let operation_names = overrides
-                        .expect("nonempty overrides were checked")
-                        .overridden_operation_names()
-                        .join(", ");
-                    tracing::info!(
-                        "API group 'gpu-control' is enabled without root because command overrides \
-                         are configured for: {}",
-                        operation_names,
-                    );
-                    tracing::warn!(
-                        "GPU control operations without a command override will use the native \
-                         driver path and may fail with permission errors."
-                    );
-                    continue;
+                if let Some(overrides) = overrides.filter(|value| !value.is_empty()) {
+                    if group == ApiGroup::GpuControl {
+                        tracing::info!(
+                            "API group 'gpu-control' is enabled without root because command \
+                             overrides are configured for: {}",
+                            overrides.overridden_operation_names().join(", "),
+                        );
+                        tracing::warn!(
+                            "GPU control operations without a command override will use the \
+                             native driver path and may fail with permission errors."
+                        );
+                        continue;
+                    }
                 }
                 tracing::error!(
                     "API group '{}' requires root privileges. \

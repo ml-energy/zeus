@@ -73,6 +73,7 @@ pub struct GpuCommandOverrides {
 impl GpuCommandOverrides {
     /// Read and validate command overrides from a TOML file.
     pub fn load(path: &str) -> anyhow::Result<Self> {
+        check_file_trust(path)?;
         let contents = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read GPU command override file '{path}'"))?;
         Self::parse(&contents)
@@ -145,6 +146,48 @@ impl GpuCommandOverrides {
     }
 }
 
+/// The override file decides which commands zeusd executes, and those commands
+/// typically hold passwordless sudo rules. Refuse a file that another user
+/// could have modified.
+#[cfg(unix)]
+fn check_file_trust(path: &str) -> anyhow::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("Failed to read GPU command override file '{path}'"))?;
+    let owner = metadata.uid();
+    let euid = nix::unistd::geteuid().as_raw();
+    if owner != 0 && owner != euid {
+        anyhow::bail!(
+            "GPU command override file '{path}' is owned by uid {owner}; it must be owned by \
+             root or the user running zeusd (uid {euid}) because zeusd executes the commands \
+             it defines"
+        );
+    }
+    let mode = metadata.mode();
+    if mode & 0o002 != 0 {
+        anyhow::bail!(
+            "GPU command override file '{path}' is world-writable (mode {:o}); tighten its \
+             permissions (e.g. chmod 644) because zeusd executes the commands it defines",
+            mode & 0o777
+        );
+    }
+    if mode & 0o020 != 0 {
+        tracing::warn!(
+            "GPU command override file '{}' is group-writable (mode {:o}); anyone in the \
+             group can change which commands zeusd executes",
+            path,
+            mode & 0o777
+        );
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn check_file_trust(_path: &str) -> anyhow::Result<()> {
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawOverrides {
@@ -187,6 +230,13 @@ fn validate_spec(
             })
         })
         .transpose()?;
+
+    if raw.timeout_s == Some(0) {
+        anyhow::bail!(
+            "Operation '{}' has timeout_s = 0, which would kill every command immediately",
+            operation.name()
+        );
+    }
 
     let mut commands = Vec::with_capacity(raw.commands.len());
     for command in raw.commands {
@@ -614,6 +664,7 @@ impl<T: GpuManager> GpuManager for OverriddenGpu<T> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
@@ -751,6 +802,33 @@ timeout_s = 7
         let empty_error =
             GpuCommandOverrides::parse("[reset_locked_clocks]\ncommands = [\"\"]\n").unwrap_err();
         assert!(empty_error.to_string().contains("zero tokens"));
+    }
+
+    #[test]
+    fn rejects_zero_timeout() {
+        let error = GpuCommandOverrides::parse(
+            "[set_power_limit]\ncommands = [\"control\"]\ntimeout_s = 0\n",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("timeout_s = 0"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_world_writable_file_and_accepts_group_writable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("overrides.toml");
+        std::fs::write(&path, "[reset_locked_clocks]\ncommands = [\"control\"]\n").unwrap();
+        let path = path.to_str().unwrap();
+
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666)).unwrap();
+        let error = GpuCommandOverrides::load(path).unwrap_err();
+        assert!(error.to_string().contains("world-writable"));
+
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o664)).unwrap();
+        GpuCommandOverrides::load(path).unwrap();
     }
 
     #[test]
@@ -948,11 +1026,13 @@ timeout_s = 7
         assert!(!marker.exists());
     }
 
+    #[cfg(unix)]
     struct MockGpu {
         power_limit_calls: Arc<AtomicUsize>,
         gpu_clock_calls: Arc<AtomicUsize>,
     }
 
+    #[cfg(unix)]
     impl GpuManager for MockGpu {
         fn device_count() -> Result<u32, ZeusdError> {
             Ok(1)
