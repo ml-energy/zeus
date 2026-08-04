@@ -2,7 +2,7 @@
 
 The API is the same regardless of transport. Paths shown below are server-relative; prefix with `http://<host>:<port>` over TCP, the UDS socket over UDS, or the named pipe on Windows.
 
-Status codes: `200` success; `400` bad input or unsupported op (e.g., persistence-mode off on Windows); `401` missing/invalid token; `403` insufficient token scope or NVML `NoPermission`; `404` disabled API group or `/auth/*` on a no-auth daemon. Per-device write calls aggregate per-device errors into `{"errors": {"<device_id>": "<message>"}}` with the worst per-device status.
+Status codes: `200` success; `400` bad input or unsupported op (e.g., persistence-mode off on Windows); `401` missing/invalid token; `403` insufficient token scope or NVML `NoPermission`; `404` disabled API group or `/auth/*` on a no-auth daemon; `500` daemon-side failure, e.g., an unexpected driver error or a failed [override command](command_overrides.md). Per-device write calls aggregate per-device errors into `{"errors": {"<device_id>": "<message>"}}` with the worst per-device status.
 
 ## `GET /discover`
 
