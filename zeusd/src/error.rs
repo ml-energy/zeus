@@ -58,6 +58,8 @@ pub enum ZeusdError {
     Forbidden(String),
     #[error("Persistence mode cannot be disabled on this platform.")]
     PersistenceModeCannotBeDisabled,
+    #[error("Override command failed: {0}")]
+    CommandOverrideError(String),
 }
 
 /// This allows us to return a custom HTTP status code for each error variant.
@@ -92,6 +94,7 @@ impl ResponseError for ZeusdError {
             ZeusdError::Unauthorized => StatusCode::UNAUTHORIZED,
             ZeusdError::Forbidden(_) => StatusCode::FORBIDDEN,
             ZeusdError::PersistenceModeCannotBeDisabled => StatusCode::BAD_REQUEST,
+            ZeusdError::CommandOverrideError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

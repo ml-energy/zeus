@@ -185,6 +185,12 @@ pub struct ServeConfig {
     ))]
     pub enable: Vec<ApiGroup>,
 
+    /// Path to a TOML file mapping GPU control operations to external commands
+    /// that are executed instead of the native library call. When at least one
+    /// operation is overridden, the gpu-control API group no longer requires root.
+    #[clap(long)]
+    pub gpu_command_overrides: Option<String>,
+
     /// Path to the HMAC-SHA256 signing key file for JWT authentication.
     /// If not provided, authentication is disabled.
     #[clap(long)]

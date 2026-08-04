@@ -1,5 +1,6 @@
 //! GPU management
 
+pub mod command_override;
 #[cfg(feature = "nvml")]
 pub(crate) mod nvml;
 #[cfg(feature = "nvml")]

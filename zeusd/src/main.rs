@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use zeusd::auth::{issue_token, SigningKeyData};
 use zeusd::config::{get_cli, ApiGroup, Command, ConnectionMode, TokenCommand};
+use zeusd::devices::gpu::command_override::GpuCommandOverrides;
 use zeusd::routes::CpuPowerSamplingPeriod;
 use zeusd::routes::DiscoveryInfo;
 #[cfg(windows)]
@@ -56,6 +57,17 @@ fn handle_token_command(action: TokenCommand) -> anyhow::Result<()> {
 async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> {
     tracing::info!("Loaded {:?}", config);
 
+    let mut gpu_command_overrides = match &config.gpu_command_overrides {
+        Some(path) => Some(Arc::new(GpuCommandOverrides::load(path)?)),
+        None => None,
+    };
+    if gpu_command_overrides.is_some() && !config.is_enabled(ApiGroup::GpuControl) {
+        tracing::warn!(
+            "GPU command overrides are ignored because the gpu-control API group is not enabled"
+        );
+        gpu_command_overrides = None;
+    }
+
     let resolved_gpu_backend = if config.needs_gpu() {
         Some(resolve_gpu_backend(config.gpu_backend)?)
     } else {
@@ -63,7 +75,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
     };
 
     // Validate privileges for the requested API groups.
-    check_privileges(&config.enable)?;
+    check_privileges(&config.enable, gpu_command_overrides.as_deref())?;
 
     let enabled_groups = EnabledGroups(config.enable.iter().cloned().collect());
     tracing::info!(
@@ -99,7 +111,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
     // Conditionally initialize GPU devices.
     let (gpu_device_tasks, gpu_power_broadcast, gpus) = if config.needs_gpu() {
         let backend = resolved_gpu_backend.expect("GPU backend must be resolved");
-        let (tasks, gpus) = start_gpu_device_tasks(backend)?;
+        let (tasks, gpus) = start_gpu_device_tasks(backend, gpu_command_overrides.clone())?;
         let broadcast = if config.is_enabled(ApiGroup::GpuRead) {
             Some(start_gpu_power_poller(backend, config.gpu_power_poll_hz)?)
         } else {
