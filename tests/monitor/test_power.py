@@ -169,7 +169,7 @@ def test_none_selects_all_available_devices(mocker) -> None:
     try:
         assert monitor.gpu_indices == [0, 1]
         assert monitor.cpu_indices == [0, 1]
-        assert monitor.supported_domains == [
+        assert monitor.cpu_measurement_domains == [
             PowerDomain.CPU_PACKAGE_AVERAGE,
             PowerDomain.CPU_DRAM_AVERAGE,
         ]
@@ -190,7 +190,7 @@ def test_cpu_only_monitor_handles_an_unavailable_gpu_backend(mocker) -> None:
         assert monitor.gpu_indices == []
         assert monitor.cpu_indices == [0, 1]
         assert monitor.measurement_domains == []
-        assert monitor.supported_domains == [
+        assert monitor.cpu_measurement_domains == [
             PowerDomain.CPU_PACKAGE_AVERAGE,
             PowerDomain.CPU_DRAM_AVERAGE,
         ]
@@ -209,7 +209,7 @@ def test_empty_cpu_indices_disable_cpu_measurement(mocker) -> None:
 
     try:
         assert monitor.cpu_indices == []
-        assert monitor.supported_domains == []
+        assert monitor.cpu_measurement_domains == []
         get_cpus.assert_called_once_with()
     finally:
         monitor.stop()

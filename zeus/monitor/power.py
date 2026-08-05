@@ -16,7 +16,12 @@ from typing import Literal, Callable, TYPE_CHECKING
 from sklearn.metrics import auc
 
 from zeus.device import get_cpus, get_gpus
-from zeus.device.cpu.common import EmptyCPUs, ZeusCPUInitError, ZeusCPUNoPermissionError
+from zeus.device.cpu.common import (
+    CpuDramMeasurement,
+    EmptyCPUs,
+    ZeusCPUInitError,
+    ZeusCPUNoPermissionError,
+)
 from zeus.device.gpu.common import EmptyGPUs, ZeusGPUInitError, ZeusGPUNotSupportedError
 from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 
@@ -138,6 +143,15 @@ class PowerSample:
     power_mw: float
 
 
+@dataclass
+class CPUPowerSample:
+    """A single CPU package or DRAM power measurement sample."""
+
+    timestamp: float
+    cpu_index: int
+    power_mw: float
+
+
 def _cleanup_processes(
     stop_events: dict[PowerDomain, EventClass],
     processes: dict[PowerDomain, SpawnProcess],
@@ -192,7 +206,11 @@ class PowerMonitor:
         cpu_indices: list[int] | None = None,
         update_period: float | None = None,
         max_samples_per_gpu: int | None = None,
-        power_domains: list[PowerDomain | Literal["device_instant", "device_average", "memory_average"]] | None = None,
+        power_domains: list[
+            PowerDomain
+            | Literal["device_instant", "device_average", "memory_average", "cpu_package_average", "cpu_dram_average"]
+        ]
+        | None = None,
     ) -> None:
         """Initialize the enhanced power monitor.
 
@@ -263,35 +281,34 @@ class PowerMonitor:
         self.stop_events: dict[PowerDomain, EventClass] = {}
         self.processes: dict[PowerDomain, SpawnProcess] = {}
 
-        self.supported_domains = self._determine_supported_domains()
-        logger.info("Supported power domains: %s", [d.value for d in self.supported_domains])
+        gpu_supported_domains, cpu_supported_domains = self._determine_supported_domains()
+        logger.info("Supported GPU power domains: %s", [d.value for d in gpu_supported_domains])
+        logger.info("Supported CPU power domains: %s", [d.value for d in cpu_supported_domains])
 
-        # CPU domains are discoverable but cannot be sampled until CPU polling lands.
-        active_domains = [
-            domain
-            for domain in self.supported_domains
-            if domain
-            not in {PowerDomain.CPU_PACKAGE_AVERAGE, PowerDomain.CPU_DRAM_AVERAGE}
-        ]
-
-        # Configure requested GPU power domains.
+        # Configure requested GPU and CPU power domains separately because CPU
+        # package and DRAM measurements share a single polling process.
         self.measurement_domains: list[PowerDomain] = []
+        self.cpu_measurement_domains: list[PowerDomain] = []
         if power_domains is None:
-            self.measurement_domains = active_domains
+            self.measurement_domains = gpu_supported_domains
+            self.cpu_measurement_domains = cpu_supported_domains
         else:
             for requested_domain in power_domains:
                 domain = PowerDomain(requested_domain)
-                if domain not in self.supported_domains:
+                if domain in gpu_supported_domains:
+                    self.measurement_domains.append(domain)
+                elif domain in cpu_supported_domains:
+                    self.cpu_measurement_domains.append(domain)
+                else:
                     raise ValueError(
                         f"Requested power domain {domain.value} is not supported. "
-                        f"Supported domains are: {[d.value for d in self.supported_domains]}",
+                        "Supported GPU domains are: "
+                        f"{[d.value for d in gpu_supported_domains]}. "
+                        "Supported CPU domains are: "
+                        f"{[d.value for d in cpu_supported_domains]}.",
                     )
-                if domain not in active_domains:
-                    raise NotImplementedError(
-                        f"{domain.value} is supported but CPU polling is not implemented yet"
-                    )
-                self.measurement_domains.append(domain)
         self.measurement_domains = list(set(self.measurement_domains))
+        self.cpu_measurement_domains = list(set(self.cpu_measurement_domains))
 
         if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
             logger.warning(
@@ -325,6 +342,28 @@ class PowerMonitor:
                 daemon=True,
                 name=f"zeus-power-monitor-{domain.value}",
             )
+
+        if self.cpu_measurement_domains:
+            # package and dram samples come from the same underlying source, no need for separate processes
+            self.data_queues[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Queue()
+            self.data_queues[PowerDomain.CPU_DRAM_AVERAGE] = ctx.Queue()
+            self.ready_events[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Event()
+            self.stop_events[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Event()
+            self.processes[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Process(
+                target=_cpu_polling_process,
+                kwargs=dict(
+                    cpu_indices=self.cpu_indices,
+                    power_domains=self.cpu_measurement_domains,
+                    package_data_queue=self.data_queues[PowerDomain.CPU_PACKAGE_AVERAGE],
+                    dram_data_queue=self.data_queues[PowerDomain.CPU_DRAM_AVERAGE],
+                    ready_event=self.ready_events[PowerDomain.CPU_PACKAGE_AVERAGE],
+                    stop_event=self.stop_events[PowerDomain.CPU_PACKAGE_AVERAGE],
+                    update_period=update_period,
+                ),
+                daemon=True,
+                name="zeus-power-monitor-cpu",
+            )
+
         for process in self.processes.values():
             process.start()
 
@@ -342,11 +381,19 @@ class PowerMonitor:
                 raise RuntimeError(
                     f"Power monitor subprocess for {domain.value} failed to start within 10 seconds",
                 )
+        if self.cpu_measurement_domains:
+            cpu_process_domain = PowerDomain.CPU_PACKAGE_AVERAGE
+            if not self.ready_events[cpu_process_domain].wait(timeout=10.0):
+                logger.warning("CPU power monitor subprocess did not signal ready within 10 seconds")
+                raise RuntimeError("CPU power monitor subprocess failed to start within 10 seconds")
         logger.info("All power monitoring subprocesses are ready")
 
-    def _determine_supported_domains(self) -> list[PowerDomain]:
-        """Determine which power domains are supported by selected devices."""
-        supported = []
+    def _determine_supported_domains(
+        self,
+    ) -> tuple[list[PowerDomain], list[PowerDomain]]:
+        """Determine which GPU and CPU power domains are supported."""
+        gpu_supported_domains = []
+        cpu_supported_domains = []
         if self.gpu_indices:
             gpus = get_gpus(ensure_homogeneous=True)
             methods = {
@@ -359,7 +406,7 @@ class PowerMonitor:
             for domain, method in methods.items():
                 try:
                     _ = method(0)
-                    supported.append(domain)
+                    gpu_supported_domains.append(domain)
                     logger.info("Power domain %s is supported", domain.value)
                 except ZeusGPUNotSupportedError:
                     logger.info("Power domain %s is not supported", domain.value)
@@ -372,14 +419,14 @@ class PowerMonitor:
                     )
 
         if self.cpu_indices and len(self.cpus):
-            supported.append(PowerDomain.CPU_PACKAGE_AVERAGE)
+            cpu_supported_domains.append(PowerDomain.CPU_PACKAGE_AVERAGE)
             if any(
                 self.cpus.supports_get_dram_energy_consumption(cpu_index)
                 for cpu_index in self.cpu_indices
             ):
-                supported.append(PowerDomain.CPU_DRAM_AVERAGE)
+                cpu_supported_domains.append(PowerDomain.CPU_DRAM_AVERAGE)
 
-        return supported
+        return gpu_supported_domains, cpu_supported_domains
 
     def stop(self) -> None:
         """Stop all monitoring processes."""
@@ -703,3 +750,66 @@ def _domain_polling_process(
     finally:
         # Send stop signal
         data_queue.put("STOP")
+
+
+def _cpu_polling_process(
+    cpu_indices: list[int],
+    power_domains: list[PowerDomain],
+    package_data_queue: mp.Queue,
+    dram_data_queue: mp.Queue,
+    ready_event: EventClass,
+    stop_event: EventClass,
+    update_period: float,
+) -> None:
+    """Poll CPU energy counters and emit package and DRAM power samples."""
+    try:
+        cpus = get_cpus()
+        previous: dict[int, tuple[float, CpuDramMeasurement]] = {}
+        ready_event.set()
+        queue_package_sample = PowerDomain.CPU_PACKAGE_AVERAGE in power_domains
+        queue_dram_sample = PowerDomain.CPU_DRAM_AVERAGE in power_domains
+
+        while not stop_event.is_set():
+            timestamp = time()
+            for cpu_index in cpu_indices:
+                current = cpus.get_total_energy_consumption(cpu_index)
+                if cpu_index in previous:
+                    previous_timestamp, previous_reading = previous[cpu_index]
+                    elapsed = timestamp - previous_timestamp
+                    if elapsed > 0:
+                        package_delta_mj = current.cpu_mj - previous_reading.cpu_mj
+                        if package_delta_mj > 0 and queue_package_sample:
+                            package_data_queue.put(
+                                CPUPowerSample(
+                                    timestamp=timestamp,
+                                    cpu_index=cpu_index,
+                                    power_mw=package_delta_mj / elapsed,
+                                )
+                            )
+
+                        if current.dram_mj is not None and previous_reading.dram_mj is not None:
+                            dram_delta_mj = current.dram_mj - previous_reading.dram_mj
+                            if dram_delta_mj > 0 and queue_dram_sample:
+                                dram_data_queue.put(
+                                    CPUPowerSample(
+                                        timestamp=timestamp,
+                                        cpu_index=cpu_index,
+                                        power_mw=dram_delta_mj / elapsed,
+                                    )
+                                )
+
+                previous[cpu_index] = (timestamp, current)
+
+            elapsed = time() - timestamp
+            sleep_time = update_period - elapsed
+            if sleep_time > 0:
+                sleep(sleep_time)
+
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        logger.exception("Exiting CPU polling process due to error: %s", e)
+        raise
+    finally:
+        package_data_queue.put("STOP")
+        dram_data_queue.put("STOP")
