@@ -132,3 +132,84 @@ def test_cli_power_queries_and_integrates_same_domain(mocker: MockerFixture) -> 
 
     monitor.get_power.assert_called_once_with(power_domain="device_average")
     monitor.get_energy.assert_called_once_with(0.0, 0.0, power_domain="device_average")
+class MockCPUs:
+    def __init__(self, count: int) -> None:
+        self._count = count
+
+    def __len__(self) -> int:
+        return self._count
+
+    def supports_get_dram_energy_consumption(self, index: int) -> bool:
+        return index == 0
+
+
+class MockGPUs:
+    def __init__(self, count: int) -> None:
+        self._count = count
+
+    def __len__(self) -> int:
+        return self._count
+
+    def get_instant_power_usage(self, index: int) -> int:
+        raise ZeusGPUNotSupportedError("Unsupported")
+
+    def get_average_power_usage(self, index: int) -> int:
+        raise ZeusGPUNotSupportedError("Unsupported")
+
+    def get_average_memory_power_usage(self, index: int) -> int:
+        raise ZeusGPUNotSupportedError("Unsupported")
+
+
+def test_none_selects_all_available_devices(mocker) -> None:
+    mocker.patch("zeus.monitor.power.get_gpus", return_value=MockGPUs(count=2))
+    mocker.patch("zeus.monitor.power.get_cpus", return_value=MockCPUs(count=2))
+
+    monitor = PowerMonitor(update_period=0.1)
+
+    try:
+        assert monitor.gpu_indices == [0, 1]
+        assert monitor.cpu_indices == [0, 1]
+        assert monitor.supported_domains == [
+            PowerDomain.CPU_PACKAGE_AVERAGE,
+            PowerDomain.CPU_DRAM_AVERAGE,
+        ]
+    finally:
+        monitor.stop()
+
+
+def test_cpu_only_monitor_handles_an_unavailable_gpu_backend(mocker) -> None:
+    mocker.patch(
+        "zeus.monitor.power.get_gpus",
+        side_effect=ZeusGPUInitError("No GPU backend is available."),
+    )
+    mocker.patch("zeus.monitor.power.get_cpus", return_value=MockCPUs(count=2))
+
+    monitor = PowerMonitor(update_period=0.1)
+
+    try:
+        assert monitor.gpu_indices == []
+        assert monitor.cpu_indices == [0, 1]
+        assert monitor.measurement_domains == []
+        assert monitor.supported_domains == [
+            PowerDomain.CPU_PACKAGE_AVERAGE,
+            PowerDomain.CPU_DRAM_AVERAGE,
+        ]
+    finally:
+        monitor.stop()
+
+
+def test_empty_cpu_indices_disable_cpu_measurement(mocker) -> None:
+    mocker.patch("zeus.monitor.power.get_gpus", return_value=MockGPUs(count=1))
+    get_cpus = mocker.patch(
+        "zeus.monitor.power.get_cpus",
+        return_value=MockCPUs(count=2),
+    )
+
+    monitor = PowerMonitor(cpu_indices=[], update_period=0.1)
+
+    try:
+        assert monitor.cpu_indices == []
+        assert monitor.supported_domains == []
+        get_cpus.assert_called_once_with()
+    finally:
+        monitor.stop()
