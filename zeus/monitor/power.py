@@ -15,8 +15,9 @@ from typing import Literal, Callable, TYPE_CHECKING
 
 from sklearn.metrics import auc
 
-from zeus.device.gpu.common import ZeusGPUNotSupportedError
-from zeus.device import get_gpus
+from zeus.device import get_cpus, get_gpus
+from zeus.device.cpu.common import EmptyCPUs, ZeusCPUInitError, ZeusCPUNoPermissionError
+from zeus.device.gpu.common import EmptyGPUs, ZeusGPUInitError, ZeusGPUNotSupportedError
 from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 
 if TYPE_CHECKING:
@@ -124,6 +125,8 @@ class PowerDomain(Enum):
     DEVICE_INSTANT = "device_instant"
     DEVICE_AVERAGE = "device_average"
     MEMORY_AVERAGE = "memory_average"
+    CPU_PACKAGE_AVERAGE = "cpu_package_average"
+    CPU_DRAM_AVERAGE = "cpu_dram_average"
 
 
 @dataclass
@@ -186,6 +189,7 @@ class PowerMonitor:
     def __init__(
         self,
         gpu_indices: list[int] | None = None,
+        cpu_indices: list[int] | None = None,
         update_period: float | None = None,
         max_samples_per_gpu: int | None = None,
         power_domains: list[PowerDomain | Literal["device_instant", "device_average", "memory_average"]] | None = None,
@@ -193,7 +197,10 @@ class PowerMonitor:
         """Initialize the enhanced power monitor.
 
         Args:
-            gpu_indices: Indices of the GPUs to monitor. If None, monitor all GPUs.
+            gpu_indices: Indices of the GPUs to monitor. If None, monitor all
+                available GPUs. Pass an empty list to disable GPU monitoring.
+            cpu_indices: Indices of CPU packages to monitor. If None, monitor all
+                available CPU packages. Pass an empty list to disable CPU monitoring.
             update_period: Update period of the power monitor in seconds. If None,
                 infer the update period by max speed polling the power counter for
                 each GPU model.
@@ -204,24 +211,43 @@ class PowerMonitor:
         # Warn if instantiated as a global variable in a subprocess.
         warn_if_global_in_subprocess(self)
 
-        if gpu_indices is not None and not gpu_indices:
-            raise ValueError("`gpu_indices` must be either `None` or non-empty")
-
         if power_domains is not None and not power_domains:
             raise ValueError("`power_domains` must be either `None` or non-empty")
 
-        # Get GPUs
-        gpus = get_gpus(ensure_homogeneous=True)
+        try:
+            self.gpus = get_gpus(ensure_homogeneous=True)
+        except ZeusGPUInitError:
+            self.gpus = EmptyGPUs()
 
-        # Configure GPU indices
-        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(gpus)))
-        if not self.gpu_indices:
-            raise ValueError("At least one GPU index must be specified")
-        logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
+        try:
+            self.cpus = get_cpus()
+        except ZeusCPUInitError:
+            self.cpus = EmptyCPUs()
+        except ZeusCPUNoPermissionError as err:
+            if cpu_indices:
+                raise RuntimeError(
+                    "Root privilege is required to read RAPL metrics. See "
+                    "https://ml.energy/zeus/getting_started/#system-privileges "
+                    "for more information or disable CPU measurement by passing "
+                    "cpu_indices=[] to PowerMonitor."
+                ) from err
+            self.cpus = EmptyCPUs()
+
+        # Resolve unspecified indices to every available device.
+        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
+        self.cpu_indices = cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
+
+        if not self.gpu_indices and not self.cpu_indices:
+            raise ValueError("At least one GPU or CPU package index must be specified")
+        if self.gpu_indices:
+            logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
+        if self.cpu_indices:
+            logger.info("CPU power monitoring is configured for packages %s", self.cpu_indices)
 
         # Infer update period from GPU instant power, if necessary
+        # RAPL counter update periods will be much lower than GPU (10 kHz)
         if update_period is None:
-            update_period = infer_counter_update_period(self.gpu_indices)
+            update_period = infer_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
         elif update_period < 0.05:
             logger.warning(
                 "An update period of %g might be too fast, which may lead to unexpected "
@@ -237,21 +263,32 @@ class PowerMonitor:
         self.stop_events: dict[PowerDomain, EventClass] = {}
         self.processes: dict[PowerDomain, SpawnProcess] = {}
 
-        # Determine which domains are supported
-        supported_domains = self._determine_supported_domains()
-        logger.info("Supported power domains: %s", [d.value for d in supported_domains])
+        self.supported_domains = self._determine_supported_domains()
+        logger.info("Supported power domains: %s", [d.value for d in self.supported_domains])
 
-        # Configure requested power domains
+        # CPU domains are discoverable but cannot be sampled until CPU polling lands.
+        active_domains = [
+            domain
+            for domain in self.supported_domains
+            if domain
+            not in {PowerDomain.CPU_PACKAGE_AVERAGE, PowerDomain.CPU_DRAM_AVERAGE}
+        ]
+
+        # Configure requested GPU power domains.
         self.measurement_domains: list[PowerDomain] = []
         if power_domains is None:
-            self.measurement_domains = supported_domains
+            self.measurement_domains = active_domains
         else:
             for requested_domain in power_domains:
                 domain = PowerDomain(requested_domain)
-                if domain not in supported_domains:
+                if domain not in self.supported_domains:
                     raise ValueError(
-                        f"Requested power domain {domain.value} is not supported by the current GPUs. "
-                        f"Supported domains are: {[d.value for d in supported_domains]}",
+                        f"Requested power domain {domain.value} is not supported. "
+                        f"Supported domains are: {[d.value for d in self.supported_domains]}",
+                    )
+                if domain not in active_domains:
+                    raise NotImplementedError(
+                        f"{domain.value} is supported but CPU polling is not implemented yet"
                     )
                 self.measurement_domains.append(domain)
         self.measurement_domains = list(set(self.measurement_domains))
@@ -307,30 +344,39 @@ class PowerMonitor:
         logger.info("All power monitoring subprocesses are ready")
 
     def _determine_supported_domains(self) -> list[PowerDomain]:
-        """Determine which power domains are supported by the current GPUs."""
+        """Determine which power domains are supported by selected devices."""
         supported = []
-        gpus = get_gpus(ensure_homogeneous=True)
-        methods = {
-            PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
-            PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
-            PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
-        }
+        if self.gpu_indices:
+            gpus = get_gpus(ensure_homogeneous=True)
+            methods = {
+                PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
+                PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
+                PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
+            }
 
-        # Just check the first GPU for support, since all GPUs are homogeneous.
-        for domain, method in methods.items():
-            try:
-                _ = method(0)
-                supported.append(domain)
-                logger.info("Power domain %s is supported", domain.value)
-            except ZeusGPUNotSupportedError:
-                logger.info("Power domain %s is not supported", domain.value)
-            except Exception as e:
-                logger.warning(
-                    "Unexpected error while checking for %s support on GPU %d: %s",
-                    domain.value,
-                    self.gpu_indices[0],
-                    e,
-                )
+            # Just check the first GPU for support, since all GPUs are homogeneous.
+            for domain, method in methods.items():
+                try:
+                    _ = method(0)
+                    supported.append(domain)
+                    logger.info("Power domain %s is supported", domain.value)
+                except ZeusGPUNotSupportedError:
+                    logger.info("Power domain %s is not supported", domain.value)
+                except Exception as e:
+                    logger.warning(
+                        "Unexpected error while checking for %s support on GPU %d: %s",
+                        domain.value,
+                        self.gpu_indices[0],
+                        e,
+                    )
+
+        if self.cpu_indices and len(self.cpus):
+            supported.append(PowerDomain.CPU_PACKAGE_AVERAGE)
+            if any(
+                self.cpus.supports_get_dram_energy_consumption(cpu_index)
+                for cpu_index in self.cpu_indices
+            ):
+                supported.append(PowerDomain.CPU_DRAM_AVERAGE)
 
         return supported
 
