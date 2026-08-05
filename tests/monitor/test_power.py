@@ -18,6 +18,11 @@ from zeus.monitor.power import (
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+import pytest
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
+
 
 def make_monitor(samples: dict[PowerDomain, dict[int, list[tuple[float, float]]]]) -> PowerMonitor:
     """Build a `PowerMonitor` with pre-enqueued samples, bypassing process spawning.
