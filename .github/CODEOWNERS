@@ -1,0 +1,34 @@
+# Code owners for Zeus.
+#
+# Owners listed here are automatically requested for review on pull requests
+# that touch matching paths. The authoritative list of maintainers, including
+# what each one focuses on, lives in /MAINTAINERS.md. See /GOVERNANCE.md for
+# how maintainers are added and how decisions are made.
+#
+# Later matches take precedence over earlier ones.
+
+# Everything, by default.
+*                       @jaywonchung
+
+# Energy and power measurement.
+/zeus/monitor/          @jaywonchung @ruofan-wu
+/zeus/profile.py        @jaywonchung @ruofan-wu
+
+# Optimizers.
+/zeus/optimizer/        @jaywonchung
+
+# Zeus daemon.
+/zeusd/                 @jaywonchung
+
+# Governance, licensing, and security policy.
+/GOVERNANCE.md          @jaywonchung
+/MAINTAINERS.md         @jaywonchung
+/CODE_OF_CONDUCT.md     @jaywonchung
+/CONTRIBUTING.md        @jaywonchung
+/SECURITY.md            @jaywonchung
+/LICENSE                @jaywonchung
+/.github/CODEOWNERS     @jaywonchung
+
+# Release and CI plumbing.
+/.github/workflows/     @jaywonchung
+/pyproject.toml         @jaywonchung

@@ -27,7 +27,7 @@
 
 Zeus is a library for (1) [**measuring**](https://ml.energy/zeus/measure) the energy consumption of Deep Learning workloads and (2) [**optimizing**](https://ml.energy/zeus/optimize) their energy consumption.
 
-Zeus is part of [The ML.ENERGY Initiative](https://ml.energy).
+Zeus is a project of [The ML.ENERGY Initiative](https://ml.energy).
 
 ## Repository Organization
 
@@ -67,6 +67,12 @@ Refer to our [Docker Hub repository](https://hub.docker.com/r/mlenergy/zeus) and
 
 We provide working examples for integrating and running Zeus in the [`examples/`](/examples) directory.
 
+## Releases
+
+Zeus follows semantic versioning; pushing a `zeus-v*` tag releases the Python package to [PyPI](https://pypi.org/project/zeus/) and a `zeusd-v*` tag releases the daemon to [crates.io](https://crates.io/crates/zeusd).
+We cut a release when meaningful changes have landed, which has meant roughly every one to three months, and fixes that affect measurement correctness or security fixes ship as soon as they are ready.
+Every release requires green CI on `master`, and breaking changes are called out in the [release notes](https://github.com/ml-energy/zeus/releases).
+
 ## Research
 
 Zeus is rooted on multiple research papers.
@@ -92,10 +98,7 @@ If you find Zeus relevant to your research, please consider citing:
 ## Other Resources
 
 1. Energy-Efficient Deep Learning with PyTorch and Zeus (PyTorch conference 2023): [Recording](https://youtu.be/veM3x9Lhw2A) | [Slides](https://ml.energy/assets/attachments/pytorch_conf_2023_slides.pdf)
-
-## Contact
-
-Jae-Won Chung (jwnchung@umich.edu)
+1. NeurIPS 2025 Tutorial: Energy and Power as First-Class ML Design Metrics: [Recording](https://neurips.cc/virtual/2025/loc/san-diego/tutorial/109589) | [Homepage](https://ml.energy/tutorials/neurips25/)
 
 ## Newsletter
 
