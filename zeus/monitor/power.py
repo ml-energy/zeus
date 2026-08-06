@@ -317,11 +317,18 @@ class PowerMonitor:
             )
 
         # Power samples are collected for each power domain and device index.
-        self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
+        self.samples: dict[
+            PowerDomain,
+            dict[int, collections.deque[PowerSample | CPUPowerSample]],
+        ] = {}
         for domain in self.measurement_domains:
             self.samples[domain] = {}
             for gpu_idx in self.gpu_indices:
                 self.samples[domain][gpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
+        for domain in self.cpu_measurement_domains:
+            self.samples[domain] = {}
+            for cpu_idx in self.cpu_indices:
+                self.samples[domain][cpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
 
         # Spawn collector processes for each supported domain
         ctx = mp.get_context("spawn")
@@ -360,7 +367,8 @@ class PowerMonitor:
                     stop_event=self.stop_events[PowerDomain.CPU_PACKAGE_AVERAGE],
                     update_period=update_period,
                 ),
-                daemon=True,
+                # RAPL starts a wraparound tracker subprocess.
+                daemon=False,
                 name="zeus-power-monitor-cpu",
             )
 
@@ -420,10 +428,7 @@ class PowerMonitor:
 
         if self.cpu_indices and len(self.cpus):
             cpu_supported_domains.append(PowerDomain.CPU_PACKAGE_AVERAGE)
-            if any(
-                self.cpus.supports_get_dram_energy_consumption(cpu_index)
-                for cpu_index in self.cpu_indices
-            ):
+            if any(self.cpus.supports_get_dram_energy_consumption(cpu_index) for cpu_index in self.cpu_indices):
                 cpu_supported_domains.append(PowerDomain.CPU_DRAM_AVERAGE)
 
         return gpu_supported_domains, cpu_supported_domains
@@ -443,58 +448,83 @@ class PowerMonitor:
                 sample = self.data_queues[domain].get_nowait()
                 if sample == "STOP":
                     break
-                assert isinstance(sample, PowerSample)
-                self.samples[domain][sample.gpu_index].append(sample)
+                if isinstance(sample, PowerSample):
+                    device_index = sample.gpu_index
+                else:
+                    assert isinstance(sample, CPUPowerSample)
+                    device_index = sample.cpu_index
+                self.samples[domain][device_index].append(sample)
             except Empty:
                 break
 
     def _process_all_queue_data(self) -> None:
         """Process all pending samples from all domain queues."""
-        for domain in self.measurement_domains:
+        for domain in self.measurement_domains + self.cpu_measurement_domains:
             self._process_queue_data(domain)
 
     def get_power_timeline(
         self,
-        power_domain: PowerDomain | Literal["device_instant", "device_average", "memory_average"],
+        power_domain: PowerDomain
+        | Literal[
+            "device_instant",
+            "device_average",
+            "memory_average",
+            "cpu_package_average",
+            "cpu_dram_average",
+        ],
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
+        *,
+        cpu_index: int | None = None,
     ) -> dict[int, list[tuple[float, float]]]:
-        """Get power timeline for specific power domain and GPU(s).
+        """Get power timeline for a specific power domain and device(s).
 
         Args:
             power_domain: Power domain to query
-            gpu_index: Specific GPU index, or None for all GPUs
+            gpu_index: Specific GPU index, or None for all GPUs. Only valid for
+                GPU power domains.
             start_time: Start time filter (unix timestamp from time.time() or similar)
             end_time: End time filter (unix timestamp from time.time() or similar)
+            cpu_index: Specific CPU package index, or None for all CPU packages.
+                Only valid for CPU power domains.
 
         Returns:
-            Dictionary mapping GPU indices to timeline data with deduplication.
+            Dictionary mapping device indices to timeline data with deduplication.
             Timeline data is list of (timestamp, power_watts) tuples.
         """
         if isinstance(power_domain, str):
             power_domain = PowerDomain(power_domain)
 
-        if power_domain not in self.measurement_domains:
+        is_cpu_domain = power_domain in self.cpu_measurement_domains
+        if power_domain not in self.measurement_domains + self.cpu_measurement_domains:
             raise ValueError(
                 f"Power domain {power_domain.value} is not being monitored. "
-                f"Monitored domains: {[d.value for d in self.measurement_domains]}",
+                "Monitored domains: "
+                f"{[d.value for d in self.measurement_domains + self.cpu_measurement_domains]}",
             )
+        if is_cpu_domain and gpu_index is not None:
+            raise ValueError("Use `cpu_index` when querying a CPU power domain")
+        if not is_cpu_domain and cpu_index is not None:
+            raise ValueError("Use `gpu_index` when querying a GPU power domain")
 
         # Process any pending queue data for this domain
         self._process_queue_data(power_domain)
 
-        # Determine which GPUs to query
-        target_gpus = [gpu_index] if gpu_index is not None else self.gpu_indices
+        target_indices: list[int] = []
+        if is_cpu_domain:
+            target_indices = [cpu_index] if cpu_index is not None else self.cpu_indices
+        else:
+            target_indices = [gpu_index] if gpu_index is not None else self.gpu_indices
 
         result = {}
-        for gpu_idx in target_gpus:
-            if gpu_idx not in self.samples[power_domain]:
+        for device_index in target_indices:
+            if device_index not in self.samples[power_domain]:
                 continue
 
             # Extract timeline from samples
             timeline = []
-            for sample in self.samples[power_domain][gpu_idx]:
+            for sample in self.samples[power_domain][device_index]:
                 # Apply time filters
                 if start_time is not None and sample.timestamp < start_time:
                     continue
@@ -505,7 +535,7 @@ class PowerMonitor:
 
             # Sort by timestamp
             timeline.sort(key=lambda x: x[0])
-            result[gpu_idx] = timeline
+            result[device_index] = timeline
 
         return result
 
@@ -514,6 +544,8 @@ class PowerMonitor:
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
+        *,
+        cpu_index: int | None = None,
     ) -> dict[str, dict[int, list[tuple[float, float]]]]:
         """Get all power timelines organized by power domain.
 
@@ -521,14 +553,22 @@ class PowerMonitor:
             gpu_index: Specific GPU index, or None for all GPUs
             start_time: Start time filter (unix timestamp from time.time() or similar)
             end_time: End time filter (unix timestamp from time.time() or similar)
+            cpu_index: Specific CPU package index, or None for all CPU packages.
 
         Returns:
             Dictionary with power domain names as keys and each value is a dict
-            mapping GPU indices to timeline data.
+            mapping device indices to timeline data.
         """
         result = {}
         for domain in self.measurement_domains:
             result[domain.value] = self.get_power_timeline(domain, gpu_index, start_time, end_time)
+        for domain in self.cpu_measurement_domains:
+            result[domain.value] = self.get_power_timeline(
+                domain,
+                start_time=start_time,
+                end_time=end_time,
+                cpu_index=cpu_index,
+            )
         return result
 
     def get_energy(
