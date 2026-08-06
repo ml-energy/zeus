@@ -394,6 +394,17 @@ class PowerMonitor:
             if not self.ready_events[cpu_process_domain].wait(timeout=10.0):
                 logger.warning("CPU power monitor subprocess did not signal ready within 10 seconds")
                 raise RuntimeError("CPU power monitor subprocess failed to start within 10 seconds")
+            if self.stop_events[cpu_process_domain].is_set():
+                logger.warning(
+                    "Disabling CPU power monitoring because its collector failed to start",
+                )
+                self.samples.pop(PowerDomain.CPU_PACKAGE_AVERAGE, None)
+                self.samples.pop(PowerDomain.CPU_DRAM_AVERAGE, None)
+                self.data_queues.pop(PowerDomain.CPU_PACKAGE_AVERAGE, None)
+                self.data_queues.pop(PowerDomain.CPU_DRAM_AVERAGE, None)
+                self.ready_events.pop(cpu_process_domain, None)
+                self.stop_events.pop(cpu_process_domain, None)
+                self.processes.pop(cpu_process_domain).join()
         logger.info("All power monitoring subprocesses are ready")
 
     def _determine_supported_domains(
@@ -803,7 +814,14 @@ def _cpu_polling_process(
 ) -> None:
     """Poll CPU energy counters and emit package and DRAM power samples."""
     try:
-        cpus = get_cpus()
+        try:
+            cpus = get_cpus()
+        except (ZeusCPUInitError, ZeusCPUNoPermissionError) as err:
+            logger.warning("CPU power monitoring is unavailable: %s", err)
+            stop_event.set()
+            ready_event.set()
+            return
+
         previous: dict[int, tuple[float, CpuDramMeasurement]] = {}
         ready_event.set()
         queue_package_sample = PowerDomain.CPU_PACKAGE_AVERAGE in power_domains
