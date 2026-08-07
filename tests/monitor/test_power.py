@@ -132,6 +132,60 @@ def test_cli_power_queries_and_integrates_same_domain(mocker: MockerFixture) -> 
 
     monitor.get_power.assert_called_once_with(power_domain="device_average")
     monitor.get_energy.assert_called_once_with(0.0, 0.0, power_domain="device_average")
+class FakeQueue:
+    def get_nowait(self):
+        raise Empty
+
+
+class FakeEvent:
+    def __init__(self) -> None:
+        self._is_set = False
+
+    def set(self) -> None:
+        self._is_set = True
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return self._is_set
+
+    def is_set(self) -> bool:
+        return self._is_set
+
+
+class FakeProcess:
+    def __init__(self, *, target, kwargs, daemon, name) -> None:
+        self._kwargs = kwargs
+        self.daemon = daemon
+        self.name = name
+        self._alive = False
+
+    def start(self) -> None:
+        self._alive = True
+        self._kwargs["ready_event"].set()
+
+    def is_alive(self) -> bool:
+        return self._alive
+
+    def join(self, timeout: float | None = None) -> None:
+        self._alive = False
+
+    def terminate(self) -> None:
+        self._alive = False
+
+    def kill(self) -> None:
+        self._alive = False
+
+
+class FakeContext:
+    def Queue(self):
+        return FakeQueue()
+
+    def Event(self):
+        return FakeEvent()
+
+    def Process(self, **kwargs):
+        return FakeProcess(**kwargs)
+
+
 class MockCPUs:
     def __init__(self, count: int) -> None:
         self._count = count
@@ -163,6 +217,7 @@ class MockGPUs:
 def test_none_selects_all_available_devices(mocker) -> None:
     mocker.patch("zeus.monitor.power.get_gpus", return_value=MockGPUs(count=2))
     mocker.patch("zeus.monitor.power.get_cpus", return_value=MockCPUs(count=2))
+    mocker.patch("zeus.monitor.power.mp.get_context", return_value=FakeContext())
 
     monitor = PowerMonitor(update_period=0.1)
 
@@ -183,6 +238,7 @@ def test_cpu_only_monitor_handles_an_unavailable_gpu_backend(mocker) -> None:
         side_effect=ZeusGPUInitError("No GPU backend is available."),
     )
     mocker.patch("zeus.monitor.power.get_cpus", return_value=MockCPUs(count=2))
+    mocker.patch("zeus.monitor.power.mp.get_context", return_value=FakeContext())
 
     monitor = PowerMonitor(update_period=0.1)
 

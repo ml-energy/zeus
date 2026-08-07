@@ -398,13 +398,18 @@ class PowerMonitor:
                 logger.warning(
                     "Disabling CPU power monitoring because its collector failed to start",
                 )
+                self.cpu_measurement_domains = []
                 self.samples.pop(PowerDomain.CPU_PACKAGE_AVERAGE, None)
                 self.samples.pop(PowerDomain.CPU_DRAM_AVERAGE, None)
                 self.data_queues.pop(PowerDomain.CPU_PACKAGE_AVERAGE, None)
                 self.data_queues.pop(PowerDomain.CPU_DRAM_AVERAGE, None)
                 self.ready_events.pop(cpu_process_domain, None)
                 self.stop_events.pop(cpu_process_domain, None)
-                self.processes.pop(cpu_process_domain).join()
+                cpu_process = self.processes.pop(cpu_process_domain)
+                cpu_process.join(timeout=2.0)
+                if cpu_process.is_alive():
+                    cpu_process.terminate()
+                    cpu_process.join(timeout=1.0)
         logger.info("All power monitoring subprocesses are ready")
 
     def _determine_supported_domains(
@@ -414,11 +419,10 @@ class PowerMonitor:
         gpu_supported_domains = []
         cpu_supported_domains = []
         if self.gpu_indices:
-            gpus = get_gpus(ensure_homogeneous=True)
             methods = {
-                PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
-                PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
-                PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
+                PowerDomain.DEVICE_INSTANT: self.gpus.get_instant_power_usage,
+                PowerDomain.DEVICE_AVERAGE: self.gpus.get_average_power_usage,
+                PowerDomain.MEMORY_AVERAGE: self.gpus.get_average_memory_power_usage,
             }
 
             # Just check the first GPU for support, since all GPUs are homogeneous.
@@ -830,7 +834,15 @@ def _cpu_polling_process(
         while not stop_event.is_set():
             timestamp = time()
             for cpu_index in cpu_indices:
-                current = cpus.get_total_energy_consumption(cpu_index)
+                try:
+                    current = cpus.get_total_energy_consumption(cpu_index)
+                except Exception as e:
+                    logger.exception(
+                        "Error polling power for CPU %d: %s",
+                        cpu_index,
+                        e,
+                    )
+                    raise
                 if cpu_index in previous:
                     previous_timestamp, previous_reading = previous[cpu_index]
                     elapsed = timestamp - previous_timestamp
