@@ -10,20 +10,16 @@ Zeus serves two main goals:
 1. **Research Artifact**: A platform for disseminating cutting-edge research in the field of machine learning energy (i.e., [ML.ENERGY](https://ml.energy)).
 2. **Practical Tool**: We aim to make Zeus highly usable in real-world scenarios.
 
+## Code of Conduct
+
+Everyone taking part in Zeus is expected to follow our [Code of Conduct](/CODE_OF_CONDUCT.md), which is the Linux Foundation Projects Code of Conduct.
+
 ## Governance
 
-Zeus is guided by the **Benevolent Dictator For Life (BDFL)** model, where the project founder, [Jae-Won Chung](https://github.com/jaywonchung), holds the primary decision-making authority. This model ensures consistent vision and leadership for the project.
+Zeus is consensus-seeking: maintainers review and merge changes, and the project lead breaks ties when consensus is not reached.
+[GOVERNANCE.md](/GOVERNANCE.md) describes the decision-making process in full, and [MAINTAINERS.md](/MAINTAINERS.md) lists the current maintainers.
 
-### Community Input
-
-- Community feedback is highly valued and can be provided through GitHub issues and discussions.
-- The BDFL can also be reached over email.
-
-### Decision-Making Process
-
-- Efforts are to be made to reach consensus for all decisions, including but not limited to project direction, code acceptance, and feature inclusion.
-- If unresolved, the BDFL has the final say.
-- Routine decisions may be delegated to specific maintainers.
+If you would like to take on more responsibility in the project, [GOVERNANCE.md](/GOVERNANCE.md#becoming-a-maintainer) explains how contributors become maintainers.
 
 ## Ways to Contribute
 
