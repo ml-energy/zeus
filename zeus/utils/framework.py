@@ -158,7 +158,7 @@ def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]
         # TODO: Implement JAX distributed all-reduce logic.
         raise NotImplementedError("JAX distributed is not supported yet.")
 
-    raise RuntimeError("No framework is available.")
+    return object
 
 
 def is_distributed() -> bool:
@@ -169,7 +169,7 @@ def is_distributed() -> bool:
     if jax_is_available():
         jax = MODULE_CACHE["jax"]
         return jax.device_count() > 1
-    raise RuntimeError("No framework is available.")
+    return False
 
 
 def get_rank() -> int:
