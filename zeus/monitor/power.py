@@ -38,7 +38,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     gpus = get_gpus()
 
     # For each unique GPU model, infer the update period.
-    update_period = 0.0
+    update_period = float("inf")
     gpu_models_covered = set()
     for index in gpu_indicies:
         if (model := gpus.get_name(index)) not in gpu_models_covered:
