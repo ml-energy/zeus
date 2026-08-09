@@ -127,6 +127,9 @@ def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]
 
     If the current execution is not distributed, the object is returned as is.
     """
+    if operation not in ["sum", "max"]:
+        raise ValueError(f"all_reduce unsupported operation: {operation}")
+
     if torch_is_available(ensure_cuda=False):
         torch = MODULE_CACHE["torch"]
 
@@ -140,10 +143,8 @@ def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]
         # determine operation
         if operation == "sum":
             torch_op = torch.distributed.ReduceOp.SUM
-        elif operation == "max":
-            torch_op = torch.distributed.ReduceOp.MAX
         else:
-            raise ValueError(f"all_reduce unsupported operation: {operation}")
+            torch_op = torch.distributed.ReduceOp.MAX
 
         torch.distributed.all_reduce(tensor, op=torch_op)
         return tensor.cpu().tolist()
