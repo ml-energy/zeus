@@ -141,10 +141,7 @@ def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]
         tensor = torch.Tensor(object).cuda()
 
         # determine operation
-        if operation == "sum":
-            torch_op = torch.distributed.ReduceOp.SUM
-        else:
-            torch_op = torch.distributed.ReduceOp.MAX
+        torch_op = torch.distributed.ReduceOp.SUM if operation == "sum" else torch.distributed.ReduceOp.MAX
 
         torch.distributed.all_reduce(tensor, op=torch_op)
         return tensor.cpu().tolist()
