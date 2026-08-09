@@ -16,12 +16,12 @@ pip install zeus
 ### From source for development
 
 You can also install Zeus from source by cloning our GitHub repository.
-Specifically for development, you can do an editable installation with extra dev dependencies:
+Specifically for development, you can do an editable installation with all development dependencies using [uv](https://docs.astral.sh/uv/):
 
 ```sh
 git clone https://github.com/ml-energy/zeus.git
 cd zeus
-pip install -e '.[dev]'
+uv sync
 ```
 
 ## Using Docker
@@ -91,7 +91,7 @@ After installing the Zeus package, you can run the following to see whether pack
 $ python -m zeus.show_env
 ================================================================================
 
-Python version: 3.9.19
+Python version: 3.10.20
 
 ================================================================================
 

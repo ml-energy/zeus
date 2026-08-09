@@ -73,7 +73,7 @@ class JobState(JobParams, GpuConfig):
             else:
                 try:
                     # Check sanity of the generator state.
-                    np.random.default_rng(1).__setstate__(json.loads(state))
+                    np.random.default_rng(1).bit_generator.state = json.loads(state)
                 except (TypeError, ValueError) as err:
                     raise ValueError(f"Invalid generator state ({state})") from err
 

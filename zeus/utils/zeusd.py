@@ -239,9 +239,11 @@ class ZeusdConfig:
     @property
     def endpoint(self) -> str:
         """Human-readable identifier for this connection."""
-        if self._is_uds:
-            return self.socket_path  # type: ignore[return-value]
-        return self.host_port  # type: ignore[return-value]
+        if self.socket_path is not None:
+            return self.socket_path
+        if self.host_port is not None:
+            return self.host_port
+        raise ValueError("ZeusdConfig has neither socket_path nor host_port set.")
 
     def _auth_headers(self) -> dict[str, str]:
         if self.token:

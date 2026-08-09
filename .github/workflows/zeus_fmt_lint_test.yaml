@@ -33,6 +33,12 @@ jobs:
   format_lint_test:
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest and newest Python versions we support.
+        python-version: ["3.10", "3.13"]
+    name: Python ${{ matrix.python-version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,10 +46,10 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-          python-version: "3.9"
+          python-version: ${{ matrix.python-version }}
           version: "latest"
       - name: Install Zeus and dependencies
-        run: uv sync --extra dev
+        run: uv sync
       - name: Check format and lint
         run: uv run bash scripts/lint.sh
       - name: Run tests

@@ -210,7 +210,7 @@ class ZeusService:
         if should_update:
             # If we used the generator from database, should update the generator state after using it
             self.job_repo.update_generator_state(
-                UpdateGeneratorState(job_id=choice.job_id, state=json.dumps(rng.__getstate__()))
+                UpdateGeneratorState(job_id=choice.job_id, state=json.dumps(rng.bit_generator.state))
             )
 
         return res
@@ -234,7 +234,7 @@ class ZeusService:
         if should_update:
             # If we used the generator from database, should update the generator state after using it
             self.job_repo.update_generator_state(
-                UpdateGeneratorState(job_id=arg.job_id, state=json.dumps(rng.__getstate__()))
+                UpdateGeneratorState(job_id=arg.job_id, state=json.dumps(rng.bit_generator.state))
             )
 
         return res
@@ -342,7 +342,7 @@ class ZeusService:
                 raise ZeusBSOValueError("Seed is set but generator state is none. Should be impossible")
 
             state = json.loads(job_state.mab_random_generator_state)
-            rng.__setstate__(state)
+            rng.bit_generator.state = state
 
         return (rng, should_update)
 

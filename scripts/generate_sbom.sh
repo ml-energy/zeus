@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-uv sync --extra dev
+uv sync
 uv pip freeze | uv tool run \
     --from cyclonedx-bom \
     cyclonedx-py requirements \

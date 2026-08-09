@@ -125,7 +125,7 @@ class GaussianTS:
         # Exploration-only phase.
         # Order is random considering concurrent bandit scenarios.
         arrms = np.array(self.arms)
-        for arm in self.rng.choice(arrms, len(arrms), replace=False):
+        for arm in map(int, self.rng.choice(arrms, len(arrms), replace=False)):
             if self.arm_num_observations[arm] < self.num_exploration:
                 if self.verbose:
                     print(f"[{self.name}] Explore arm {arm}.")
