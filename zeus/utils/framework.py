@@ -127,6 +127,9 @@ def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]
 
     If the current execution is not distributed, the object is returned as is.
     """
+    if operation not in ["sum", "max"]:
+        raise ValueError(f"all_reduce unsupported operation: {operation}")
+
     if torch_is_available(ensure_cuda=False):
         torch = MODULE_CACHE["torch"]
 
@@ -138,12 +141,7 @@ def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]
         tensor = torch.Tensor(object).cuda()
 
         # determine operation
-        if operation == "sum":
-            torch_op = torch.distributed.ReduceOp.SUM
-        elif operation == "max":
-            torch_op = torch.distributed.ReduceOp.MAX
-        else:
-            raise ValueError(f"all_reduce unsupported operation: {operation}")
+        torch_op = torch.distributed.ReduceOp.SUM if operation == "sum" else torch.distributed.ReduceOp.MAX
 
         torch.distributed.all_reduce(tensor, op=torch_op)
         return tensor.cpu().tolist()
@@ -158,7 +156,7 @@ def all_reduce(object: list[int] | list[float], operation: Literal["sum", "max"]
         # TODO: Implement JAX distributed all-reduce logic.
         raise NotImplementedError("JAX distributed is not supported yet.")
 
-    raise RuntimeError("No framework is available.")
+    return object
 
 
 def is_distributed() -> bool:
@@ -169,7 +167,7 @@ def is_distributed() -> bool:
     if jax_is_available():
         jax = MODULE_CACHE["jax"]
         return jax.device_count() > 1
-    raise RuntimeError("No framework is available.")
+    return False
 
 
 def get_rank() -> int:
