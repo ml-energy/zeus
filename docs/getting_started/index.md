@@ -75,12 +75,10 @@ There are three types of images available:
 
 ### Building the image locally
 
-You should specify `TARGETARCH` to be one of `amd64` or `arm64` based on your environment:
-
 ```sh
 git clone https://github.com/ml-energy/zeus.git
 cd zeus
-docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 -f docker/Dockerfile .
+docker build -t mlenergy/zeus:master -f docker/Dockerfile .
 ```
 
 ## Verifying installation

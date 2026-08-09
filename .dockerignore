@@ -8,6 +8,8 @@ zeus.egg-info/
 .cache/
 .ruff_cache/
 .pytest_cache/
+.venv/
+build/
 
 .gitignore
 .git/
