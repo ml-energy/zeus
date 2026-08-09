@@ -1,4 +1,4 @@
-"""Tests for GPU power counter update period inference."""
+"""Tests for the power monitor."""
 
 from __future__ import annotations
 
