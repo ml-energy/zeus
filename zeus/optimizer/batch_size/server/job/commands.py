@@ -51,7 +51,7 @@ class UpdateGeneratorState(BaseModel):
     def _validate_state(cls, state: str) -> str:
         """Validate the sanity of state."""
         try:
-            np.random.default_rng(1).__setstate__(json.loads(state))
+            np.random.default_rng(1).bit_generator.state = json.loads(state)
             return state
         except (TypeError, ValueError) as err:
             raise ValueError(f"Invalid generator state ({state})") from err
@@ -119,7 +119,7 @@ class CreateJob(GpuConfig, JobParams):
                 raise ValueError("mab_seed is not none, but generator state is none")
             else:
                 try:
-                    np.random.default_rng(1).__setstate__(json.loads(state))
+                    np.random.default_rng(1).bit_generator.state = json.loads(state)
                 except (TypeError, ValueError) as err:
                     raise ValueError(f"Invalid generator state ({state})") from err
 
@@ -142,7 +142,7 @@ class CreateJob(GpuConfig, JobParams):
         d["exp_default_batch_size"] = js.default_batch_size
         if js.mab_seed is not None:
             rng = np.random.default_rng(js.mab_seed)
-            d["mab_random_generator_state"] = json.dumps(rng.__getstate__())
+            d["mab_random_generator_state"] = json.dumps(rng.bit_generator.state)
         d["min_cost_batch_size"] = js.default_batch_size
         return cls.parse_obj(d)
 

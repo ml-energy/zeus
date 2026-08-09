@@ -29,7 +29,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-          python-version: "3.9"
+          python-version: "3.10"
           version: "latest"
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -39,7 +39,7 @@ jobs:
           restore-keys: |
             mkdocs-material-
       - name: Install Zeus and dependencies
-        run: uv sync --extra docs
+        run: uv sync --group docs --no-dev
       - name: Build homepage
         run: uv run mkdocs build --verbose --strict
         env:

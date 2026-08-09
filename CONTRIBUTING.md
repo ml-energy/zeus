@@ -32,7 +32,7 @@ If you would like to take on more responsibility in the project, [GOVERNANCE.md]
 1. **Fork & Clone**: Fork the repository and clone it to your local machine.
 1. **Create an Issue**: Discuss your proposed changes via a new GitHub Issue.
 1. **Branch**: Create a new branch for your feature or fix.
-1. **Dev dependencies**: `pip install -e '.[dev]'` will be helpful.
+1. **Dev dependencies**: `uv sync` will install everything you need into `.venv`.
 1. **Code and Test**: Write code and make sure to add tests. `pytest` should successfully terminate including the new tests you wrote.
 1. **Format and Lint**: Run `bash scripts/lint.sh` and make sure it runs without complaining.
 1. **Check documentation**: Run `bash scripts/preview_docs.sh` to build and spin up a local instance of the documentation. In particular, check whether your docstrings are correctly rendered in the Source Code Reference section.
@@ -40,7 +40,7 @@ If you would like to take on more responsibility in the project, [GOVERNANCE.md]
 
 ## Coding Standards
 
-- We want to support Python 3.9 and later.
+- We want to support Python 3.10 and later.
 - The formatting and linting script [`scripts/lint.sh`](/scripts/lint.sh) should pass for PRs to be merged.
 - Strictly type-annotate all code.
 - Tests should accompany new features and be placed in the `tests/` directory. Tests should not require GPUs to run.
