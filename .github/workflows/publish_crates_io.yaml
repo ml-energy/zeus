@@ -17,6 +17,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           sparse-checkout: zeusd
       - name: Publish to crates.io
         uses: katyo/publish-crates@v2
