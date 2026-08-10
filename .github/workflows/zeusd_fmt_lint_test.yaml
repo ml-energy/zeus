@@ -27,6 +27,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           sparse-checkout: zeusd
       - name: Install the Rust toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt
@@ -48,6 +49,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           sparse-checkout: zeusd
       - name: Install the Rust toolchain
         run: rustup toolchain install stable --profile minimal --component clippy
@@ -96,6 +98,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           sparse-checkout: zeusd
       - name: Install the Rust toolchain
         run: rustup toolchain install stable --profile minimal --component clippy
