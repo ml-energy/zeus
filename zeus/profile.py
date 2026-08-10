@@ -66,6 +66,7 @@ ranks, and temperature is averaged). Only rank 0 logs progress and reports.
 from __future__ import annotations
 
 import logging
+import math
 import statistics
 import time
 from dataclasses import dataclass
@@ -222,7 +223,7 @@ def _run_trial(
     iteration_duration: float,
 ) -> TrialResult:
     """Execute one trial: cooldown -> warmup -> measure."""
-    iterations = max(1, int(measurement_duration / iteration_duration))
+    iterations = max(1, math.ceil(measurement_duration / iteration_duration))
 
     if cooldown_duration > 0:
         time.sleep(cooldown_duration)
@@ -567,7 +568,7 @@ def measure(
     )
 
     if warmup_settle_duration is not None:
-        num_warmup_iterations = max(1, int(warmup_settle_duration / iteration_duration))
+        num_warmup_iterations = max(1, math.ceil(warmup_settle_duration / iteration_duration))
 
     return _run_trial(
         target_function=target_function,
