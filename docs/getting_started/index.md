@@ -33,6 +33,7 @@ uv sync
     - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
     
 We provide a simple Dockerfile and pre-built images for Zeus:
+
 - x86_64 and ARM64 both supported
 - CUDA 12.9
 - uv and Python 3.13 (virtual env under `/opt/venv` in the container)
