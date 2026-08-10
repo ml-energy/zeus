@@ -32,10 +32,12 @@ uv sync
     - [Docker](https://docs.docker.com/engine/install/)
     - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
     
-Our Docker image should suit most of the use cases for Zeus.
-On top of the `nvidia/cuda:11.8.0-base-ubuntu22.04` image, we add:
+We provide a simple Dockerfile and pre-built images for Zeus:
 
-- Miniconda 3, PyTorch, and Torchvision
+- x86_64 and ARM64 both supported
+- CUDA 12.9
+- uv and Python 3.13 (virtual env under `/opt/venv` in the container)
+- Latest PyTorch compatible with CUDA 12.9
 - A copy of the Zeus repo in `/workspace/zeus`
 
 ??? Quote "docker/Dockerfile"
@@ -75,12 +77,10 @@ There are three types of images available:
 
 ### Building the image locally
 
-You should specify `TARGETARCH` to be one of `amd64` or `arm64` based on your environment:
-
 ```sh
 git clone https://github.com/ml-energy/zeus.git
 cd zeus
-docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 -f docker/Dockerfile .
+docker build -t mlenergy/zeus:master -f docker/Dockerfile .
 ```
 
 ## Verifying installation

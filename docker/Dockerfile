@@ -1,9 +1,8 @@
 # Build instructions
-#   If you're building this image locally, make sure you specify `TARGETARCH`.
-#   Currently, this image supports `amd64` and `arm64`. For instance:
-#     docker build -t mlenergy/zeus:master --build-arg TARGETARCH=amd64 .
+#   This image supports amd64 and arm64. For instance:
+#     docker build -t mlenergy/zeus:master -f docker/Dockerfile .
 
-FROM nvidia/cuda:11.8.0-base-ubuntu22.04
+FROM nvidia/cuda:12.9.2-base-ubuntu24.04
 
 # Basic installs
 ARG DEBIAN_FRONTEND=noninteractive
@@ -14,25 +13,17 @@ RUN apt-get update -qq \
     && apt-get clean all \
     && rm -r /var/lib/apt/lists/*
 
-# Install Miniconda3 23.3.1
-ENV PATH="/root/.local/miniconda3/bin:$PATH"
-ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-      export CONDA_INSTALLER_PATH="Miniconda3-py39_23.3.1-0-Linux-x86_64.sh"; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-      export CONDA_INSTALLER_PATH="Miniconda3-py39_23.3.1-0-Linux-aarch64.sh"; \
-    else \
-      echo "Unsupported architecture ${TARGETARCH}" && exit 1; \
-    fi \
-    && mkdir -p /root/.local \
-    && wget "https://repo.anaconda.com/miniconda/$CONDA_INSTALLER_PATH" \
-    && mkdir /root/.conda \
-    && bash "$CONDA_INSTALLER_PATH" -b -p /root/.local/miniconda3 \
-    && rm -f "$CONDA_INSTALLER_PATH" \
-    && ln -sf /root/.local/miniconda3/etc/profile.d/conda.sh /etc/profile.d/conda.sh
+# Install uv and Python
+COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /bin/
+ENV UV_PYTHON_INSTALL_DIR=/root/.local/python
+RUN uv python install 3.13
 
-# Install PyTorch and CUDA Toolkit
-RUN pip install --no-cache-dir torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
+# Install PyTorch with CUDA 12.9
+# The venv lives outside /workspace/zeus so that mounting does not shadow it.
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN uv venv "$VIRTUAL_ENV" --python 3.13 \
+    && uv pip install --no-cache torch torchvision --index-url https://download.pytorch.org/whl/cu129
 
 # Place stuff under /workspace/zeus
 WORKDIR /workspace/zeus
@@ -41,4 +32,4 @@ WORKDIR /workspace/zeus
 ADD . /workspace/zeus
 
 # When an outside zeus directory is mounted, have it apply immediately.
-RUN pip install --no-cache-dir -e . && pip install --no-cache-dir "numpy<2"
+RUN uv pip install --no-cache -e .
