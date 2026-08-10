@@ -92,13 +92,20 @@ class RaplWraparoundTracker:
         )
         self.process.start()
 
-    def _stop(self) -> None:
+    def close(self) -> None:
         """Stop monitoring power usage."""
         if self.process is not None:
             self.process.terminate()
             self.process.join(timeout=1.0)
-            self.process.kill()
+            if self.process.is_alive():
+                self.process.kill()
+                self.process.join(timeout=1.0)
+            self.process.close()
             self.process = None
+
+    def _stop(self) -> None:
+        """Stop monitoring power usage."""
+        self.close()
 
     def get_num_wraparounds(self) -> int:
         """Get the number of wraparounds detected by the polling process."""
@@ -302,6 +309,12 @@ class RAPLFile:
         num_wraparounds = self.wraparound_tracker.get_num_wraparounds()
         return (new_energy_uj + num_wraparounds * self.max_energy_range_uj) / 1000.0
 
+    def close(self) -> None:
+        """Stop background wraparound tracking for this RAPL file."""
+        if self._wraparound_tracker is not None:
+            self._wraparound_tracker.close()
+            self._wraparound_tracker = None
+
 
 class RAPLCPU(cpu_common.CPU):
     """Control a single CPU that supports RAPL."""
@@ -343,6 +356,12 @@ class RAPLCPU(cpu_common.CPU):
     def supports_get_dram_energy_consumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram is not None
+
+    def close(self) -> None:
+        """Release any background trackers owned by this CPU."""
+        self.rapl_file.close()
+        if self.dram is not None:
+            self.dram.close()
 
 
 class ZeusdRAPLCPU(RAPLCPU):
@@ -391,12 +410,17 @@ class ZeusdRAPLCPU(RAPLCPU):
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram_available
 
+    def close(self) -> None:
+        """Zeusd-backed CPUs do not own local RAPL tracker resources."""
+        pass
+
 
 class RAPLCPUs(cpu_common.CPUs):
     """RAPL CPU Manager object, containing individual RAPLCPU objects, abstracting RAPL calls and handling related exceptions."""
 
     def __init__(self) -> None:
         """Instantiates IntelCPUs object, setting up tracking for specified Intel CPUs."""
+        self._cpus: list[RAPLCPU] = []
         if not rapl_is_available():
             raise ZeusRAPLNotSupportedError("RAPL is not supported on this CPU.")
 
@@ -433,6 +457,11 @@ class RAPLCPUs(cpu_common.CPUs):
         else:
             self._cpus = [RAPLCPU(cpu_index, self.rapl_dir) for cpu_index in cpu_indices]
 
+    def close(self) -> None:
+        """Release resources owned by tracked CPUs."""
+        for cpu in self._cpus:
+            cpu.close()
+
     def __del__(self) -> None:
         """Shuts down the Intel CPU monitoring."""
-        pass
+        self.close()

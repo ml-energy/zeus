@@ -109,6 +109,10 @@ class CPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         pass
 
+    def close(self) -> None:
+        """Release any resources held by this CPU object."""
+        pass
+
 
 class CPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     """An abstract base class for CPU manager object.
@@ -146,6 +150,10 @@ class CPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     def __len__(self) -> int:
         """Returns the number of CPUs being tracked."""
         return len(self.cpus)
+
+    def close(self) -> None:
+        """Release any resources held by this CPU backend."""
+        pass
 
 
 class EmptyCPUs(CPUs):
