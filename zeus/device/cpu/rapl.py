@@ -13,16 +13,17 @@
 
 from __future__ import annotations
 
-import atexit
 import logging
 import multiprocessing as mp
 import os
 import threading
 import time
+import weakref
 import warnings
 from functools import lru_cache
 from glob import glob
 from multiprocessing.sharedctypes import Synchronized
+from multiprocessing.process import BaseProcess
 from typing import Literal, Sequence
 
 import zeus.device.cpu.common as cpu_common
@@ -84,28 +85,32 @@ class RaplWraparoundTracker:
 
         context = mp.get_context("spawn")
         self.wraparound_counter = context.Value("i", 0)
-        # Spawn the power polling process.
-        atexit.register(self._stop)
         self.process = context.Process(
             target=_polling_process,
             args=(rapl_file_path, max_energy_uj, self.wraparound_counter),
         )
         self.process.start()
+        self._finalizer = weakref.finalize(
+            self,
+            self._close_process,
+            self.process,
+        )
+
+    @staticmethod
+    def _close_process(process: BaseProcess) -> None:
+        """Stop monitoring power usage."""
+        process.terminate()
+        process.join(timeout=1.0)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=1.0)
+        process.close()
 
     def close(self) -> None:
         """Stop monitoring power usage."""
-        if self.process is not None:
-            self.process.terminate()
-            self.process.join(timeout=1.0)
-            if self.process.is_alive():
-                self.process.kill()
-                self.process.join(timeout=1.0)
-            self.process.close()
+        if self.process is not None and self._finalizer.alive:
+            self._finalizer()
             self.process = None
-
-    def _stop(self) -> None:
-        """Stop monitoring power usage."""
-        self.close()
 
     def get_num_wraparounds(self) -> int:
         """Get the number of wraparounds detected by the polling process."""
