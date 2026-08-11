@@ -66,6 +66,7 @@ ranks, and temperature is averaged). Only rank 0 logs progress and reports.
 from __future__ import annotations
 
 import logging
+import math
 import statistics
 import time
 from dataclasses import dataclass
@@ -222,21 +223,22 @@ def _run_trial(
     iteration_duration: float,
 ) -> TrialResult:
     """Execute one trial: cooldown -> warmup -> measure."""
-    iterations = max(1, int(measurement_duration / iteration_duration))
+    iterations = max(1, math.ceil(measurement_duration / iteration_duration))
 
     if cooldown_duration > 0:
         time.sleep(cooldown_duration)
 
-    temperature_before = _read_avg_gpu_temperature(zeus_monitor)
-
     for _ in range(num_warmup_iterations):
         target_function()
+    sync_execution(zeus_monitor.gpu_indices, sync_with=zeus_monitor.sync_with)
 
-    zeus_monitor.begin_window("__zeus_profile_run_trial")
+    temperature_before = _read_avg_gpu_temperature(zeus_monitor)
+    zeus_monitor.begin_window("__zeus_profile_run_trial", sync_execution=False)
+
     for _ in range(iterations):
         target_function()
-    result = zeus_monitor.end_window("__zeus_profile_run_trial")
 
+    result = zeus_monitor.end_window("__zeus_profile_run_trial")
     temperature_after = _read_avg_gpu_temperature(zeus_monitor)
 
     [total_energy] = all_reduce([result.total_energy], "sum")
@@ -543,6 +545,7 @@ def measure(
     cooldown_duration: float,
     num_warmup_iterations: int = 10,
     num_calibration_iterations: int = 100,
+    warmup_settle_duration: float | None = None,
 ) -> TrialResult:
     """Run a single energy measurement trial.
 
@@ -553,10 +556,19 @@ def measure(
         cooldown_duration: Idle time before the measurement (seconds).
         num_warmup_iterations: Warm-up iterations before the measurement.
         num_calibration_iterations: Iterations used to estimate per-iteration time.
+        warmup_settle_duration: Time to run the workload before the measurement
+            (seconds). If specified, overrides `num_warmup_iterations` for the
+            measurement, while calibration still uses it.
     """
+    if warmup_settle_duration is not None and warmup_settle_duration < 0:
+        raise ValueError("warmup_settle_duration must be non-negative")
+
     iteration_duration = _calibrate_iteration_duration(
         target_function, zeus_monitor, num_warmup_iterations, num_calibration_iterations
     )
+
+    if warmup_settle_duration is not None:
+        num_warmup_iterations = max(1, math.ceil(warmup_settle_duration / iteration_duration))
 
     return _run_trial(
         target_function=target_function,
