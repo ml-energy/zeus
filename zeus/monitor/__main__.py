@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 import argparse
 from datetime import datetime
+from typing import Literal
 
 import rich
 
@@ -35,12 +36,14 @@ def energy(gpu_indices: list[int] | None = None) -> None:
 def power(
     gpu_indices: list[int] | None = None,
     update_period: float = 1.0,
+    power_domain: Literal["device_instant", "device_average", "memory_average"] = "device_instant",
 ) -> None:
     """Monitor the power consumption of GPUs during the duration of the CLI program.
 
     Args:
         gpu_indices: Indices of GPUs to monitor. Not ommitted, all GPUs will be monitored.
         update_period: The time between power measurements in seconds.
+        power_domain: The power domain to query.
     """
     monitor = PowerMonitor(gpu_indices=gpu_indices, update_period=update_period)
     start_time = time.time()
@@ -52,7 +55,7 @@ def power(
     try:
         while True:
             time.sleep(update_period)
-            power = monitor.get_power()
+            power = monitor.get_power(power_domain=power_domain)
             if power is None:
                 continue
             rich.print(datetime.now(), map_gpu_index_to_name(power))
@@ -106,6 +109,12 @@ if __name__ == "__main__":
         default=1.0,
         help="The time between power measurements in seconds.",
     )
+    power_parser.add_argument(
+        "--power-domain",
+        choices=["device_instant", "device_average", "memory_average"],
+        default="device_instant",
+        help="The power domain to query. On GPUs that do not support instant power, use 'device_average'.",
+    )
 
     args = parser.parse_args()
 
@@ -113,6 +122,6 @@ if __name__ == "__main__":
     if args.subcommand == "energy":
         energy(args.gpu_indices)
     elif args.subcommand == "power":
-        power(args.gpu_indices, args.update_period)
+        power(args.gpu_indices, args.update_period, args.power_domain)
     else:
         raise ValueError(f"Unknown subcommand: {args.subcommand}")

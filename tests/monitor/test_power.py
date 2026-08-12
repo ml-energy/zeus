@@ -2,14 +2,41 @@
 
 from __future__ import annotations
 
+import collections
 from typing import TYPE_CHECKING
 
 import pytest
 
-from zeus.monitor.power import infer_counter_update_period
+from zeus.monitor.power import (
+    PowerDomain,
+    PowerMonitor,
+    PowerSample,
+    infer_counter_update_period,
+)
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
+
+
+def make_monitor(samples: dict[PowerDomain, dict[int, list[tuple[float, float]]]]) -> PowerMonitor:
+    """Build a `PowerMonitor` with pre-populated samples, bypassing process spawning.
+
+    Args:
+        samples: Maps each monitored power domain to a dictionary mapping GPU
+            indices to `(timestamp, power_mw)` sample tuples.
+    """
+    monitor = PowerMonitor.__new__(PowerMonitor)
+    monitor.gpu_indices = sorted({gpu for per_gpu in samples.values() for gpu in per_gpu})
+    monitor.measurement_domains = list(samples)
+    monitor.data_queues = {}
+    monitor.samples = {
+        domain: {
+            gpu: collections.deque(PowerSample(timestamp=ts, gpu_index=gpu, power_mw=mw) for ts, mw in entries)
+            for gpu, entries in per_gpu.items()
+        }
+        for domain, per_gpu in samples.items()
+    }
+    return monitor
 
 
 def test_infers_half_the_fastest_counter_period(mocker: MockerFixture) -> None:
@@ -28,3 +55,60 @@ def test_infers_half_the_fastest_counter_period(mocker: MockerFixture) -> None:
 
     # 0.12 s is the fastest counter, so poll twice per update at 0.06 s.
     assert infer_counter_update_period([0, 1]) == pytest.approx(0.06)
+
+
+def test_get_power_defaults_to_device_instant() -> None:
+    """Without an explicit domain, `get_power` reads device instant power."""
+    monitor = make_monitor(
+        {
+            PowerDomain.DEVICE_INSTANT: {0: [(100.0, 50_000.0), (101.0, 60_000.0)]},
+            PowerDomain.DEVICE_AVERAGE: {0: [(100.0, 70_000.0)]},
+        }
+    )
+    assert monitor.get_power() == {0: 60.0}
+
+
+def test_get_power_with_explicit_domain() -> None:
+    """Both `PowerDomain` values and their string forms select the domain to read."""
+    monitor = make_monitor({PowerDomain.DEVICE_AVERAGE: {0: [(100.0, 70_000.0), (101.0, 80_000.0)]}})
+    assert monitor.get_power(power_domain=PowerDomain.DEVICE_AVERAGE) == {0: 80.0}
+    assert monitor.get_power(power_domain="device_average") == {0: 80.0}
+    assert monitor.get_power(time=100.2, power_domain="device_average") == {0: 70.0}
+
+
+def test_get_power_unmonitored_domain_raises() -> None:
+    """Querying a domain that is not monitored raises instead of falling back."""
+    monitor = make_monitor({PowerDomain.DEVICE_AVERAGE: {0: [(100.0, 70_000.0)]}})
+    with pytest.raises(ValueError, match="device_instant is not being monitored"):
+        monitor.get_power()
+
+
+def test_get_energy_auto_selects_domain() -> None:
+    """`get_energy` prefers device instant power and falls back to device average."""
+    monitor = make_monitor(
+        {
+            PowerDomain.DEVICE_INSTANT: {0: [(100.0, 100_000.0), (101.0, 100_000.0)]},
+            PowerDomain.DEVICE_AVERAGE: {0: [(100.0, 200_000.0), (101.0, 200_000.0)]},
+        }
+    )
+    assert monitor.get_energy(99.0, 102.0) == {0: pytest.approx(100.0)}
+
+    average_only = make_monitor({PowerDomain.DEVICE_AVERAGE: {0: [(100.0, 200_000.0), (101.0, 200_000.0)]}})
+    assert average_only.get_energy(99.0, 102.0) == {0: pytest.approx(200.0)}
+
+    memory_only = make_monitor({PowerDomain.MEMORY_AVERAGE: {0: [(100.0, 10_000.0)]}})
+    with pytest.raises(ValueError, match="Neither"):
+        memory_only.get_energy(99.0, 102.0)
+
+
+def test_get_energy_with_explicit_domain() -> None:
+    """An explicit domain overrides auto-selection and unmonitored domains raise."""
+    monitor = make_monitor(
+        {
+            PowerDomain.DEVICE_INSTANT: {0: [(100.0, 100_000.0), (101.0, 100_000.0)]},
+            PowerDomain.DEVICE_AVERAGE: {0: [(100.0, 200_000.0), (101.0, 200_000.0)]},
+        }
+    )
+    assert monitor.get_energy(99.0, 102.0, power_domain="device_average") == {0: pytest.approx(200.0)}
+    with pytest.raises(ValueError, match="memory_average is not being monitored"):
+        monitor.get_energy(99.0, 102.0, power_domain="memory_average")

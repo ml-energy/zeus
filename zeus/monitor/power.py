@@ -258,7 +258,8 @@ class PowerMonitor:
 
         if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
             logger.warning(
-                "PowerDomain.DEVICE_INSTANT is not being monitored. The `get_power` method will not be available.",
+                "PowerDomain.DEVICE_INSTANT is not being monitored. "
+                "Pass a monitored domain to the `power_domain` parameter of `get_power`.",
             )
 
         # Power samples are collected for each power domain and device index.
@@ -437,30 +438,39 @@ class PowerMonitor:
             result[domain.value] = self.get_power_timeline(domain, gpu_index, start_time, end_time)
         return result
 
-    def get_energy(self, start_time: float, end_time: float) -> dict[int, float] | None:
-        """Get the energy used by the GPUs between two times (backward compatibility).
+    def get_energy(
+        self,
+        start_time: float,
+        end_time: float,
+        power_domain: PowerDomain | Literal["device_instant", "device_average", "memory_average"] | None = None,
+    ) -> dict[int, float] | None:
+        """Get the energy used by the GPUs between two times.
 
-        Uses device instant power for energy calculation.
+        Energy is computed by integrating power samples over time.
 
         Args:
             start_time: Start time of the interval, from time.time().
             end_time: End time of the interval, from time.time().
+            power_domain: Power domain whose samples are integrated. If None,
+                `PowerDomain.DEVICE_INSTANT` is used when monitored and
+                `PowerDomain.DEVICE_AVERAGE` otherwise.
 
         Returns:
             A dictionary mapping GPU indices to the energy used by the GPU between the
             two times. If there are no power readings, return None.
         """
-        if PowerDomain.DEVICE_INSTANT in self.measurement_domains:
-            domain = PowerDomain.DEVICE_INSTANT
-        elif PowerDomain.DEVICE_AVERAGE in self.measurement_domains:
-            domain = PowerDomain.DEVICE_AVERAGE
-        else:
-            raise ValueError(
-                "Neither PowerDomain.DEVICE_INSTANT nor PowerDomain.DEVICE_AVERAGE is being monitored. "
-                "Cannot compute energy usage.",
-            )
+        if power_domain is None:
+            if PowerDomain.DEVICE_INSTANT in self.measurement_domains:
+                power_domain = PowerDomain.DEVICE_INSTANT
+            elif PowerDomain.DEVICE_AVERAGE in self.measurement_domains:
+                power_domain = PowerDomain.DEVICE_AVERAGE
+            else:
+                raise ValueError(
+                    "Neither PowerDomain.DEVICE_INSTANT nor PowerDomain.DEVICE_AVERAGE is being monitored. "
+                    "Cannot compute energy usage.",
+                )
 
-        timelines = self.get_power_timeline(domain, start_time=start_time, end_time=end_time)
+        timelines = self.get_power_timeline(power_domain, start_time=start_time, end_time=end_time)
 
         if not timelines:
             return None
@@ -481,30 +491,40 @@ class PowerMonitor:
 
         return energy_result
 
-    def get_power(self, time: float | None = None) -> dict[int, float] | None:
-        """Get the instant power usage of the GPUs at a specific time point.
-
-        Uses device instant power for compatibility.
+    def get_power(
+        self,
+        time: float | None = None,
+        power_domain: PowerDomain
+        | Literal["device_instant", "device_average", "memory_average"] = PowerDomain.DEVICE_INSTANT,
+    ) -> dict[int, float] | None:
+        """Get the power usage of the GPUs at a specific time point.
 
         Args:
             time: Time point to get the power usage at. If None, get the power usage
                 at the last recorded time point.
+            power_domain: Power domain to query. On GPUs that do not support instant
+                power (e.g., some AMD GPUs), pass `PowerDomain.DEVICE_AVERAGE`.
 
         Returns:
             A dictionary mapping GPU indices to the power usage of the GPU at the
             specified time point. If there are no power readings, return None.
         """
-        if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
+        if isinstance(power_domain, str):
+            power_domain = PowerDomain(power_domain)
+
+        if power_domain not in self.measurement_domains:
             raise ValueError(
-                f"PowerDomain.DEVICE_INSTANT is not being monitored. Currently monitored domains: {[d.value for d in self.measurement_domains]}",
+                f"Power domain {power_domain.value} is not being monitored. "
+                f"Monitored domains: {[d.value for d in self.measurement_domains]}. "
+                "Pass one of the monitored domains to the `power_domain` parameter.",
             )
 
-        # Process any pending queue data
-        self._process_all_queue_data()
+        # Process any pending queue data for this domain
+        self._process_queue_data(power_domain)
 
         result = {}
         for gpu_idx in self.gpu_indices:
-            samples = self.samples[PowerDomain.DEVICE_INSTANT][gpu_idx]
+            samples = self.samples[power_domain][gpu_idx]
             if not samples:
                 return None
 
