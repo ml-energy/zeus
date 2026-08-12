@@ -6,7 +6,7 @@ license: Apache-2.0
 
 # Measuring Energy and Power with Zeus
 
-Zeus is a Python library for measuring and optimizing the energy consumption of GPU applications.
+Zeus is a Python library for measuring and optimizing the energy consumption of any computation running on GPUs, CPUs, and SoCs.
 Install it with `pip install zeus` (Python 3.10 or later), or `pip install 'zeus[apple]'` to enable energy measurement on Apple silicon.
 Run `python -m zeus.show_env` to check which frameworks and devices Zeus detects.
 Full documentation: https://ml.energy/zeus
@@ -26,26 +26,29 @@ For a quick measurement without writing code, run `python -m zeus.monitor energy
 
 GPU energy and power measurement requires no special privileges.
 CPU and DRAM energy measurement uses Intel RAPL, which requires root due to kernel restrictions.
-Without root, `ZeusMonitor` silently reports `cpu_energy=None`; alternatives are running inside Docker as root with the RAPL sysfs directory mounted, or deploying the Zeus daemon (`zeusd`) and setting `ZEUSD_SOCK_PATH` so unprivileged processes relay RAPL reads through it.
+Without root, `ZeusMonitor` reports `cpu_energy=None` when `cpu_indices` is omitted or empty, and raises `RuntimeError` when a non-empty `cpu_indices` is passed explicitly.
+Alternatives are running inside Docker as root with the RAPL sysfs directory mounted, or deploying the Zeus daemon (`zeusd`) and setting `ZEUSD_SOCK_PATH` so unprivileged processes relay RAPL reads through it.
 
 ## `ZeusMonitor`: energy and time of a code block
 
 ```python
 from zeus.monitor import ZeusMonitor
 
+def run_workload() -> None: ...
+
 if __name__ == "__main__":
     monitor = ZeusMonitor(gpu_indices=[0, 1])
 
-    monitor.begin_window("training")
-    run_training()
-    result = monitor.end_window("training")
+    monitor.begin_window("workload")
+    run_workload()
+    result = monitor.end_window("workload")
 
     print(f"{result.time} s, {result.total_energy} J")
     print(result.gpu_energy)  # {0: ..., 1: ...} in Joules
 ```
 
 - `gpu_indices=None` (default) monitors all GPUs.
-  Indices are the deep learning framework's view after `CUDA_VISIBLE_DEVICES` (NVIDIA) or `HIP_VISIBLE_DEVICES` (AMD) is applied, matching `cuda:N` in PyTorch.
+  Indices follow `CUDA_VISIBLE_DEVICES` (NVIDIA) or `HIP_VISIBLE_DEVICES` (AMD), so index N is `cuda:N` in frameworks like PyTorch.
 - `end_window` returns a `Measurement` with `time` (seconds), `gpu_energy` (dict of GPU index to Joules), `cpu_energy` and `dram_energy` (dict of RAPL package index to Joules, or `None` when unavailable), and `soc_energy` (Apple silicon or Jetson subsystem energies in millijoules, or `None`).
   `result.total_energy` is the sum of GPU energy only.
 - Multiple windows can be open at once, and they can nest or overlap.
@@ -53,16 +56,20 @@ if __name__ == "__main__":
 - `begin_window` and `end_window` synchronize asynchronously dispatched GPU computations (`torch.cuda.synchronize` by default) so the window captures exactly the code inside it.
   Pass `sync_execution_with="jax"` or `"cupy"` to the constructor for those frameworks, or `sync_execution=False` to `begin_window`/`end_window` when the workload uses none of them (otherwise a missing framework raises `RuntimeError` on machines with GPUs).
 - GPU energy counters update roughly every 100 ms, so a very short window can read zero energy.
-  Construct with `approx_instant_energy=True` to approximate such windows as instant power times window duration.
+  Constructing with `approx_instant_energy=True` replaces such zero readings with instant power draw times window duration, which is an approximation, not a measurement.
+  Never enable it unprompted: explain this implication to the user and get their approval first, or lengthen the window instead.
+  The flag is also unsupported on AMD GPUs that cannot report instant power; `end_window` raises `ZeusGPUNotSupportedError` there.
 - `log_file="measurement.csv"` writes one row per completed window.
 
 Zeus monitors may spawn helper processes with the `spawn` start method, which re-imports your `__main__` module.
-Keep monitor construction and heavy initialization (e.g., model loading) under `if __name__ == "__main__":` or inside functions, or every helper process will repeat that work.
+Keep monitor construction and heavy initialization (e.g., loading models or large data) under `if __name__ == "__main__":` or inside functions, or every helper process will repeat that work.
 
 ## `PowerMonitor`: power draw over time
 
 ```python
 from zeus.monitor import PowerMonitor
+
+def run_workload() -> None: ...
 
 if __name__ == "__main__":
     monitor = PowerMonitor(gpu_indices=[0], update_period=0.1)
@@ -83,17 +90,16 @@ if __name__ == "__main__":
 
 Back-to-back energy measurements of the same workload drift because the GPU heats up and hotter silicon leaks more power.
 This module runs trials of the form cooldown (idle), then warmup iterations, then a measured window of iterations, yielding low-variance energy per iteration.
-Use it when benchmarking or comparing configurations rather than measuring one long training run.
+Use it when benchmarking or comparing configurations rather than measuring a single long run end to end.
 
 ```python
 from zeus.monitor import ZeusMonitor
 from zeus.profile import measure, profile_parameters
 
+def one_iteration() -> None: ...
+
 if __name__ == "__main__":
     monitor = ZeusMonitor(gpu_indices=[0])
-
-    def one_iteration():
-        model(batch)
 
     # If good durations are unknown, sweep both and pick the smallest valid values.
     measurement_report, cooldown_report = profile_parameters(one_iteration, monitor)
@@ -141,7 +147,7 @@ print(soc.get_total_energy_consumption())
 
 ## Troubleshooting
 
-- Warning about zero energy consumption: the window is shorter than the GPU energy counter update period; lengthen the window or use `approx_instant_energy=True`.
+- Warning about zero energy consumption: the window is shorter than the GPU energy counter update period; lengthen the window, or propose `approx_instant_energy=True` to the user (see the `ZeusMonitor` section for its implications).
 - `cpu_energy` is `None`: RAPL requires root; see the Permissions section.
 - Out-of-memory or repeated log lines at startup: the `__main__` module is being re-imported by helper processes; add the `if __name__ == "__main__":` guard.
 - `RuntimeError: Failed to import Pytorch`: the machine has GPUs but no PyTorch; set `sync_execution_with` to the framework in use or pass `sync_execution=False` to `begin_window`/`end_window`.
