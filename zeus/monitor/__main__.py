@@ -62,7 +62,7 @@ def power(
     except KeyboardInterrupt:
         end_time = time.time()
         rich.print("\nTotal time (s):", end_time - start_time)
-        energy = monitor.get_energy(start_time, end_time)
+        energy = monitor.get_energy(start_time, end_time, power_domain=power_domain)
         if energy is not None:
             rich.print("Total energy (J):", map_gpu_index_to_name(energy))
 

@@ -112,3 +112,20 @@ def test_get_energy_with_explicit_domain() -> None:
     assert monitor.get_energy(99.0, 102.0, power_domain="device_average") == {0: pytest.approx(200.0)}
     with pytest.raises(ValueError, match="memory_average is not being monitored"):
         monitor.get_energy(99.0, 102.0, power_domain="memory_average")
+
+
+def test_cli_power_queries_and_integrates_same_domain(mocker: MockerFixture) -> None:
+    """The CLI power subcommand streams and integrates the domain the user selected."""
+    from zeus.monitor.__main__ import power
+
+    monitor = mocker.MagicMock()
+    monitor.update_period = 0.1
+    monitor.get_energy.return_value = {0: 5.0}
+    mocker.patch("zeus.monitor.__main__.PowerMonitor", return_value=monitor)
+    mock_time = mocker.patch("zeus.monitor.__main__.time")
+    mock_time.time.return_value = 0.0
+    mock_time.sleep.side_effect = KeyboardInterrupt
+
+    power(gpu_indices=[0], update_period=0.1, power_domain="device_average")
+
+    monitor.get_energy.assert_called_once_with(0.0, 0.0, power_domain="device_average")
