@@ -25,7 +25,7 @@ For a quick measurement without writing code, run `python -m zeus.monitor energy
 ## Permissions
 
 GPU energy and power measurement requires no special privileges.
-CPU and DRAM energy measurement uses Intel RAPL, which requires root due to kernel restrictions.
+CPU and DRAM energy measurement uses RAPL (Intel and most modern AMD CPUs), which requires root due to kernel restrictions.
 Without root, `ZeusMonitor` reports `cpu_energy=None` when `cpu_indices` is omitted or empty, and raises `RuntimeError` when a non-empty `cpu_indices` is passed explicitly.
 Alternatives are running inside Docker as root with the RAPL sysfs directory mounted, or deploying the Zeus daemon (`zeusd`) and setting `ZEUSD_SOCK_PATH` so unprivileged processes relay RAPL reads through it.
 
@@ -81,6 +81,7 @@ if __name__ == "__main__":
 
 - Polling starts on construction, with one background process per power domain.
   Domains are `device_instant`, `device_average`, and `memory_average`; only domains the GPU supports are monitored, and `get_all_power_timelines` returns every monitored one.
+- Querying a domain that is not monitored raises `ValueError`; on GPUs that cannot report instant power (some AMD GPUs), pass `power_domain="device_average"` to `get_power`.
 - `update_period=None` (default) infers each GPU model's power counter update period by polling; pass a value in seconds (at least 0.05) to skip that.
 - `get_energy(start_time, end_time)` integrates the power timeline into Joules per GPU, using `time.time()` timestamps.
 - All monitored GPUs must be the same model.
@@ -112,6 +113,7 @@ if __name__ == "__main__":
 - The target function takes no arguments and runs one iteration of the workload.
 - `TrialResult` holds `energy_per_iter`, `time_per_iter`, `total_energy`, `total_time`, `iterations`, and GPU `temperature_before`/`temperature_after`.
 - `profile_parameters` (and the single-parameter variants `profile_measurement_duration` and `profile_cooldown_duration`) return `SweepReport` objects whose `entries` mark each configuration `is_valid` when the energy standard deviation across trials falls below `trial_stddev_threshold`.
+  Each sweep holds the other duration fixed at the maximum of its search range.
   Printing a report gives a one-line-per-configuration summary.
 - In a distributed setting, every rank creates its own `ZeusMonitor(gpu_indices=[local_rank])` and calls the same profiling function; results are aggregated across ranks and rank 0 logs.
 
@@ -128,7 +130,7 @@ print(gpus.get_instant_power_usage(0))  # milliwatts
 if gpus.supports_get_total_energy_consumption(0):
     print(gpus.get_total_energy_consumption(0))  # cumulative millijoules
 
-cpus = get_cpus()  # Intel RAPL
+cpus = get_cpus()  # RAPL
 print(cpus.get_total_energy_consumption(0).cpu_mj)  # cumulative millijoules
 
 soc = get_soc()  # Apple silicon or Jetson

@@ -26,13 +26,14 @@ def _python_examples() -> list[pytest.ParameterSet]:
 @pytest.mark.parametrize("example", _python_examples())
 def test_skill_example_type_checks(example: str, tmp_path: Path) -> None:
     """Skill code examples should be self-contained and type check against the installed zeus package."""
-    if shutil.which("ty") is None:
+    ty_path = shutil.which("ty")
+    if ty_path is None:
         pytest.skip("ty is not installed")
 
     example_file = tmp_path / "example.py"
     example_file.write_text(example)
     result = subprocess.run(
-        ["ty", "check", "--python", sys.executable, str(example_file)],
+        [ty_path, "check", "--python", sys.executable, str(example_file)],
         capture_output=True,
         text=True,
         check=False,
