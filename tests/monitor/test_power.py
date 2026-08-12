@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import queue
 from typing import TYPE_CHECKING
 
 import pytest
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 
 def make_monitor(samples: dict[PowerDomain, dict[int, list[tuple[float, float]]]]) -> PowerMonitor:
-    """Build a `PowerMonitor` with pre-populated samples, bypassing process spawning.
+    """Build a `PowerMonitor` with pre-enqueued samples, bypassing process spawning.
 
     Args:
         samples: Maps each monitored power domain to a dictionary mapping GPU
@@ -28,14 +29,12 @@ def make_monitor(samples: dict[PowerDomain, dict[int, list[tuple[float, float]]]
     monitor = PowerMonitor.__new__(PowerMonitor)
     monitor.gpu_indices = sorted({gpu for per_gpu in samples.values() for gpu in per_gpu})
     monitor.measurement_domains = list(samples)
-    monitor.data_queues = {}
-    monitor.samples = {
-        domain: {
-            gpu: collections.deque(PowerSample(timestamp=ts, gpu_index=gpu, power_mw=mw) for ts, mw in entries)
-            for gpu, entries in per_gpu.items()
-        }
-        for domain, per_gpu in samples.items()
-    }
+    monitor.data_queues = {domain: queue.Queue() for domain in samples}
+    monitor.samples = {domain: {gpu: collections.deque() for gpu in per_gpu} for domain, per_gpu in samples.items()}
+    for domain, per_gpu in samples.items():
+        for gpu, entries in per_gpu.items():
+            for ts, mw in entries:
+                monitor.data_queues[domain].put(PowerSample(timestamp=ts, gpu_index=gpu, power_mw=mw))
     return monitor
 
 
@@ -66,6 +65,8 @@ def test_get_power_defaults_to_device_instant() -> None:
         }
     )
     assert monitor.get_power() == {0: 60.0}
+    assert monitor.data_queues[PowerDomain.DEVICE_INSTANT].empty()
+    assert not monitor.data_queues[PowerDomain.DEVICE_AVERAGE].empty()
 
 
 def test_get_power_with_explicit_domain() -> None:
@@ -120,12 +121,14 @@ def test_cli_power_queries_and_integrates_same_domain(mocker: MockerFixture) -> 
 
     monitor = mocker.MagicMock()
     monitor.update_period = 0.1
+    monitor.get_power.return_value = None
     monitor.get_energy.return_value = {0: 5.0}
     mocker.patch("zeus.monitor.__main__.PowerMonitor", return_value=monitor)
     mock_time = mocker.patch("zeus.monitor.__main__.time")
     mock_time.time.return_value = 0.0
-    mock_time.sleep.side_effect = KeyboardInterrupt
+    mock_time.sleep.side_effect = [None, KeyboardInterrupt]
 
     power(gpu_indices=[0], update_period=0.1, power_domain="device_average")
 
+    monitor.get_power.assert_called_once_with(power_domain="device_average")
     monitor.get_energy.assert_called_once_with(0.0, 0.0, power_domain="device_average")
