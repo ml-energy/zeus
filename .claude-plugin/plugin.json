@@ -1,0 +1,13 @@
+{
+  "name": "zeus",
+  "displayName": "Zeus",
+  "description": "Measure the energy and power consumption of code with Zeus, on NVIDIA and AMD GPUs, Intel/AMD CPUs and DRAM (RAPL), Apple silicon, and NVIDIA Jetson.",
+  "author": {
+    "name": "The ML.ENERGY Initiative",
+    "url": "https://ml.energy/zeus"
+  },
+  "homepage": "https://ml.energy/zeus",
+  "repository": "https://github.com/ml-energy/zeus",
+  "license": "Apache-2.0",
+  "keywords": ["energy", "power", "gpu", "cpu", "measurement", "profiling"]
+}

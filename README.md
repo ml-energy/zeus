@@ -67,6 +67,11 @@ Refer to our [Docker Hub repository](https://hub.docker.com/r/mlenergy/zeus) and
 
 We provide working examples for integrating and running Zeus in the [`examples/`](/examples) directory.
 
+## Agent skill
+
+[`skills/measuring-energy/`](skills/measuring-energy/SKILL.md) is a portable [Agent Skill](https://agentskills.io/) that teaches AI coding agents to measure energy and power with Zeus.
+Claude Code and Codex users can install it from the [ML.ENERGY plugin marketplace](https://github.com/ml-energy/plugins); other tools can load the `skills/` directory directly.
+
 ## Releases
 
 Zeus follows semantic versioning; pushing a `zeus-v*` tag releases the Python package to [PyPI](https://pypi.org/project/zeus/) and a `zeusd-v*` tag releases the daemon to [crates.io](https://crates.io/crates/zeusd).
