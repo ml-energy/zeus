@@ -19,7 +19,7 @@ You just need to download and extract the ImageNet data and mount it to the Dock
     ```
 1. Install `prometheus_client`:
     ```sh
-    pip install zeus-ml[prometheus]
+    pip install zeus[prometheus]
     ```
 
 ## EnergyHistogram, PowerGauge, and EnergyCumulativeCounter
