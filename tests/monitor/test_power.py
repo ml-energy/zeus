@@ -18,6 +18,7 @@ from zeus.monitor.power import (
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+
 def make_monitor(samples: dict[PowerDomain, dict[int, list[tuple[float, float]]]]) -> PowerMonitor:
     """Build a `PowerMonitor` with pre-enqueued samples, bypassing process spawning.
 
@@ -131,6 +132,8 @@ def test_cli_power_queries_and_integrates_same_domain(mocker: MockerFixture) -> 
 
     monitor.get_power.assert_called_once_with(power_domain="device_average")
     monitor.get_energy.assert_called_once_with(0.0, 0.0, power_domain="device_average")
+
+
 class FakeQueue:
     def get_nowait(self):
         raise Empty

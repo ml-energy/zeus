@@ -87,9 +87,7 @@ class RaplWraparoundTracker:
         # Spawn the power polling process.
         atexit.register(self._stop)
         self.process = context.Process(
-            target=_polling_process,
-            args=(rapl_file_path, max_energy_uj, self.wraparound_counter),
-            daemon=True
+            target=_polling_process, args=(rapl_file_path, max_energy_uj, self.wraparound_counter), daemon=True
         )
         self.process.start()
 
