@@ -15,8 +15,14 @@ from typing import Literal, Callable, TYPE_CHECKING
 
 from sklearn.metrics import auc
 
-from zeus.device.gpu.common import ZeusGPUNotSupportedError
-from zeus.device import get_gpus
+from zeus.device import get_cpus, get_gpus
+from zeus.device.cpu.common import (
+    CpuDramMeasurement,
+    EmptyCPUs,
+    ZeusCPUInitError,
+    ZeusCPUNoPermissionError,
+)
+from zeus.device.gpu.common import EmptyGPUs, ZeusGPUInitError, ZeusGPUNotSupportedError
 from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 
 if TYPE_CHECKING:
@@ -124,6 +130,8 @@ class PowerDomain(Enum):
     DEVICE_INSTANT = "device_instant"
     DEVICE_AVERAGE = "device_average"
     MEMORY_AVERAGE = "memory_average"
+    CPU_PACKAGE_AVERAGE = "cpu_package_average"
+    CPU_DRAM_AVERAGE = "cpu_dram_average"
 
 
 @dataclass
@@ -132,6 +140,15 @@ class PowerSample:
 
     timestamp: float
     gpu_index: int
+    power_mw: float
+
+
+@dataclass
+class CPUPowerSample:
+    """A single CPU package or DRAM power measurement sample."""
+
+    timestamp: float
+    cpu_index: int
     power_mw: float
 
 
@@ -186,14 +203,22 @@ class PowerMonitor:
     def __init__(
         self,
         gpu_indices: list[int] | None = None,
+        cpu_indices: list[int] | None = None,
         update_period: float | None = None,
         max_samples_per_gpu: int | None = None,
-        power_domains: list[PowerDomain | Literal["device_instant", "device_average", "memory_average"]] | None = None,
+        power_domains: list[
+            PowerDomain
+            | Literal["device_instant", "device_average", "memory_average", "cpu_package_average", "cpu_dram_average"]
+        ]
+        | None = None,
     ) -> None:
         """Initialize the enhanced power monitor.
 
         Args:
-            gpu_indices: Indices of the GPUs to monitor. If None, monitor all GPUs.
+            gpu_indices: Indices of the GPUs to monitor. If None, monitor all
+                available GPUs. Pass an empty list to disable GPU monitoring.
+            cpu_indices: Indices of CPU packages to monitor. If None, monitor all
+                available CPU packages. Pass an empty list to disable CPU monitoring.
             update_period: Update period of the power monitor in seconds. If None,
                 infer the update period by max speed polling the power counter for
                 each GPU model.
@@ -204,24 +229,43 @@ class PowerMonitor:
         # Warn if instantiated as a global variable in a subprocess.
         warn_if_global_in_subprocess(self)
 
-        if gpu_indices is not None and not gpu_indices:
-            raise ValueError("`gpu_indices` must be either `None` or non-empty")
-
         if power_domains is not None and not power_domains:
             raise ValueError("`power_domains` must be either `None` or non-empty")
 
-        # Get GPUs
-        gpus = get_gpus(ensure_homogeneous=True)
+        try:
+            self.gpus = get_gpus(ensure_homogeneous=True)
+        except ZeusGPUInitError:
+            self.gpus = EmptyGPUs()
 
-        # Configure GPU indices
-        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(gpus)))
-        if not self.gpu_indices:
-            raise ValueError("At least one GPU index must be specified")
-        logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
+        try:
+            self.cpus = get_cpus()
+        except ZeusCPUInitError:
+            self.cpus = EmptyCPUs()
+        except ZeusCPUNoPermissionError as err:
+            if cpu_indices:
+                raise RuntimeError(
+                    "Root privilege is required to read RAPL metrics. See "
+                    "https://ml.energy/zeus/getting_started/#system-privileges "
+                    "for more information or disable CPU measurement by passing "
+                    "cpu_indices=[] to PowerMonitor."
+                ) from err
+            self.cpus = EmptyCPUs()
+
+        # Resolve unspecified indices to every available device.
+        self.gpu_indices = gpu_indices if gpu_indices is not None else list(range(len(self.gpus)))
+        self.cpu_indices = cpu_indices if cpu_indices is not None else list(range(len(self.cpus)))
+
+        if not self.gpu_indices and not self.cpu_indices:
+            raise ValueError("At least one GPU or CPU package index must be specified")
+        if self.gpu_indices:
+            logger.info("Monitoring power usage of GPUs %s", self.gpu_indices)
+        if self.cpu_indices:
+            logger.info("CPU power monitoring is configured for packages %s", self.cpu_indices)
 
         # Infer update period from GPU instant power, if necessary
+        # RAPL counter update periods will be much lower than GPU (10 kHz)
         if update_period is None:
-            update_period = infer_counter_update_period(self.gpu_indices)
+            update_period = infer_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
         elif update_period < 0.05:
             logger.warning(
                 "An update period of %g might be too fast, which may lead to unexpected "
@@ -237,24 +281,34 @@ class PowerMonitor:
         self.stop_events: dict[PowerDomain, EventClass] = {}
         self.processes: dict[PowerDomain, SpawnProcess] = {}
 
-        # Determine which domains are supported
-        supported_domains = self._determine_supported_domains()
-        logger.info("Supported power domains: %s", [d.value for d in supported_domains])
+        gpu_supported_domains, cpu_supported_domains = self._determine_supported_domains()
+        logger.info("Supported GPU power domains: %s", [d.value for d in gpu_supported_domains])
+        logger.info("Supported CPU power domains: %s", [d.value for d in cpu_supported_domains])
 
-        # Configure requested power domains
+        # Configure requested GPU and CPU power domains separately because CPU
+        # package and DRAM measurements share a single polling process.
         self.measurement_domains: list[PowerDomain] = []
+        self.cpu_measurement_domains: list[PowerDomain] = []
         if power_domains is None:
-            self.measurement_domains = supported_domains
+            self.measurement_domains = gpu_supported_domains
+            self.cpu_measurement_domains = cpu_supported_domains
         else:
             for requested_domain in power_domains:
                 domain = PowerDomain(requested_domain)
-                if domain not in supported_domains:
+                if domain in gpu_supported_domains:
+                    self.measurement_domains.append(domain)
+                elif domain in cpu_supported_domains:
+                    self.cpu_measurement_domains.append(domain)
+                else:
                     raise ValueError(
-                        f"Requested power domain {domain.value} is not supported by the current GPUs. "
-                        f"Supported domains are: {[d.value for d in supported_domains]}",
+                        f"Requested power domain {domain.value} is not supported. "
+                        "Supported GPU domains are: "
+                        f"{[d.value for d in gpu_supported_domains]}. "
+                        "Supported CPU domains are: "
+                        f"{[d.value for d in cpu_supported_domains]}.",
                     )
-                self.measurement_domains.append(domain)
         self.measurement_domains = list(set(self.measurement_domains))
+        self.cpu_measurement_domains = list(set(self.cpu_measurement_domains))
 
         if PowerDomain.DEVICE_INSTANT not in self.measurement_domains:
             logger.warning(
@@ -263,11 +317,18 @@ class PowerMonitor:
             )
 
         # Power samples are collected for each power domain and device index.
-        self.samples: dict[PowerDomain, dict[int, collections.deque[PowerSample]]] = {}
+        self.samples: dict[
+            PowerDomain,
+            dict[int, collections.deque[PowerSample | CPUPowerSample]],
+        ] = {}
         for domain in self.measurement_domains:
             self.samples[domain] = {}
             for gpu_idx in self.gpu_indices:
                 self.samples[domain][gpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
+        for domain in self.cpu_measurement_domains:
+            self.samples[domain] = {}
+            for cpu_idx in self.cpu_indices:
+                self.samples[domain][cpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
 
         # Spawn collector processes for each supported domain
         ctx = mp.get_context("spawn")
@@ -288,6 +349,29 @@ class PowerMonitor:
                 daemon=True,
                 name=f"zeus-power-monitor-{domain.value}",
             )
+
+        if self.cpu_measurement_domains:
+            # package and dram samples come from the same underlying source, no need for separate processes
+            self.data_queues[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Queue()
+            self.data_queues[PowerDomain.CPU_DRAM_AVERAGE] = ctx.Queue()
+            self.ready_events[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Event()
+            self.stop_events[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Event()
+            self.processes[PowerDomain.CPU_PACKAGE_AVERAGE] = ctx.Process(
+                target=_cpu_polling_process,
+                kwargs=dict(
+                    cpu_indices=self.cpu_indices,
+                    power_domains=self.cpu_measurement_domains,
+                    package_data_queue=self.data_queues[PowerDomain.CPU_PACKAGE_AVERAGE],
+                    dram_data_queue=self.data_queues[PowerDomain.CPU_DRAM_AVERAGE],
+                    ready_event=self.ready_events[PowerDomain.CPU_PACKAGE_AVERAGE],
+                    stop_event=self.stop_events[PowerDomain.CPU_PACKAGE_AVERAGE],
+                    update_period=update_period,
+                ),
+                # RAPL starts a wraparound tracker subprocess.
+                daemon=False,
+                name="zeus-power-monitor-cpu",
+            )
+
         for process in self.processes.values():
             process.start()
 
@@ -305,35 +389,64 @@ class PowerMonitor:
                 raise RuntimeError(
                     f"Power monitor subprocess for {domain.value} failed to start within 10 seconds",
                 )
+        if self.cpu_measurement_domains:
+            cpu_process_domain = PowerDomain.CPU_PACKAGE_AVERAGE
+            if not self.ready_events[cpu_process_domain].wait(timeout=10.0):
+                logger.warning("CPU power monitor subprocess did not signal ready within 10 seconds")
+                raise RuntimeError("CPU power monitor subprocess failed to start within 10 seconds")
+            if self.stop_events[cpu_process_domain].is_set():
+                logger.warning(
+                    "Disabling CPU power monitoring because its collector failed to start",
+                )
+                self.cpu_measurement_domains = []
+                self.samples.pop(PowerDomain.CPU_PACKAGE_AVERAGE, None)
+                self.samples.pop(PowerDomain.CPU_DRAM_AVERAGE, None)
+                self.data_queues.pop(PowerDomain.CPU_PACKAGE_AVERAGE, None)
+                self.data_queues.pop(PowerDomain.CPU_DRAM_AVERAGE, None)
+                self.ready_events.pop(cpu_process_domain, None)
+                self.stop_events.pop(cpu_process_domain, None)
+                cpu_process = self.processes.pop(cpu_process_domain)
+                cpu_process.join(timeout=2.0)
+                if cpu_process.is_alive():
+                    cpu_process.terminate()
+                    cpu_process.join(timeout=1.0)
         logger.info("All power monitoring subprocesses are ready")
 
-    def _determine_supported_domains(self) -> list[PowerDomain]:
-        """Determine which power domains are supported by the current GPUs."""
-        supported = []
-        gpus = get_gpus(ensure_homogeneous=True)
-        methods = {
-            PowerDomain.DEVICE_INSTANT: gpus.get_instant_power_usage,
-            PowerDomain.DEVICE_AVERAGE: gpus.get_average_power_usage,
-            PowerDomain.MEMORY_AVERAGE: gpus.get_average_memory_power_usage,
-        }
+    def _determine_supported_domains(
+        self,
+    ) -> tuple[list[PowerDomain], list[PowerDomain]]:
+        """Determine which GPU and CPU power domains are supported."""
+        gpu_supported_domains = []
+        cpu_supported_domains = []
+        if self.gpu_indices:
+            methods = {
+                PowerDomain.DEVICE_INSTANT: self.gpus.get_instant_power_usage,
+                PowerDomain.DEVICE_AVERAGE: self.gpus.get_average_power_usage,
+                PowerDomain.MEMORY_AVERAGE: self.gpus.get_average_memory_power_usage,
+            }
 
-        # Just check the first GPU for support, since all GPUs are homogeneous.
-        for domain, method in methods.items():
-            try:
-                _ = method(0)
-                supported.append(domain)
-                logger.info("Power domain %s is supported", domain.value)
-            except ZeusGPUNotSupportedError:
-                logger.info("Power domain %s is not supported", domain.value)
-            except Exception as e:
-                logger.warning(
-                    "Unexpected error while checking for %s support on GPU %d: %s",
-                    domain.value,
-                    self.gpu_indices[0],
-                    e,
-                )
+            # Just check the first GPU for support, since all GPUs are homogeneous.
+            for domain, method in methods.items():
+                try:
+                    _ = method(0)
+                    gpu_supported_domains.append(domain)
+                    logger.info("Power domain %s is supported", domain.value)
+                except ZeusGPUNotSupportedError:
+                    logger.info("Power domain %s is not supported", domain.value)
+                except Exception as e:
+                    logger.warning(
+                        "Unexpected error while checking for %s support on GPU %d: %s",
+                        domain.value,
+                        self.gpu_indices[0],
+                        e,
+                    )
 
-        return supported
+        if self.cpu_indices and len(self.cpus):
+            cpu_supported_domains.append(PowerDomain.CPU_PACKAGE_AVERAGE)
+            if any(self.cpus.supports_get_dram_energy_consumption(cpu_index) for cpu_index in self.cpu_indices):
+                cpu_supported_domains.append(PowerDomain.CPU_DRAM_AVERAGE)
+
+        return gpu_supported_domains, cpu_supported_domains
 
     def stop(self) -> None:
         """Stop all monitoring processes."""
@@ -350,58 +463,83 @@ class PowerMonitor:
                 sample = self.data_queues[domain].get_nowait()
                 if sample == "STOP":
                     break
-                assert isinstance(sample, PowerSample)
-                self.samples[domain][sample.gpu_index].append(sample)
+                if isinstance(sample, PowerSample):
+                    device_index = sample.gpu_index
+                else:
+                    assert isinstance(sample, CPUPowerSample)
+                    device_index = sample.cpu_index
+                self.samples[domain][device_index].append(sample)
             except Empty:
                 break
 
     def _process_all_queue_data(self) -> None:
         """Process all pending samples from all domain queues."""
-        for domain in self.measurement_domains:
+        for domain in self.measurement_domains + self.cpu_measurement_domains:
             self._process_queue_data(domain)
 
     def get_power_timeline(
         self,
-        power_domain: PowerDomain | Literal["device_instant", "device_average", "memory_average"],
+        power_domain: PowerDomain
+        | Literal[
+            "device_instant",
+            "device_average",
+            "memory_average",
+            "cpu_package_average",
+            "cpu_dram_average",
+        ],
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
+        *,
+        cpu_index: int | None = None,
     ) -> dict[int, list[tuple[float, float]]]:
-        """Get power timeline for specific power domain and GPU(s).
+        """Get power timeline for a specific power domain and device(s).
 
         Args:
             power_domain: Power domain to query
-            gpu_index: Specific GPU index, or None for all GPUs
+            gpu_index: Specific GPU index, or None for all GPUs. Only valid for
+                GPU power domains.
             start_time: Start time filter (unix timestamp from time.time() or similar)
             end_time: End time filter (unix timestamp from time.time() or similar)
+            cpu_index: Specific CPU package index, or None for all CPU packages.
+                Only valid for CPU power domains.
 
         Returns:
-            Dictionary mapping GPU indices to timeline data with deduplication.
+            Dictionary mapping device indices to timeline data with deduplication.
             Timeline data is list of (timestamp, power_watts) tuples.
         """
         if isinstance(power_domain, str):
             power_domain = PowerDomain(power_domain)
 
-        if power_domain not in self.measurement_domains:
+        is_cpu_domain = power_domain in self.cpu_measurement_domains
+        if power_domain not in self.measurement_domains + self.cpu_measurement_domains:
             raise ValueError(
                 f"Power domain {power_domain.value} is not being monitored. "
-                f"Monitored domains: {[d.value for d in self.measurement_domains]}",
+                "Monitored domains: "
+                f"{[d.value for d in self.measurement_domains + self.cpu_measurement_domains]}",
             )
+        if is_cpu_domain and gpu_index is not None:
+            raise ValueError("Use `cpu_index` when querying a CPU power domain")
+        if not is_cpu_domain and cpu_index is not None:
+            raise ValueError("Use `gpu_index` when querying a GPU power domain")
 
         # Process any pending queue data for this domain
         self._process_queue_data(power_domain)
 
-        # Determine which GPUs to query
-        target_gpus = [gpu_index] if gpu_index is not None else self.gpu_indices
+        target_indices: list[int] = []
+        if is_cpu_domain:
+            target_indices = [cpu_index] if cpu_index is not None else self.cpu_indices
+        else:
+            target_indices = [gpu_index] if gpu_index is not None else self.gpu_indices
 
         result = {}
-        for gpu_idx in target_gpus:
-            if gpu_idx not in self.samples[power_domain]:
+        for device_index in target_indices:
+            if device_index not in self.samples[power_domain]:
                 continue
 
             # Extract timeline from samples
             timeline = []
-            for sample in self.samples[power_domain][gpu_idx]:
+            for sample in self.samples[power_domain][device_index]:
                 # Apply time filters
                 if start_time is not None and sample.timestamp < start_time:
                     continue
@@ -412,7 +550,7 @@ class PowerMonitor:
 
             # Sort by timestamp
             timeline.sort(key=lambda x: x[0])
-            result[gpu_idx] = timeline
+            result[device_index] = timeline
 
         return result
 
@@ -421,6 +559,8 @@ class PowerMonitor:
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
+        *,
+        cpu_index: int | None = None,
     ) -> dict[str, dict[int, list[tuple[float, float]]]]:
         """Get all power timelines organized by power domain.
 
@@ -428,14 +568,22 @@ class PowerMonitor:
             gpu_index: Specific GPU index, or None for all GPUs
             start_time: Start time filter (unix timestamp from time.time() or similar)
             end_time: End time filter (unix timestamp from time.time() or similar)
+            cpu_index: Specific CPU package index, or None for all CPU packages.
 
         Returns:
             Dictionary with power domain names as keys and each value is a dict
-            mapping GPU indices to timeline data.
+            mapping device indices to timeline data.
         """
         result = {}
         for domain in self.measurement_domains:
             result[domain.value] = self.get_power_timeline(domain, gpu_index, start_time, end_time)
+        for domain in self.cpu_measurement_domains:
+            result[domain.value] = self.get_power_timeline(
+                domain,
+                start_time=start_time,
+                end_time=end_time,
+                cpu_index=cpu_index,
+            )
         return result
 
     def get_energy(
@@ -657,3 +805,81 @@ def _domain_polling_process(
     finally:
         # Send stop signal
         data_queue.put("STOP")
+
+
+def _cpu_polling_process(
+    cpu_indices: list[int],
+    power_domains: list[PowerDomain],
+    package_data_queue: mp.Queue,
+    dram_data_queue: mp.Queue,
+    ready_event: EventClass,
+    stop_event: EventClass,
+    update_period: float,
+) -> None:
+    """Poll CPU energy counters and emit package and DRAM power samples."""
+    try:
+        try:
+            cpus = get_cpus()
+        except (ZeusCPUInitError, ZeusCPUNoPermissionError) as err:
+            logger.warning("CPU power monitoring is unavailable: %s", err)
+            stop_event.set()
+            ready_event.set()
+            return
+
+        previous: dict[int, tuple[float, CpuDramMeasurement]] = {}
+        ready_event.set()
+        queue_package_sample = PowerDomain.CPU_PACKAGE_AVERAGE in power_domains
+        queue_dram_sample = PowerDomain.CPU_DRAM_AVERAGE in power_domains
+
+        while not stop_event.is_set():
+            timestamp = time()
+            for cpu_index in cpu_indices:
+                try:
+                    current = cpus.get_total_energy_consumption(cpu_index)
+                except Exception as e:
+                    logger.exception(
+                        "Error polling power for CPU %d: %s",
+                        cpu_index,
+                        e,
+                    )
+                    raise
+                if cpu_index in previous:
+                    previous_timestamp, previous_reading = previous[cpu_index]
+                    elapsed = timestamp - previous_timestamp
+                    if elapsed > 0:
+                        package_delta_mj = current.cpu_mj - previous_reading.cpu_mj
+                        if package_delta_mj > 0 and queue_package_sample:
+                            package_data_queue.put(
+                                CPUPowerSample(
+                                    timestamp=timestamp,
+                                    cpu_index=cpu_index,
+                                    power_mw=package_delta_mj / elapsed,
+                                )
+                            )
+
+                        if current.dram_mj is not None and previous_reading.dram_mj is not None:
+                            dram_delta_mj = current.dram_mj - previous_reading.dram_mj
+                            if dram_delta_mj > 0 and queue_dram_sample:
+                                dram_data_queue.put(
+                                    CPUPowerSample(
+                                        timestamp=timestamp,
+                                        cpu_index=cpu_index,
+                                        power_mw=dram_delta_mj / elapsed,
+                                    )
+                                )
+
+                previous[cpu_index] = (timestamp, current)
+
+            elapsed = time() - timestamp
+            sleep_time = update_period - elapsed
+            if sleep_time > 0:
+                sleep(sleep_time)
+
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        logger.exception("Exiting CPU polling process due to error: %s", e)
+        raise
+    finally:
+        package_data_queue.put("STOP")
+        dram_data_queue.put("STOP")

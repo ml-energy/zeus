@@ -89,6 +89,7 @@ class RaplWraparoundTracker:
         self.process = context.Process(
             target=_polling_process,
             args=(rapl_file_path, max_energy_uj, self.wraparound_counter),
+            daemon=True
         )
         self.process.start()
 
