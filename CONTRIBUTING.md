@@ -27,6 +27,18 @@ If you would like to take on more responsibility in the project, [GOVERNANCE.md]
 - **New Features**: You can submit feature proposals via GitHub Issues.
 - **Documentation**: Enhancing the README and documentation (both inline with code or under [`/docs`](/docs)) is also welcome.
 
+## AI Usage
+
+Contributors are welcome to use any kind of AI tools to assist with their contributions.
+
+However, [*meat proxies*](https://gruhn.me/blog/2026-08-03/) are not welcome in this project.
+A meat proxy is someone who simply acts as a direct (or virtually direct) relay between an AI and the project: one who pipes project communication into an AI tool and then pipes the AI's output back to the project while adding no or little value themselves.
+While we have maintainers who review incoming contributions, open-source is still primarily trust-based: we trust that the human behind the contribution is capable of understanding relevant parts of the project and their own contributions, and of vetting them for quality and correctness before submitting them to the project.
+Meat proxies fail to establish that trust.
+You will be warned explicitly if you are suspected of being a meat proxy, and **continued behaviors can result in being blocked**.
+This policy applies to all project interactions, including issues, PRs, reviews/comments, and discussions, and to everyone including the maintainers.
+
+
 ## Process
 
 1. **Fork & Clone**: Fork the repository and clone it to your local machine.

@@ -7,6 +7,10 @@ assignees: ''
 
 ---
 
+## Contribution policy
+
+- [ ] I have read and agree to follow the [contribution policy](https://github.com/ml-energy/zeus/blob/master/CONTRIBUTING.md), including its AI usage policy.
+
 **Is your feature request related to a problem? Please describe.**
 A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
 
