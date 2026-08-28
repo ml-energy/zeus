@@ -7,6 +7,10 @@ assignees: ''
 
 ---
 
+## Contribution policy
+
+- [ ] I have read and agree to follow the [contribution policy](https://github.com/ml-energy/zeus/blob/master/CONTRIBUTING.md), including its AI usage policy.
+
 **Describe the bug**
 What were you trying to achieve? What happened? What should have happened?
 
