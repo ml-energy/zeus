@@ -183,7 +183,7 @@ DRAM energy measurement are available on some CPUs as well.
 
 To check CPU/GPU/DRAM measurement support, refer to [Verifying installation](../getting_started/index.md#verifying-installation).
 
-Energy measurement for Apple Silicon and Jetson Platforms is supported as well. For more information, refer to [Apple Silicon](#apple-silicon) and [Jetson Platforms](#jetson-platforms).
+Energy measurement for Apple Silicon and Jetson Platforms is supported as well. For more information, refer to [Apple Silicon](#apple-silicon) and [Jetson Platforms](#jetson-platforms). Whole-machine power is supported on the Raspberry Pi 5; see [Whole-machine power](#whole-machine-power).
 
 ### Generic device interfaces
 
@@ -193,7 +193,35 @@ These [`GPU`][zeus.device.gpu.common.GPU] objects directly call respective `nvml
 - [`NVIDIAGPU.get_name`][zeus.device.gpu.nvidia.NVIDIAGPU.get_name] calls `pynvml.nvmlDeviceGetName`.
 - [`AMDGPU.get_name`][zeus.device.gpu.amd.AMDGPU.get_name] calls `amdsmi.amdsmi_get_gpu_asic_info`.
 
-[`get_cpus`][zeus.device.get_cpus] is similar to [`get_gpus`][zeus.device.get_gpus], but rather abstracts over CPU vendors; [`get_soc`][zeus.device.get_soc] abstracts over SoC platforms (currently Apple Silicon and Jetson).
+[`get_cpus`][zeus.device.get_cpus] is similar to [`get_gpus`][zeus.device.get_gpus], but rather abstracts over CPU vendors; [`get_soc`][zeus.device.get_soc] abstracts over SoC platforms (currently Apple Silicon and Jetson); [`get_machine`][zeus.device.machine.get_machine] abstracts over whole-machine power meters (currently the Raspberry Pi 5).
+
+### Whole-machine power
+
+A machine meter sits off the die: a PMIC metering board rails, a BMC answering over IPMI, a wall meter. That is the distinction from [`get_soc`][zeus.device.get_soc], whose sensors are on the processor and so can only ever account for part of what the box draws.
+
+Every implementation reports `machine_energy_mj`, because whole-machine energy is the one figure any of these sources can give. Domains finer than that are added by the platform's own measurement class, so a board whose PMIC breaks out a DRAM rail can report it while a BMC that only knows the chassis total does not have to pretend otherwise.
+
+#### Raspberry Pi
+
+The Pi 5 is the first Pi whose PMIC exposes per-rail current and voltage to userspace. Twelve rails carry both channels on a Model B Rev 1.0; `EXT5V` and `BATT` report a voltage and no current, so they cannot yield power and are skipped. Earlier Pi models do not expose the ADC at all.
+
+[`RPIMeasurement`][zeus.device.machine.rpi.RPIMeasurement] carries `machine_energy_mj` summed over all twelve rails, plus `cpu_energy_mj` from the SoC core rail and `dram_energy_mj` from the two DRAM rails. The machine figure is board-level, so it includes the wireless, HDMI and I/O rails and is larger than the sum of the other two. Reporting them separately is what lets you tell compute-bound work from memory-bound work: measured on a Pi 5, a four-core memcpy moves the DRAM rails about 96 times harder relative to the core rail than a four-core register spin does.
+
+```python
+from zeus.device.machine import get_machine
+
+machine = get_machine()
+machine.begin_window("inference")
+# ... run something ...
+measurement = machine.end_window("inference")
+print(measurement.machine_energy_mj, measurement.cpu_energy_mj, measurement.dram_energy_mj)
+```
+
+The PMIC has no cumulative energy counter, so Zeus samples power and integrates it trapezoidally, at 10 Hz by default. Each sample costs roughly 23 ms of firmware ADC time, almost all of it inside the firmware rather than in the caller, so a faster poll takes measurable CPU away from the workload being measured. Pass `poll_interval_s` if you need a different rate.
+
+Sampling goes through the firmware mailbox on a descriptor opened once, rather than spawning `vcgencmd` per reading. `/dev/vcio` is `root:video` mode 0660, so membership of the `video` group is enough and no root is required, unlike Intel RAPL. Where the device is not reachable, for example inside a container that does not map it, Zeus falls back to `vcgencmd` automatically.
+
+Both DRAM rails are read. At idle both report exact zero in almost every sample, which is a property of the ADC at low current rather than of the rails; under load `DDR_VDD2` and `DDR_VDDQ` are both populated, with `VDDQ` carrying roughly 14% of DRAM power. A low sampling rate will therefore underestimate DRAM energy on a lightly loaded board.
 
 ### AMD GPU
 

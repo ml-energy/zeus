@@ -27,6 +27,14 @@ class ZeusBaseSoCError(ZeusBaseError):
         super().__init__(message)
 
 
+class ZeusBaseMachineError(ZeusBaseError):
+    """Zeus base machine exception class."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Base Zeus Exception."""
+        super().__init__(message)
+
+
 class ZeusdError(ZeusBaseGPUError):
     """Exception class for Zeus daemon-related errors."""
 
