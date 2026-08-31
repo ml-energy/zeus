@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from zeus.device.gpu.common import ZeusGPUInitError
+from zeus.device.gpu.common import ZeusGPUInitError, ZeusGPUNotSupportedError
 from zeus.monitor.power import (
     PowerDomain,
     PowerMonitor,
@@ -139,7 +139,7 @@ def test_cli_power_queries_and_integrates_same_domain(mocker: MockerFixture) -> 
 
 class FakeQueue:
     def get_nowait(self):
-        raise Empty
+        raise queue.Empty
 
 
 class FakeEvent:

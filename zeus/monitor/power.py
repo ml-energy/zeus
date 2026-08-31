@@ -842,7 +842,7 @@ def _cpu_polling_process(
                         cpu_index,
                         e,
                     )
-                    raise
+                    continue
                 if cpu_index in previous:
                     previous_timestamp, previous_reading = previous[cpu_index]
                     elapsed = timestamp - previous_timestamp
