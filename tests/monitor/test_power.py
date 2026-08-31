@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from zeus.device.gpu.common import ZeusGPUInitError
 from zeus.monitor.power import (
     PowerDomain,
     PowerMonitor,
@@ -28,7 +29,9 @@ def make_monitor(samples: dict[PowerDomain, dict[int, list[tuple[float, float]]]
     """
     monitor = PowerMonitor.__new__(PowerMonitor)
     monitor.gpu_indices = sorted({gpu for per_gpu in samples.values() for gpu in per_gpu})
+    monitor.cpu_indices = []
     monitor.measurement_domains = list(samples)
+    monitor.cpu_measurement_domains = []
     monitor.data_queues = {domain: queue.Queue() for domain in samples}
     monitor.samples = {domain: {gpu: collections.deque() for gpu in per_gpu} for domain, per_gpu in samples.items()}
     for domain, per_gpu in samples.items():
@@ -226,10 +229,10 @@ def test_none_selects_all_available_devices(mocker) -> None:
     try:
         assert monitor.gpu_indices == [0, 1]
         assert monitor.cpu_indices == [0, 1]
-        assert monitor.supported_domains == [
+        assert set(monitor.cpu_measurement_domains) == {
             PowerDomain.CPU_PACKAGE_AVERAGE,
             PowerDomain.CPU_DRAM_AVERAGE,
-        ]
+        }
     finally:
         monitor.stop()
 
@@ -248,10 +251,10 @@ def test_cpu_only_monitor_handles_an_unavailable_gpu_backend(mocker) -> None:
         assert monitor.gpu_indices == []
         assert monitor.cpu_indices == [0, 1]
         assert monitor.measurement_domains == []
-        assert monitor.supported_domains == [
+        assert set(monitor.cpu_measurement_domains) == {
             PowerDomain.CPU_PACKAGE_AVERAGE,
             PowerDomain.CPU_DRAM_AVERAGE,
-        ]
+        }
     finally:
         monitor.stop()
 
@@ -267,7 +270,7 @@ def test_empty_cpu_indices_disable_cpu_measurement(mocker) -> None:
 
     try:
         assert monitor.cpu_indices == []
-        assert monitor.supported_domains == []
+        assert monitor.cpu_measurement_domains == []
         get_cpus.assert_called_once_with()
     finally:
         monitor.stop()
