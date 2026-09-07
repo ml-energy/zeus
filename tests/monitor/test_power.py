@@ -124,7 +124,7 @@ def test_cli_power_queries_and_integrates_same_domain(mocker: MockerFixture) -> 
     from zeus.monitor.__main__ import power
 
     monitor = mocker.MagicMock()
-    monitor.update_period = 0.1
+    monitor.gpu_update_period = 0.1
     monitor.get_power.return_value = None
     monitor.get_energy.return_value = {0: 5.0}
     mocker.patch("zeus.monitor.__main__.PowerMonitor", return_value=monitor)
@@ -225,7 +225,7 @@ def test_none_selects_all_available_devices(mocker) -> None:
     mocker.patch("zeus.monitor.power.get_cpus", return_value=MockCPUs(count=2))
     mocker.patch("zeus.monitor.power.mp.get_context", return_value=FakeContext())
 
-    monitor = PowerMonitor(update_period=0.1)
+    monitor = PowerMonitor(gpu_update_period=0.1, cpu_update_period=0.1)
 
     try:
         assert monitor.gpu_indices == [0, 1]
@@ -246,7 +246,7 @@ def test_cpu_only_monitor_handles_an_unavailable_gpu_backend(mocker) -> None:
     mocker.patch("zeus.monitor.power.get_cpus", return_value=MockCPUs(count=2))
     mocker.patch("zeus.monitor.power.mp.get_context", return_value=FakeContext())
 
-    monitor = PowerMonitor(update_period=0.1)
+    monitor = PowerMonitor(gpu_update_period=0.1, cpu_update_period=0.1)
 
     try:
         assert monitor.gpu_indices == []
@@ -267,7 +267,7 @@ def test_empty_cpu_indices_disable_cpu_measurement(mocker) -> None:
         return_value=MockCPUs(count=2),
     )
 
-    monitor = PowerMonitor(cpu_indices=[], update_period=0.1)
+    monitor = PowerMonitor(cpu_indices=[], gpu_update_period=0.1, cpu_update_period=0.1)
 
     try:
         assert monitor.cpu_indices == []

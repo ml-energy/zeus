@@ -211,8 +211,10 @@ class PowerMonitor:
         self,
         gpu_indices: list[int] | None = None,
         cpu_indices: list[int] | None = None,
-        update_period: float | None = None,
+        gpu_update_period: float | None = None,
+        cpu_update_period: float = 0.1,
         max_samples_per_gpu: int | None = None,
+        max_samples_per_cpu: int | None = None,
         gpu_power_domains: list[
             GPUPowerDomain | Literal["device_instant", "device_average", "memory_average"]
         ]
@@ -226,11 +228,15 @@ class PowerMonitor:
                 available GPUs. Pass an empty list to disable GPU monitoring.
             cpu_indices: Indices of CPU packages to monitor. If None, monitor all
                 available CPU packages. Pass an empty list to disable CPU monitoring.
-            update_period: Update period of the power monitor in seconds. If None,
+            gpu_update_period: GPU polling period in seconds. If None,
                 infer the update period by max speed polling the power counter for
                 each GPU model.
+            cpu_update_period: CPU polling period in seconds. Defaults to 0.1.
+                Values at or below 0.0001 trigger a warning.
             max_samples_per_gpu: Maximum number of power samples to keep per GPU per domain
                 in memory. If None (default), unlimited samples are kept.
+            max_samples_per_cpu: Maximum number of power samples to keep per CPU package
+                per domain in memory. If None (default), unlimited samples are kept.
             gpu_power_domains: GPU power domains to monitor. If None, monitor all supported GPU domains.
             cpu_power_domains: CPU power domains to monitor. If None, monitor all supported CPU domains.
         """
@@ -272,18 +278,24 @@ class PowerMonitor:
         if self.cpu_indices:
             logger.info("CPU power monitoring is configured for packages %s", self.cpu_indices)
 
-        # Infer update period from GPU instant power, if necessary
-        # RAPL counter update periods will be much lower than GPU (10 kHz)
-        if update_period is None:
-            update_period = infer_gpu_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
-        elif update_period < 0.05:
+        # Infer the GPU polling period independently of CPU polling.
+        if gpu_update_period is None:
+            gpu_update_period = infer_gpu_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
+        elif gpu_update_period < 0.05:
             logger.warning(
-                "An update period of %g might be too fast, which may lead to unexpected "
+                "A GPU update period of %g might be too fast, which may lead to unexpected "
                 "errors (e.g., NotSupported) and/or zero values being returned. "
                 "If you see these, consider increasing to >= 0.05.",
-                update_period,
+                gpu_update_period,
             )
-        self.update_period = update_period
+        if cpu_update_period <= 0.0001:
+            logger.warning(
+                "A CPU update period of %g might be too fast, which may lead to "
+                "zero values being returned. Consider increasing to > 0.0001.",
+                cpu_update_period,
+            )
+        self.gpu_update_period = gpu_update_period
+        self.cpu_update_period = cpu_update_period
 
         # Inter-process communication - separate unbounded queue per domain
         self.data_queues: dict[GPUPowerDomain | CPUPowerDomain, mp.Queue] = {}
@@ -342,7 +354,7 @@ class PowerMonitor:
         for domain in self.cpu_measurement_domains:
             self.samples[domain] = {}
             for cpu_idx in self.cpu_indices:
-                self.samples[domain][cpu_idx] = collections.deque(maxlen=max_samples_per_gpu)
+                self.samples[domain][cpu_idx] = collections.deque(maxlen=max_samples_per_cpu)
 
         # Spawn collector processes for each supported domain
         ctx = mp.get_context("spawn")
@@ -358,7 +370,7 @@ class PowerMonitor:
                     data_queue=self.data_queues[domain],
                     ready_event=self.ready_events[domain],
                     stop_event=self.stop_events[domain],
-                    update_period=update_period,
+                    update_period=self.gpu_update_period,
                 ),
                 daemon=True,
                 name=f"zeus-power-monitor-{domain.value}",
@@ -379,7 +391,7 @@ class PowerMonitor:
                     dram_data_queue=self.data_queues[CPUPowerDomain.DRAM_AVERAGE],
                     ready_event=self.ready_events[CPUPowerDomain.PACKAGE_AVERAGE],
                     stop_event=self.stop_events[CPUPowerDomain.PACKAGE_AVERAGE],
-                    update_period=update_period,
+                    update_period=self.cpu_update_period,
                 ),
                 # RAPL starts a wraparound tracker subprocess.
                 daemon=False,

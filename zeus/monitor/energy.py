@@ -258,7 +258,7 @@ class ZeusMonitor:
             if not self.gpus.supports_get_total_energy_consumption(gpu_index)
         ]
         if old_gpu_indices:
-            self.power_monitor = PowerMonitor(gpu_indices=old_gpu_indices, update_period=None)
+            self.power_monitor = PowerMonitor(gpu_indices=old_gpu_indices, gpu_update_period=None)
         else:
             self.power_monitor = None
 
