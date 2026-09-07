@@ -212,13 +212,14 @@ class PowerMonitor:
     def __init__(
         self,
         gpu_indices: list[int] | None = None,
-        cpu_indices: list[int] | None = None,
         update_period: float | None = None,
-        cpu_update_period: float = 0.1,
         max_samples_per_gpu: int | None = None,
-        max_samples_per_cpu: int | None = None,
         gpu_power_domains: list[GPUPowerDomain | Literal["device_instant", "device_average", "memory_average"]]
         | None = None,
+        *,
+        cpu_indices: list[int] | None = None,
+        cpu_update_period: float = 0.1,
+        max_samples_per_cpu: int | None = None,
         cpu_power_domains: list[CPUPowerDomain | Literal["package_average", "dram_average"]] | None = None,
     ) -> None:
         """Initialize the enhanced power monitor.
@@ -226,16 +227,16 @@ class PowerMonitor:
         Args:
             gpu_indices: Indices of the GPUs to monitor. If None, monitor all
                 available GPUs. Pass an empty list to disable GPU monitoring.
-            cpu_indices: Indices of CPU packages to monitor. If None, monitor all
-                available CPU packages. Pass an empty list to disable CPU monitoring.
             update_period: GPU polling period in seconds. Maintained for backwards compatibility
-            cpu_update_period: CPU polling period in seconds. Defaults to 0.1.
-                Values at or below 0.0001 trigger a warning.
             max_samples_per_gpu: Maximum number of power samples to keep per GPU per domain
                 in memory. If None (default), unlimited samples are kept.
+            gpu_power_domains: GPU power domains to monitor. If None, monitor all supported GPU domains.
+            cpu_indices: Indices of CPU packages to monitor. If None, monitor all
+                available CPU packages. Pass an empty list to disable CPU monitoring.
+            cpu_update_period: CPU polling period in seconds. Defaults to 0.1.
+                Values at or below 0.0001 trigger a warning.
             max_samples_per_cpu: Maximum number of power samples to keep per CPU package
                 per domain in memory. If None (default), unlimited samples are kept.
-            gpu_power_domains: GPU power domains to monitor. If None, monitor all supported GPU domains.
             cpu_power_domains: CPU power domains to monitor. If None, monitor all supported CPU domains.
         """
         # Warn if instantiated as a global variable in a subprocess.
