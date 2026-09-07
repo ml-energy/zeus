@@ -213,6 +213,7 @@ class PowerMonitor:
         self,
         gpu_indices: list[int] | None = None,
         cpu_indices: list[int] | None = None,
+        update_period: float | None = None,
         gpu_update_period: float | None = None,
         cpu_update_period: float = 0.1,
         max_samples_per_gpu: int | None = None,
@@ -228,6 +229,7 @@ class PowerMonitor:
                 available GPUs. Pass an empty list to disable GPU monitoring.
             cpu_indices: Indices of CPU packages to monitor. If None, monitor all
                 available CPU packages. Pass an empty list to disable CPU monitoring.
+            update_period: GPU polling period in seconds. Maintained for backwards compatibility
             gpu_update_period: GPU polling period in seconds. If None,
                 infer the update period by max speed polling the power counter for
                 each GPU model.
@@ -243,6 +245,7 @@ class PowerMonitor:
         # Warn if instantiated as a global variable in a subprocess.
         warn_if_global_in_subprocess(self)
 
+        gpu_upate_period = update_period
         if gpu_power_domains is not None and not gpu_power_domains:
             raise ValueError("`gpu_power_domains` must be either `None` or non-empty")
         if cpu_power_domains is not None and not cpu_power_domains:

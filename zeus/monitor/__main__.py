@@ -45,7 +45,7 @@ def power(
         update_period: The time between power measurements in seconds.
         power_domain: The power domain to query.
     """
-    monitor = PowerMonitor(gpu_indices=gpu_indices, gpu_update_period=update_period)
+    monitor = PowerMonitor(gpu_indices=gpu_indices, update_period=update_period)
     start_time = time.time()
     update_period = monitor.gpu_update_period
 
