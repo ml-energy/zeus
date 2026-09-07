@@ -213,12 +213,11 @@ class PowerMonitor:
         cpu_indices: list[int] | None = None,
         update_period: float | None = None,
         max_samples_per_gpu: int | None = None,
-        power_domains: list[
-            GPUPowerDomain
-            | CPUPowerDomain
-            | Literal["device_instant", "device_average", "memory_average", "package_average", "dram_average"]
+        gpu_power_domains: list[
+            GPUPowerDomain | Literal["device_instant", "device_average", "memory_average"]
         ]
         | None = None,
+        cpu_power_domains: list[CPUPowerDomain | Literal["package_average", "dram_average"]] | None = None,
     ) -> None:
         """Initialize the enhanced power monitor.
 
@@ -232,13 +231,16 @@ class PowerMonitor:
                 each GPU model.
             max_samples_per_gpu: Maximum number of power samples to keep per GPU per domain
                 in memory. If None (default), unlimited samples are kept.
-            power_domains: Power domains to monitor. If None, monitor all supported domains.
+            gpu_power_domains: GPU power domains to monitor. If None, monitor all supported GPU domains.
+            cpu_power_domains: CPU power domains to monitor. If None, monitor all supported CPU domains.
         """
         # Warn if instantiated as a global variable in a subprocess.
         warn_if_global_in_subprocess(self)
 
-        if power_domains is not None and not power_domains:
-            raise ValueError("`power_domains` must be either `None` or non-empty")
+        if gpu_power_domains is not None and not gpu_power_domains:
+            raise ValueError("`gpu_power_domains` must be either `None` or non-empty")
+        if cpu_power_domains is not None and not cpu_power_domains:
+            raise ValueError("`cpu_power_domains` must be either `None` or non-empty")
 
         try:
             self.gpus = get_gpus(ensure_homogeneous=True)
@@ -297,28 +299,28 @@ class PowerMonitor:
         # package and DRAM measurements share a single polling process.
         self.gpu_measurement_domains: list[GPUPowerDomain] = []
         self.cpu_measurement_domains: list[CPUPowerDomain] = []
-        if power_domains is None:
+        if gpu_power_domains is None:
             self.gpu_measurement_domains = gpu_supported_domains
+        else:
+            for requested_gpu_domain in gpu_power_domains:
+                gpu_domain = GPUPowerDomain(requested_gpu_domain)
+                if gpu_domain not in gpu_supported_domains:
+                    raise ValueError(
+                        f"Requested GPU power domain {gpu_domain.value} is not supported. "
+                        f"Supported GPU domains are: {[d.value for d in gpu_supported_domains]}.",
+                    )
+                self.gpu_measurement_domains.append(gpu_domain)
+        if cpu_power_domains is None:
             self.cpu_measurement_domains = cpu_supported_domains
         else:
-            for requested_domain in power_domains:
-                domain: GPUPowerDomain | CPUPowerDomain
-                try:
-                    domain = GPUPowerDomain(requested_domain)
-                except ValueError:
-                    domain = CPUPowerDomain(requested_domain)
-                if domain in gpu_supported_domains:
-                    self.gpu_measurement_domains.append(domain)
-                elif domain in cpu_supported_domains:
-                    self.cpu_measurement_domains.append(domain)
-                else:
+            for requested_cpu_domain in cpu_power_domains:
+                cpu_domain = CPUPowerDomain(requested_cpu_domain)
+                if cpu_domain not in cpu_supported_domains:
                     raise ValueError(
-                        f"Requested power domain {domain.value} is not supported. "
-                        "Supported GPU domains are: "
-                        f"{[d.value for d in gpu_supported_domains]}. "
-                        "Supported CPU domains are: "
-                        f"{[d.value for d in cpu_supported_domains]}.",
+                        f"Requested CPU power domain {cpu_domain.value} is not supported. "
+                        f"Supported CPU domains are: {[d.value for d in cpu_supported_domains]}.",
                     )
+                self.cpu_measurement_domains.append(cpu_domain)
         self.gpu_measurement_domains = list(set(self.gpu_measurement_domains))
         self.cpu_measurement_domains = list(set(self.cpu_measurement_domains))
 
@@ -491,29 +493,26 @@ class PowerMonitor:
 
     def get_power_timeline(
         self,
-        power_domain: GPUPowerDomain
-        | CPUPowerDomain
-        | Literal[
-            "device_instant",
-            "device_average",
-            "memory_average",
-            "package_average",
-            "dram_average",
-        ],
+        gpu_power_domain: GPUPowerDomain
+        | Literal["device_instant", "device_average", "memory_average"]
+        | None = None,
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
         *,
+        cpu_power_domain: CPUPowerDomain | Literal["package_average", "dram_average"] | None = None,
         cpu_index: int | None = None,
     ) -> dict[int, list[tuple[float, float]]]:
         """Get power timeline for a specific power domain and device(s).
 
         Args:
-            power_domain: Power domain to query
+            gpu_power_domain: GPU power domain to query. Specify exactly one of
+                gpu_power_domain or cpu_power_domain.
             gpu_index: Specific GPU index, or None for all GPUs. Only valid for
                 GPU power domains.
             start_time: Start time filter (unix timestamp from time.time() or similar)
             end_time: End time filter (unix timestamp from time.time() or similar)
+            cpu_power_domain: CPU power domain to query.
             cpu_index: Specific CPU package index, or None for all CPU packages.
                 Only valid for CPU power domains.
 
@@ -521,18 +520,24 @@ class PowerMonitor:
             Dictionary mapping device indices to timeline data with deduplication.
             Timeline data is list of (timestamp, power_watts) tuples.
         """
-        if isinstance(power_domain, str):
-            try:
-                power_domain = GPUPowerDomain(power_domain)
-            except ValueError:
-                power_domain = CPUPowerDomain(power_domain)
+        if (gpu_power_domain is None) == (cpu_power_domain is None):
+            raise ValueError("Specify exactly one of `gpu_power_domain` or `cpu_power_domain`")
 
-        is_cpu_domain = power_domain in self.cpu_measurement_domains
-        if power_domain not in self.gpu_measurement_domains + self.cpu_measurement_domains:
+        power_domain: GPUPowerDomain | CPUPowerDomain
+        monitored_domains: list[GPUPowerDomain] | list[CPUPowerDomain]
+        if cpu_power_domain is not None:
+            power_domain = CPUPowerDomain(cpu_power_domain)
+            monitored_domains = self.cpu_measurement_domains
+            is_cpu_domain = True
+        else:
+            assert gpu_power_domain is not None
+            power_domain = GPUPowerDomain(gpu_power_domain)
+            monitored_domains = self.gpu_measurement_domains
+            is_cpu_domain = False
+        if power_domain not in monitored_domains:
             raise ValueError(
                 f"Power domain {power_domain.value} is not being monitored. "
-                "Monitored domains: "
-                f"{[d.value for d in self.gpu_measurement_domains + self.cpu_measurement_domains]}",
+                f"Monitored domains: {[d.value for d in monitored_domains]}",
             )
         if is_cpu_domain and gpu_index is not None:
             raise ValueError("Use `cpu_index` when querying a CPU power domain")
@@ -592,10 +597,12 @@ class PowerMonitor:
         """
         result = {}
         for domain in self.gpu_measurement_domains:
-            result[domain.value] = self.get_power_timeline(domain, gpu_index, start_time, end_time)
+            result[domain.value] = self.get_power_timeline(
+                gpu_power_domain=domain, gpu_index=gpu_index, start_time=start_time, end_time=end_time
+            )
         for domain in self.cpu_measurement_domains:
             result[domain.value] = self.get_power_timeline(
-                domain,
+                cpu_power_domain=domain,
                 start_time=start_time,
                 end_time=end_time,
                 cpu_index=cpu_index,
@@ -634,7 +641,7 @@ class PowerMonitor:
                     "Cannot compute energy usage.",
                 )
 
-        timelines = self.get_power_timeline(power_domain, start_time=start_time, end_time=end_time)
+        timelines = self.get_power_timeline(gpu_power_domain=power_domain, start_time=start_time, end_time=end_time)
 
         if not timelines:
             return None
