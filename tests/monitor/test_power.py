@@ -12,7 +12,7 @@ from zeus.device.gpu.common import ZeusGPUInitError, ZeusGPUNotSupportedError
 from zeus.monitor.power import (
     PowerDomain,
     PowerMonitor,
-    PowerSample,
+    GPUPowerSample,
     infer_counter_update_period,
 )
 
@@ -37,7 +37,7 @@ def make_monitor(samples: dict[PowerDomain, dict[int, list[tuple[float, float]]]
     for domain, per_gpu in samples.items():
         for gpu, entries in per_gpu.items():
             for ts, mw in entries:
-                monitor.data_queues[domain].put(PowerSample(timestamp=ts, gpu_index=gpu, power_mw=mw))
+                monitor.data_queues[domain].put(GPUPowerSample(timestamp=ts, gpu_index=gpu, power_mw=mw))
     return monitor
 
 

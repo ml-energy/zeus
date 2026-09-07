@@ -135,8 +135,8 @@ class PowerDomain(Enum):
 
 
 @dataclass
-class PowerSample:
-    """A single power measurement sample."""
+class GPUPowerSample:
+    """A single GPU power measurement sample."""
 
     timestamp: float
     gpu_index: int
@@ -319,7 +319,7 @@ class PowerMonitor:
         # Power samples are collected for each power domain and device index.
         self.samples: dict[
             PowerDomain,
-            dict[int, collections.deque[PowerSample | CPUPowerSample]],
+            dict[int, collections.deque[GPUPowerSample | CPUPowerSample]],
         ] = {}
         for domain in self.measurement_domains:
             self.samples[domain] = {}
@@ -463,7 +463,7 @@ class PowerMonitor:
                 sample = self.data_queues[domain].get_nowait()
                 if sample == "STOP":
                     break
-                if isinstance(sample, PowerSample):
+                if isinstance(sample, GPUPowerSample):
                     device_index = sample.gpu_index
                 else:
                     assert isinstance(sample, CPUPowerSample)
@@ -756,7 +756,7 @@ def _domain_polling_process(
                     prev_power[gpu_index] = power_mw
 
                     # Create and send power sample
-                    sample = PowerSample(
+                    sample = GPUPowerSample(
                         timestamp=timestamp,
                         gpu_index=gpu_index,
                         power_mw=power_mw,
