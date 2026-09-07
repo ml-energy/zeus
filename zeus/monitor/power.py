@@ -468,10 +468,7 @@ class PowerMonitor:
                     )
 
         if self.cpu_indices and len(self.cpus):
-            dram_support = [
-                self.cpus.supports_get_dram_energy_consumption(cpu_index)
-                for cpu_index in self.cpu_indices
-            ]
+            dram_support = [self.cpus.supports_get_dram_energy_consumption(cpu_index) for cpu_index in self.cpu_indices]
             if any(dram_support) and not all(dram_support):
                 raise ValueError(
                     "Selected CPU packages must have matching DRAM energy monitoring "
