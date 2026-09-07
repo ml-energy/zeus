@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def infer_counter_update_period(gpu_indicies: list[int]) -> float:
+def infer_gpu_counter_update_period(gpu_indicies: list[int]) -> float:
     """Infer the update period of the GPU power counter.
 
     GPU power counters can update as slow as 10 Hz depending on the GPU model, so
@@ -50,7 +50,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
         if (model := gpus.get_name(index)) not in gpu_models_covered:
             logger.info("Detected %s, inferring GPU power counter update period.", model)
             gpu_models_covered.add(model)
-            detected_period = _infer_counter_update_period_single(index)
+            detected_period = _infer_gpu_counter_update_period_single(index)
             logger.info(
                 "Counter update period for %s is %.2f s",
                 model,
@@ -71,7 +71,7 @@ def infer_counter_update_period(gpu_indicies: list[int]) -> float:
     return update_period
 
 
-def _infer_counter_update_period_single(gpu_index: int) -> float:
+def _infer_gpu_counter_update_period_single(gpu_index: int) -> float:
     """Infer the update period of the GPU power counter for a single GPU."""
     gpus = get_gpus()
 
@@ -187,7 +187,9 @@ class PowerMonitor:
 
     This class provides:
 
-    1. Multiple power domains: device instant, device average, and memory average
+    1. Multiple power domains:
+        - GPU: device instant, device average, and memory average
+        - CPU: package_average and dram_average
     2. Timeline export with independent deduplication per domain
     3. Separate processes for each power domain (2-3 processes depending on GPU support)
     4. Backward compatibility with existing PowerMonitor interface
@@ -271,7 +273,7 @@ class PowerMonitor:
         # Infer update period from GPU instant power, if necessary
         # RAPL counter update periods will be much lower than GPU (10 kHz)
         if update_period is None:
-            update_period = infer_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
+            update_period = infer_gpu_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
         elif update_period < 0.05:
             logger.warning(
                 "An update period of %g might be too fast, which may lead to unexpected "
@@ -347,7 +349,7 @@ class PowerMonitor:
             self.ready_events[domain] = ctx.Event()
             self.stop_events[domain] = ctx.Event()
             self.processes[domain] = ctx.Process(
-                target=_domain_polling_process,
+                target=_gpu_polling_process,
                 kwargs=dict(
                     power_domain=domain,
                     gpu_indices=self.gpu_indices,
@@ -713,7 +715,7 @@ class PowerMonitor:
         return result
 
 
-def _domain_polling_process(
+def _gpu_polling_process(
     power_domain: GPUPowerDomain,
     gpu_indices: list[int],
     data_queue: mp.Queue,
