@@ -214,7 +214,6 @@ class PowerMonitor:
         gpu_indices: list[int] | None = None,
         cpu_indices: list[int] | None = None,
         update_period: float | None = None,
-        gpu_update_period: float | None = None,
         cpu_update_period: float = 0.1,
         max_samples_per_gpu: int | None = None,
         max_samples_per_cpu: int | None = None,
@@ -230,9 +229,6 @@ class PowerMonitor:
             cpu_indices: Indices of CPU packages to monitor. If None, monitor all
                 available CPU packages. Pass an empty list to disable CPU monitoring.
             update_period: GPU polling period in seconds. Maintained for backwards compatibility
-            gpu_update_period: GPU polling period in seconds. If None,
-                infer the update period by max speed polling the power counter for
-                each GPU model.
             cpu_update_period: CPU polling period in seconds. Defaults to 0.1.
                 Values at or below 0.0001 trigger a warning.
             max_samples_per_gpu: Maximum number of power samples to keep per GPU per domain
@@ -245,7 +241,6 @@ class PowerMonitor:
         # Warn if instantiated as a global variable in a subprocess.
         warn_if_global_in_subprocess(self)
 
-        gpu_upate_period = update_period
         if gpu_power_domains is not None and not gpu_power_domains:
             raise ValueError("`gpu_power_domains` must be either `None` or non-empty")
         if cpu_power_domains is not None and not cpu_power_domains:
@@ -282,14 +277,14 @@ class PowerMonitor:
             logger.info("CPU power monitoring is configured for packages %s", self.cpu_indices)
 
         # Infer the GPU polling period independently of CPU polling.
-        if gpu_update_period is None:
-            gpu_update_period = infer_gpu_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
-        elif gpu_update_period < 0.05:
+        if update_period is None:
+            update_period = infer_gpu_counter_update_period(self.gpu_indices) if self.gpu_indices else 0.1
+        elif update_period < 0.05:
             logger.warning(
                 "A GPU update period of %g might be too fast, which may lead to unexpected "
                 "errors (e.g., NotSupported) and/or zero values being returned. "
                 "If you see these, consider increasing to >= 0.05.",
-                gpu_update_period,
+                update_period,
             )
         if cpu_update_period <= 0.0001:
             logger.warning(
@@ -297,7 +292,7 @@ class PowerMonitor:
                 "zero values being returned. Consider increasing to > 0.0001.",
                 cpu_update_period,
             )
-        self.gpu_update_period = gpu_update_period
+        self.gpu_update_period = update_period
         self.cpu_update_period = cpu_update_period
 
         # Inter-process communication - separate unbounded queue per domain
