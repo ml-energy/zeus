@@ -200,7 +200,7 @@ class MockCPUs:
         return self._count
 
     def supports_get_dram_energy_consumption(self, index: int) -> bool:
-        return index == 0
+        return True
 
 
 class MockGPUs:

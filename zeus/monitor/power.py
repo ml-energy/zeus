@@ -195,8 +195,10 @@ class PowerMonitor:
     4. Backward compatibility with existing PowerMonitor interface
 
     !!! Note
-        The current implementation only supports cases where all GPUs are homegeneous
-        (i.e., the same model).
+        All GPUs must be homogeneous (i.e., the same model). All selected CPU
+        packages must have matching DRAM energy monitoring support: either all
+        support it or none do. Mixed DRAM support raises ValueError during
+        initialization.
 
     !!! Warning
         This monitor uses multiprocessing with the spawn start method to poll power in
@@ -215,9 +217,7 @@ class PowerMonitor:
         cpu_update_period: float = 0.1,
         max_samples_per_gpu: int | None = None,
         max_samples_per_cpu: int | None = None,
-        gpu_power_domains: list[
-            GPUPowerDomain | Literal["device_instant", "device_average", "memory_average"]
-        ]
+        gpu_power_domains: list[GPUPowerDomain | Literal["device_instant", "device_average", "memory_average"]]
         | None = None,
         cpu_power_domains: list[CPUPowerDomain | Literal["package_average", "dram_average"]] | None = None,
     ) -> None:
@@ -468,8 +468,17 @@ class PowerMonitor:
                     )
 
         if self.cpu_indices and len(self.cpus):
+            dram_support = [
+                self.cpus.supports_get_dram_energy_consumption(cpu_index)
+                for cpu_index in self.cpu_indices
+            ]
+            if any(dram_support) and not all(dram_support):
+                raise ValueError(
+                    "Selected CPU packages must have matching DRAM energy monitoring "
+                    "support: either all must support it or none may support it."
+                )
             cpu_supported_domains.append(CPUPowerDomain.PACKAGE_AVERAGE)
-            if any(self.cpus.supports_get_dram_energy_consumption(cpu_index) for cpu_index in self.cpu_indices):
+            if all(dram_support):
                 cpu_supported_domains.append(CPUPowerDomain.DRAM_AVERAGE)
 
         return gpu_supported_domains, cpu_supported_domains
@@ -505,9 +514,7 @@ class PowerMonitor:
 
     def get_power_timeline(
         self,
-        gpu_power_domain: GPUPowerDomain
-        | Literal["device_instant", "device_average", "memory_average"]
-        | None = None,
+        gpu_power_domain: GPUPowerDomain | Literal["device_instant", "device_average", "memory_average"] | None = None,
         gpu_index: int | None = None,
         start_time: float | None = None,
         end_time: float | None = None,
