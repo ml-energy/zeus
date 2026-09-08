@@ -47,7 +47,7 @@ def power(
     """
     monitor = PowerMonitor(gpu_indices=gpu_indices, update_period=update_period)
     start_time = time.time()
-    update_period = monitor.update_period
+    update_period = monitor.gpu_update_period
 
     def map_gpu_index_to_name(measurements: dict[int, float]) -> dict[str, float]:
         return {f"GPU{k}": v for k, v in measurements.items()}
