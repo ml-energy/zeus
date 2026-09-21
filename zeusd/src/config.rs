@@ -4,6 +4,12 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
+/// Maximum CLI power-polling frequency.
+///
+/// Polling intervals are represented as whole microseconds, so values above
+/// 1,000,000 Hz would require a sub-microsecond interval.
+pub const MAX_POWER_POLL_HZ: u64 = 1_000_000;
+
 /// API groups that can be independently enabled or disabled.
 ///
 /// Each group maps to a set of HTTP endpoints. Groups that require root
@@ -161,7 +167,7 @@ pub struct ServeConfig {
     #[clap(
         long,
         default_value = "20",
-        value_parser = clap::value_parser!(u32).range(1..=1_000_000)
+        value_parser = clap::value_parser!(u32).range(1..=MAX_POWER_POLL_HZ)
     )]
     pub gpu_power_poll_hz: u32,
 
@@ -174,7 +180,7 @@ pub struct ServeConfig {
     #[clap(
         long,
         default_value = "10",
-        value_parser = clap::value_parser!(u32).range(1..=1_000_000)
+        value_parser = clap::value_parser!(u32).range(1..=MAX_POWER_POLL_HZ)
     )]
     pub cpu_power_poll_hz: u32,
 
