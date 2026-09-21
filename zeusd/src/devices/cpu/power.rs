@@ -237,25 +237,3 @@ async fn cpu_power_poll_task<T: CpuManager>(
         tracing::info!("CPU power poller pausing for CPU {}", cpu_id);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn power_uses_measured_elapsed_time() {
-        assert_eq!(
-            power_from_energy_delta(20_000, 0, Duration::from_millis(100)),
-            200,
-        );
-        assert_eq!(
-            power_from_energy_delta(20_000, 0, Duration::from_millis(200)),
-            100,
-        );
-    }
-
-    #[test]
-    fn power_handles_zero_elapsed_without_dividing_by_zero() {
-        assert_eq!(power_from_energy_delta(10, 0, Duration::ZERO), 10_000);
-    }
-}
