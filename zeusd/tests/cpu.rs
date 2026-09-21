@@ -361,11 +361,10 @@ async fn test_cpu_power_stream_uses_full_elapsed_time_after_read_failure() {
             .expect("CPU power stream ended before failed-read snapshot");
     assert_eq!(failed_read_sample.cpu_mw, 0);
 
-    let recovered_sample =
-        tokio::time::timeout(tokio::time::Duration::from_secs(2), stream.next())
-            .await
-            .expect("Timed out waiting for CPU power recovery")
-            .expect("CPU power stream ended before recovery sample");
+    let recovered_sample = tokio::time::timeout(tokio::time::Duration::from_secs(2), stream.next())
+        .await
+        .expect("Timed out waiting for CPU power recovery")
+        .expect("CPU power stream ended before recovery sample");
 
     // The mock accumulates 20,000 uJ across roughly two 100 ms intervals, so
     // the correct result is about 100 mW. The old nominal-period math reports
