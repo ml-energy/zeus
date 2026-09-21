@@ -194,10 +194,8 @@ async fn cpu_power_poll_task<T: CpuManager>(
                 match cpu.get_dram_energy() {
                     Ok(energy_uj) => {
                         let sample_at = Instant::now();
-                        let power_mw = match (
-                            state.last_dram_energy_uj,
-                            state.last_dram_sample_at,
-                        ) {
+                        let power_mw = match (state.last_dram_energy_uj, state.last_dram_sample_at)
+                        {
                             (Some(last_energy_uj), Some(last_sample_at)) => {
                                 let power_mw = power_from_energy_delta(
                                     energy_uj,
