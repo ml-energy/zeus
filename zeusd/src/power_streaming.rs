@@ -16,6 +16,15 @@ use tokio::sync::{watch, Notify};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::WatchStream;
 use tokio_stream::Stream;
+const MICROS_PER_SECOND: u64 = 1_000_000;
+
+/// Convert a polling frequency to the whole-microsecond period used by Tokio.
+///
+/// CLI callers are range-checked separately. The clamps keep direct library
+/// callers from producing either a zero frequency or a zero-duration interval.
+pub fn power_poll_period_us(poll_hz: u32) -> u64 {
+    (MICROS_PER_SECOND / u64::from(poll_hz.max(1))).max(1)
+}
 
 /// Current Unix time in milliseconds.
 pub fn unix_timestamp_ms() -> u64 {
@@ -150,5 +159,19 @@ impl<T: Clone + Default + Send + Sync + 'static> PowerPoller<T> {
     /// Get the broadcast handle for sharing with route handlers.
     pub fn broadcast(&self) -> PowerBroadcast<T> {
         self.broadcast.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn power_poll_period_uses_whole_microseconds_and_never_returns_zero() {
+        assert_eq!(power_poll_period_us(0), 1_000_000);
+        assert_eq!(power_poll_period_us(1), 1_000_000);
+        assert_eq!(power_poll_period_us(3), 333_333);
+        assert_eq!(power_poll_period_us(1_000_000), 1);
+        assert_eq!(power_poll_period_us(1_000_001), 1);
     }
 }
