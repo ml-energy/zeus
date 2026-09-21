@@ -81,7 +81,6 @@ pub fn start_cpu_poller<T: CpuManager + Send + 'static>(
 struct CpuEnergyState {
     last_cpu_energy_uj: u64,
     last_cpu_sample_at: Instant,
-    dram_available: bool,
     last_dram_energy_uj: Option<u64>,
     last_dram_sample_at: Option<Instant>,
     last_cpu_power_mw: u32,
@@ -122,8 +121,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
             match cpu.get_cpu_energy() {
                 Ok(cpu_energy) => {
                     let cpu_sample_at = Instant::now();
-                    let dram_available = cpu.is_dram_available();
-                    let (dram_energy, dram_sample_at) = if dram_available {
+                    let (dram_energy, dram_sample_at) = if cpu.is_dram_available() {
                         match cpu.get_dram_energy() {
                             Ok(energy) => (Some(energy), Some(Instant::now())),
                             Err(e) => {
@@ -141,7 +139,6 @@ async fn cpu_power_poll_task<T: CpuManager>(
                     break CpuEnergyState {
                         last_cpu_energy_uj: cpu_energy,
                         last_cpu_sample_at: cpu_sample_at,
-                        dram_available,
                         last_dram_energy_uj: dram_energy,
                         last_dram_sample_at: dram_sample_at,
                         last_cpu_power_mw: 0,
@@ -190,7 +187,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
                 }
             };
 
-            let dram_power_mw = if state.dram_available {
+            let dram_power_mw = if cpu.is_dram_available() {
                 match cpu.get_dram_energy() {
                     Ok(energy_uj) => {
                         let sample_at = Instant::now();
