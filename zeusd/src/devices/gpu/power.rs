@@ -14,9 +14,7 @@ use tokio::sync::{watch, Notify};
 use tokio::time::{interval, Duration};
 
 use crate::devices::gpu::GpuManager;
-use crate::power_streaming::{
-    power_poll_period_us, unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller,
-};
+use crate::power_streaming::{unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller};
 
 /// A snapshot of GPU power readings across all monitored GPUs.
 #[derive(Clone, Debug, Default, Serialize)]
@@ -74,7 +72,7 @@ async fn gpu_power_poll_task<T: GpuManager>(
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
 ) {
-    let period_us = power_poll_period_us(poll_hz);
+    let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
     let mut last_power: Option<u32> = None;
 
     tracing::info!(

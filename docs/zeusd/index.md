@@ -122,22 +122,6 @@ Selectively enable with `--enable`:
 For read-only monitoring without root: `--enable gpu-read`.
 When root is unavailable but privileged commands are (e.g., passwordless sudoers scripts), `gpu-control` can delegate writes to external commands; see [GPU Command Overrides](command_overrides.md).
 
-## Power polling frequency
-
-`--gpu-power-poll-hz` defaults to 20 Hz and `--cpu-power-poll-hz` defaults to
-10 Hz. `zeusd` does not impose an upper frequency limit.
-
-Polling intervals are represented as whole microseconds. Frequencies that do
-not divide 1,000,000 evenly are quantized by integer division (for example,
-3 Hz uses a 333,333 microsecond period), and sub-microsecond results are
-defensively floored to 1 microsecond so Tokio never receives a zero-duration
-interval.
-
-When a requested frequency produces an interval below 1 millisecond, `zeusd`
-logs a warning with the resulting interval. Very high polling frequencies can
-increase processor power draw and may not provide fresher measurements than
-the underlying NVML, AMD SMI, or RAPL interface supplies.
-
 ## Python integration
 
 Set one of these in the application's environment:

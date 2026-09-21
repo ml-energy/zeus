@@ -15,9 +15,7 @@ use tokio::sync::{watch, Notify};
 use tokio::time::{interval, Duration};
 
 use crate::devices::cpu::CpuManager;
-use crate::power_streaming::{
-    power_poll_period_us, unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller,
-};
+use crate::power_streaming::{unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller};
 
 /// Per-CPU power reading (package + optional DRAM).
 #[derive(Clone, Debug, Serialize)]
@@ -95,7 +93,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
 ) {
-    let period_us = power_poll_period_us(poll_hz);
+    let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
 
     tracing::info!(
         "CPU RAPL power poller ready for CPU {} at {} Hz when subscribers are present",
