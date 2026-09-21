@@ -9,10 +9,11 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde::Serialize;
 use tokio::sync::{watch, Notify};
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, Duration, MissedTickBehavior};
 
 use crate::devices::cpu::CpuManager;
 use crate::power_streaming::{unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller};
@@ -79,10 +80,18 @@ pub fn start_cpu_poller<T: CpuManager + Send + 'static>(
 /// Per-CPU energy tracking state for computing power from energy deltas.
 struct CpuEnergyState {
     last_cpu_energy_uj: u64,
-    /// `None` means DRAM is not available for this CPU.
+    last_cpu_sample_at: Instant,
+    dram_available: bool,
     last_dram_energy_uj: Option<u64>,
+    last_dram_sample_at: Option<Instant>,
     last_cpu_power_mw: u32,
     last_dram_power_mw: Option<u32>,
+}
+
+fn power_from_energy_delta(current_uj: u64, previous_uj: u64, elapsed: Duration) -> u32 {
+    let elapsed_us = elapsed.as_micros().max(1);
+    let power_mw = current_uj.saturating_sub(previous_uj) as u128 * 1000 / elapsed_us;
+    power_mw.min(u32::MAX as u128) as u32
 }
 
 async fn cpu_power_poll_task<T: CpuManager>(
@@ -112,24 +121,29 @@ async fn cpu_power_poll_task<T: CpuManager>(
         let mut state = loop {
             match cpu.get_cpu_energy() {
                 Ok(cpu_energy) => {
-                    let dram_energy = if cpu.is_dram_available() {
+                    let cpu_sample_at = Instant::now();
+                    let dram_available = cpu.is_dram_available();
+                    let (dram_energy, dram_sample_at) = if dram_available {
                         match cpu.get_dram_energy() {
-                            Ok(energy) => Some(energy),
+                            Ok(energy) => (Some(energy), Some(Instant::now())),
                             Err(e) => {
                                 tracing::warn!(
                                     "Failed to prime CPU {} DRAM energy baseline: {}",
                                     cpu_id,
                                     e
                                 );
-                                None
+                                (None, None)
                             }
                         }
                     } else {
-                        None
+                        (None, None)
                     };
                     break CpuEnergyState {
                         last_cpu_energy_uj: cpu_energy,
+                        last_cpu_sample_at: cpu_sample_at,
+                        dram_available,
                         last_dram_energy_uj: dram_energy,
+                        last_dram_sample_at: dram_sample_at,
                         last_cpu_power_mw: 0,
                         last_dram_power_mw: if dram_energy.is_some() { Some(0) } else { None },
                     };
@@ -145,6 +159,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
         };
 
         let mut tick = interval(Duration::from_micros(period_us));
+        tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
         tick.tick().await; // consume the immediate first tick
         let mut has_broadcast = false;
 
@@ -155,13 +170,18 @@ async fn cpu_power_poll_task<T: CpuManager>(
 
             let cpu_power_mw = match cpu.get_cpu_energy() {
                 Ok(energy_uj) => {
-                    let delta_uj = energy_uj.saturating_sub(state.last_cpu_energy_uj);
-                    let power_mw = (delta_uj * 1000 / period_us) as u32;
+                    let sample_at = Instant::now();
+                    let power_mw = power_from_energy_delta(
+                        energy_uj,
+                        state.last_cpu_energy_uj,
+                        sample_at.duration_since(state.last_cpu_sample_at),
+                    );
                     if power_mw != state.last_cpu_power_mw {
                         changed = true;
                     }
                     state.last_cpu_power_mw = power_mw;
                     state.last_cpu_energy_uj = energy_uj;
+                    state.last_cpu_sample_at = sample_at;
                     power_mw
                 }
                 Err(e) => {
@@ -170,24 +190,39 @@ async fn cpu_power_poll_task<T: CpuManager>(
                 }
             };
 
-            let dram_power_mw = match state.last_dram_energy_uj {
-                Some(last_dram) => match cpu.get_dram_energy() {
+            let dram_power_mw = if state.dram_available {
+                match cpu.get_dram_energy() {
                     Ok(energy_uj) => {
-                        let delta_uj = energy_uj.saturating_sub(last_dram);
-                        let power_mw = (delta_uj * 1000 / period_us) as u32;
-                        if state.last_dram_power_mw != Some(power_mw) {
-                            changed = true;
-                        }
-                        state.last_dram_power_mw = Some(power_mw);
+                        let sample_at = Instant::now();
+                        let power_mw = match (
+                            state.last_dram_energy_uj,
+                            state.last_dram_sample_at,
+                        ) {
+                            (Some(last_energy_uj), Some(last_sample_at)) => {
+                                let power_mw = power_from_energy_delta(
+                                    energy_uj,
+                                    last_energy_uj,
+                                    sample_at.duration_since(last_sample_at),
+                                );
+                                if state.last_dram_power_mw != Some(power_mw) {
+                                    changed = true;
+                                }
+                                Some(power_mw)
+                            }
+                            _ => None,
+                        };
                         state.last_dram_energy_uj = Some(energy_uj);
-                        Some(power_mw)
+                        state.last_dram_sample_at = Some(sample_at);
+                        state.last_dram_power_mw = power_mw;
+                        power_mw
                     }
                     Err(e) => {
                         tracing::warn!("Failed to read CPU {} DRAM energy: {}", cpu_id, e);
                         state.last_dram_power_mw
                     }
-                },
-                None => None,
+                }
+            } else {
+                None
             };
 
             if changed || !has_broadcast {
@@ -202,5 +237,27 @@ async fn cpu_power_poll_task<T: CpuManager>(
         }
 
         tracing::info!("CPU power poller pausing for CPU {}", cpu_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn power_uses_measured_elapsed_time() {
+        assert_eq!(
+            power_from_energy_delta(20_000, 0, Duration::from_millis(100)),
+            200,
+        );
+        assert_eq!(
+            power_from_energy_delta(20_000, 0, Duration::from_millis(200)),
+            100,
+        );
+    }
+
+    #[test]
+    fn power_handles_zero_elapsed_without_dividing_by_zero() {
+        assert_eq!(power_from_energy_delta(10, 0, Duration::ZERO), 10_000);
     }
 }

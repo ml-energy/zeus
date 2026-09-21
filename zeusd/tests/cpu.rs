@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio_stream::StreamExt;
 use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::RaplResponse;
 use zeusd::devices::cpu::{CpuManager, PackageInfo};
@@ -242,6 +243,8 @@ struct PollCountingCpu {
     poll_count: Arc<AtomicUsize>,
     cpu_energy_uj: u64,
     dram_energy_uj: u64,
+    fail_cpu_read_number: Option<usize>,
+    fail_first_dram_read: bool,
 }
 
 impl CpuManager for PollCountingCpu {
@@ -273,13 +276,23 @@ impl CpuManager for PollCountingCpu {
     }
 
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
-        self.poll_count.fetch_add(1, Ordering::Relaxed);
+        let read_number = self.poll_count.fetch_add(1, Ordering::Relaxed);
+        if self.fail_cpu_read_number == Some(read_number) {
+            // Model energy continuing to accumulate while this read is lost.
+            self.cpu_energy_uj += 10_000;
+            return Err(ZeusdError::CpuPowerMeasurementError(0));
+        }
+
         let value = self.cpu_energy_uj;
         self.cpu_energy_uj += 10_000;
         Ok(value)
     }
 
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
+        if std::mem::take(&mut self.fail_first_dram_read) {
+            return Err(ZeusdError::CpuPowerMeasurementError(0));
+        }
+
         let value = self.dram_energy_uj;
         self.dram_energy_uj += 5_000;
         Ok(value)
@@ -298,11 +311,15 @@ async fn test_cpu_power_polls_only_subscribed_cpu() {
         poll_count: poll_count_0.clone(),
         cpu_energy_uj: 0,
         dram_energy_uj: 0,
+        fail_cpu_read_number: None,
+        fail_first_dram_read: false,
     };
     let cpu_1 = PollCountingCpu {
         poll_count: poll_count_1.clone(),
         cpu_energy_uj: 0,
         dram_energy_uj: 0,
+        fail_cpu_read_number: None,
+        fail_first_dram_read: false,
     };
     let broadcasts = start_cpu_poller(vec![(0, cpu_0), (1, cpu_1)], 100);
     let broadcast_1 = broadcasts.get(1).expect("Missing CPU 1 broadcast");
@@ -313,6 +330,86 @@ async fn test_cpu_power_polls_only_subscribed_cpu() {
     assert_eq!(poll_count_0.load(Ordering::Relaxed), 0);
     assert!(poll_count_1.load(Ordering::Relaxed) > 0);
 
+    drop(guard);
+}
+
+#[tokio::test]
+async fn test_cpu_power_stream_uses_full_elapsed_time_after_read_failure() {
+    let cpu = PollCountingCpu {
+        poll_count: Arc::new(AtomicUsize::new(0)),
+        cpu_energy_uj: 0,
+        dram_energy_uj: 0,
+        // Read 0 establishes the baseline. Read 1 fails after another
+        // interval of energy has accumulated; read 2 then spans two ticks.
+        fail_cpu_read_number: Some(1),
+        fail_first_dram_read: false,
+    };
+    // Use a deliberately slow rate so the test task has ample time to observe
+    // each watch update rather than relying on coalescing behavior.
+    let broadcasts = start_cpu_poller(vec![(0, cpu)], 10);
+    let broadcast = broadcasts.get(0).expect("Missing CPU 0 broadcast");
+
+    let mut stream = Box::pin(broadcast.stream());
+    let guard = broadcast.add_subscriber();
+
+    // The failed CPU read still produces a snapshot because DRAM advances.
+    // Synchronizing on it makes the next stream item the recovery sample.
+    let failed_read_sample =
+        tokio::time::timeout(tokio::time::Duration::from_secs(2), stream.next())
+            .await
+            .expect("Timed out waiting for failed-read snapshot")
+            .expect("CPU power stream ended before failed-read snapshot");
+    assert_eq!(failed_read_sample.cpu_mw, 0);
+
+    let recovered_sample =
+        tokio::time::timeout(tokio::time::Duration::from_secs(2), stream.next())
+            .await
+            .expect("Timed out waiting for CPU power recovery")
+            .expect("CPU power stream ended before recovery sample");
+
+    // The mock accumulates 20,000 uJ across roughly two 100 ms intervals, so
+    // the correct result is about 100 mW. The old nominal-period math reports
+    // exactly 200 mW regardless of the elapsed time.
+    assert!(
+        recovered_sample.cpu_mw > 0 && recovered_sample.cpu_mw <= 150,
+        "post-failure power should use the full elapsed interval; got {} mW",
+        recovered_sample.cpu_mw,
+    );
+    drop(guard);
+}
+
+#[tokio::test]
+async fn test_cpu_power_stream_recovers_dram_after_initial_read_failure() {
+    let cpu = PollCountingCpu {
+        poll_count: Arc::new(AtomicUsize::new(0)),
+        cpu_energy_uj: 0,
+        dram_energy_uj: 0,
+        fail_cpu_read_number: None,
+        fail_first_dram_read: true,
+    };
+    let broadcasts = start_cpu_poller(vec![(0, cpu)], 100);
+    let broadcast = broadcasts.get(0).expect("Missing CPU 0 broadcast");
+
+    // Create the stream before waking the poller so the first transition after
+    // the failed DRAM baseline cannot be missed.
+    let mut stream = Box::pin(broadcast.stream());
+    let guard = broadcast.add_subscriber();
+
+    let recovered = tokio::time::timeout(tokio::time::Duration::from_secs(2), async {
+        while let Some(sample) = stream.next().await {
+            if sample.dram_mw.is_some() {
+                return true;
+            }
+        }
+        false
+    })
+    .await
+    .expect("Timed out waiting for DRAM power recovery");
+
+    assert!(
+        recovered,
+        "DRAM power should recover after the initial baseline read fails"
+    );
     drop(guard);
 }
 
