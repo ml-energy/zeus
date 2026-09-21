@@ -18,12 +18,19 @@ use zeusd::startup::{
 #[cfg(unix)]
 use zeusd::startup::{get_unix_listener, start_server_uds};
 
+const MIN_SIGNING_KEY_BYTES: usize = 32;
+
 /// Read the signing key from the given file path.
 fn read_signing_key(path: &str) -> anyhow::Result<Vec<u8>> {
     let key = std::fs::read(path)
         .map_err(|e| anyhow::anyhow!("Failed to read signing key from '{}': {}", path, e))?;
-    if key.is_empty() {
-        anyhow::bail!("Signing key file '{}' is empty", path);
+    if key.len() < MIN_SIGNING_KEY_BYTES {
+        anyhow::bail!(
+            "Signing key file '{}' is too short ({} bytes); at least {} bytes are required",
+            path,
+            key.len(),
+            MIN_SIGNING_KEY_BYTES,
+        );
     }
     Ok(key)
 }
@@ -191,4 +198,29 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signing_key_rejects_less_than_32_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("signing.key");
+        std::fs::write(&path, vec![0x5a; MIN_SIGNING_KEY_BYTES - 1]).unwrap();
+
+        let error = read_signing_key(path.to_str().unwrap()).unwrap_err();
+        assert!(error.to_string().contains("at least 32 bytes"));
+    }
+
+    #[test]
+    fn signing_key_accepts_32_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("signing.key");
+        let key = vec![0x5a; MIN_SIGNING_KEY_BYTES];
+        std::fs::write(&path, &key).unwrap();
+
+        assert_eq!(read_signing_key(path.to_str().unwrap()).unwrap(), key);
+    }
 }

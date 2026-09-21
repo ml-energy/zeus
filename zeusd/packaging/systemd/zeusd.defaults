@@ -17,5 +17,6 @@ ZEUSD_ARGS="--num-workers 10"
 # remove it too if you want a fully unprivileged daemon.
 #ZEUSD_ARGS="--num-workers 10 --enable gpu-read,cpu-read"
 #
-# TCP with JWT auth.
+# TCP with JWT auth. The signing key must contain at least 32 bytes and should
+# be generated with a cryptographically secure random source; see docs/zeusd/index.md.
 #ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path /etc/zeusd/signing.key"

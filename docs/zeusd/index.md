@@ -141,6 +141,11 @@ For distributed power streaming across nodes, see [Distributed Power Measurement
 
 JWT with per-user scopes. Skip if running on UDS or a trusted local network.
 
+HS256 signing-key files must contain at least 32 bytes. Generate keys from a
+cryptographically secure random source rather than a password, passphrase, or
+other human-chosen value. The OpenSSL command below starts from 32 random bytes
+(256 bits) before Base64 encoding them for a printable key file.
+
 ```sh
 # Generate a signing key (shared across daemons in a cluster).
 sudo install -d -m 0755 /etc/zeusd
@@ -157,6 +162,11 @@ zeusd token issue --signing-key-path /etc/zeusd/signing.key \
 ```
 
 `--expires` accepts `1h`, `7d`, `30d`, or `never`. Hand the token to applications via `ZEUSD_TOKEN`, or `-H "Authorization: Bearer ..."` for curl. `/discover` and `/time` never require auth.
+Both `zeusd serve` and `zeusd token issue` reject signing-key files shorter
+than 32 bytes. `--expires` accepts `1h`, `7d`, `30d`, or `never`. Hand the
+token to applications via `ZEUSD_TOKEN`, or
+`-H "Authorization: Bearer ..."` for curl. `/discover` and `/time` never
+require auth.
 
 ## Notes on Platforms
 
