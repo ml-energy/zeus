@@ -11,7 +11,7 @@ use super::{power_stream_response, resolve_read_device_ids, resolve_stream_devic
 use crate::devices::cpu::power::{CpuDramPower, CpuPowerBroadcasts, CpuPowerSnapshot};
 use crate::devices::cpu::{CpuCommand, CpuManagementTasks, RaplResponse};
 use crate::error::{aggregate_error_response, ZeusdError};
-use crate::power_streaming::unix_timestamp_ms;
+use crate::power_streaming::{power_poll_period_us, unix_timestamp_ms};
 
 /// Query parameters for CPU read endpoints.
 /// `cpu_ids` is optional; omit to read all CPUs.
@@ -29,7 +29,7 @@ pub struct CpuPowerSamplingPeriod {
 impl CpuPowerSamplingPeriod {
     pub fn from_poll_hz(poll_hz: u32) -> Self {
         Self {
-            period_us: (1_000_000u64 / poll_hz.max(1) as u64).max(1),
+            period_us: power_poll_period_us(poll_hz),
         }
     }
 }
