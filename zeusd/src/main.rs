@@ -57,8 +57,8 @@ fn handle_token_command(action: TokenCommand) -> anyhow::Result<()> {
 async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> {
     tracing::info!("Loaded {:?}", config);
 
-    let cpu_poll_period_us = 1_000_000u64 / config.cpu_power_poll_hz.max(1) as u64;
-    if cpu_poll_period_us < 1_000 {
+    if config.cpu_power_poll_hz >= 100 {
+        let cpu_poll_period_us = 1_000_000u64 / config.cpu_power_poll_hz.max(1) as u64;
         tracing::warn!(
             "From the requested polling frequency, the interval between polling will be {} us. \
              A high polling frequency can in turn increase the power draw of the processor.",
