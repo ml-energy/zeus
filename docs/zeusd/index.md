@@ -161,7 +161,6 @@ zeusd token issue --signing-key-path /etc/zeusd/signing.key \
     --user alice --scope gpu-read --expires 7d
 ```
 
-`--expires` accepts `1h`, `7d`, `30d`, or `never`. Hand the token to applications via `ZEUSD_TOKEN`, or `-H "Authorization: Bearer ..."` for curl. `/discover` and `/time` never require auth.
 Both `zeusd serve` and `zeusd token issue` reject signing-key files shorter
 than 32 bytes. `--expires` accepts `1h`, `7d`, `30d`, or `never`. Hand the
 token to applications via `ZEUSD_TOKEN`, or
