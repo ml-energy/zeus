@@ -79,10 +79,8 @@ pub fn start_cpu_poller<T: CpuManager + Send + 'static>(
 
 /// Per-CPU energy tracking state for computing power from energy deltas.
 struct CpuEnergyState {
-    last_cpu_energy_uj: u64,
-    last_cpu_sample_at: Instant,
-    last_dram_energy_uj: Option<u64>,
-    last_dram_sample_at: Option<Instant>,
+    last_cpu_energy_uj: (u64, Instant),
+    last_dram_energy_uj: Option<(u64, Instant)>,
     last_cpu_power_mw: u32,
     last_dram_power_mw: Option<u32>,
 }
@@ -121,26 +119,24 @@ async fn cpu_power_poll_task<T: CpuManager>(
             match cpu.get_cpu_energy() {
                 Ok(cpu_energy) => {
                     let cpu_sample_at = Instant::now();
-                    let (dram_energy, dram_sample_at) = if cpu.is_dram_available() {
+                    let dram_energy = if cpu.is_dram_available() {
                         match cpu.get_dram_energy() {
-                            Ok(energy) => (Some(energy), Some(Instant::now())),
+                            Ok(energy) => Some((energy, Instant::now())),
                             Err(e) => {
                                 tracing::warn!(
                                     "Failed to prime CPU {} DRAM energy baseline: {}",
                                     cpu_id,
                                     e
                                 );
-                                (None, None)
+                                None
                             }
                         }
                     } else {
-                        (None, None)
+                        None
                     };
                     break CpuEnergyState {
-                        last_cpu_energy_uj: cpu_energy,
-                        last_cpu_sample_at: cpu_sample_at,
+                        last_cpu_energy_uj: (cpu_energy, cpu_sample_at),
                         last_dram_energy_uj: dram_energy,
-                        last_dram_sample_at: dram_sample_at,
                         last_cpu_power_mw: 0,
                         last_dram_power_mw: if dram_energy.is_some() { Some(0) } else { None },
                     };
@@ -168,17 +164,17 @@ async fn cpu_power_poll_task<T: CpuManager>(
             let cpu_power_mw = match cpu.get_cpu_energy() {
                 Ok(energy_uj) => {
                     let sample_at = Instant::now();
+                    let (last_energy_uj, last_sample_at) = state.last_cpu_energy_uj;
                     let power_mw = power_from_energy_delta(
                         energy_uj,
-                        state.last_cpu_energy_uj,
-                        sample_at.duration_since(state.last_cpu_sample_at),
+                        last_energy_uj,
+                        sample_at.duration_since(last_sample_at),
                     );
                     if power_mw != state.last_cpu_power_mw {
                         changed = true;
                     }
                     state.last_cpu_power_mw = power_mw;
-                    state.last_cpu_energy_uj = energy_uj;
-                    state.last_cpu_sample_at = sample_at;
+                    state.last_cpu_energy_uj = (energy_uj, sample_at);
                     power_mw
                 }
                 Err(e) => {
@@ -191,9 +187,8 @@ async fn cpu_power_poll_task<T: CpuManager>(
                 match cpu.get_dram_energy() {
                     Ok(energy_uj) => {
                         let sample_at = Instant::now();
-                        let power_mw = match (state.last_dram_energy_uj, state.last_dram_sample_at)
-                        {
-                            (Some(last_energy_uj), Some(last_sample_at)) => {
+                        let power_mw = match state.last_dram_energy_uj {
+                            Some((last_energy_uj, last_sample_at)) => {
                                 let power_mw = power_from_energy_delta(
                                     energy_uj,
                                     last_energy_uj,
@@ -204,10 +199,9 @@ async fn cpu_power_poll_task<T: CpuManager>(
                                 }
                                 Some(power_mw)
                             }
-                            _ => None,
+                            None => None,
                         };
-                        state.last_dram_energy_uj = Some(energy_uj);
-                        state.last_dram_sample_at = Some(sample_at);
+                        state.last_dram_energy_uj = Some((energy_uj, sample_at));
                         state.last_dram_power_mw = power_mw;
                         power_mw
                     }
