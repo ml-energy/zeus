@@ -16,12 +16,14 @@ use tokio::sync::{watch, Notify};
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::WatchStream;
 use tokio_stream::Stream;
+
 const MICROS_PER_SECOND: u64 = 1_000_000;
 
 /// Convert a polling frequency to the whole-microsecond period used by Tokio.
 ///
-/// CLI callers are range-checked separately. The clamps keep direct library
-/// callers from producing either a zero frequency or a zero-duration interval.
+/// The clamps preserve the existing zero-frequency behavior and ensure that
+/// arbitrarily high requested frequencies cannot produce a zero-duration
+/// Tokio interval.
 pub fn power_poll_period_us(poll_hz: u32) -> u64 {
     (MICROS_PER_SECOND / u64::from(poll_hz.max(1))).max(1)
 }
@@ -171,7 +173,9 @@ mod tests {
         assert_eq!(power_poll_period_us(0), 1_000_000);
         assert_eq!(power_poll_period_us(1), 1_000_000);
         assert_eq!(power_poll_period_us(3), 333_333);
+        assert_eq!(power_poll_period_us(1_000), 1_000);
+        assert_eq!(power_poll_period_us(1_001), 999);
         assert_eq!(power_poll_period_us(1_000_000), 1);
-        assert_eq!(power_poll_period_us(1_000_001), 1);
+        assert_eq!(power_poll_period_us(u32::MAX), 1);
     }
 }

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use zeusd::auth::{issue_token, SigningKeyData};
 use zeusd::config::{get_cli, ApiGroup, Command, ConnectionMode, TokenCommand};
 use zeusd::devices::gpu::command_override::GpuCommandOverrides;
+use zeusd::power_streaming::power_poll_period_us;
 use zeusd::routes::CpuPowerSamplingPeriod;
 use zeusd::routes::DiscoveryInfo;
 #[cfg(windows)]
@@ -53,9 +54,25 @@ fn handle_token_command(action: TokenCommand) -> anyhow::Result<()> {
     }
 }
 
+const HIGH_POWER_POLL_WARNING_THRESHOLD_US: u64 = 1_000;
+
+fn warn_for_high_power_poll_frequency(poll_hz: u32) {
+    let period_us = power_poll_period_us(poll_hz);
+    if period_us < HIGH_POWER_POLL_WARNING_THRESHOLD_US {
+        tracing::warn!(
+            "From the requested polling frequency, the interval between polling will be {} us. \
+             A high polling frequency can in turn increase the power draw of the processor.",
+            period_us,
+        );
+    }
+}
+
 /// Handle `zeusd serve`.
 async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> {
     tracing::info!("Loaded {:?}", config);
+
+    warn_for_high_power_poll_frequency(config.gpu_power_poll_hz);
+    warn_for_high_power_poll_frequency(config.cpu_power_poll_hz);
 
     let mut gpu_command_overrides = match &config.gpu_command_overrides {
         Some(path) => Some(Arc::new(GpuCommandOverrides::load(path)?)),

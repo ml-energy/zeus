@@ -2,19 +2,9 @@ use clap::Parser;
 use zeusd::config::Cli;
 
 #[test]
-fn power_poll_frequencies_reject_zero_and_sub_microsecond_periods() {
+fn power_poll_frequencies_remain_unrestricted_u32_values() {
     for option in ["--gpu-power-poll-hz", "--cpu-power-poll-hz"] {
-        for value in ["0", "1000001"] {
-            let result = Cli::try_parse_from(["zeusd", "serve", option, value]);
-            assert!(result.is_err(), "expected {option}={value} to be rejected");
-        }
-    }
-}
-
-#[test]
-fn power_poll_frequencies_accept_supported_boundaries() {
-    for option in ["--gpu-power-poll-hz", "--cpu-power-poll-hz"] {
-        for value in ["1", "1000000"] {
+        for value in ["0", "1", "1000", "1001", "1000001", "4294967295"] {
             let result = Cli::try_parse_from(["zeusd", "serve", option, value]);
             assert!(result.is_ok(), "expected {option}={value} to be accepted");
         }
