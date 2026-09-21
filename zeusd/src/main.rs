@@ -57,6 +57,27 @@ fn handle_token_command(action: TokenCommand) -> anyhow::Result<()> {
 async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> {
     tracing::info!("Loaded {:?}", config);
 
+    if config.cpu_power_poll_hz >= 100 {
+        let cpu_poll_period_us = 1_000_000u64 / config.cpu_power_poll_hz.max(1) as u64;
+        tracing::warn!(
+            "From the requested polling frequency, the interval between polling will be {} us. \
+             A high polling frequency can in turn increase the power draw of the processor.",
+            cpu_poll_period_us,
+        );
+    }
+
+    if config.gpu_power_poll_hz >= 50 {
+        let gpu_poll_period_us = 1_000_000u64 / config.gpu_power_poll_hz.max(1) as u64;
+        tracing::warn!(
+            "From the requested polling frequency, the interval between polling will be {} us. \
+             GPUs often do not provide very fine-grained power counters (e.g., many NVIDIA GPU \
+             power counters refresh at max 10 Hz), so polling frequencies significantly faster \
+             than that will not provide more fine-grained measurements. Please verify your GPU \
+             model's power counter refresh speed.",
+            gpu_poll_period_us,
+        );
+    }
+
     let mut gpu_command_overrides = match &config.gpu_command_overrides {
         Some(path) => Some(Arc::new(GpuCommandOverrides::load(path)?)),
         None => None,
