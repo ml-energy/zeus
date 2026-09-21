@@ -56,12 +56,16 @@ To avoid running applications as root, Zeus provides a privileged daemon.
 
 **Daemon Security Considerations**
 
-- Runs as root by design
-- No authentication mechanism on its own
-- Socket permission is configurable, so Linux file permissions should be used to restrict access
+- Privileged API groups require the OS privileges needed by the underlying operation
+  - Linux rejects root-required API groups at startup when `zeusd` is not root
+  - Windows does not perform an equivalent startup elevation check; insufficient NVML privileges surface as request failures
+- Unix-domain-socket access is controlled with filesystem permissions
   - 666 to allow all users
   - Create a dedicated user group, change the socket group to that, and set permissions to 660
-- Exposes GPU configuration changes to any process with socket access
+- TCP supports JWT authentication with per-user API-group scopes
+- Unauthenticated TCP is limited to loopback addresses by default; non-loopback listeners require a signing key unless the operator explicitly opts in with `--allow-unauthenticated-tcp`
+- JWT authenticates requests but does not encrypt HTTP transport; use TLS or an encrypted tunnel across untrusted networks
+- Exposes GPU configuration changes and privileged CPU measurements to any client authorized to access the corresponding API group
 
 ## Additional Resources
 

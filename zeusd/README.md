@@ -44,12 +44,20 @@ All three transports serve the same HTTP API:
 # Unix domain socket (Linux default)
 sudo zeusd serve --socket-path /run/zeusd/zeusd.sock --socket-permissions 666
 
-# TCP (cluster-wide monitoring; required for Python clients on Windows)
-sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
+# TCP on Linux (privileged API groups enabled by default)
+sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path ./signing.key
+
+# TCP on Windows (from elevated PowerShell)
+zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path ./signing.key
 
 # Windows named pipe (Windows default; from an elevated PowerShell)
 zeusd serve --pipe-name \\.\pipe\zeusd
 ```
+
+The TCP examples assume `./signing.key` already exists. Unauthenticated TCP is
+allowed by default only on loopback addresses. On a trusted isolated network,
+remote unauthenticated TCP requires the explicit `--allow-unauthenticated-tcp`
+opt-in. See the full documentation for signing-key and token setup.
 
 The daemon searches for `libamd_smi.so` once at startup: `/opt/rocm/lib`, then the newest `/opt/rocm-*/lib`, then the dynamic loader paths. Setting `AMDSMI_LIB_DIR` (a library directory) or `ROCM_PATH` (a ROCm installation root) restricts the search to that installation, e.g. `ROCM_PATH=/opt/rocm-7.2.0 zeusd serve`.
 

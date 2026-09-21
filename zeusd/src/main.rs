@@ -1,6 +1,6 @@
 //! Entry point for the Zeus daemon.
 
-use std::net::TcpListener;
+use std::net::{IpAddr, TcpListener};
 use std::sync::Arc;
 
 use zeusd::auth::{issue_token, SigningKeyData};
@@ -26,6 +26,33 @@ fn read_signing_key(path: &str) -> anyhow::Result<Vec<u8>> {
         anyhow::bail!("Signing key file '{}' is empty", path);
     }
     Ok(key)
+}
+
+/// Return whether a bound address is loopback, including IPv4-mapped IPv6.
+fn is_loopback_ip(ip: IpAddr) -> bool {
+    ip.to_canonical().is_loopback()
+}
+
+/// Bind a TCP listener and reject remote unauthenticated exposure by default.
+fn bind_tcp_listener(
+    bind_address: &str,
+    authentication_enabled: bool,
+    allow_unauthenticated_tcp: bool,
+) -> anyhow::Result<TcpListener> {
+    let listener = TcpListener::bind(bind_address)?;
+    let local_addr = listener.local_addr()?;
+    if !authentication_enabled
+        && !allow_unauthenticated_tcp
+        && !is_loopback_ip(local_addr.ip())
+    {
+        anyhow::bail!(
+            "Refusing unauthenticated TCP listener on non-loopback address '{}'. \
+             Configure --signing-key-path or explicitly opt in with \
+             --allow-unauthenticated-tcp.",
+            local_addr,
+        );
+    }
+    Ok(listener)
 }
 
 #[tokio::main]
@@ -97,16 +124,9 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
                 jsonwebtoken::DecodingKey::from_secret(&key_bytes),
             )))
         }
-        None => {
-            if config.mode == ConnectionMode::TCP {
-                tracing::warn!(
-                    "Running in TCP mode without authentication. \
-                     Set --signing-key-path for production use."
-                );
-            }
-            None
-        }
+        None => None,
     };
+    let auth_required = signing_key_data.is_some();
 
     // Conditionally initialize GPU devices.
     let (gpu_device_tasks, gpu_power_broadcast, gpus) = if config.needs_gpu() {
@@ -137,7 +157,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
         gpus,
         cpus,
         enabled_api_groups: config.enable.iter().map(|g| g.to_string()).collect(),
-        auth_required: signing_key_data.is_some(),
+        auth_required,
     };
     tracing::info!("Discovery: {:?}", serde_json::to_string(&discovery_info)?);
 
@@ -177,8 +197,24 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
             start_server_uds(listener, state, num_workers)?.await?;
         }
         ConnectionMode::TCP => {
-            let listener = TcpListener::bind(&config.tcp_bind_address)?;
-            tracing::info!("Listening on {}", &listener.local_addr()?);
+            let listener = bind_tcp_listener(
+                &config.tcp_bind_address,
+                auth_required,
+                config.allow_unauthenticated_tcp,
+            )?;
+            let local_addr = listener.local_addr()?;
+            if !auth_required {
+                if config.allow_unauthenticated_tcp {
+                    tracing::warn!(
+                        "Running unauthenticated TCP on {} because \
+                         --allow-unauthenticated-tcp was explicitly set.",
+                        local_addr,
+                    );
+                } else {
+                    tracing::info!("Running unauthenticated loopback TCP on {}", local_addr);
+                }
+            }
+            tracing::info!("Listening on {}", local_addr);
 
             start_server_tcp(listener, state, num_workers)?.await?;
         }
@@ -191,4 +227,41 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_detection_canonicalizes_ipv4_mapped_ipv6() {
+        assert!(is_loopback_ip("127.0.0.1".parse().unwrap()));
+        assert!(is_loopback_ip("::1".parse().unwrap()));
+        assert!(is_loopback_ip("::ffff:127.0.0.1".parse().unwrap()));
+        assert!(!is_loopback_ip("0.0.0.0".parse().unwrap()));
+        assert!(!is_loopback_ip("::".parse().unwrap()));
+    }
+
+    #[test]
+    fn unauthenticated_tcp_allows_loopback() {
+        let listener = bind_tcp_listener("127.0.0.1:0", false, false).unwrap();
+        assert!(is_loopback_ip(listener.local_addr().unwrap().ip()));
+    }
+
+    #[test]
+    fn unauthenticated_tcp_rejects_non_loopback() {
+        let error = bind_tcp_listener("0.0.0.0:0", false, false).unwrap_err();
+        assert!(error.to_string().contains("Refusing unauthenticated TCP"));
+        assert!(error.to_string().contains("--signing-key-path"));
+    }
+
+    #[test]
+    fn authentication_allows_non_loopback() {
+        bind_tcp_listener("0.0.0.0:0", true, false).unwrap();
+    }
+
+    #[test]
+    fn explicit_opt_in_allows_unauthenticated_non_loopback() {
+        bind_tcp_listener("0.0.0.0:0", false, true).unwrap();
+    }
 }

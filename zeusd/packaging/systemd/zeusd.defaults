@@ -10,12 +10,13 @@ ZEUSD_ARGS="--num-workers 10"
 
 # Alternatives -- uncomment one and comment out the line above:
 #
-# TCP mode (all interfaces, port 4938). For production, also set --signing-key-path.
-#ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938"
+# TCP with JWT auth (all interfaces, port 4938).
+#ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path /etc/zeusd/signing.key"
+#
+# TCP without JWT on all interfaces. Only use on a trusted isolated network;
+# the explicit opt-in prevents accidental remote unauthenticated exposure.
+#ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938 --allow-unauthenticated-tcp"
 #
 # Monitoring-only (drop gpu-control). cpu-read still needs root for RAPL;
 # remove it too if you want a fully unprivileged daemon.
 #ZEUSD_ARGS="--num-workers 10 --enable gpu-read,cpu-read"
-#
-# TCP with JWT auth.
-#ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path /etc/zeusd/signing.key"

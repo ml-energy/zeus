@@ -38,9 +38,14 @@ cargo install zeusd --no-default-features --features amdsmi
     # Windows (named pipe, default; from elevated PowerShell)
     zeusd serve --pipe-name \\.\pipe\zeusd
 
-    # TCP for cluster-wide monitoring, or for Python clients on Windows
-    sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938
+    # TCP on Linux (privileged API groups enabled by default)
+    sudo zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path ./signing.key
+
+    # TCP on Windows (from elevated PowerShell)
+    zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path ./signing.key
     ```
+
+    The TCP examples assume `./signing.key` already exists.
 
 === "systemd"
 
@@ -102,7 +107,17 @@ cargo install zeusd --no-default-features --features amdsmi
     On SELinux hosts, use `--security-opt label=disable` instead of the AppArmor flag.
     `--privileged` also works for AMD control if the fine-grained flags give you trouble.
 
-    For TCP instead of UDS, publish the port: `docker run -d -p 4938:4938 mlenergy/zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938`.
+    For authenticated TCP instead of UDS, mount the signing key and publish the port:
+
+    ```sh
+    docker run -d -p 4938:4938 \
+        -v "$(pwd)/signing.key:/run/secrets/zeusd-signing.key:ro" \
+        mlenergy/zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938 \
+        --signing-key-path /run/secrets/zeusd-signing.key
+    ```
+
+    On a trusted isolated network, remote unauthenticated TCP requires the
+    explicit `--allow-unauthenticated-tcp` opt-in.
     To use a host ROCm installation instead of the bundled AMD SMI library, mount it and point `AMDSMI_LIB_DIR` at it, e.g., `-v /opt/rocm-7.2.0:/opt/rocm-7.2.0:ro -e AMDSMI_LIB_DIR=/opt/rocm-7.2.0/lib`.
 
 Defaults to all API groups on Linux, GPU only on Windows.
@@ -137,9 +152,15 @@ For lower-level access: [`ZeusdClient`][zeus.utils.zeusd.ZeusdClient] is a typed
 
 For distributed power streaming across nodes, see [Distributed Power Measurement and Aggregation](../measure/index.md#distributed-power-measurement-and-aggregation).
 
-## Authentication (optional)
+## Authentication
 
-JWT with per-user scopes. Skip if running on UDS or a trusted local network.
+JWT with per-user scopes. Authentication is optional for UDS and loopback-only
+TCP. A non-loopback TCP listener requires `--signing-key-path` unless the
+operator explicitly opts in with `--allow-unauthenticated-tcp`.
+
+JWT authenticates requests but does not encrypt the HTTP transport. When TCP
+traffic can cross an untrusted network, place `zeusd` behind TLS or carry the
+connection through an encrypted tunnel.
 
 ```sh
 # Generate a signing key (shared across daemons in a cluster).

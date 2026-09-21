@@ -153,6 +153,11 @@ pub struct ServeConfig {
     #[clap(long, default_value = "127.0.0.1:4938")]
     pub tcp_bind_address: String,
 
+    /// [TCP mode] Allow an unauthenticated listener on a non-loopback address.
+    /// This is unsafe on untrusted networks and must be explicitly opted into.
+    #[clap(long)]
+    pub allow_unauthenticated_tcp: bool,
+
     /// Number of worker threads to use. Default is the number of logical CPUs.
     #[clap(long)]
     pub num_workers: Option<usize>,
