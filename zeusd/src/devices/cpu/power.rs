@@ -93,7 +93,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
 ) {
-    let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
+    let period_us = (1_000_000u64 / poll_hz.max(1) as u64).max(1);
 
     tracing::info!(
         "CPU RAPL power poller ready for CPU {} at {} Hz when subscribers are present",

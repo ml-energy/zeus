@@ -72,7 +72,7 @@ async fn gpu_power_poll_task<T: GpuManager>(
     subscriber_count: Arc<AtomicUsize>,
     wake: Arc<Notify>,
 ) {
-    let period_us = 1_000_000u64 / poll_hz.max(1) as u64;
+    let period_us = (1_000_000u64 / poll_hz.max(1) as u64).max(1);
     let mut last_power: Option<u32> = None;
 
     tracing::info!(

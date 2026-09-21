@@ -29,7 +29,7 @@ pub struct CpuPowerSamplingPeriod {
 impl CpuPowerSamplingPeriod {
     pub fn from_poll_hz(poll_hz: u32) -> Self {
         Self {
-            period_us: 1_000_000u64 / poll_hz.max(1) as u64,
+            period_us: (1_000_000u64 / poll_hz.max(1) as u64).max(1),
         }
     }
 }
