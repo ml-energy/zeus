@@ -71,7 +71,7 @@ jobs:
             type=match,pattern=zeus-(.*),group=1
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
