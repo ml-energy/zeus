@@ -36,7 +36,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Docker Hub login
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
@@ -104,7 +104,7 @@ jobs:
             type=match,pattern=zeusd-v(.*),group=1
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/zeusd-v') }}
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
