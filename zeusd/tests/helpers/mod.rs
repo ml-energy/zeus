@@ -16,7 +16,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use zeusd::auth::SigningKeyData;
 use zeusd::config::ApiGroup;
 use zeusd::devices::cpu::power::start_cpu_poller;
-use zeusd::devices::cpu::{CpuManagementTasks, CpuManager, PackageInfo};
+use zeusd::devices::cpu::{
+    CpuManagementTasks, CpuManager, PackageInfo, RaplConstraint, RaplPowerLimits, RaplZoneLimits,
+};
 use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
@@ -204,6 +206,7 @@ impl CpuManager for TestCpu {
             Arc::new(PackageInfo {
                 index: _index,
                 name: "package-0".to_string(),
+                zone_dir: PathBuf::from("/sys/class/powercap/intel-rapl/intel-rapl:0"),
                 energy_uj_path: PathBuf::from(
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
                 ),
@@ -212,6 +215,9 @@ impl CpuManager for TestCpu {
             Some(Arc::new(PackageInfo {
                 index: _index,
                 name: "dram".to_string(),
+                zone_dir: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0",
+                ),
                 energy_uj_path: PathBuf::from(
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
                 ),
@@ -250,6 +256,48 @@ impl CpuManager for TestCpu {
 
     fn is_dram_available(&self) -> bool {
         true
+    }
+
+    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError> {
+        Ok(test_power_limits())
+    }
+}
+
+/// Power limits that `TestCpu` reports for every CPU.
+fn test_power_limits() -> RaplPowerLimits {
+    RaplPowerLimits {
+        cpu: RaplZoneLimits {
+            enabled: true,
+            constraints: vec![
+                RaplConstraint {
+                    name: "long_term".to_string(),
+                    power_limit_mw: 205_000,
+                    max_power_mw: Some(205_000),
+                    time_window_us: Some(999_424),
+                },
+                RaplConstraint {
+                    name: "short_term".to_string(),
+                    power_limit_mw: 246_000,
+                    max_power_mw: Some(780_000),
+                    time_window_us: Some(999_424),
+                },
+                RaplConstraint {
+                    name: "peak_power".to_string(),
+                    power_limit_mw: 300_000,
+                    max_power_mw: Some(1_560_000),
+                    time_window_us: None,
+                },
+            ],
+        },
+        dram: Some(RaplZoneLimits {
+            enabled: false,
+            constraints: vec![RaplConstraint {
+                name: "long_term".to_string(),
+                power_limit_mw: 0,
+                max_power_mw: Some(121_000),
+                time_window_us: Some(976),
+            }],
+        }),
     }
 }
 
@@ -292,6 +340,7 @@ impl CpuManager for PowerTestCpu {
             Arc::new(PackageInfo {
                 index,
                 name: "package-0".to_string(),
+                zone_dir: PathBuf::from("/sys/class/powercap/intel-rapl/intel-rapl:0"),
                 energy_uj_path: PathBuf::from(
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
                 ),
@@ -300,6 +349,9 @@ impl CpuManager for PowerTestCpu {
             Some(Arc::new(PackageInfo {
                 index,
                 name: "dram".to_string(),
+                zone_dir: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0",
+                ),
                 energy_uj_path: PathBuf::from(
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
                 ),
@@ -322,6 +374,10 @@ impl CpuManager for PowerTestCpu {
 
     fn is_dram_available(&self) -> bool {
         true
+    }
+
+    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError> {
+        unimplemented!("The power poller does not read power limits")
     }
 }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import errno
 import os
 import pytest
 from typing import Generator, TYPE_CHECKING, Sequence
@@ -23,8 +24,10 @@ from zeus.device.cpu.rapl import (
     RAPL_DIR,
     RaplWraparoundTracker,
     _polling_process,
+    _read_zone_power_limits,
 )
 from zeus.device.cpu.common import CpuDramMeasurement
+from zeus.utils.zeusd import CpuDramPowerLimits, PowerLimitConstraint, ZonePowerLimits
 
 
 class MockRaplFileOutOfValues(Exception):
@@ -263,6 +266,143 @@ def test_rapl_cpu_class_exceptions(mocker, mock_os_listdir_cpu):
     assert cpu.path == os.path.join(RAPL_DIR, "intel-rapl:0")
     assert cpu.rapl_file == mock_rapl_file_package
     assert cpu.dram is None
+
+
+# Power limit tests
+def write_rapl_zone(
+    zone_dir: Path,
+    name: str,
+    enabled: str,
+    constraints: Sequence[tuple[str, int, int, int]],
+) -> None:
+    """Write the sysfs files of a RAPL zone.
+
+    Each constraint is `(name, power_limit_uw, max_power_uw, time_window_us)`.
+    """
+    zone_dir.mkdir(parents=True)
+    (zone_dir / "name").write_text(f"{name}\n")
+    (zone_dir / "energy_uj").write_text("1000\n")
+    (zone_dir / "max_energy_range_uj").write_text("262143328850\n")
+    (zone_dir / "enabled").write_text(f"{enabled}\n")
+    for index, (constraint_name, power_limit_uw, max_power_uw, time_window_us) in enumerate(constraints):
+        (zone_dir / f"constraint_{index}_name").write_text(f"{constraint_name}\n")
+        (zone_dir / f"constraint_{index}_power_limit_uw").write_text(f"{power_limit_uw}\n")
+        (zone_dir / f"constraint_{index}_max_power_uw").write_text(f"{max_power_uw}\n")
+        (zone_dir / f"constraint_{index}_time_window_us").write_text(f"{time_window_us}\n")
+
+
+PACKAGE_CONSTRAINTS = [
+    ("long_term", 205_000_000, 205_000_000, 999_424),
+    ("short_term", 246_000_000, 780_000_000, 999_424),
+]
+PACKAGE_LIMITS = ZonePowerLimits(
+    enabled=True,
+    constraints=[
+        PowerLimitConstraint(name="long_term", power_limit_mw=205_000, max_power_mw=205_000, time_window_us=999_424),
+        PowerLimitConstraint(name="short_term", power_limit_mw=246_000, max_power_mw=780_000, time_window_us=999_424),
+    ],
+)
+
+
+def test_rapl_cpu_get_power_limits(tmp_path):
+    """Test `RAPLCPU.get_power_limits` with package and DRAM zones."""
+    package_dir = tmp_path / "intel-rapl:0"
+    write_rapl_zone(package_dir, "package-0", "1", PACKAGE_CONSTRAINTS)
+    write_rapl_zone(package_dir / "intel-rapl:0:0", "dram", "0", [("long_term", 0, 121_000_000, 976)])
+
+    cpu = RAPLCPU(cpu_index=0, rapl_dir=str(tmp_path))
+
+    assert cpu.get_power_limits() == CpuDramPowerLimits(
+        cpu=PACKAGE_LIMITS,
+        dram=ZonePowerLimits(
+            enabled=False,
+            constraints=[
+                PowerLimitConstraint(name="long_term", power_limit_mw=0, max_power_mw=121_000, time_window_us=976),
+            ],
+        ),
+    )
+
+
+def test_rapl_cpu_get_power_limits_without_dram(tmp_path):
+    """Test `RAPLCPU.get_power_limits` without a DRAM zone."""
+    write_rapl_zone(tmp_path / "intel-rapl:0", "package-0", "1", PACKAGE_CONSTRAINTS)
+
+    cpu = RAPLCPU(cpu_index=0, rapl_dir=str(tmp_path))
+
+    assert cpu.get_power_limits() == CpuDramPowerLimits(cpu=PACKAGE_LIMITS, dram=None)
+
+
+def test_read_zone_power_limits_without_constraints(tmp_path):
+    """A zone without constraint files has an empty constraint list."""
+    write_rapl_zone(tmp_path / "zone", "package-0", "0", [])
+
+    assert _read_zone_power_limits(str(tmp_path / "zone")) == ZonePowerLimits(enabled=False, constraints=[])
+
+
+def test_read_zone_power_limits_missing_file(tmp_path):
+    """A constraint with a missing file raises an error."""
+    zone_dir = tmp_path / "zone"
+    write_rapl_zone(zone_dir, "package-0", "1", PACKAGE_CONSTRAINTS)
+    (zone_dir / "constraint_1_max_power_uw").unlink()
+
+    with pytest.raises(FileNotFoundError):
+        _read_zone_power_limits(str(zone_dir))
+
+
+def patch_open_to_fail(mocker, file: str, error: OSError) -> None:
+    """Make `open` raise `error` for paths ending in `file`, and behave normally otherwise."""
+    real_open = builtins.open
+
+    def open_or_fail(path, *args, **kwargs):
+        if str(path).endswith(file):
+            raise error
+        return real_open(path, *args, **kwargs)
+
+    mocker.patch("builtins.open", side_effect=open_or_fail)
+
+
+def test_read_zone_power_limits_enodata_attribute_is_none(tmp_path, mocker):
+    """Kernels 6.5 and later answer `ENODATA` for the time window of `peak_power`."""
+    zone_dir = tmp_path / "zone"
+    write_rapl_zone(zone_dir, "package-0", "1", [*PACKAGE_CONSTRAINTS, ("peak_power", 300_000_000, 1_560_000_000, 0)])
+    patch_open_to_fail(mocker, "constraint_2_time_window_us", OSError(errno.ENODATA, "No data available"))
+
+    limits = _read_zone_power_limits(str(zone_dir))
+
+    assert limits.constraints[:2] == PACKAGE_LIMITS.constraints
+    assert limits.constraints[2] == PowerLimitConstraint(
+        name="peak_power", power_limit_mw=300_000, max_power_mw=1_560_000, time_window_us=None
+    )
+
+
+@pytest.mark.parametrize(
+    "file",
+    [
+        "enabled",
+        "constraint_0_name",
+        "constraint_0_power_limit_uw",
+        "constraint_0_max_power_uw",
+        "constraint_0_time_window_us",
+    ],
+)
+def test_read_zone_power_limits_other_read_errors_propagate(tmp_path, mocker, file):
+    """Only `ENODATA` is tolerated, and only for optional attributes."""
+    zone_dir = tmp_path / "zone"
+    write_rapl_zone(zone_dir, "package-0", "1", PACKAGE_CONSTRAINTS)
+    patch_open_to_fail(mocker, file, PermissionError(errno.EACCES, "Permission denied"))
+
+    with pytest.raises(PermissionError):
+        _read_zone_power_limits(str(zone_dir))
+
+
+def test_read_zone_power_limits_enodata_power_limit_is_error(tmp_path, mocker):
+    """`power_limit_uw` is mandatory in powercap, so `ENODATA` on it is an error."""
+    zone_dir = tmp_path / "zone"
+    write_rapl_zone(zone_dir, "package-0", "1", PACKAGE_CONSTRAINTS)
+    patch_open_to_fail(mocker, "constraint_0_power_limit_uw", OSError(errno.ENODATA, "No data available"))
+
+    with pytest.raises(OSError):
+        _read_zone_power_limits(str(zone_dir))
 
 
 # RAPLCPUs tests

@@ -9,7 +9,9 @@ use tokio::time::{sleep, Duration};
 
 use super::{power_stream_response, resolve_read_device_ids, resolve_stream_device_ids};
 use crate::devices::cpu::power::{CpuDramPower, CpuPowerBroadcasts, CpuPowerSnapshot};
-use crate::devices::cpu::{CpuCommand, CpuManagementTasks, RaplResponse};
+use crate::devices::cpu::{
+    CpuCommand, CpuManagementTasks, CpuResponse, RaplPowerLimits, RaplResponse,
+};
 use crate::error::{aggregate_error_response, ZeusdError};
 use crate::power_streaming::unix_timestamp_ms;
 
@@ -88,8 +90,11 @@ async fn get_cumulative_energy_handler(
     let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
     for (cpu_id, result) in results {
         match result {
-            Ok(measurement) => {
+            Ok(CpuResponse::Energy(measurement)) => {
                 response_map.insert(cpu_id.to_string(), measurement);
+            }
+            Ok(_) => {
+                errors.insert(cpu_id, ZeusdError::CpuUnexpectedResponseError(cpu_id));
             }
             Err(e) => {
                 errors.insert(cpu_id, e);
@@ -134,8 +139,11 @@ async fn read_cpu_energy_for_power(
     let mut errors = HashMap::new();
     for (cpu_id, result) in results {
         match result {
-            Ok(response) => {
+            Ok(CpuResponse::Energy(response)) => {
                 responses.insert(cpu_id, response);
+            }
+            Ok(_) => {
+                errors.insert(cpu_id, ZeusdError::CpuUnexpectedResponseError(cpu_id));
             }
             Err(e) => {
                 errors.insert(cpu_id, e);
@@ -246,6 +254,60 @@ async fn get_cpu_power_handler(
     }
 }
 
+/// Power limit constraints of each requested CPU's package and DRAM zones.
+///
+/// Reads sysfs on every request, so the response reflects limits changed at runtime.
+#[actix_web::get("/get_power_limit")]
+#[tracing::instrument(skip(device_tasks), fields(cpu_ids = ?query.cpu_ids))]
+async fn get_power_limit_handler(
+    query: web::Query<CpuReadQuery>,
+    device_tasks: web::Data<CpuManagementTasks>,
+) -> HttpResponse {
+    let now = Instant::now();
+
+    let cpu_ids = match resolve_read_device_ids(&query.cpu_ids, device_tasks.device_count(), "CPU")
+    {
+        Ok(ids) => ids,
+        Err(resp) => return resp,
+    };
+
+    let mut handles = Vec::with_capacity(cpu_ids.len());
+    for &cpu_id in &cpu_ids {
+        let tasks = device_tasks.clone();
+        handles.push(async move {
+            (
+                cpu_id,
+                tasks
+                    .send_command_blocking(cpu_id, CpuCommand::GetPowerLimits, now)
+                    .await,
+            )
+        });
+    }
+    let results = futures::future::join_all(handles).await;
+
+    let mut response_map: BTreeMap<usize, RaplPowerLimits> = BTreeMap::new();
+    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
+    for (cpu_id, result) in results {
+        match result {
+            Ok(CpuResponse::PowerLimits(limits)) => {
+                response_map.insert(cpu_id, limits);
+            }
+            Ok(_) => {
+                errors.insert(cpu_id, ZeusdError::CpuUnexpectedResponseError(cpu_id));
+            }
+            Err(e) => {
+                errors.insert(cpu_id, e);
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        HttpResponse::Ok().json(response_map)
+    } else {
+        aggregate_error_response(errors)
+    }
+}
+
 /// SSE stream of CPU power readings.
 ///
 /// The subscriber guard keeps the poller active for the lifetime of the stream.
@@ -264,5 +326,6 @@ async fn cpu_power_stream_handler(
 pub fn cpu_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(get_cumulative_energy_handler)
         .service(get_cpu_power_handler)
+        .service(get_power_limit_handler)
         .service(cpu_power_stream_handler);
 }

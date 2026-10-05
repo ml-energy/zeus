@@ -7,7 +7,10 @@ import pytest
 
 from zeus.device.exception import ZeusdError
 from zeus.utils.zeusd import (
+    CpuDramPowerLimits,
     CpuInfo,
+    PowerLimitConstraint,
+    ZonePowerLimits,
     CpuDramPower,
     CpuEnergyResult,
     CpuPowerSnapshot,
@@ -178,6 +181,49 @@ def mock_zeusd(monkeypatch):
                             "cpu_energy_uj": 500000 + i * 50000,
                             "dram_energy_uj": 100000 if dram_available[j] else None,
                         }
+                        for j, i in enumerate(cpu_ids)
+                    },
+                )
+
+            if path == "/cpu/get_power_limit":
+                package = {
+                    "enabled": True,
+                    "constraints": [
+                        {
+                            "name": "long_term",
+                            "power_limit_mw": 205000,
+                            "max_power_mw": 205000,
+                            "time_window_us": 999424,
+                        },
+                        {
+                            "name": "short_term",
+                            "power_limit_mw": 246000,
+                            "max_power_mw": 780000,
+                            "time_window_us": 999424,
+                        },
+                        {
+                            "name": "peak_power",
+                            "power_limit_mw": 300000,
+                            "max_power_mw": 1560000,
+                            "time_window_us": None,
+                        },
+                    ],
+                }
+                dram = {
+                    "enabled": False,
+                    "constraints": [
+                        {
+                            "name": "long_term",
+                            "power_limit_mw": 0,
+                            "max_power_mw": 121000,
+                            "time_window_us": 976,
+                        },
+                    ],
+                }
+                return httpx.Response(
+                    200,
+                    json={
+                        str(i): {"cpu": package, "dram": dram if dram_available[j] else None}
                         for j, i in enumerate(cpu_ids)
                     },
                 )
@@ -686,6 +732,48 @@ class TestZeusdClientCpuRead:
         client = ZeusdClient(server.config)
         with pytest.raises(ZeusdError, match="get_cpu_power"):
             client.get_cpu_power()
+
+    def test_get_cpu_power_limit_all(self, mock_zeusd):
+        server = mock_zeusd(cpu_ids=(0, 1), dram_available=(True, False))
+        client = ZeusdClient(server.config)
+        result = client.get_cpu_power_limit()
+        package = ZonePowerLimits(
+            enabled=True,
+            constraints=[
+                PowerLimitConstraint(
+                    name="long_term", power_limit_mw=205000, max_power_mw=205000, time_window_us=999424
+                ),
+                PowerLimitConstraint(
+                    name="short_term", power_limit_mw=246000, max_power_mw=780000, time_window_us=999424
+                ),
+                PowerLimitConstraint(
+                    name="peak_power", power_limit_mw=300000, max_power_mw=1560000, time_window_us=None
+                ),
+            ],
+        )
+        dram = ZonePowerLimits(
+            enabled=False,
+            constraints=[
+                PowerLimitConstraint(name="long_term", power_limit_mw=0, max_power_mw=121000, time_window_us=976),
+            ],
+        )
+        assert result == {
+            0: CpuDramPowerLimits(cpu=package, dram=dram),
+            1: CpuDramPowerLimits(cpu=package, dram=None),
+        }
+        assert "cpu_ids" not in server.last_params()
+
+    def test_get_cpu_power_limit_filtered(self, mock_zeusd):
+        server = mock_zeusd()
+        client = ZeusdClient(server.config)
+        client.get_cpu_power_limit([0])
+        assert server.last_params()["cpu_ids"] == "0"
+
+    def test_get_cpu_power_limit_error(self, mock_zeusd):
+        server = mock_zeusd(endpoint_errors={"/cpu/get_power_limit": 500})
+        client = ZeusdClient(server.config)
+        with pytest.raises(ZeusdError, match="get_cpu_power_limit"):
+            client.get_cpu_power_limit()
 
 
 # ---------------------------------------------------------------------------

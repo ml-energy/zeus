@@ -114,8 +114,8 @@ Selectively enable with `--enable`:
 | Group | What | Needs root |
 |---|---|:---:|
 | `gpu-control` | `POST /gpu/{set,reset}_*` (power limit, locked clocks, persistence) | Yes |
-| `gpu-read` | `GET /gpu/{get,stream}_power`, `get_cumulative_energy` | No |
-| `cpu-read` (Linux) | `GET /cpu/{get,stream}_power`, `get_cumulative_energy` | Yes |
+| `gpu-read` | `GET /gpu/{get,stream}_power`, `get_cumulative_energy`, `get_power_limit`, `get_power_limit_constraints`, `get_persistence_mode` | No |
+| `cpu-read` (Linux) | `GET /cpu/{get,stream}_power`, `get_cumulative_energy`, `get_power_limit` | Yes |
 
 `/discover`, `/time`, and `/auth/whoami` are always available. On Linux, the daemon refuses to start if a root-required group is enabled without root; on Windows there's no admin check, and unprivileged NVML writes surface as HTTP 403.
 

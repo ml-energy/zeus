@@ -18,15 +18,21 @@ use serde::{Deserialize, Serialize};
 ///     - `POST /gpu/reset_gpu_locked_clocks`
 ///     - `POST /gpu/set_mem_locked_clocks`
 ///     - `POST /gpu/reset_mem_locked_clocks`
-///   - `gpu-read`: GPU monitoring (power readings, energy consumption).
-///     Does not require root.
+///     - `POST /gpu/reset_locked_clocks`
+///   - `gpu-read`: GPU monitoring (power readings, energy consumption, power
+///     limits, persistence mode). Does not require root.
 ///     - `GET /gpu/get_power`
 ///     - `GET /gpu/stream_power`
 ///     - `GET /gpu/get_cumulative_energy`
-///   - `cpu-read`: CPU RAPL monitoring (energy, power readings). Requires root.
+///     - `GET /gpu/get_power_limit`
+///     - `GET /gpu/get_power_limit_constraints`
+///     - `GET /gpu/get_persistence_mode`
+///   - `cpu-read`: CPU RAPL monitoring (energy, power readings, power limits).
+///     Requires root.
 ///     - `GET /cpu/get_cumulative_energy`
 ///     - `GET /cpu/get_power`
 ///     - `GET /cpu/stream_power`
+///     - `GET /cpu/get_power_limit`
 ///
 /// The following endpoints are always available regardless of enabled groups:
 ///   - `GET /discover`
@@ -37,9 +43,10 @@ pub enum ApiGroup {
     /// GPU control operations (set power limit, clocks, persistence mode).
     /// Requires root.
     GpuControl,
-    /// GPU read operations (power reading, energy consumption).
+    /// GPU read operations (power reading, energy consumption, power limits,
+    /// persistence mode).
     GpuRead,
-    /// CPU RAPL read operations (energy, power).
+    /// CPU RAPL read operations (energy, power, power limits).
     /// Requires root.
     CpuRead,
 }

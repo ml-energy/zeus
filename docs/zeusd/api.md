@@ -103,6 +103,7 @@ All endpoints are under `/cpu` (Linux only). `cpu_ids` is a comma-separated list
 | `GET` | `/cpu/get_cumulative_energy` | `cpu` (bool) and `dram` (bool), both required |
 | `GET` | `/cpu/get_power` | one-shot snapshot |
 | `GET` | `/cpu/stream_power` | SSE stream |
+| `GET` | `/cpu/get_power_limit` | RAPL power limit constraints |
 
 `get_cumulative_energy` response (fields nullable):
 
@@ -132,3 +133,31 @@ data: {"timestamp_ms": 1762000000000, "cpu_id": 0, "cpu_mw": 85000, "dram_mw": 1
 ```
 
 If `cpu_ids` is provided, only those CPU packages are polled.
+
+`get_power_limit` returns the power limits of each CPU package (`cpu`) and its DRAM zone (`dram`, `null` if absent):
+
+```json
+{
+  "0": {
+    "cpu": {
+      "enabled": true,
+      "constraints": [
+        {"name": "long_term", "power_limit_mw": 205000, "max_power_mw": 205000, "time_window_us": 999424},
+        {"name": "short_term", "power_limit_mw": 246000, "max_power_mw": 780000, "time_window_us": 999424},
+        {"name": "peak_power", "power_limit_mw": 300000, "max_power_mw": 1560000, "time_window_us": null}
+      ]
+    },
+    "dram": {
+      "enabled": false,
+      "constraints": [
+        {"name": "long_term", "power_limit_mw": 0, "max_power_mw": 121000, "time_window_us": 976}
+      ]
+    }
+  }
+}
+```
+
+Each field mirrors a file in the zone's powercap sysfs directory: `enabled` is `enabled`, and the constraint at array position `K` comes from the `constraint_K_*` files, with power converted to milliwatts.
+`constraints` is empty when the kernel exposes no power limits for the zone.
+`max_power_mw` and `time_window_us` are `null` when the kernel has no value for the attribute (its sysfs read fails with `ENODATA`); kernels 6.5 and later have no time window for `peak_power`.
+`enabled` reflects the zone's `long_term` limit only, and the kernel reports `false` when that limit is disabled, locked by the BIOS, or its enable bit could not be read.
