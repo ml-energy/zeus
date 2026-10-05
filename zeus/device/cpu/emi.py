@@ -30,7 +30,7 @@ from functools import lru_cache
 from typing import Sequence
 
 import zeus.device.cpu.common as cpu_common
-from zeus.device.cpu.common import CpuDramMeasurement
+from zeus.device.cpu.common import CpuDramMeasurement, CpuDramPowerLimits
 from zeus.device.exception import ZeusBaseCPUError
 
 logger = logging.getLogger(__name__)
@@ -606,6 +606,10 @@ class EMICPU(cpu_common.CPU):
     def supports_get_dram_energy_consumption(self) -> bool:
         """Return ``True`` if DRAM energy data is available for this package."""
         return self._dram_channel_index is not None
+
+    def get_power_limits(self) -> CpuDramPowerLimits:
+        """Raise an error because EMI does not expose CPU power limits."""
+        raise cpu_common.ZeusCPUNotSupportedError("EMI does not expose CPU power limits.")
 
 
 class EMICPUs(cpu_common.CPUs):

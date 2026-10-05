@@ -128,6 +128,53 @@ class CpuEnergyResult:
 
 
 @dataclass(frozen=True)
+class PowerLimitConstraint:
+    """One power limit constraint of a CPU RAPL power zone.
+
+    Attributes:
+        name: Constraint name reported by the kernel: `long_term`, `short_term`, or `peak_power`.
+        power_limit_mw: Configured power limit in milliwatts.
+        max_power_mw: Maximum power the kernel reports for this constraint in milliwatts,
+            or None if the kernel has no value for it.
+        time_window_us: Time window of the constraint in microseconds, or None if the kernel
+            has no value for it, which is the case for `peak_power` on kernels 6.5 and later.
+    """
+
+    name: str
+    power_limit_mw: int
+    max_power_mw: int | None
+    time_window_us: int | None
+
+
+@dataclass(frozen=True)
+class ZonePowerLimits:
+    """Power limit state of one CPU RAPL power zone.
+
+    Attributes:
+        enabled: Whether the kernel reports the zone's `long_term` limit as enabled.
+            The kernel reports False when the limit is disabled, when it is locked by the BIOS,
+            or when reading its enable bit failed; sysfs does not distinguish these cases.
+        constraints: Constraints in sysfs index order. Empty if the kernel exposes no power limits for the zone.
+    """
+
+    enabled: bool
+    constraints: list[PowerLimitConstraint]
+
+
+@dataclass(frozen=True)
+class CpuDramPowerLimits:
+    """Power limits of a CPU package and its DRAM.
+
+    Attributes:
+        cpu: Power limits of the CPU package zone.
+        dram: Power limits of the DRAM zone, or None if the package has no DRAM zone.
+    """
+
+    cpu: ZonePowerLimits
+    dram: ZonePowerLimits | None
+
+
+@dataclass(frozen=True)
 class ZeusdConfig:
     """Connection configuration for a Zeusd daemon.
 
@@ -646,6 +693,44 @@ class ZeusdClient:
                 int(k): CpuDramPower(cpu_mw=v["cpu_mw"], dram_mw=v.get("dram_mw")) for k, v in data["power_mw"].items()
             },
         )
+
+    def get_cpu_power_limit(self, cpu_ids: list[int] | None = None) -> dict[int, CpuDramPowerLimits]:
+        """Get the power limits of each CPU's package and DRAM zones.
+
+        Args:
+            cpu_ids: CPU indices to query.  None means all.
+
+        Returns:
+            Mapping of CPU index to power limits.
+        """
+
+        def parse_zone(zone: dict) -> ZonePowerLimits:
+            return ZonePowerLimits(
+                enabled=zone["enabled"],
+                constraints=[
+                    PowerLimitConstraint(
+                        name=c["name"],
+                        power_limit_mw=c["power_limit_mw"],
+                        max_power_mw=c["max_power_mw"],
+                        time_window_us=c["time_window_us"],
+                    )
+                    for c in zone["constraints"]
+                ],
+            )
+
+        params: dict[str, str] = {}
+        if cpu_ids is not None:
+            params["cpu_ids"] = ",".join(str(i) for i in cpu_ids)
+        resp = self._client.get(self._config.url("/cpu/get_power_limit"), params=params)
+        self._check(resp, "get_cpu_power_limit")
+        data = resp.json()
+        return {
+            int(k): CpuDramPowerLimits(
+                cpu=parse_zone(v["cpu"]),
+                dram=None if v["dram"] is None else parse_zone(v["dram"]),
+            )
+            for k, v in data.items()
+        }
 
     def get_time(self) -> float:
         """Get daemon timestamp in seconds."""

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import atexit
+import errno
 import logging
 import multiprocessing as mp
 import os
@@ -29,7 +30,14 @@ import zeus.device.cpu.common as cpu_common
 from zeus.device.cpu.common import CpuDramMeasurement
 from zeus.exception import ZeusBaseError
 from zeus.device.exception import ZeusBaseCPUError, ZeusdError
-from zeus.utils.zeusd import ZeusdClient, ZeusdConfig, require_capabilities
+from zeus.utils.zeusd import (
+    CpuDramPowerLimits,
+    PowerLimitConstraint,
+    ZeusdClient,
+    ZeusdConfig,
+    ZonePowerLimits,
+    require_capabilities,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +310,50 @@ class RAPLFile:
         return (new_energy_uj + num_wraparounds * self.max_energy_range_uj) / 1000.0
 
 
+def _read_zone_power_limits(zone_dir: str) -> ZonePowerLimits:
+    """Read the power limit state of a RAPL powercap zone.
+
+    The kernel numbers constraints from zero without gaps, so reading stops at the first index without a `constraint_K_name` file.
+    A constraint attribute the kernel has no value for fails with `ENODATA` (e.g., the time window of `peak_power`) and is read as None.
+
+    Raises:
+        OSError: If a power limit file cannot be read.
+        ValueError: If a power limit file has an unexpected value.
+    """
+
+    def read(file: str) -> str:
+        with open(os.path.join(zone_dir, file)) as f:
+            return f.read().strip()
+
+    def read_optional_int(file: str) -> int | None:
+        try:
+            return int(read(file))
+        except OSError as e:
+            if e.errno == errno.ENODATA:
+                return None
+            raise
+
+    enabled = read("enabled")
+    if enabled not in ("0", "1"):
+        raise ValueError(f"Unexpected value {enabled!r} in {os.path.join(zone_dir, 'enabled')}")
+
+    constraints = []
+    index = 0
+    while os.path.exists(os.path.join(zone_dir, f"constraint_{index}_name")):
+        max_power_uw = read_optional_int(f"constraint_{index}_max_power_uw")
+        constraints.append(
+            PowerLimitConstraint(
+                name=read(f"constraint_{index}_name"),
+                power_limit_mw=int(read(f"constraint_{index}_power_limit_uw")) // 1000,
+                max_power_mw=None if max_power_uw is None else max_power_uw // 1000,
+                time_window_us=read_optional_int(f"constraint_{index}_time_window_us"),
+            )
+        )
+        index += 1
+
+    return ZonePowerLimits(enabled=enabled == "1", constraints=constraints)
+
+
 class RAPLCPU(cpu_common.CPU):
     """Control a single CPU that supports RAPL."""
 
@@ -342,6 +394,13 @@ class RAPLCPU(cpu_common.CPU):
     def supports_get_dram_energy_consumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram is not None
+
+    def get_power_limits(self) -> CpuDramPowerLimits:
+        """Returns the power limits of the CPU package and DRAM zones."""
+        return CpuDramPowerLimits(
+            cpu=_read_zone_power_limits(self.path),
+            dram=None if self.dram is None else _read_zone_power_limits(self.dram.path),
+        )
 
 
 class ZeusdRAPLCPU(RAPLCPU):
@@ -389,6 +448,10 @@ class ZeusdRAPLCPU(RAPLCPU):
     def supports_get_dram_energy_consumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram_available
+
+    def get_power_limits(self) -> CpuDramPowerLimits:
+        """Returns the power limits of the CPU package and DRAM zones."""
+        return self._client.get_cpu_power_limit([self.cpu_index])[self.cpu_index]
 
 
 class RAPLCPUs(cpu_common.CPUs):

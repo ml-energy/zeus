@@ -16,6 +16,8 @@ use crate::error::ZeusdError;
 pub struct PackageInfo {
     pub index: usize,
     pub name: String,
+    /// The RAPL powercap zone directory.
+    pub zone_dir: PathBuf,
     pub energy_uj_path: PathBuf,
     pub max_energy_uj: u64,
 }
@@ -26,8 +28,46 @@ pub struct RaplResponse {
     pub dram_energy_uj: Option<u64>,
 }
 
-/// CPU response type.
-pub type CpuResponse = RaplResponse;
+/// One power limit constraint of a RAPL powercap zone.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RaplConstraint {
+    /// Constraint name reported by the kernel: `long_term`, `short_term`, or `peak_power`.
+    pub name: String,
+    pub power_limit_mw: u64,
+    /// None if the kernel has no value for this constraint (its sysfs read fails
+    /// with `ENODATA`).
+    pub max_power_mw: Option<u64>,
+    /// None if the kernel has no value for this constraint (its sysfs read fails
+    /// with `ENODATA`), which is the case for `peak_power` on kernels 6.5 and later.
+    pub time_window_us: Option<u64>,
+}
+
+/// Power limit state of one RAPL powercap zone.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RaplZoneLimits {
+    /// Whether the kernel reports the zone's `long_term` limit as enabled. The
+    /// kernel reports false when the limit is disabled, when it is locked by the
+    /// BIOS, or when reading its enable bit failed; sysfs does not distinguish
+    /// these cases.
+    pub enabled: bool,
+    /// Constraints in sysfs index order. Empty if the kernel exposes no
+    /// power limits for the zone.
+    pub constraints: Vec<RaplConstraint>,
+}
+
+/// Power limits of a CPU package zone and its DRAM zone.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RaplPowerLimits {
+    pub cpu: RaplZoneLimits,
+    pub dram: Option<RaplZoneLimits>,
+}
+
+/// Response from a CPU command.
+#[derive(Debug)]
+pub enum CpuResponse {
+    Energy(RaplResponse),
+    PowerLimits(RaplPowerLimits),
+}
 
 pub trait CpuManager {
     /// Get the number of CPUs available.
@@ -42,6 +82,8 @@ pub trait CpuManager {
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError>;
     /// Check if DRAM is available.
     fn is_dram_available(&self) -> bool;
+    /// Read the power limits of the CPU package zone and, if available, the DRAM zone.
+    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError>;
 }
 
 pub type CpuCommandRequest = (
@@ -105,6 +147,8 @@ impl CpuManagementTasks {
 pub enum CpuCommand {
     /// Get the CPU and DRAM energy measurement for the CPU index.
     GetIndexEnergy { cpu: bool, dram: bool },
+    /// Get the power limits of the CPU package and DRAM zones.
+    GetPowerLimits,
 }
 
 /// Tokio background task that handles requests to each CPU.
@@ -164,11 +208,12 @@ impl CpuCommand {
                 } else {
                     None
                 };
-                Ok(RaplResponse {
+                Ok(CpuResponse::Energy(RaplResponse {
                     cpu_energy_uj,
                     dram_energy_uj,
-                })
+                }))
             }
+            Self::GetPowerLimits => device.get_power_limits().map(CpuResponse::PowerLimits),
         }
     }
 }

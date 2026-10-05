@@ -46,6 +46,10 @@ class MockCPU(CPU):
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.dram_energy is not None
 
+    def get_power_limits(self):
+        """ZeusMonitor does not read power limits."""
+        raise NotImplementedError
+
 
 class MockCPUs(CPUs):
     """MOCK CPU Manager object, containing individual MOCKCPU objects for testing."""

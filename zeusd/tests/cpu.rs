@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio_stream::StreamExt;
 use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::RaplResponse;
-use zeusd::devices::cpu::{CpuManager, PackageInfo};
+use zeusd::devices::cpu::{CpuManager, PackageInfo, RaplPowerLimits};
 use zeusd::error::ZeusdError;
 use zeusd::routes::cpu::GetCumulativeEnergy;
 
@@ -157,6 +157,53 @@ async fn test_invalid_requests() {
 }
 
 #[tokio::test]
+async fn test_get_power_limit() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let expected = serde_json::json!({
+        "0": {
+            "cpu": {
+                "enabled": true,
+                "constraints": [
+                    {"name": "long_term", "power_limit_mw": 205000, "max_power_mw": 205000, "time_window_us": 999424},
+                    {"name": "short_term", "power_limit_mw": 246000, "max_power_mw": 780000, "time_window_us": 999424},
+                    {"name": "peak_power", "power_limit_mw": 300000, "max_power_mw": 1560000, "time_window_us": null},
+                ],
+            },
+            "dram": {
+                "enabled": false,
+                "constraints": [
+                    {"name": "long_term", "power_limit_mw": 0, "max_power_mw": 121000, "time_window_us": 976},
+                ],
+            },
+        },
+    });
+
+    for query in ["", "?cpu_ids=0"] {
+        let url = format!("http://127.0.0.1:{}/cpu/get_power_limit{query}", app.port);
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 200);
+        let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+        assert_eq!(body, expected);
+    }
+
+    // Out of index CPU and unknown query field.
+    for query in ["?cpu_ids=1", "?gpu_ids=0"] {
+        let url = format!("http://127.0.0.1:{}/cpu/get_power_limit{query}", app.port);
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 400);
+    }
+}
+
+#[tokio::test]
 async fn test_cpu_power_oneshot() {
     use crate::helpers::{
         POWER_TEST_CPU_INCREMENT_UJ, POWER_TEST_DRAM_INCREMENT_UJ, POWER_TEST_POLL_HZ,
@@ -259,6 +306,7 @@ impl CpuManager for PollCountingCpu {
             Arc::new(PackageInfo {
                 index,
                 name: "package-0".to_string(),
+                zone_dir: PathBuf::from("/sys/class/powercap/intel-rapl/intel-rapl:0"),
                 energy_uj_path: PathBuf::from(
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj",
                 ),
@@ -267,6 +315,9 @@ impl CpuManager for PollCountingCpu {
             Some(Arc::new(PackageInfo {
                 index,
                 name: "dram".to_string(),
+                zone_dir: PathBuf::from(
+                    "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0",
+                ),
                 energy_uj_path: PathBuf::from(
                     "/sys/class/powercap/intel-rapl/intel-rapl:0/intel-rapl:0:0/energy_uj",
                 ),
@@ -300,6 +351,10 @@ impl CpuManager for PollCountingCpu {
 
     fn is_dram_available(&self) -> bool {
         true
+    }
+
+    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError> {
+        unimplemented!("The power poller does not read power limits")
     }
 }
 

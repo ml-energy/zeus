@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from zeus.device.exception import ZeusBaseCPUError
 from zeus.device.common import deprecated_alias, DeprecatedAliasABCMeta
+from zeus.utils.zeusd import CpuDramPowerLimits
 
 
 @dataclass
@@ -87,6 +88,14 @@ class ZeusCPUNotFoundError(ZeusBaseCPUError):
         super().__init__(message)
 
 
+class ZeusCPUNotSupportedError(ZeusBaseCPUError):
+    """Zeus CPU exception class wrapper for Not Supported Operation on CPU."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize Zeus Exception."""
+        super().__init__(message)
+
+
 class CPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     """Abstract base class for CPU management.
 
@@ -107,6 +116,11 @@ class CPU(abc.ABC, metaclass=DeprecatedAliasABCMeta):
     @abc.abstractmethod
     def supports_get_dram_energy_consumption(self) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
+        pass
+
+    @abc.abstractmethod
+    def get_power_limits(self) -> CpuDramPowerLimits:
+        """Returns the power limits of the CPU package and DRAM zones."""
         pass
 
 
@@ -143,6 +157,10 @@ class CPUs(abc.ABC, metaclass=DeprecatedAliasABCMeta):
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
         return self.cpus[index].supports_get_dram_energy_consumption()
 
+    def get_power_limits(self, index: int) -> CpuDramPowerLimits:
+        """Returns the power limits of the specified CPU's package and DRAM zones."""
+        return self.cpus[index].get_power_limits()
+
     def __len__(self) -> int:
         """Returns the number of CPUs being tracked."""
         return len(self.cpus)
@@ -175,6 +193,10 @@ class EmptyCPUs(CPUs):
     @deprecated_alias("supportsGetDramEnergyConsumption")
     def supports_get_dram_energy_consumption(self, index: int) -> bool:
         """Returns True if the specified CPU powerzone supports retrieving the subpackage energy consumption."""
+        raise ValueError("No CPUs available.")
+
+    def get_power_limits(self, index: int) -> CpuDramPowerLimits:
+        """Returns the power limits of the specified CPU's package and DRAM zones."""
         raise ValueError("No CPUs available.")
 
     def __len__(self) -> int:
