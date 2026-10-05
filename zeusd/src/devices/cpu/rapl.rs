@@ -586,6 +586,7 @@ mod tests {
 
     /// A file reader that fails with the given errno for one file and reads
     /// every other file from disk.
+    #[cfg(unix)]
     fn failing_reader(
         failing_file: &str,
         errno: nix::errno::Errno,
@@ -600,6 +601,7 @@ mod tests {
     }
 
     /// Kernels 6.5 and later answer `ENODATA` for the time window of `peak_power`.
+    #[cfg(unix)]
     #[test]
     fn read_zone_limits_enodata_attribute_is_none() {
         let tmp = tempfile::tempdir().unwrap();
@@ -638,6 +640,7 @@ mod tests {
         assert_eq!(limits.constraints[0].max_power_mw, None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn read_zone_limits_other_read_errors_propagate() {
         let tmp = tempfile::tempdir().unwrap();
