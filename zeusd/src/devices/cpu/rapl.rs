@@ -677,8 +677,8 @@ mod tests {
     #[test]
     fn power_limits_with_dram() {
         let tmp = tempfile::tempdir().unwrap();
-        let cpu_dir = tmp.path().join("intel-rapl:0");
-        let dram_dir = cpu_dir.join("intel-rapl:0:0");
+        let cpu_dir = tmp.path().join("package");
+        let dram_dir = cpu_dir.join("dram");
         write_zone_limits(
             &cpu_dir,
             "1",
