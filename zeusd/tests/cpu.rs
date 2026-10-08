@@ -710,6 +710,7 @@ async fn test_cpu_read_only_mode_rejects_control() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn test_cpu_control_partial_failure() {
     // CPU 1 fails with EACCES (a BIOS-locked limit), CPU 2 with EIO.

@@ -469,3 +469,34 @@ async fn test_cpu_control_requires_cpu_control_scope() {
         .unwrap();
     assert_eq!(resp.status(), 200);
 }
+
+#[tokio::test]
+async fn encoded_control_paths_require_control_scopes() {
+    let app = TestApp::start_with_auth(TEST_KEY).await;
+    let client = reqwest::Client::new();
+    for scopes in [vec![ApiGroup::CpuRead], vec![ApiGroup::GpuRead], vec![]] {
+        let t = token("reader", scopes, None);
+        for path in [
+            "/cpu/set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
+            "/cpu/%73et_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
+            "/%63pu/set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
+            "/cpu/%72eset_power_limit?cpu_ids=0",
+            "/cpu/%73et_time_window?cpu_ids=0&constraint=long_term&time_window_us=2440",
+            "/gpu/%73et_power_limit?gpu_ids=0&power_limit_mw=150000&block=true",
+            "/%67pu/reset_locked_clocks?gpu_ids=0&block=true",
+        ] {
+            let response = client
+                .post(format!("http://127.0.0.1:{}{path}", app.port))
+                .bearer_auth(&t)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 403, "{path}");
+        }
+    }
+    let t = token("operator", vec![ApiGroup::CpuControl], None);
+    let response = client.post(format!(
+        "http://127.0.0.1:{}/cpu/%73et_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000", app.port
+    )).bearer_auth(t).send().await.unwrap();
+    assert_eq!(response.status(), 200);
+}

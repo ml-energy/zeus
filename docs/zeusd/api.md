@@ -2,7 +2,8 @@
 
 The API is the same regardless of transport. Paths shown below are server-relative; prefix with `http://<host>:<port>` over TCP, the UDS socket over UDS, or the named pipe on Windows.
 
-Status codes: `200` success; `400` bad input or unsupported op (e.g., persistence-mode off on Windows); `401` missing/invalid token; `403` insufficient token scope, NVML `NoPermission`, or a CPU power limit locked by the BIOS; `404` disabled API group or `/auth/*` on a no-auth daemon; `500` daemon-side failure, e.g., an unexpected driver error or a failed [override command](command_overrides.md). Per-device write calls aggregate per-device errors into `{"errors": {"<device_id>": "<message>"}}` with the worst per-device status.
+Status codes: `200` success; `400` bad input or unsupported op (e.g., persistence-mode off on Windows); `401` missing/invalid token; `403` insufficient token scope, device permissions, kernel write policy, or a CPU power limit locked by the BIOS; `404` disabled API group or `/auth/*` on a no-auth daemon; `500` daemon-side failure, e.g., an unexpected driver error or a failed [override command](command_overrides.md); `503` unavailable MSR driver or unsupported MSR time-window layout.
+Per-device write calls aggregate per-device errors into `{"errors": {"<device_id>": "<message>"}}` with the worst per-device status.
 
 ## `GET /discover`
 
@@ -164,7 +165,7 @@ If `cpu_ids` is provided, only those CPU packages are polled.
 Each field mirrors a file in the zone's powercap sysfs directory: `enabled` is `enabled`, and the constraint at array position `K` comes from the `constraint_K_*` files, with power converted to milliwatts.
 `max_power_mw` and `time_window_us` are `null` when the kernel has no value for the attribute (its sysfs read fails with `ENODATA`); kernels 6.5 and later have no time window for `peak_power`.
 `enabled` reflects the zone's RAPL `long_term` limit only, and the kernel reports `false` when that limit is disabled, locked by the BIOS, or its enable bit could not be read.
-RAPL limits take effect only while `enabled` is `true`, and the daemon never changes it.
+The daemon never changes enable bits; `enabled` does not report whether every constraint is active.
 
 AMD CPUs expose no RAPL power limits.
 On AMD EPYC CPUs with the `amd_hsmp` kernel module loaded (which creates `/dev/hsmp`), the package zone instead has a constraint named `socket`: the socket power limit enforced by the CPU's firmware, with its maximum in `max_power_mw` and `time_window_us` always `null`.
@@ -172,10 +173,13 @@ On AMD EPYC CPUs with the `amd_hsmp` kernel module loaded (which creates `/dev/h
 
 `set_power_limit` and `set_time_window` change one constraint of each listed CPU's package zone, named as in `get_power_limit`.
 `set_power_limit` rejects a constraint the zone does not have, `0`, a `socket` limit above its `max_power_mw` (the firmware would clamp it), and a RAPL limit too large for the CPU's register, in which case the previous limit is restored.
-RAPL limits are not bounded by `max_power_mw`; for `long_term` it is the CPU's TDP, which the hardware allows exceeding.
+RAPL limits are not bounded by `max_power_mw`; for `long_term` it is the CPU's thermal design power (TDP), which the hardware allows exceeding.
 Neither interface reports the lowest power a CPU can hold under load, so a cap below it is accepted but not met.
-`set_time_window` rejects a constraint whose `time_window_us` is `null` and `0`.
-The hardware stores time windows with limited precision, so `get_power_limit` may report a value near the one set.
+`set_time_window` requires [MSR read/write access](index.md#intel-msr-access) on supported Intel x86-64 packages and changes only the selected `long_term` or `short_term` window.
+Before writing, it rejects constraints without a time window, zero windows, and values above the largest supported window.
+The maximum excludes encodings that older Linux kernels cannot read correctly; errors report the maximum for the CPU.
+It rounds down to an encodable value, with a minimum of one hardware time unit, and verifies the stored encoding.
+MSR writes taint the kernel until reboot; power-limit writes use sysfs and require no MSR access.
 Each listed CPU is changed independently, so CPUs that succeed keep the new value even when others fail.
 
 `get_power_limit_constraints` returns the ranges each CPU package reports for its power limits:
@@ -195,12 +199,14 @@ Each listed CPU is changed independently, so CPUs that succeed keep the new valu
 }
 ```
 
-`rapl` comes from Intel's `MSR_PKG_POWER_INFO` register and is `null` when the package zone has no RAPL constraints.
-`thermal_spec_power_mw` is the TDP; `min_power_mw`, `max_power_mw`, and `max_time_window_us` are the ranges Intel documents as allowed; and `power_limit_register_max_mw` is the largest limit the register can hold.
-Reading the register requires the `msr` kernel module (`modprobe msr`); without it, the request fails with an error saying so.
+`rapl` comes from Intel's `MSR_PKG_POWER_INFO` register and is `null` when the zone has no RAPL constraints or is not a CPU package, such as `psys` (platform power).
+`thermal_spec_power_mw` is the TDP; `min_power_mw`, `max_power_mw`, and `max_time_window_us` are the ranges Intel documents as allowed; and `power_limit_register_max_mw` is the largest `long_term` or `short_term` power limit the register can hold.
+Reading the register requires [MSR read access](index.md#intel-msr-access); without it, the request fails with an error explaining which operations remain available.
 `hsmp` is `null` when the package zone has no `socket` constraint, and its `max_power_mw` is the largest socket limit the firmware applies.
 The hardware does not enforce the documented ranges: it can accept limits outside them, and whether it holds a limit depends on the load.
 
 `reset_power_limit` restores the power limit and time window of every package zone constraint to the values the daemon recorded when it first started after boot.
 Neither RAPL nor HSMP has a notion of a default limit, so the daemon records the current values in the file given by `--cpu-power-limit-baseline-path` (default `/run/zeusd/cpu_power_limit_baseline.json`) and loads that file when it restarts.
 Values that already match are not written, and a failed write does not stop the remaining ones.
+Changed Intel time windows require MSR write access and are restored exactly, including fractional encodings.
+Without that access, reset still attempts power-limit restoration and reports errors for changed windows.

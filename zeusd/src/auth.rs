@@ -125,7 +125,9 @@ where
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let path = req.path().to_string();
+        // Use the router's decoded path so encoded bytes cannot change the
+        // scope classification without changing the handler selected.
+        let path = req.match_info().as_str().to_string();
 
         // If the path maps to a disabled API group, return 404 immediately
         // regardless of auth state.

@@ -20,12 +20,12 @@ RuntimeDirectoryPreserve=yes
 # CAP_SYS_ADMIN is needed for NVML GPU power configuration settings.
 # Even when running as root, CAP_DAC_READ_SEARCH is required to read
 # /sys/class/powercap/.../energy_uj (mode 0400 since CVE-2020-8694).
-# CAP_SYS_RAWIO is needed to read Intel RAPL power information from
-# /dev/cpu/*/msr for GET /cpu/get_power_limit_constraints.
+# CAP_SYS_RAWIO is needed for Intel hardware-range queries and time-window
+# control through /dev/cpu/*/msr. Load the msr driver before starting zeusd.
 # CAP_CHOWN is needed only when --socket-uid/--socket-gid are passed.
-# ProtectKernelTunables stays off because AMD GPU control writes go
-# through the amdgpu driver's sysfs files, which it would mount read-only.
-# Nodes without AMD GPU control can re-enable it (see the README's
+# ProtectKernelTunables stays off because AMD GPU control and RAPL CPU
+# power-limit control write sysfs files, which it would mount read-only.
+# Nodes using neither can re-enable it (see the README's
 # Additional hardening section).
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_SYS_RAWIO CAP_CHOWN
 NoNewPrivileges=true

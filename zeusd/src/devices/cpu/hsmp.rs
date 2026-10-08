@@ -4,8 +4,10 @@
 //! CPUs. The kernel's `amd_hsmp` driver exposes it as an ioctl on `/dev/hsmp`.
 //! Only the socket power limit messages are used here.
 
+#[cfg(target_os = "linux")]
 use std::fs::{File, OpenOptions};
 use std::io;
+#[cfg(target_os = "linux")]
 use std::path::Path;
 use std::sync::Arc;
 
@@ -42,10 +44,12 @@ pub trait HsmpTransport: Send + Sync {
 }
 
 /// The HSMP character device.
+#[cfg(target_os = "linux")]
 pub struct HsmpDevice {
     file: File,
 }
 
+#[cfg(target_os = "linux")]
 impl HsmpDevice {
     /// Open the HSMP device, or return `None` if it does not exist.
     ///
@@ -60,8 +64,8 @@ impl HsmpDevice {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl HsmpTransport for HsmpDevice {
-    #[cfg(target_os = "linux")]
     fn send(&self, msg: &mut HsmpMessage) -> io::Result<()> {
         use std::os::fd::AsRawFd;
         // SAFETY: `msg` is a valid `struct hsmp_message` that is exclusively
@@ -69,14 +73,6 @@ impl HsmpTransport for HsmpDevice {
         unsafe { hsmp_ioctl(self.file.as_raw_fd(), msg) }
             .map(|_| ())
             .map_err(io::Error::from)
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    fn send(&self, _msg: &mut HsmpMessage) -> io::Result<()> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "HSMP is only available on Linux",
-        ))
     }
 }
 
@@ -225,6 +221,7 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn open_missing_device_is_none() {
         let tmp = tempfile::tempdir().unwrap();

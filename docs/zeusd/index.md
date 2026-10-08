@@ -87,7 +87,7 @@ cargo install zeusd --no-default-features --features amdsmi
     ```
 
     CPU power capping (`cpu-control`): mount the same directories without `:ro`, and on AMD EPYC CPUs also pass `--device /dev/hsmp`.
-    On Intel CPUs, `GET /cpu/get_power_limit_constraints` reads `/dev/cpu/*/msr`, which needs `--privileged`.
+    Intel hardware-range queries and time-window control also need [MSR access](#intel-msr-access): add `--cap-add SYS_RAWIO` and pass `/dev/cpu/<core>/msr` with `--device` for the lowest-numbered online core in each package (or die for per-die RAPL).
 
     GPU control (`gpu-control`): NVML control ioctls need `CAP_SYS_ADMIN`, while AMD control writes go through the amdgpu driver's sysfs files, which Docker mounts read-only by default.
 
@@ -105,10 +105,35 @@ cargo install zeusd --no-default-features --features amdsmi
     On SELinux hosts, use `--security-opt label=disable` instead of the AppArmor flag.
     `--privileged` also works for AMD control if the fine-grained flags give you trouble.
 
-    For TCP instead of UDS, publish the port: `docker run -d -p 4938:4938 mlenergy/zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938`.
+    For TCP instead of UDS, publish the port: `docker run -d -p 4938:4938 -v /run/zeusd:/run/zeusd mlenergy/zeusd serve --mode tcp --tcp-bind-address 0.0.0.0:4938`.
     To use a host ROCm installation instead of the bundled AMD SMI library, mount it and point `AMDSMI_LIB_DIR` at it, e.g., `-v /opt/rocm-7.2.0:/opt/rocm-7.2.0:ro -e AMDSMI_LIB_DIR=/opt/rocm-7.2.0/lib`.
 
 Defaults to all API groups on Linux, GPU only on Windows.
+
+### Intel MSR access
+
+Intel model-specific registers (MSRs) expose hardware power ranges and control power-limit time windows.
+Load Linux's driver with `sudo modprobe msr`; this creates `/dev/cpu/<core>/msr` devices.
+The daemon needs device permissions and `CAP_SYS_RAWIO`, which the shipped systemd unit grants.
+The daemon does not load modules or change kernel security settings itself.
+
+| Operation | Required interface |
+|---|---|
+| Energy monitoring and current power-limit queries | RAPL sysfs; no MSR access |
+| Power-limit changes | Writable RAPL sysfs; no MSR access |
+| Intel hardware-range queries | MSR read access |
+| Intel time-window changes and restoration of changed windows | MSR read/write access |
+| AMD EPYC socket power control | `/dev/hsmp`; no MSR access |
+
+Power-limit writes use sysfs and verify readback, allowing hardware rounding of less than 1 W.
+Time-window writes use MSRs because sysfs can lose precision when restoring fractional window encodings.
+This control supports Intel x86-64 package `long_term` and `short_term` windows with exponential encoding; Silvermont and Airmont SoC layouts are unsupported.
+
+**Userspace MSR writes taint the Linux kernel until reboot**, including writes that restore previous settings.
+Kernel lockdown, `msr.allow_writes=off`, or a BIOS register lock can reject writes even when reading works.
+Startup logs report device access; each request checks whether the write is permitted and verifies readback.
+When MSR access is missing, monitoring and power-limit changes remain available, and MSR requests return an error explaining the requirements.
+A reset still attempts every setting, but reports an error for changed time windows it cannot restore.
 
 ## API groups
 
@@ -200,7 +225,7 @@ To pin a specific installation, set `ROCM_PATH` (a ROCm installation root, e.g.,
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
 - **Daemon exits immediately at startup.** On Linux, a root-required group is enabled but `zeusd` isn't running as root. Either `sudo` or `--enable gpu-read`.
 - **No CPU power limits on AMD.** AMD CPUs expose no RAPL power limits. On AMD EPYC CPUs, `sudo modprobe amd_hsmp` creates `/dev/hsmp`, which exposes the socket power limit; restart `zeusd` afterwards. If the module's kernel log says HSMP is disabled, enable it in the BIOS.
-- **`get_power_limit_constraints` fails on Intel CPUs.** The daemon reads RAPL registers through `/dev/cpu/*/msr`. Load the driver with `sudo modprobe msr`; under systemd, the unit needs `CAP_SYS_RAWIO`, which the shipped unit grants.
+- **Intel hardware-range queries or time-window changes fail.** Check [MSR access](#intel-msr-access) and the daemon's startup and request logs; energy monitoring, current-limit queries, and power-limit changes do not require MSR access.
 - **`zeusd` refuses to start because the CPU power limit baseline does not match.** The baseline file was recorded with different CPU packages or constraints, e.g., before `amd_hsmp` was loaded. Make sure the current power limits are the ones `reset_power_limit` should restore, then delete the file (default `/run/zeusd/cpu_power_limit_baseline.json`) so that `zeusd` records them on its next start.
 - **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
 - **AMD SMI startup fails with `AMDSMI_STATUS_UNEXPECTED_DATA` (error 43).** The AMD SMI library is older than the GPU it is reading (e.g., ROCm 6.4 userspace on an MI300X). Point `ROCM_PATH` or `AMDSMI_LIB_DIR` at a ROCm release that supports the GPU.

@@ -379,6 +379,7 @@ pub fn start_cpu_device_tasks(
         if let Some(hsmp) = &hsmp {
             cpu.attach_hsmp(hsmp.clone())?;
         }
+        cpu.log_msr_availability(control_baseline_path.is_some())?;
         let dram_available = cpu.is_dram_available();
         tracing::info!(
             "Initialized RAPL for CPU {} ({}, DRAM: {}, HSMP: {})",

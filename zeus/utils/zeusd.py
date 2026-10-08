@@ -216,7 +216,7 @@ class CpuPowerLimitConstraints:
     """Power limit ranges a CPU package reports, per mechanism.
 
     Attributes:
-        rapl: From RAPL MSRs, or None if the package zone has no RAPL constraints.
+        rapl: From Intel model-specific registers (MSRs), or None if the zone is not a package or has no RAPL constraints.
         hsmp: From HSMP, or None if the package zone has no `socket` constraint.
     """
 
@@ -790,7 +790,8 @@ class ZeusdClient:
     def get_cpu_power_limit_constraints(self, cpu_ids: list[int] | None = None) -> dict[int, CpuPowerLimitConstraints]:
         """Get the power limit ranges each CPU package reports.
 
-        On Intel CPUs, the daemon reads RAPL MSRs, which requires the `msr` kernel module.
+        On Intel CPUs, the daemon reads model-specific registers (MSRs), requiring the `msr` kernel module, device permissions, and `CAP_SYS_RAWIO`.
+        Energy monitoring, current-limit queries, and power-limit changes remain available without MSR access.
 
         Args:
             cpu_ids: CPU indices to query.  None means all.
@@ -837,9 +838,10 @@ class ZeusdClient:
     def set_cpu_time_window(self, cpu_ids: list[int], constraint: str, time_window_us: int) -> None:
         """Set the time window of a package zone constraint on the given CPUs.
 
-        The daemon rejects a constraint without a time window and a zero time window.
-        The hardware stores the window with limited precision, so `get_cpu_power_limit`
-        may report a nearby value.
+        This requires read/write access to model-specific registers (MSRs) on supported Intel x86-64 packages.
+        MSR writes taint the kernel until reboot.
+        The daemon rejects constraints without time windows, zero, and windows above the maximum that older Linux kernels can read correctly.
+        Windows round down to an encodable value, with a minimum of one hardware time unit.
 
         Args:
             cpu_ids: CPU indices to set.
@@ -860,6 +862,8 @@ class ZeusdClient:
         """Restore the power limits and time windows of the given CPUs' package zones.
 
         The daemon restores the settings it recorded on its first start after boot.
+        Changed Intel time windows require write access to model-specific registers (MSRs) for exact restoration.
+        A failed write does not stop the remaining settings from being restored, but the request reports the errors.
 
         Args:
             cpu_ids: CPU indices to reset.

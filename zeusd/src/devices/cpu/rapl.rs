@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 
 use crate::devices::cpu::baseline::{ConstraintSetting, PackageBaseline};
 use crate::devices::cpu::hsmp::{HsmpSocket, HsmpTransport};
-use crate::devices::cpu::msr::{parse_package_zone_name, read_power_info};
+use crate::devices::cpu::msr::{parse_package_zone_name, read_power_info, TimeWindows};
 use crate::devices::cpu::{
     CpuDramPowerLimits, CpuManager, CpuPowerLimitConstraints, HsmpPowerInfo, PackageInfo,
     PowerLimitConstraint, ZonePowerLimits,
@@ -215,27 +215,62 @@ impl RaplCpu {
         target: ConstraintTarget,
         name: &str,
         time_window_us: u64,
+        exact: bool,
     ) -> Result<(), ZeusdError> {
-        match target {
-            ConstraintTarget::Powercap(index) => {
-                let path = self
-                    .cpu
-                    .zone_dir
-                    .join(format!("constraint_{index}_time_window_us"));
-                fs::write(path, time_window_us.to_string()).map_err(|source| {
-                    ZeusdError::cpu_control(
-                        format!(
-                            "set the time window of constraint '{name}' on CPU {} to {time_window_us} us",
-                            self.cpu.index
-                        ),
-                        source,
-                    )
-                })
-            }
-            ConstraintTarget::HsmpSocket => Err(ZeusdError::InvalidRequest(format!(
+        if !matches!(target, ConstraintTarget::Powercap(_)) {
+            return Err(ZeusdError::InvalidRequest(format!(
                 "Constraint '{name}' has no adjustable time window"
-            ))),
+            )));
         }
+        let action = if exact {
+            "restore the time window exactly"
+        } else {
+            "set the time window"
+        };
+        let (package, die) = parse_package_zone_name(&self.cpu.name).ok_or_else(|| {
+            ZeusdError::InvalidRequest(format!(
+                "Zone '{}' has no package MSR time-window control",
+                self.cpu.name
+            ))
+        })?;
+        let windows = TimeWindows::open(
+            Path::new(SYS_CPU_DIR),
+            Path::new(DEV_CPU_DIR),
+            package,
+            die,
+            true,
+        )
+        .map_err(|source| ZeusdError::cpu_msr(self.cpu.index, action, source))?;
+        windows
+            .set(name, time_window_us, exact)
+            .map_err(|source| ZeusdError::cpu_msr(self.cpu.index, action, source))
+    }
+
+    /// Log Intel MSR availability without changing registers or requiring MSR for monitoring.
+    pub fn log_msr_availability(&self, control_enabled: bool) -> Result<(), ZeusdError> {
+        if read_raw_constraints(&self.cpu.zone_dir)?.is_empty() {
+            return Ok(());
+        }
+        let Some((package, die)) = parse_package_zone_name(&self.cpu.name) else {
+            return Ok(());
+        };
+        match read_power_info(Path::new(SYS_CPU_DIR), Path::new(DEV_CPU_DIR), package, die) {
+            Ok(_) => tracing::info!(
+                cpu = self.cpu.index,
+                "Intel hardware-range queries have MSR read access"
+            ),
+            Err(source) => {
+                ZeusdError::cpu_msr(self.cpu.index, "read Intel hardware ranges", source);
+            }
+        }
+        if control_enabled {
+            match TimeWindows::open(Path::new(SYS_CPU_DIR), Path::new(DEV_CPU_DIR), package, die, true) {
+                Ok(_) => tracing::info!(cpu = self.cpu.index,
+                    "MSR device opened for time-window control. Writes are checked on each request; kernel lockdown, msr.allow_writes, and BIOS locks can reject them. Userspace MSR writes taint the kernel until reboot."),
+                Err(source) => { ZeusdError::cpu_msr(self.cpu.index, "open Intel time-window control", source); }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -373,31 +408,23 @@ impl CpuManager for RaplCpu {
     }
 
     fn get_power_limit_constraints(&self) -> Result<CpuPowerLimitConstraints, ZeusdError> {
-        let rapl = if read_raw_constraints(&self.cpu.zone_dir)?.is_empty() {
-            None
-        } else {
-            let (package_id, die_id) =
-                parse_package_zone_name(&self.cpu.name).ok_or_else(|| {
-                    ZeusdError::IOError(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!(
-                            "Cannot find the package of RAPL zone '{}' of CPU {}",
-                            self.cpu.name, self.cpu.index
-                        ),
-                    ))
-                })?;
-            Some(
-                read_power_info(
-                    Path::new(SYS_CPU_DIR),
-                    Path::new(DEV_CPU_DIR),
-                    package_id,
-                    die_id,
+        // Platform domains such as psys have no package power-info register.
+        let package = parse_package_zone_name(&self.cpu.name);
+        let rapl = match package {
+            Some((package_id, die_id)) if !read_raw_constraints(&self.cpu.zone_dir)?.is_empty() => {
+                Some(
+                    read_power_info(
+                        Path::new(SYS_CPU_DIR),
+                        Path::new(DEV_CPU_DIR),
+                        package_id,
+                        die_id,
+                    )
+                    .map_err(|source| {
+                        ZeusdError::cpu_msr(self.cpu.index, "read Intel hardware ranges", source)
+                    })?,
                 )
-                .map_err(|source| ZeusdError::CpuMsrError {
-                    cpu: self.cpu.index,
-                    source,
-                })?,
-            )
+            }
+            _ => None,
         };
         let hsmp = match &self.hsmp {
             Some(hsmp) => Some(HsmpPowerInfo {
@@ -459,7 +486,12 @@ impl CpuManager for RaplCpu {
 
     fn set_time_window(&mut self, constraint: &str, time_window_us: u64) -> Result<(), ZeusdError> {
         let found = self.find_package_constraint(constraint)?;
-        self.write_time_window_us(found.target, &found.name, time_window_us)
+        if found.time_window_us.is_none() || time_window_us == 0 {
+            return Err(ZeusdError::InvalidRequest(format!(
+                "Constraint '{constraint}' must have an adjustable time window, and time_window_us must be positive"
+            )));
+        }
+        self.write_time_window_us(found.target, &found.name, time_window_us, false)
     }
 
     /// Write back each baseline setting that differs from the current one.
@@ -495,7 +527,7 @@ impl CpuManager for RaplCpu {
             if let Some(time_window_us) = setting.time_window_us {
                 if found.time_window_us != Some(time_window_us) {
                     if let Err(e) =
-                        self.write_time_window_us(found.target, &found.name, time_window_us)
+                        self.write_time_window_us(found.target, &found.name, time_window_us, true)
                     {
                         errors.push(e);
                     }
@@ -1118,7 +1150,7 @@ mod tests {
         let mut cpu = intel_package(tmp.path());
 
         cpu.set_power_limit("short_term", 150_000).unwrap();
-        cpu.set_time_window("long_term", 27_983_872).unwrap();
+        assert!(cpu.set_time_window("socket", 27_983_872).is_err());
 
         assert_eq!(
             read_file(tmp.path(), "constraint_1_power_limit_uw"),
@@ -1130,7 +1162,7 @@ mod tests {
         );
         assert_eq!(
             read_file(tmp.path(), "constraint_0_time_window_us"),
-            "27983872"
+            "999424"
         );
         assert!(cpu.set_power_limit("socket", 150_000).is_err());
         assert!(cpu.set_time_window("socket", 1_000).is_err());
@@ -1221,7 +1253,7 @@ mod tests {
         cpu.set_baseline(baseline.constraints);
 
         cpu.set_power_limit("long_term", 100_000).unwrap();
-        cpu.set_time_window("short_term", 2_440).unwrap();
+
         cpu.set_power_limit("socket", 150_000).unwrap();
         cpu.reset_power_limits().unwrap();
 
@@ -1266,6 +1298,31 @@ mod tests {
             cpu.reset_power_limits(),
             Err(ZeusdError::CpuBaselineMissingError(0))
         ));
+    }
+
+    #[test]
+    fn reset_restores_power_when_time_window_control_is_unavailable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut cpu = intel_package(tmp.path());
+        Arc::get_mut(&mut cpu.cpu).unwrap().name = "psys".to_string();
+        cpu.set_baseline(cpu.power_limit_settings().unwrap().constraints);
+        cpu.set_power_limit("long_term", 100_000).unwrap();
+        cpu.set_power_limit("short_term", 100_000).unwrap();
+        fs::write(tmp.path().join("constraint_0_time_window_us"), "2440").unwrap();
+
+        let error = cpu.reset_power_limits().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("no package MSR time-window control"));
+        assert_eq!(read_file(tmp.path(), "constraint_0_time_window_us"), "2440");
+        assert_eq!(
+            read_file(tmp.path(), "constraint_0_power_limit_uw"),
+            "205000000"
+        );
+        assert_eq!(
+            read_file(tmp.path(), "constraint_1_power_limit_uw"),
+            "246000000"
+        );
     }
 
     /// A failed write does not stop the remaining constraints from being restored.
@@ -1336,6 +1393,46 @@ mod tests {
         assert_eq!(
             read_file(tmp.path(), "constraint_0_power_limit_uw"),
             "250000000"
+        );
+    }
+}
+
+#[cfg(test)]
+mod platform_domain_tests {
+    use super::*;
+
+    #[test]
+    fn psys_has_no_package_msr_power_info() {
+        let tmp = tempfile::tempdir().unwrap();
+        for (name, value) in [
+            ("name", "psys"),
+            ("energy_uj", "1"),
+            ("max_energy_range_uj", "1000000"),
+            ("enabled", "1"),
+            ("constraint_0_name", "long_term"),
+            ("constraint_0_power_limit_uw", "205000000"),
+            ("constraint_0_max_power_uw", "205000000"),
+            ("constraint_0_time_window_us", "999424"),
+        ] {
+            fs::write(tmp.path().join(name), value).unwrap();
+        }
+        let cpu = RaplCpu {
+            cpu: Arc::new(PackageInfo::new(tmp.path(), 1).unwrap()),
+            dram: None,
+            last_cpu_raw_uj: None,
+            cpu_wraparound_count: 0,
+            last_dram_raw_uj: None,
+            dram_wraparound_count: 0,
+            hsmp: None,
+            baseline: None,
+        };
+        assert!(cpu.get_power_limits().is_ok());
+        assert_eq!(
+            cpu.get_power_limit_constraints().unwrap(),
+            CpuPowerLimitConstraints {
+                rapl: None,
+                hsmp: None
+            }
         );
     }
 }

@@ -59,9 +59,13 @@ pub enum ZeusdError {
     },
     #[error("No power limit baseline was recorded for CPU {0}.")]
     CpuBaselineMissingError(usize),
-    #[error("Cannot read the RAPL power information of CPU {cpu}: {source}")]
+    #[error(
+        "Cannot {action} on CPU {cpu}: {source} {}",
+        crate::devices::cpu::msr::MSR_AVAILABILITY
+    )]
     CpuMsrError {
         cpu: usize,
+        action: &'static str,
         source: crate::devices::cpu::msr::MsrError,
     },
     #[error("{}", .0.iter().map(ToString::to_string).collect::<Vec<_>>().join("; "))]
@@ -109,7 +113,19 @@ impl ResponseError for ZeusdError {
             ZeusdError::CpuInitializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuControlError { source, .. } => cpu_control_status(source),
             ZeusdError::CpuBaselineMissingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            ZeusdError::CpuMsrError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuMsrError { source, .. } => {
+                use crate::devices::cpu::msr::MsrError;
+                match source {
+                    MsrError::InvalidWindow(_) => StatusCode::BAD_REQUEST,
+                    MsrError::PermissionDenied(_)
+                    | MsrError::WriteDenied { .. }
+                    | MsrError::Locked => StatusCode::FORBIDDEN,
+                    MsrError::DriverMissing(_) | MsrError::UnsupportedLayout => {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    }
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                }
+            }
             ZeusdError::Multiple(errors) => errors
                 .iter()
                 .map(ResponseError::status_code)
@@ -125,6 +141,20 @@ impl ResponseError for ZeusdError {
 }
 
 impl ZeusdError {
+    /// Report an unavailable or failed MSR operation in the response and daemon log.
+    pub fn cpu_msr(
+        cpu: usize,
+        action: &'static str,
+        source: crate::devices::cpu::msr::MsrError,
+    ) -> Self {
+        let error = Self::CpuMsrError {
+            cpu,
+            action,
+            source,
+        };
+        tracing::warn!("{error}");
+        error
+    }
     /// A failed CPU power limit or time window write.
     pub fn cpu_control(action: String, source: std::io::Error) -> Self {
         ZeusdError::CpuControlError { action, source }
@@ -180,6 +210,7 @@ pub fn aggregate_error_response(errors: HashMap<usize, ZeusdError>) -> HttpRespo
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn control_error(errno: i32) -> ZeusdError {
         ZeusdError::cpu_control(
             "set a power limit".to_string(),
@@ -216,5 +247,55 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
         assert_eq!(error.to_string().matches("set a power limit").count(), 2);
+    }
+
+    #[test]
+    fn msr_errors_explain_available_operations_and_required_access() {
+        use crate::devices::cpu::msr::MsrError;
+        for (source, status, remedy) in [
+            (
+                MsrError::DriverMissing("/dev/cpu/0/msr".into()),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "sudo modprobe msr",
+            ),
+            (
+                MsrError::PermissionDenied("/dev/cpu/0/msr".into()),
+                StatusCode::FORBIDDEN,
+                "CAP_SYS_RAWIO",
+            ),
+            (
+                MsrError::WriteDenied {
+                    path: "/dev/cpu/0/msr".into(),
+                    source: std::io::ErrorKind::PermissionDenied.into(),
+                },
+                StatusCode::FORBIDDEN,
+                "msr.allow_writes",
+            ),
+            (MsrError::Locked, StatusCode::FORBIDDEN, "BIOS"),
+            (
+                MsrError::UnsupportedLayout,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "unsupported",
+            ),
+            (
+                MsrError::InvalidWindow("too large".into()),
+                StatusCode::BAD_REQUEST,
+                "too large",
+            ),
+        ] {
+            let error = ZeusdError::cpu_msr(0, "set the time window", source);
+            assert_eq!(error.status_code(), status);
+            let message = error.to_string();
+            assert!(message.contains(remedy), "{message}");
+            assert!(
+                message.contains("power-limit changes remain available"),
+                "{message}"
+            );
+            assert!(message.contains("require MSR write access"), "{message}");
+            assert!(
+                message.contains("AMD HSMP control does not require MSR access"),
+                "{message}"
+            );
+        }
     }
 }

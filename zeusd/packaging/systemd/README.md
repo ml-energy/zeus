@@ -37,13 +37,18 @@ The empty `ExecStart=` line clears the inherited value before redefining it; sys
 
 ## Additional hardening
 
-The unit ships with `ProtectKernelTunables=false` because AMD GPU control (clock limits, power cap, performance level) writes to the amdgpu driver's sysfs files, which that directive would mount read-only.
-NVIDIA GPU control goes through `/dev/nvidia*` ioctls and is unaffected, so deployments that never use AMD GPU control can harden further with a drop-in (`sudo systemctl edit zeusd`):
+The unit ships with `ProtectKernelTunables=false` because AMD GPU control and RAPL CPU power-limit control write sysfs files, which that directive would mount read-only.
+Deployments that use neither can harden further with a drop-in (`sudo systemctl edit zeusd`):
 
 ```ini
 [Service]
 ProtectKernelTunables=true
 ```
+
+Intel hardware-range queries and time-window control use model-specific registers (MSRs) through `/dev/cpu/*/msr`.
+Load the driver with `sudo modprobe msr` before starting the service; the unit grants the required `CAP_SYS_RAWIO` capability.
+MSR writes taint the kernel until reboot and can be blocked by kernel lockdown, `msr.allow_writes=off`, or BIOS locks.
+Without MSR access, energy monitoring, current-limit queries, and power-limit changes remain available; changed Intel time windows cannot be restored.
 
 ## Verifying
 
