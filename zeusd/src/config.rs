@@ -33,6 +33,11 @@ use serde::{Deserialize, Serialize};
 ///     - `GET /cpu/get_power`
 ///     - `GET /cpu/stream_power`
 ///     - `GET /cpu/get_power_limit`
+///     - `GET /cpu/get_power_limit_constraints`
+///   - `cpu-control`: CPU power capping with RAPL or AMD HSMP. Requires root.
+///     - `POST /cpu/set_power_limit`
+///     - `POST /cpu/set_time_window`
+///     - `POST /cpu/reset_power_limit`
 ///
 /// The following endpoints are always available regardless of enabled groups:
 ///   - `GET /discover`
@@ -49,12 +54,18 @@ pub enum ApiGroup {
     /// CPU RAPL read operations (energy, power, power limits).
     /// Requires root.
     CpuRead,
+    /// CPU power capping (set and reset power limits and time windows).
+    /// Requires root.
+    CpuControl,
 }
 
 impl ApiGroup {
     /// Whether this API group requires root privileges.
     pub fn requires_root(&self) -> bool {
-        matches!(self, ApiGroup::GpuControl | ApiGroup::CpuRead)
+        matches!(
+            self,
+            ApiGroup::GpuControl | ApiGroup::CpuRead | ApiGroup::CpuControl
+        )
     }
 }
 
@@ -64,6 +75,7 @@ impl std::fmt::Display for ApiGroup {
             ApiGroup::GpuControl => write!(f, "gpu-control"),
             ApiGroup::GpuRead => write!(f, "gpu-read"),
             ApiGroup::CpuRead => write!(f, "cpu-read"),
+            ApiGroup::CpuControl => write!(f, "cpu-control"),
         }
     }
 }
@@ -182,10 +194,10 @@ pub struct ServeConfig {
     /// supported by the platform and compiled device backends.
     #[clap(long, value_delimiter = ',')]
     #[cfg_attr(all(target_os = "linux", any(feature = "nvml", feature = "amdsmi")), clap(
-        default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
+        default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead, ApiGroup::CpuControl],
     ))]
     #[cfg_attr(all(target_os = "linux", not(any(feature = "nvml", feature = "amdsmi"))), clap(
-        default_values_t = [ApiGroup::CpuRead],
+        default_values_t = [ApiGroup::CpuRead, ApiGroup::CpuControl],
     ))]
     #[cfg_attr(all(not(target_os = "linux"), feature = "nvml"), clap(
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead],
@@ -202,6 +214,13 @@ pub struct ServeConfig {
     /// If not provided, authentication is disabled.
     #[clap(long)]
     pub signing_key_path: Option<String>,
+
+    /// [cpu-control] Path where Zeusd records the CPU power limit settings it
+    /// finds on its first start, which `POST /cpu/reset_power_limit` restores.
+    /// Later starts load the file instead, so it should be on a filesystem
+    /// cleared on reboot and kept across Zeusd restarts.
+    #[clap(long, default_value = "/run/zeusd/cpu_power_limit_baseline.json")]
+    pub cpu_power_limit_baseline_path: String,
 }
 
 impl ServeConfig {
@@ -224,7 +243,7 @@ impl ServeConfig {
 
     /// Whether any CPU API group is enabled (requiring RAPL initialization).
     pub fn needs_cpu(&self) -> bool {
-        self.is_enabled(ApiGroup::CpuRead)
+        self.is_enabled(ApiGroup::CpuRead) || self.is_enabled(ApiGroup::CpuControl)
     }
 }
 

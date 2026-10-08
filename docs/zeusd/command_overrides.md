@@ -5,7 +5,7 @@ On shared HPC clusters, for example, the closest thing to privileged GPU control
 The native `gpu-control` path cannot run there, because setting power limits and clock ranges through NVML or AMD SMI requires root.
 
 `zeusd serve --enable gpu-read,gpu-control --gpu-command-overrides PATH` closes this gap by replacing selected privileged GPU writes with commands from a TOML file.
-Note the explicit `--enable`: the default list also contains `cpu-read`, which requires root regardless of overrides.
+Note the explicit `--enable`: the default list also contains `cpu-read` and `cpu-control`, which require root regardless of overrides.
 The daemon runs unprivileged, the configured commands carry the privilege, and clients keep using the same HTTP API and Zeus Python integrations unchanged.
 
 ```toml

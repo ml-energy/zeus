@@ -1112,7 +1112,7 @@ async fn test_discover_endpoint() {
     let groups = body["enabled_api_groups"]
         .as_array()
         .expect("enabled_api_groups should be array");
-    assert_eq!(groups.len(), 3);
+    assert_eq!(groups.len(), 4);
 }
 
 #[tokio::test]

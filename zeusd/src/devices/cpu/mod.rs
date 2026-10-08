@@ -1,5 +1,8 @@
+pub mod baseline;
+pub mod hsmp;
+pub mod msr;
 mod rapl;
-pub use rapl::RaplCpu;
+pub use rapl::{RaplCpu, HSMP_SOCKET_CONSTRAINT};
 
 pub mod power;
 
@@ -12,6 +15,7 @@ use tokio::time::{interval, Duration};
 use tracing::Span;
 
 use crate::error::ZeusdError;
+pub use msr::RaplPowerInfo;
 
 pub struct PackageInfo {
     pub index: usize,
@@ -28,10 +32,11 @@ pub struct RaplResponse {
     pub dram_energy_uj: Option<u64>,
 }
 
-/// One power limit constraint of a RAPL powercap zone.
+/// One power limit constraint of a CPU package or DRAM zone.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct RaplConstraint {
-    /// Constraint name reported by the kernel: `long_term`, `short_term`, or `peak_power`.
+pub struct PowerLimitConstraint {
+    /// `long_term`, `short_term`, or `peak_power` for RAPL constraints, as
+    /// named by the kernel, or `socket` for the AMD HSMP socket power limit.
     pub name: String,
     pub power_limit_mw: u64,
     /// None if the kernel has no value for this constraint (its sysfs read fails
@@ -39,34 +44,56 @@ pub struct RaplConstraint {
     pub max_power_mw: Option<u64>,
     /// None if the kernel has no value for this constraint (its sysfs read fails
     /// with `ENODATA`), which is the case for `peak_power` on kernels 6.5 and later.
+    /// Always None for `socket`, whose averaging window the firmware fixes.
     pub time_window_us: Option<u64>,
 }
 
-/// Power limit state of one RAPL powercap zone.
+/// Power limit state of one CPU package or DRAM zone.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct RaplZoneLimits {
+pub struct ZonePowerLimits {
     /// Whether the kernel reports the zone's `long_term` limit as enabled. The
     /// kernel reports false when the limit is disabled, when it is locked by the
     /// BIOS, or when reading its enable bit failed; sysfs does not distinguish
     /// these cases.
     pub enabled: bool,
-    /// Constraints in sysfs index order. Empty if the kernel exposes no
-    /// power limits for the zone.
-    pub constraints: Vec<RaplConstraint>,
+    /// RAPL constraints in sysfs index order, followed by `socket` if the
+    /// zone is a package with HSMP access. Empty if neither is available.
+    pub constraints: Vec<PowerLimitConstraint>,
+}
+
+/// Power limit ranges a CPU package reports, per mechanism.
+///
+/// The hardware does not enforce these ranges: it can accept limits outside
+/// them, and whether it holds a limit depends on the load.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct CpuPowerLimitConstraints {
+    /// From `MSR_PKG_POWER_INFO`, or None if the package zone has no RAPL constraints.
+    pub rapl: Option<RaplPowerInfo>,
+    /// From HSMP, or None if the package zone has no `socket` constraint.
+    pub hsmp: Option<HsmpPowerInfo>,
+}
+
+/// Power limit range of the HSMP socket power limit.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct HsmpPowerInfo {
+    /// Largest socket power limit the firmware applies; it clamps higher ones.
+    pub max_power_mw: u64,
 }
 
 /// Power limits of a CPU package zone and its DRAM zone.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct RaplPowerLimits {
-    pub cpu: RaplZoneLimits,
-    pub dram: Option<RaplZoneLimits>,
+pub struct CpuDramPowerLimits {
+    pub cpu: ZonePowerLimits,
+    pub dram: Option<ZonePowerLimits>,
 }
 
 /// Response from a CPU command.
 #[derive(Debug)]
 pub enum CpuResponse {
+    Ok,
     Energy(RaplResponse),
-    PowerLimits(RaplPowerLimits),
+    PowerLimits(CpuDramPowerLimits),
+    PowerLimitConstraints(CpuPowerLimitConstraints),
 }
 
 pub trait CpuManager {
@@ -83,7 +110,21 @@ pub trait CpuManager {
     /// Check if DRAM is available.
     fn is_dram_available(&self) -> bool;
     /// Read the power limits of the CPU package zone and, if available, the DRAM zone.
-    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError>;
+    fn get_power_limits(&self) -> Result<CpuDramPowerLimits, ZeusdError>;
+    /// Read the power limit ranges the CPU package reports.
+    fn get_power_limit_constraints(&self) -> Result<CpuPowerLimitConstraints, ZeusdError>;
+    /// Write the power limit of a package zone constraint in milliwatts.
+    ///
+    /// Callers check that the constraint exists and the limit is positive.
+    /// Implementations reject limits the hardware would not apply as given.
+    fn set_power_limit(&mut self, constraint: &str, power_limit_mw: u64) -> Result<(), ZeusdError>;
+    /// Write the time window of a package zone constraint in microseconds.
+    ///
+    /// Callers validate the value against `get_power_limits` first.
+    fn set_time_window(&mut self, constraint: &str, time_window_us: u64) -> Result<(), ZeusdError>;
+    /// Restore the power limits and time windows of the package zone
+    /// constraints to their recorded baseline.
+    fn reset_power_limits(&mut self) -> Result<(), ZeusdError>;
 }
 
 pub type CpuCommandRequest = (
@@ -143,12 +184,26 @@ impl CpuManagementTasks {
 }
 
 /// A CPU command that can be executed on a CPU.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CpuCommand {
     /// Get the CPU and DRAM energy measurement for the CPU index.
     GetIndexEnergy { cpu: bool, dram: bool },
     /// Get the power limits of the CPU package and DRAM zones.
     GetPowerLimits,
+    /// Get the power limit ranges the CPU package reports.
+    GetPowerLimitConstraints,
+    /// Set the power limit of a package zone constraint.
+    SetPowerLimit {
+        constraint: String,
+        power_limit_mw: u64,
+    },
+    /// Set the time window of a package zone constraint.
+    SetTimeWindow {
+        constraint: String,
+        time_window_us: u64,
+    },
+    /// Restore the package zone constraints to their recorded baseline.
+    ResetPowerLimits,
 }
 
 /// Tokio background task that handles requests to each CPU.
@@ -196,8 +251,8 @@ impl CpuCommand {
     where
         T: CpuManager,
     {
-        match *self {
-            Self::GetIndexEnergy { cpu, dram } => {
+        match self {
+            &Self::GetIndexEnergy { cpu, dram } => {
                 let cpu_energy_uj = if cpu {
                     Some(device.get_cpu_energy()?)
                 } else {
@@ -214,6 +269,110 @@ impl CpuCommand {
                 }))
             }
             Self::GetPowerLimits => device.get_power_limits().map(CpuResponse::PowerLimits),
+            Self::GetPowerLimitConstraints => device
+                .get_power_limit_constraints()
+                .map(CpuResponse::PowerLimitConstraints),
+            Self::SetPowerLimit {
+                constraint,
+                power_limit_mw,
+            } => {
+                let limits = device.get_power_limits()?;
+                validate_power_limit(&limits.cpu, constraint, *power_limit_mw)?;
+                device.set_power_limit(constraint, *power_limit_mw)?;
+                Ok(CpuResponse::Ok)
+            }
+            Self::SetTimeWindow {
+                constraint,
+                time_window_us,
+            } => {
+                let limits = device.get_power_limits()?;
+                validate_time_window(&limits.cpu, constraint, *time_window_us)?;
+                device.set_time_window(constraint, *time_window_us)?;
+                Ok(CpuResponse::Ok)
+            }
+            Self::ResetPowerLimits => {
+                device.reset_power_limits()?;
+                Ok(CpuResponse::Ok)
+            }
         }
+    }
+}
+
+fn find_constraint<'a>(
+    zone: &'a ZonePowerLimits,
+    constraint: &str,
+) -> Result<&'a PowerLimitConstraint, ZeusdError> {
+    zone.constraints
+        .iter()
+        .find(|c| c.name == constraint)
+        .ok_or_else(|| {
+            let available: Vec<&str> = zone.constraints.iter().map(|c| c.name.as_str()).collect();
+            ZeusdError::InvalidRequest(format!(
+                "Package zone has no power limit constraint '{constraint}' (available: {available:?})"
+            ))
+        })
+}
+
+/// Reject a power limit of zero or for a constraint the zone does not have.
+///
+/// Neither RAPL nor HSMP reports a minimum the hardware can enforce, so zero is
+/// the only value rejected for being too low. Upper bounds depend on how the
+/// constraint is applied, so `CpuManager::set_power_limit` checks them.
+fn validate_power_limit(
+    zone: &ZonePowerLimits,
+    constraint: &str,
+    power_limit_mw: u64,
+) -> Result<(), ZeusdError> {
+    find_constraint(zone, constraint)?;
+    if power_limit_mw == 0 {
+        return Err(ZeusdError::InvalidRequest(
+            "Power limit must be positive".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Reject a time window of zero or one for a constraint without a time window.
+fn validate_time_window(
+    zone: &ZonePowerLimits,
+    constraint: &str,
+    time_window_us: u64,
+) -> Result<(), ZeusdError> {
+    let found = find_constraint(zone, constraint)?;
+    if found.time_window_us.is_none() {
+        return Err(ZeusdError::InvalidRequest(format!(
+            "Constraint '{constraint}' has no adjustable time window"
+        )));
+    }
+    if time_window_us == 0 {
+        return Err(ZeusdError::InvalidRequest(
+            "Time window must be positive".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn zone(max_power_mw: Option<u64>) -> ZonePowerLimits {
+        ZonePowerLimits {
+            enabled: true,
+            constraints: vec![PowerLimitConstraint {
+                name: "long_term".to_string(),
+                power_limit_mw: 100_000,
+                max_power_mw,
+                time_window_us: Some(999_424),
+            }],
+        }
+    }
+
+    #[test]
+    fn power_limit_must_be_positive_for_an_existing_constraint() {
+        assert!(validate_power_limit(&zone(Some(205_000)), "long_term", 250_000).is_ok());
+        assert!(validate_power_limit(&zone(None), "long_term", 1).is_ok());
+        assert!(validate_power_limit(&zone(None), "long_term", 0).is_err());
+        assert!(validate_power_limit(&zone(None), "short_term", 1).is_err());
     }
 }

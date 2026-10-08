@@ -7,7 +7,7 @@ Reach for `zeusd` when you need privilege isolation for GPU configuration, CPU/D
 ## Platform support
 
 - **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
-- **Windows:** named pipe default. NVML only -- `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp` (no `httpx` transport for named pipes yet).
+- **Windows:** named pipe default. NVML only -- `cpu-read` and `cpu-control` are rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp` (no `httpx` transport for named pipes yet).
 
 NVIDIA GPU support loads NVML at runtime.
 AMD GPU support loads AMD SMI at runtime, but the ABI is not stable across versions.
@@ -86,6 +86,9 @@ cargo install zeusd --no-default-features --features amdsmi
         mlenergy/zeusd serve --enable cpu-read
     ```
 
+    CPU power capping (`cpu-control`): mount the same directories without `:ro`, and on AMD EPYC CPUs also pass `--device /dev/hsmp`.
+    On Intel CPUs, `GET /cpu/get_power_limit_constraints` reads `/dev/cpu/*/msr`, which needs `--privileged`.
+
     GPU control (`gpu-control`): NVML control ioctls need `CAP_SYS_ADMIN`, while AMD control writes go through the amdgpu driver's sysfs files, which Docker mounts read-only by default.
 
     ```sh
@@ -115,7 +118,8 @@ Selectively enable with `--enable`:
 |---|---|:---:|
 | `gpu-control` | `POST /gpu/{set,reset}_*` (power limit, locked clocks, persistence) | Yes |
 | `gpu-read` | `GET /gpu/{get,stream}_power`, `get_cumulative_energy`, `get_power_limit`, `get_power_limit_constraints`, `get_persistence_mode` | No |
-| `cpu-read` (Linux) | `GET /cpu/{get,stream}_power`, `get_cumulative_energy`, `get_power_limit` | Yes |
+| `cpu-read` (Linux) | `GET /cpu/{get,stream}_power`, `get_cumulative_energy`, `get_power_limit`, `get_power_limit_constraints` | Yes |
+| `cpu-control` (Linux) | `POST /cpu/{set,reset}_*` (power limit, time window) | Yes |
 
 `/discover`, `/time`, and `/auth/whoami` are always available. On Linux, the daemon refuses to start if a root-required group is enabled without root; on Windows there's no admin check, and unprivileged NVML writes surface as HTTP 403.
 
@@ -195,6 +199,9 @@ To pin a specific installation, set `ROCM_PATH` (a ROCm installation root, e.g.,
 - **Python doesn't pick up `zeusd`.** Confirm `ZEUSD_SOCK_PATH` or `ZEUSD_HOST_PORT` is in the *application's* environment (not just the shell that started the daemon). Then run `python -m zeus.show_env`.
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
 - **Daemon exits immediately at startup.** On Linux, a root-required group is enabled but `zeusd` isn't running as root. Either `sudo` or `--enable gpu-read`.
+- **No CPU power limits on AMD.** AMD CPUs expose no RAPL power limits. On AMD EPYC CPUs, `sudo modprobe amd_hsmp` creates `/dev/hsmp`, which exposes the socket power limit; restart `zeusd` afterwards. If the module's kernel log says HSMP is disabled, enable it in the BIOS.
+- **`get_power_limit_constraints` fails on Intel CPUs.** The daemon reads RAPL registers through `/dev/cpu/*/msr`. Load the driver with `sudo modprobe msr`; under systemd, the unit needs `CAP_SYS_RAWIO`, which the shipped unit grants.
+- **`zeusd` refuses to start because the CPU power limit baseline does not match.** The baseline file was recorded with different CPU packages or constraints, e.g., before `amd_hsmp` was loaded. Make sure the current power limits are the ones `reset_power_limit` should restore, then delete the file (default `/run/zeusd/cpu_power_limit_baseline.json`) so that `zeusd` records them on its next start.
 - **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
 - **AMD SMI startup fails with `AMDSMI_STATUS_UNEXPECTED_DATA` (error 43).** The AMD SMI library is older than the GPU it is reading (e.g., ROCm 6.4 userspace on an MI300X). Point `ROCM_PATH` or `AMDSMI_LIB_DIR` at a ROCm release that supports the GPU.
 - **Logs.** `journalctl -u zeusd -f` under systemd; stderr otherwise.

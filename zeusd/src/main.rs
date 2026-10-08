@@ -145,9 +145,16 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
 
     // Conditionally initialize CPU devices.
     let (cpu_device_tasks, cpu_power_broadcast, cpus) = if config.needs_cpu() {
-        let (tasks, cpus) = start_cpu_device_tasks()?;
-        let broadcast = start_cpu_power_poller(config.cpu_power_poll_hz)?;
-        (Some(tasks), Some(broadcast), cpus)
+        let control_baseline_path = config
+            .is_enabled(ApiGroup::CpuControl)
+            .then(|| std::path::Path::new(&config.cpu_power_limit_baseline_path));
+        let (tasks, cpus) = start_cpu_device_tasks(control_baseline_path)?;
+        let broadcast = if config.is_enabled(ApiGroup::CpuRead) {
+            Some(start_cpu_power_poller(config.cpu_power_poll_hz)?)
+        } else {
+            None
+        };
+        (Some(tasks), broadcast, cpus)
     } else {
         (None, None, vec![])
     };
@@ -167,7 +174,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
         cpu_device_tasks,
         gpu_power_broadcast,
         cpu_power_broadcast,
-        cpu_power_sampling_period: if config.needs_cpu() {
+        cpu_power_sampling_period: if config.is_enabled(ApiGroup::CpuRead) {
             Some(CpuPowerSamplingPeriod::from_poll_hz(
                 config.cpu_power_poll_hz,
             ))

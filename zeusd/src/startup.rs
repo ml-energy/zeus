@@ -12,7 +12,6 @@ use std::net::TcpListener;
 use std::os::unix::fs::{chown, PermissionsExt};
 #[cfg(unix)]
 use std::os::unix::net::UnixListener;
-#[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
 use tracing::subscriber::set_global_default;
@@ -23,6 +22,10 @@ use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::auth::{AuthMiddleware, SigningKeyData};
 use crate::config::{ApiGroup, GpuBackend};
+#[cfg(target_os = "linux")]
+use crate::devices::cpu::baseline::load_or_record;
+#[cfg(target_os = "linux")]
+use crate::devices::cpu::hsmp::{HsmpDevice, HsmpTransport, HSMP_DEVICE_PATH};
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::power::start_cpu_poller;
 use crate::devices::cpu::power::CpuPowerBroadcasts;
@@ -42,7 +45,7 @@ use crate::devices::gpu::GpuManagementTasks;
 use crate::devices::gpu::GpuManager;
 #[cfg(feature = "nvml")]
 use crate::devices::gpu::NvmlGpu;
-use crate::routes::{cpu_routes, CpuPowerSamplingPeriod};
+use crate::routes::{cpu_control_routes, cpu_read_routes, CpuPowerSamplingPeriod};
 use crate::routes::{
     gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
     GpuDiscoveryInfo,
@@ -342,23 +345,47 @@ pub fn start_gpu_power_poller(
     }
 }
 
-/// Initialize RAPL and start CPU management tasks.
+/// Initialize RAPL and HSMP and start CPU management tasks.
 ///
-/// Returns the management tasks and per-CPU package discovery information.
-/// RAPL is Linux-specific; on other platforms this errors out.
+/// Opens the AMD HSMP device if it exists. `control_baseline_path` is set
+/// when CPU control is enabled; HSMP is then opened for writing, and the
+/// power limit baseline is recorded or loaded at that path. Returns the
+/// management tasks and per-CPU package discovery information. RAPL is
+/// Linux-specific; on other platforms this errors out.
 #[cfg(target_os = "linux")]
-pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
+pub fn start_cpu_device_tasks(
+    control_baseline_path: Option<&Path>,
+) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     tracing::info!("Starting Rapl and CPU management tasks.");
+    let hsmp: Option<Arc<dyn HsmpTransport>> =
+        match HsmpDevice::open(Path::new(HSMP_DEVICE_PATH), control_baseline_path.is_some())
+            .with_context(|| format!("Failed to open {HSMP_DEVICE_PATH}"))?
+        {
+            Some(device) => {
+                tracing::info!(
+                    "Opened {} for the AMD HSMP socket power limit",
+                    HSMP_DEVICE_PATH
+                );
+                Some(Arc::new(device))
+            }
+            None => None,
+        };
+
     let num_cpus = RaplCpu::device_count()?;
     let mut cpus = Vec::with_capacity(num_cpus);
     let mut cpu_info = Vec::with_capacity(num_cpus);
     for cpu_id in 0..num_cpus {
-        let cpu = RaplCpu::init(cpu_id)?;
+        let mut cpu = RaplCpu::init(cpu_id)?;
+        if let Some(hsmp) = &hsmp {
+            cpu.attach_hsmp(hsmp.clone())?;
+        }
         let dram_available = cpu.is_dram_available();
         tracing::info!(
-            "Initialized RAPL for CPU {} (DRAM: {})",
+            "Initialized RAPL for CPU {} ({}, DRAM: {}, HSMP: {})",
             cpu_id,
+            cpu.zone_name(),
             dram_available,
+            hsmp.is_some(),
         );
         cpu_info.push(CpuDiscoveryInfo {
             id: cpu_id,
@@ -366,11 +393,33 @@ pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDi
         });
         cpus.push(cpu);
     }
+
+    let current = cpus
+        .iter()
+        .map(RaplCpu::power_limit_settings)
+        .collect::<Result<Vec<_>, _>>()?;
+    if current.iter().all(|package| package.constraints.is_empty()) {
+        tracing::warn!(
+            "No CPU package exposes a power limit: RAPL reports no constraints and {} does not \
+             exist. On AMD EPYC CPUs, load the amd_hsmp kernel module to expose the socket \
+             power limit.",
+            HSMP_DEVICE_PATH,
+        );
+    }
+    if let Some(baseline_path) = control_baseline_path {
+        let baseline = load_or_record(baseline_path, current)?;
+        for (cpu, package) in cpus.iter_mut().zip(baseline) {
+            cpu.set_baseline(package.constraints);
+        }
+    }
+
     Ok((CpuManagementTasks::start(cpus)?, cpu_info))
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
+pub fn start_cpu_device_tasks(
+    _control_baseline_path: Option<&Path>,
+) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     anyhow::bail!(
         "CPU RAPL monitoring is only available on Linux. \
          Remove 'cpu-read' from --enable to start zeusd on this platform."
@@ -428,15 +477,19 @@ pub fn check_privileges(
 
     #[cfg(not(target_os = "linux"))]
     {
-        if enabled_groups.contains(&ApiGroup::CpuRead) {
-            tracing::error!(
-                "API group 'cpu-read' is only supported on Linux \
-                 (requires Intel RAPL via /sys/class/powercap)."
-            );
-            anyhow::bail!(
-                "API group 'cpu-read' is only supported on Linux. \
-                 Remove it from --enable to start zeusd on this platform."
-            );
+        for group in [ApiGroup::CpuRead, ApiGroup::CpuControl] {
+            if enabled_groups.contains(&group) {
+                tracing::error!(
+                    "API group '{}' is only supported on Linux \
+                     (requires RAPL via /sys/class/powercap).",
+                    group,
+                );
+                anyhow::bail!(
+                    "API group '{}' is only supported on Linux. \
+                     Remove it from --enable to start zeusd on this platform.",
+                    group,
+                );
+            }
         }
     }
 
@@ -530,8 +583,15 @@ macro_rules! build_app {
             app = app.app_data(web::Data::new(broadcast.clone()));
         }
 
-        if enabled.contains(&ApiGroup::CpuRead) {
-            app = app.service(web::scope("/cpu").configure(cpu_routes));
+        if enabled.contains(&ApiGroup::CpuRead) || enabled.contains(&ApiGroup::CpuControl) {
+            let mut cpu_scope = web::scope("/cpu");
+            if enabled.contains(&ApiGroup::CpuRead) {
+                cpu_scope = cpu_scope.configure(cpu_read_routes);
+            }
+            if enabled.contains(&ApiGroup::CpuControl) {
+                cpu_scope = cpu_scope.configure(cpu_control_routes);
+            }
+            app = app.service(cpu_scope);
         }
         if let Some(ref tasks) = state.cpu_device_tasks {
             app = app.app_data(web::Data::new(tasks.clone()));

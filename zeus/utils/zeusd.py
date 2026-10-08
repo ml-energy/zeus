@@ -129,15 +129,17 @@ class CpuEnergyResult:
 
 @dataclass(frozen=True)
 class PowerLimitConstraint:
-    """One power limit constraint of a CPU RAPL power zone.
+    """One power limit constraint of a CPU package or DRAM zone.
 
     Attributes:
-        name: Constraint name reported by the kernel: `long_term`, `short_term`, or `peak_power`.
+        name: `long_term`, `short_term`, or `peak_power` for RAPL constraints, as named by the kernel,
+            or `socket` for the AMD HSMP socket power limit.
         power_limit_mw: Configured power limit in milliwatts.
-        max_power_mw: Maximum power the kernel reports for this constraint in milliwatts,
+        max_power_mw: Maximum power reported for this constraint in milliwatts,
             or None if the kernel has no value for it.
         time_window_us: Time window of the constraint in microseconds, or None if the kernel
             has no value for it, which is the case for `peak_power` on kernels 6.5 and later.
+            Always None for `socket`, whose averaging window the firmware fixes.
     """
 
     name: str
@@ -148,13 +150,14 @@ class PowerLimitConstraint:
 
 @dataclass(frozen=True)
 class ZonePowerLimits:
-    """Power limit state of one CPU RAPL power zone.
+    """Power limit state of one CPU package or DRAM zone.
 
     Attributes:
         enabled: Whether the kernel reports the zone's `long_term` limit as enabled.
             The kernel reports False when the limit is disabled, when it is locked by the BIOS,
             or when reading its enable bit failed; sysfs does not distinguish these cases.
-        constraints: Constraints in sysfs index order. Empty if the kernel exposes no power limits for the zone.
+        constraints: RAPL constraints in sysfs index order, followed by `socket` if the zone is
+            a package with HSMP access. Empty if neither is available.
     """
 
     enabled: bool
@@ -172,6 +175,53 @@ class CpuDramPowerLimits:
 
     cpu: ZonePowerLimits
     dram: ZonePowerLimits | None
+
+
+@dataclass(frozen=True)
+class RaplPowerInfo:
+    """Package power information that Intel CPUs report in `MSR_PKG_POWER_INFO`.
+
+    The hardware does not enforce these ranges: it can accept limits outside them,
+    and whether it holds a limit depends on the load.
+
+    Attributes:
+        thermal_spec_power_mw: Thermal design power, also reported as the `long_term` `max_power_mw`.
+        min_power_mw: Lowest power limit Intel documents as allowed for the package.
+        max_power_mw: Highest power limit Intel documents as allowed for the package,
+            also reported as the `short_term` `max_power_mw`.
+        max_time_window_us: Longest time window Intel documents as allowed for the package.
+        power_limit_register_max_mw: Largest power limit the power limit register can hold.
+    """
+
+    thermal_spec_power_mw: int
+    min_power_mw: int
+    max_power_mw: int
+    max_time_window_us: int
+    power_limit_register_max_mw: int
+
+
+@dataclass(frozen=True)
+class HsmpPowerInfo:
+    """Power limit range of the AMD HSMP socket power limit.
+
+    Attributes:
+        max_power_mw: Largest socket power limit the firmware applies; it clamps higher ones.
+    """
+
+    max_power_mw: int
+
+
+@dataclass(frozen=True)
+class CpuPowerLimitConstraints:
+    """Power limit ranges a CPU package reports, per mechanism.
+
+    Attributes:
+        rapl: From RAPL MSRs, or None if the package zone has no RAPL constraints.
+        hsmp: From HSMP, or None if the package zone has no `socket` constraint.
+    """
+
+    rapl: RaplPowerInfo | None
+    hsmp: HsmpPowerInfo | None
 
 
 @dataclass(frozen=True)
@@ -455,6 +505,11 @@ class ZeusdClient:
         """Whether CPU read endpoints are accessible."""
         return self._can("cpu-read", "cpu-read")
 
+    @property
+    def can_control_cpu(self) -> bool:
+        """Whether CPU control endpoints are accessible."""
+        return self._can("cpu-control", "cpu-control")
+
     def get_gpu_energy(self, gpu_ids: list[int]) -> dict[int, int]:
         """Get cumulative energy consumption per GPU.
 
@@ -732,6 +787,89 @@ class ZeusdClient:
             for k, v in data.items()
         }
 
+    def get_cpu_power_limit_constraints(self, cpu_ids: list[int] | None = None) -> dict[int, CpuPowerLimitConstraints]:
+        """Get the power limit ranges each CPU package reports.
+
+        On Intel CPUs, the daemon reads RAPL MSRs, which requires the `msr` kernel module.
+
+        Args:
+            cpu_ids: CPU indices to query.  None means all.
+
+        Returns:
+            Mapping of CPU index to power limit ranges.
+        """
+        params: dict[str, str] = {}
+        if cpu_ids is not None:
+            params["cpu_ids"] = ",".join(str(i) for i in cpu_ids)
+        resp = self._client.get(self._config.url("/cpu/get_power_limit_constraints"), params=params)
+        self._check(resp, "get_cpu_power_limit_constraints")
+        data = resp.json()
+        return {
+            int(k): CpuPowerLimitConstraints(
+                rapl=None if v["rapl"] is None else RaplPowerInfo(**v["rapl"]),
+                hsmp=None if v["hsmp"] is None else HsmpPowerInfo(**v["hsmp"]),
+            )
+            for k, v in data.items()
+        }
+
+    def set_cpu_power_limit(self, cpu_ids: list[int], constraint: str, power_limit_mw: int) -> None:
+        """Set the power limit of a package zone constraint on the given CPUs.
+
+        The daemon rejects a constraint the package zone does not have, a zero limit,
+        a `socket` limit above its `max_power_mw`, and a RAPL limit too large for the CPU's register.
+        RAPL limits may exceed `max_power_mw`, which is the CPU's TDP for `long_term`.
+
+        Args:
+            cpu_ids: CPU indices to set.
+            constraint: Constraint name reported by `get_cpu_power_limit`, such as `long_term` or `socket`.
+            power_limit_mw: Power limit in milliwatts.
+        """
+        resp = self._client.post(
+            self._config.url("/cpu/set_power_limit"),
+            params={
+                "cpu_ids": ",".join(str(i) for i in cpu_ids),
+                "constraint": constraint,
+                "power_limit_mw": str(power_limit_mw),
+            },
+        )
+        self._check(resp, "set_cpu_power_limit")
+
+    def set_cpu_time_window(self, cpu_ids: list[int], constraint: str, time_window_us: int) -> None:
+        """Set the time window of a package zone constraint on the given CPUs.
+
+        The daemon rejects a constraint without a time window and a zero time window.
+        The hardware stores the window with limited precision, so `get_cpu_power_limit`
+        may report a nearby value.
+
+        Args:
+            cpu_ids: CPU indices to set.
+            constraint: Constraint name reported by `get_cpu_power_limit`, such as `long_term`.
+            time_window_us: Time window in microseconds.
+        """
+        resp = self._client.post(
+            self._config.url("/cpu/set_time_window"),
+            params={
+                "cpu_ids": ",".join(str(i) for i in cpu_ids),
+                "constraint": constraint,
+                "time_window_us": str(time_window_us),
+            },
+        )
+        self._check(resp, "set_cpu_time_window")
+
+    def reset_cpu_power_limit(self, cpu_ids: list[int]) -> None:
+        """Restore the power limits and time windows of the given CPUs' package zones.
+
+        The daemon restores the settings it recorded on its first start after boot.
+
+        Args:
+            cpu_ids: CPU indices to reset.
+        """
+        resp = self._client.post(
+            self._config.url("/cpu/reset_power_limit"),
+            params={"cpu_ids": ",".join(str(i) for i in cpu_ids)},
+        )
+        self._check(resp, "reset_cpu_power_limit")
+
     def get_time(self) -> float:
         """Get daemon timestamp in seconds."""
         resp = self._client.get(self._config.url("/time"))
@@ -769,6 +907,7 @@ def require_capabilities(
     read_gpu: bool = False,
     control_gpu: bool = False,
     read_cpu: bool = False,
+    control_cpu: bool = False,
     gpu_ids: list[int] | None = None,
     cpu_ids: list[int] | None = None,
 ) -> None:
@@ -783,6 +922,7 @@ def require_capabilities(
         read_gpu: Require the gpu-read capability.
         control_gpu: Require the gpu-control capability.
         read_cpu: Require the cpu-read capability.
+        control_cpu: Require the cpu-control capability.
         gpu_ids: GPU indices that must be available.
         cpu_ids: CPU indices that must be available.
 
@@ -800,6 +940,8 @@ def require_capabilities(
         errors.append(_capability_reason(client, "gpu-control"))
     if read_cpu and not client.can_read_cpu:
         errors.append(_capability_reason(client, "cpu-read"))
+    if control_cpu and not client.can_control_cpu:
+        errors.append(_capability_reason(client, "cpu-control"))
 
     if gpu_ids is not None:
         available = set(client.gpu_ids)

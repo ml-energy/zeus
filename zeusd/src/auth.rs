@@ -69,6 +69,9 @@ fn required_scope(path: &str) -> Option<ApiGroup> {
     if path.starts_with("/gpu/") {
         return Some(ApiGroup::GpuRead);
     }
+    if path.starts_with("/cpu/set_") || path.starts_with("/cpu/reset_") {
+        return Some(ApiGroup::CpuControl);
+    }
     if path.starts_with("/cpu/") {
         return Some(ApiGroup::CpuRead);
     }
@@ -326,6 +329,22 @@ mod tests {
         assert_eq!(
             required_scope("/cpu/get_cumulative_energy"),
             Some(ApiGroup::CpuRead)
+        );
+        assert_eq!(
+            required_scope("/cpu/get_power_limit"),
+            Some(ApiGroup::CpuRead)
+        );
+        assert_eq!(
+            required_scope("/cpu/set_power_limit"),
+            Some(ApiGroup::CpuControl)
+        );
+        assert_eq!(
+            required_scope("/cpu/set_time_window"),
+            Some(ApiGroup::CpuControl)
+        );
+        assert_eq!(
+            required_scope("/cpu/reset_power_limit"),
+            Some(ApiGroup::CpuControl)
         );
     }
 

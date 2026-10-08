@@ -12,17 +12,22 @@ RestartSec=5s
 
 RuntimeDirectory=zeusd
 RuntimeDirectoryMode=0755
+# Keep /run/zeusd across service restarts so the CPU power limit baseline
+# recorded at the first start after boot survives until reboot.
+RuntimeDirectoryPreserve=yes
 
 # Hardening
 # CAP_SYS_ADMIN is needed for NVML GPU power configuration settings.
 # Even when running as root, CAP_DAC_READ_SEARCH is required to read
 # /sys/class/powercap/.../energy_uj (mode 0400 since CVE-2020-8694).
+# CAP_SYS_RAWIO is needed to read Intel RAPL power information from
+# /dev/cpu/*/msr for GET /cpu/get_power_limit_constraints.
 # CAP_CHOWN is needed only when --socket-uid/--socket-gid are passed.
 # ProtectKernelTunables stays off because AMD GPU control writes go
 # through the amdgpu driver's sysfs files, which it would mount read-only.
 # Nodes without AMD GPU control can re-enable it (see the README's
 # Additional hardening section).
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_CHOWN
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_SYS_RAWIO CAP_CHOWN
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

@@ -52,6 +52,20 @@ pub enum ZeusdError {
     CpuUnexpectedResponseError(usize),
     #[error("Initialization for CPU {0} unexpectedly errored.")]
     CpuInitializationError(usize),
+    #[error("Failed to {action}: {source}")]
+    CpuControlError {
+        action: String,
+        source: std::io::Error,
+    },
+    #[error("No power limit baseline was recorded for CPU {0}.")]
+    CpuBaselineMissingError(usize),
+    #[error("Cannot read the RAPL power information of CPU {cpu}: {source}")]
+    CpuMsrError {
+        cpu: usize,
+        source: crate::devices::cpu::msr::MsrError,
+    },
+    #[error("{}", .0.iter().map(ToString::to_string).collect::<Vec<_>>().join("; "))]
+    Multiple(Vec<ZeusdError>),
     #[error("IOError: {0}")]
     IOError(#[from] std::io::Error),
     #[error("Authentication required.")]
@@ -93,12 +107,58 @@ impl ResponseError for ZeusdError {
             ZeusdError::CpuPowerMeasurementError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuUnexpectedResponseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuInitializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuControlError { source, .. } => cpu_control_status(source),
+            ZeusdError::CpuBaselineMissingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuMsrError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::Multiple(errors) => errors
+                .iter()
+                .map(ResponseError::status_code)
+                .max()
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             ZeusdError::IOError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::Unauthorized => StatusCode::UNAUTHORIZED,
             ZeusdError::Forbidden(_) => StatusCode::FORBIDDEN,
             ZeusdError::PersistenceModeCannotBeDisabled => StatusCode::BAD_REQUEST,
             ZeusdError::CommandOverrideError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
+    }
+}
+
+impl ZeusdError {
+    /// A failed CPU power limit or time window write.
+    pub fn cpu_control(action: String, source: std::io::Error) -> Self {
+        ZeusdError::CpuControlError { action, source }
+    }
+
+    /// Succeed if `errors` is empty, and otherwise fail with all of them.
+    pub fn from_errors(mut errors: Vec<ZeusdError>) -> Result<(), ZeusdError> {
+        match errors.len() {
+            0 => Ok(()),
+            1 => Err(errors.remove(0)),
+            _ => Err(ZeusdError::Multiple(errors)),
+        }
+    }
+}
+
+/// Map the errno of a failed CPU control write to an HTTP status.
+///
+/// The kernel answers `EACCES` for RAPL limits the BIOS locked and `EPERM` for
+/// HSMP writes through a read-only file. HSMP answers `EINVAL` for arguments
+/// the firmware rejects and `ENOMSG` for messages the firmware does not know.
+fn cpu_control_status(source: &std::io::Error) -> StatusCode {
+    #[cfg(unix)]
+    {
+        use nix::errno::Errno;
+        match source.raw_os_error().map(Errno::from_raw) {
+            Some(Errno::EACCES | Errno::EPERM) => StatusCode::FORBIDDEN,
+            Some(Errno::EINVAL | Errno::ENOMSG) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = source;
+        StatusCode::INTERNAL_SERVER_ERROR
     }
 }
 
@@ -114,4 +174,47 @@ pub fn aggregate_error_response(errors: HashMap<usize, ZeusdError>) -> HttpRespo
         .map(|(id, e)| (id.to_string(), e.to_string()))
         .collect();
     HttpResponse::build(worst_status).json(serde_json::json!({ "errors": payload }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn control_error(errno: i32) -> ZeusdError {
+        ZeusdError::cpu_control(
+            "set a power limit".to_string(),
+            std::io::Error::from_raw_os_error(errno),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cpu_control_errno_maps_to_status() {
+        use nix::errno::Errno;
+        for (errno, status) in [
+            (Errno::EACCES, StatusCode::FORBIDDEN),
+            (Errno::EPERM, StatusCode::FORBIDDEN),
+            (Errno::EINVAL, StatusCode::BAD_REQUEST),
+            (Errno::ENOMSG, StatusCode::BAD_REQUEST),
+            (Errno::EIO, StatusCode::INTERNAL_SERVER_ERROR),
+            (Errno::ETIMEDOUT, StatusCode::INTERNAL_SERVER_ERROR),
+        ] {
+            assert_eq!(control_error(errno as i32).status_code(), status, "{errno}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn multiple_errors_report_all_and_the_worst_status() {
+        use nix::errno::Errno;
+        assert!(ZeusdError::from_errors(vec![]).is_ok());
+
+        let error = ZeusdError::from_errors(vec![
+            control_error(Errno::EINVAL as i32),
+            control_error(Errno::EACCES as i32),
+        ])
+        .unwrap_err();
+        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
+        assert_eq!(error.to_string().matches("set a power limit").count(), 2);
+    }
 }
