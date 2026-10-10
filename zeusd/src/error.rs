@@ -30,6 +30,12 @@ pub const PERMISSIONS_DOC_URL: &str =
 pub const ORIGINAL_POWER_LIMITS_DOC_URL: &str =
     "https://ml.energy/zeus/zeusd/deployment/#original-cpu-power-limits";
 
+/// How to record the original setting of a constraint that the recorded original settings lack.
+pub const RECORD_ORIGINAL_HINT: &str = "To record it after restoring access, reset the recorded \
+    settings and stop Zeusd. Verify that the current limits and time windows are the values \
+    reset should restore. Restart with a new --original-cpu-power-limit-path, or with \
+    --no-persistent-original-cpu-power-limit to record originals at each daemon start.";
+
 /// How to make the RAPL powercap interface available to Zeusd.
 pub const RAPL_AVAILABILITY: &str = "Ensure the host's RAPL powercap interface is available, \
     typically provided by the intel_rapl_msr kernel module (`sudo modprobe intel_rapl_msr`). In \
@@ -105,7 +111,14 @@ pub enum ZeusdError {
          Zeusd records them at startup when the cpu-control API group is enabled. \
          See {ORIGINAL_POWER_LIMITS_DOC_URL}"
     )]
-    CpuOriginalMissingError(usize),
+    CpuOriginalPowerLimitsMissingError(usize),
+    #[error(
+        "No original setting of constraint '{constraint}' is recorded for CPU {cpu} because the \
+         constraint was unavailable when Zeusd recorded the original settings, and Zeusd does not \
+         change a constraint that reset cannot restore. {RECORD_ORIGINAL_HINT} \
+         See {ORIGINAL_POWER_LIMITS_DOC_URL}"
+    )]
+    CpuConstraintOriginalMissingError { cpu: usize, constraint: String },
     #[error(
         "Cannot {action} on CPU {cpu}: {source} {} See {PERMISSIONS_DOC_URL}",
         crate::devices::cpu::msr::MSR_AVAILABILITY
@@ -176,7 +189,10 @@ impl ResponseError for ZeusdError {
                 HsmpError::Request(source) if *write => cpu_control_status(source),
                 HsmpError::Request(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
-            ZeusdError::CpuOriginalMissingError(_) => StatusCode::SERVICE_UNAVAILABLE,
+            ZeusdError::CpuOriginalPowerLimitsMissingError(_)
+            | ZeusdError::CpuConstraintOriginalMissingError { .. } => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             ZeusdError::CpuMsrError { source, .. } => {
                 use crate::devices::cpu::msr::MsrError;
                 match source {
@@ -543,9 +559,22 @@ mod tests {
 
     #[test]
     fn missing_original_is_unavailable() {
-        let error = ZeusdError::CpuOriginalMissingError(0);
+        let error = ZeusdError::CpuOriginalPowerLimitsMissingError(0);
         assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
         assert!(error.to_string().contains(ORIGINAL_POWER_LIMITS_DOC_URL));
+
+        let error = ZeusdError::CpuConstraintOriginalMissingError {
+            cpu: 0,
+            constraint: "socket".to_string(),
+        };
+        assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
+        let message = error.to_string();
+        assert!(message.contains("'socket'"), "{message}");
+        assert!(
+            message.contains("new --original-cpu-power-limit-path"),
+            "{message}"
+        );
+        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
     }
 
     #[cfg(feature = "nvml")]

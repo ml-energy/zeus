@@ -1,6 +1,6 @@
 pub mod hsmp;
 pub mod msr;
-pub mod original;
+pub mod power_limit_snapshot;
 mod rapl;
 pub use rapl::{RaplCpu, HSMP_SOCKET_CONSTRAINT};
 
@@ -114,6 +114,13 @@ pub trait CpuManager {
     fn get_power_limits(&self) -> Result<CpuDramPowerLimits, ZeusdError>;
     /// Read the power limit ranges the CPU package reports.
     fn get_power_limit_constraints(&self) -> Result<CpuPowerLimitConstraints, ZeusdError>;
+    /// Read one package zone constraint, or error if the zone has no such constraint.
+    ///
+    /// Implementations that read constraints through independent interfaces
+    /// read only the interface of the requested constraint.
+    fn get_package_constraint(&self, constraint: &str) -> Result<PowerLimitConstraint, ZeusdError> {
+        find_constraint(&self.get_power_limits()?.cpu, constraint).cloned()
+    }
     /// Write the power limit of a package zone constraint in milliwatts.
     ///
     /// Callers check that the constraint exists and the limit is positive.
@@ -121,7 +128,7 @@ pub trait CpuManager {
     fn set_power_limit(&mut self, constraint: &str, power_limit_mw: u64) -> Result<(), ZeusdError>;
     /// Write the time window of a package zone constraint in microseconds.
     ///
-    /// Callers validate the value against `get_power_limits` first.
+    /// Callers validate the value against `get_package_constraint` first.
     fn set_power_limit_time_window(
         &mut self,
         constraint: &str,
@@ -284,8 +291,8 @@ impl CpuCommand {
                 constraint,
                 power_limit_mw,
             } => {
-                let limits = device.get_power_limits()?;
-                validate_power_limit(&limits.cpu, constraint, *power_limit_mw)?;
+                device.get_package_constraint(constraint)?;
+                validate_power_limit(*power_limit_mw)?;
                 device.set_power_limit(constraint, *power_limit_mw)?;
                 Ok(CpuResponse::Ok)
             }
@@ -293,8 +300,8 @@ impl CpuCommand {
                 constraint,
                 time_window_us,
             } => {
-                let limits = device.get_power_limits()?;
-                validate_time_window(&limits.cpu, constraint, *time_window_us)?;
+                let found = device.get_package_constraint(constraint)?;
+                validate_time_window(&found, *time_window_us)?;
                 device.set_power_limit_time_window(constraint, *time_window_us)?;
                 Ok(CpuResponse::Ok)
             }
@@ -315,32 +322,32 @@ fn find_constraint<'a>(
         .find(|c| c.name == constraint)
         .ok_or_else(|| {
             let available: Vec<&str> = zone.constraints.iter().map(|c| c.name.as_str()).collect();
-            let hint = if constraint == HSMP_SOCKET_CONSTRAINT {
-                format!(
-                    " The '{HSMP_SOCKET_CONSTRAINT}' constraint needs AMD HSMP: load the amd_hsmp \
-                     kernel module so that {HSMP_DEVICE_PATH} exists (in a container, also pass \
-                     the device) and restart Zeusd. See {PERMISSIONS_DOC_URL}"
-                )
-            } else {
-                String::new()
-            };
-            ZeusdError::InvalidRequest(format!(
-                "Package zone has no power limit constraint '{constraint}' (available: {available:?}).{hint}"
-            ))
+            missing_constraint_error(constraint, &available)
         })
 }
 
-/// Reject a power limit of zero or for a constraint the zone does not have.
+/// The error for a constraint the package zone does not have.
+fn missing_constraint_error(constraint: &str, available: &[&str]) -> ZeusdError {
+    let hint = if constraint == HSMP_SOCKET_CONSTRAINT {
+        format!(
+            " The '{HSMP_SOCKET_CONSTRAINT}' constraint needs AMD HSMP: load the amd_hsmp \
+             kernel module so that {HSMP_DEVICE_PATH} exists (in a container, also pass \
+             the device) and restart Zeusd. See {PERMISSIONS_DOC_URL}"
+        )
+    } else {
+        String::new()
+    };
+    ZeusdError::InvalidRequest(format!(
+        "Package zone has no power limit constraint '{constraint}' (available: {available:?}).{hint}"
+    ))
+}
+
+/// Reject a power limit of zero.
 ///
 /// Neither RAPL nor HSMP reports a minimum the hardware can enforce, so zero is
 /// the only value rejected for being too low. Upper bounds depend on how the
 /// constraint is applied, so `CpuManager::set_power_limit` checks them.
-fn validate_power_limit(
-    zone: &ZonePowerLimits,
-    constraint: &str,
-    power_limit_mw: u64,
-) -> Result<(), ZeusdError> {
-    find_constraint(zone, constraint)?;
+fn validate_power_limit(power_limit_mw: u64) -> Result<(), ZeusdError> {
     if power_limit_mw == 0 {
         return Err(ZeusdError::InvalidRequest(
             "Power limit must be positive".to_string(),
@@ -351,14 +358,13 @@ fn validate_power_limit(
 
 /// Reject a time window of zero or one for a constraint without a time window.
 fn validate_time_window(
-    zone: &ZonePowerLimits,
-    constraint: &str,
+    found: &PowerLimitConstraint,
     time_window_us: u64,
 ) -> Result<(), ZeusdError> {
-    let found = find_constraint(zone, constraint)?;
     if found.time_window_us.is_none() {
         return Err(ZeusdError::InvalidRequest(format!(
-            "Constraint '{constraint}' has no adjustable time window"
+            "Constraint '{}' has no adjustable time window",
+            found.name
         )));
     }
     if time_window_us == 0 {
@@ -387,21 +393,22 @@ mod tests {
 
     #[test]
     fn power_limit_must_be_positive_for_an_existing_constraint() {
-        assert!(validate_power_limit(&zone(Some(205_000)), "long_term", 250_000).is_ok());
-        assert!(validate_power_limit(&zone(None), "long_term", 1).is_ok());
-        assert!(validate_power_limit(&zone(None), "long_term", 0).is_err());
-        assert!(validate_power_limit(&zone(None), "short_term", 1).is_err());
+        assert!(find_constraint(&zone(Some(205_000)), "long_term").is_ok());
+        assert!(validate_power_limit(250_000).is_ok());
+        assert!(validate_power_limit(1).is_ok());
+        assert!(validate_power_limit(0).is_err());
+        assert!(find_constraint(&zone(None), "short_term").is_err());
     }
 
     #[test]
     fn missing_socket_constraint_explains_hsmp_prerequisite() {
-        let message = validate_power_limit(&zone(None), "socket", 1)
+        let message = find_constraint(&zone(None), "socket")
             .unwrap_err()
             .to_string();
         assert!(message.contains("amd_hsmp"), "{message}");
         assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
 
-        let message = validate_power_limit(&zone(None), "short_term", 1)
+        let message = find_constraint(&zone(None), "short_term")
             .unwrap_err()
             .to_string();
         assert!(!message.contains("amd_hsmp"), "{message}");

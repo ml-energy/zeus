@@ -60,7 +60,7 @@ sudo modprobe amd_hsmp
 
 If `amd_hsmp` reports that HSMP is disabled, enable it in the firmware settings.
 The [Linux HSMP driver](https://kernel.org/doc/html/v6.2/x86/amd_hsmp.html) distinguishes read access for queries from write access for control.
-Missing HSMP access does not prevent RAPL energy monitoring.
+Missing HSMP access does not prevent RAPL energy monitoring, RAPL power-limit changes, or CPU control startup.
 
 Intel MSRs provide power ranges and precise time-window control.
 Expose `/dev/cpu/<core>/msr` for the lowest-numbered online core in each package, or each die for per-die RAPL zones.
@@ -96,6 +96,13 @@ The filesystem must support hard links (multiple filenames for one file), which 
 An inaccessible directory or invalid original snapshot produces a startup error instead of silently recording different original settings.
 To keep the original settings only in memory, pass `--no-persistent-original-cpu-power-limit` explicitly.
 That mode records the settings at every daemon start as the original settings, so a restarted daemon cannot restore settings from before its start.
+
+If HSMP reads fail at startup, `zeusd` warns and excludes `socket` from any new original snapshot.
+Existing snapshots keep previously recorded `socket` settings, and resets still attempt the other settings.
+If a snapshot lacks `socket`, socket changes are rejected until an original setting is recorded.
+To record one after restoring HSMP access, reset the saved settings and stop `zeusd`.
+Verify that the current limits and time windows are the values you want resets to restore.
+Restart with a new `--original-cpu-power-limit-path`, or use `--no-persistent-original-cpu-power-limit` to record originals at each daemon start.
 
 ## Deployment methods
 

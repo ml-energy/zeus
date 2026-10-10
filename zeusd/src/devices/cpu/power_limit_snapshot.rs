@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::devices::cpu::HSMP_SOCKET_CONSTRAINT;
 use crate::error::ORIGINAL_POWER_LIMITS_DOC_URL;
 
 /// File in which the kernel reports a random ID that changes on every boot.
@@ -40,14 +41,14 @@ pub struct PackageSettings {
 /// On-disk format of the original snapshot file. `cpus` is indexed by CPU ID.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-struct OriginalFile {
+struct OriginalPowerLimitFile {
     boot_id: String,
     cpus: Vec<PackageSettings>,
 }
 
 /// Where the original settings are kept.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OriginalStorage {
+pub enum OriginalPowerLimitStorage {
     /// A file per host boot, named by `original_snapshot_path` from this path.
     Persistent(PathBuf),
     /// Process memory, so every zeusd start records the settings it finds.
@@ -59,12 +60,12 @@ pub enum OriginalStorage {
 /// `current` holds the settings zeusd finds now. `boot_id_path` is only read
 /// for persistent storage.
 pub fn establish(
-    storage: &OriginalStorage,
+    storage: &OriginalPowerLimitStorage,
     boot_id_path: &Path,
     current: Vec<PackageSettings>,
 ) -> anyhow::Result<Vec<PackageSettings>> {
     match storage {
-        OriginalStorage::InMemory => {
+        OriginalPowerLimitStorage::InMemory => {
             tracing::info!(
                 "Recorded the current CPU power limit settings in memory as the original settings \
                  that reset restores. A restarted Zeusd records the settings it finds at that \
@@ -72,7 +73,7 @@ pub fn establish(
             );
             Ok(current)
         }
-        OriginalStorage::Persistent(path) => {
+        OriginalPowerLimitStorage::Persistent(path) => {
             let boot_id = read_boot_id(boot_id_path)?;
             load_or_record(path, &boot_id, current)
         }
@@ -140,7 +141,9 @@ pub fn original_snapshot_path(path: &Path, boot_id: &str) -> anyhow::Result<Path
 /// them if no zeusd process recorded them yet.
 ///
 /// Errors if the loaded settings do not have the same package zones and
-/// constraint names as `current`.
+/// constraint names as `current`. The HSMP `socket` constraint is exempt
+/// because its presence depends on HSMP access, so loaded settings keep a
+/// `socket` setting that `current` lacks and lack one that `current` has.
 pub fn load_or_record(
     configured_path: &Path,
     boot_id: &str,
@@ -160,7 +163,7 @@ pub fn load_or_record(
 
     let contents = fs::read_to_string(&path)
         .map_err(|e| storage_error("read the original CPU power limit snapshot", &path, e))?;
-    let file: OriginalFile = serde_json::from_str(&contents).map_err(|e| {
+    let file: OriginalPowerLimitFile = serde_json::from_str(&contents).map_err(|e| {
         anyhow::anyhow!(
             "Failed to parse the original CPU power limit snapshot at {}: {e}. {REPLACE_HINT} \
              See {ORIGINAL_POWER_LIMITS_DOC_URL}",
@@ -232,7 +235,7 @@ fn record(path: &Path, boot_id: &str, cpus: &[PackageSettings]) -> anyhow::Resul
             })?;
         }
     }
-    let contents = serde_json::to_string_pretty(&OriginalFile {
+    let contents = serde_json::to_string_pretty(&OriginalPowerLimitFile {
         boot_id: boot_id.to_string(),
         cpus: cpus.to_vec(),
     })
@@ -344,7 +347,12 @@ fn check_matches(recorded: &[PackageSettings], current: &[PackageSettings]) -> a
             );
         }
         let names = |package: &PackageSettings| -> Vec<String> {
-            package.constraints.iter().map(|c| c.name.clone()).collect()
+            package
+                .constraints
+                .iter()
+                .filter(|c| c.name != HSMP_SOCKET_CONSTRAINT)
+                .map(|c| c.name.clone())
+                .collect()
         };
         if names(recorded) != names(current) {
             anyhow::bail!(
@@ -503,12 +511,50 @@ mod tests {
         let other_zone = vec![package("package-1", &[("socket", 200_000_000, None)])];
         assert!(load_or_record(&path, BOOT_A, other_zone).is_err());
 
-        let other_constraints = vec![package("package-0", &[])];
+        let other_constraints = vec![package(
+            "package-0",
+            &[
+                ("long_term", 205_000_000, Some(999_424)),
+                ("socket", 200_000_000, None),
+            ],
+        )];
         let message = load_or_record(&path, BOOT_A, other_constraints)
             .unwrap_err()
             .to_string();
         assert!(message.contains("does not match this machine"), "{message}");
         assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
+    }
+
+    /// Whether `socket` can be read depends on HSMP access, so a recorded
+    /// original is loaded as recorded when only `socket` differs.
+    #[test]
+    fn socket_presence_does_not_change_the_recorded_original() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("original.json");
+        let with_socket = |long_term_uw| {
+            let mut packages = intel(long_term_uw);
+            packages[0].constraints.push(ConstraintSetting {
+                name: "socket".to_string(),
+                power_limit_uw: 200_000_000,
+                time_window_us: None,
+            });
+            packages
+        };
+
+        load_or_record(&path, BOOT_A, with_socket(205_000_000)).unwrap();
+        assert_eq!(
+            load_or_record(&path, BOOT_A, intel(150_000_000)).unwrap(),
+            with_socket(205_000_000)
+        );
+
+        load_or_record(&path, BOOT_B, intel(205_000_000)).unwrap();
+        assert_eq!(
+            load_or_record(&path, BOOT_B, with_socket(150_000_000)).unwrap(),
+            intel(205_000_000)
+        );
+
+        let other_rapl = vec![package("package-0", &[("long_term", 1, Some(1))])];
+        assert!(load_or_record(&path, BOOT_B, other_rapl).is_err());
     }
 
     #[test]
@@ -691,7 +737,8 @@ mod tests {
     fn persistent_storage_reads_the_boot_id() {
         let tmp = tempfile::tempdir().unwrap();
         let boot_id_path = tmp.path().join("boot_id");
-        let storage = OriginalStorage::Persistent(tmp.path().join("state").join("original.json"));
+        let storage =
+            OriginalPowerLimitStorage::Persistent(tmp.path().join("state").join("original.json"));
 
         fs::write(&boot_id_path, format!("{BOOT_A}\n")).unwrap();
         establish(&storage, &boot_id_path, intel(205_000_000)).unwrap();
@@ -716,7 +763,7 @@ mod tests {
         for long_term_uw in [205_000_000, 150_000_000] {
             assert_eq!(
                 establish(
-                    &OriginalStorage::InMemory,
+                    &OriginalPowerLimitStorage::InMemory,
                     &absent_boot_id,
                     intel(long_term_uw)
                 )

@@ -172,6 +172,7 @@ On AMD EPYC CPUs with the `amd_hsmp` kernel module loaded (which creates `/dev/h
 `constraints` is empty when neither is available.
 
 `set_power_limit` and `set_power_limit_time_window` change one constraint of each listed CPU's package zone, named as in `get_power_limit`.
+Both reject a constraint without a recorded [original setting](deployment.md#original-cpu-power-limits).
 `set_power_limit` rejects a constraint the zone does not have, `0`, a `socket` limit above its `max_power_mw` (the firmware would clamp it), and a RAPL limit too large for the CPU's register, in which case the previous limit is restored.
 RAPL limits are not bounded by `max_power_mw`; for `long_term` it is the CPU's thermal design power (TDP), which the hardware allows exceeding.
 Neither interface reports the lowest power a CPU can hold under load, so a cap below it is accepted but not met.
@@ -211,5 +212,6 @@ Neither RAPL nor HSMP supplies default limits, so the original settings are the 
 Persistent storage under `/var/zeusd` keeps them across daemon restarts; `--no-persistent-original-cpu-power-limit` instead records them at every daemon start.
 See [Original CPU power limits](deployment.md#original-cpu-power-limits) for storage and deployment requirements.
 Values that already match are not written, and a failed write does not stop the remaining ones.
+Read failures in RAPL do not block HSMP restoration, and HSMP read failures do not block RAPL restoration.
 Changed Intel time windows require MSR write access and are restored exactly, including fractional encodings.
 Without that access, reset still attempts power-limit restoration and reports errors for changed windows.

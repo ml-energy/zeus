@@ -25,15 +25,15 @@ use crate::auth::{AuthMiddleware, SigningKeyData};
 use crate::config::{ApiGroup, GpuBackend};
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::hsmp::{HsmpDevice, HsmpTransport, HSMP_DEVICE_PATH};
-use crate::devices::cpu::original::OriginalStorage;
-#[cfg(target_os = "linux")]
-use crate::devices::cpu::original::{establish, BOOT_ID_PATH};
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::power::start_cpu_poller;
 use crate::devices::cpu::power::CpuPowerBroadcasts;
+use crate::devices::cpu::power_limit_snapshot::OriginalPowerLimitStorage;
+#[cfg(target_os = "linux")]
+use crate::devices::cpu::power_limit_snapshot::{establish, BOOT_ID_PATH};
 use crate::devices::cpu::CpuManagementTasks;
 #[cfg(target_os = "linux")]
-use crate::devices::cpu::{CpuManager, RaplCpu};
+use crate::devices::cpu::{CpuManager, RaplCpu, HSMP_SOCKET_CONSTRAINT};
 use crate::devices::gpu::command_override::GpuCommandOverrides;
 #[cfg(any(feature = "nvml", feature = "amdsmi"))]
 use crate::devices::gpu::command_override::OverriddenGpu;
@@ -47,10 +47,10 @@ use crate::devices::gpu::GpuManagementTasks;
 use crate::devices::gpu::GpuManager;
 #[cfg(feature = "nvml")]
 use crate::devices::gpu::NvmlGpu;
-#[cfg(target_os = "linux")]
-use crate::error::ORIGINAL_POWER_LIMITS_DOC_URL;
 #[cfg(unix)]
 use crate::error::PERMISSIONS_DOC_URL;
+#[cfg(target_os = "linux")]
+use crate::error::{ORIGINAL_POWER_LIMITS_DOC_URL, RECORD_ORIGINAL_HINT};
 use crate::routes::{cpu_control_routes, cpu_read_routes, CpuPowerSamplingPeriod};
 use crate::routes::{
     gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
@@ -364,7 +364,7 @@ pub fn start_gpu_power_poller(
 #[cfg(target_os = "linux")]
 pub fn start_cpu_device_tasks(
     read_enabled: bool,
-    original_storage: Option<&OriginalStorage>,
+    original_storage: Option<&OriginalPowerLimitStorage>,
 ) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     tracing::info!("Starting RAPL and CPU management tasks.");
     let control_enabled = original_storage.is_some();
@@ -415,7 +415,7 @@ pub fn start_cpu_device_tasks(
     }
 
     if let Some(storage) = original_storage {
-        let current = cpus
+        let (current, hsmp_errors): (Vec<_>, Vec<_>) = cpus
             .iter()
             .map(RaplCpu::power_limit_settings)
             .collect::<Result<Vec<_>, _>>()
@@ -427,8 +427,10 @@ pub fn start_cpu_device_tasks(
                      To start without CPU power control, remove cpu-control from --enable. \
                      See {ORIGINAL_POWER_LIMITS_DOC_URL}"
                 )
-            })?;
-        if current.iter().all(|package| package.constraints.is_empty()) {
+            })?
+            .into_iter()
+            .unzip();
+        if hsmp.is_none() && current.iter().all(|package| package.constraints.is_empty()) {
             tracing::warn!(
                 "No CPU package exposes a power limit: RAPL reports no constraints and {} does \
                  not exist. On AMD EPYC CPUs, load the amd_hsmp kernel module to expose the \
@@ -437,12 +439,60 @@ pub fn start_cpu_device_tasks(
             );
         }
         let original = establish(storage, Path::new(BOOT_ID_PATH), current)?;
-        for (cpu, package) in cpus.iter_mut().zip(original) {
-            cpu.set_original(package.constraints);
+        for (cpu_id, ((cpu, package), hsmp_error)) in
+            cpus.iter_mut().zip(original).zip(hsmp_errors).enumerate()
+        {
+            log_socket_original(
+                cpu_id,
+                hsmp.is_some(),
+                hsmp_error,
+                package
+                    .constraints
+                    .iter()
+                    .any(|c| c.name == HSMP_SOCKET_CONSTRAINT),
+            );
+            cpu.set_original_power_limits(package.constraints);
         }
     }
 
     Ok((CpuManagementTasks::start(cpus)?, cpu_info))
+}
+
+/// Warn about the consequences of an HSMP `socket` constraint that could not
+/// be read at startup or has no original setting.
+///
+/// `hsmp_error` is the failed read of the current `socket` setting, and
+/// `socket_recorded` is whether the original settings have one.
+#[cfg(target_os = "linux")]
+fn log_socket_original(
+    cpu_id: usize,
+    hsmp_attached: bool,
+    hsmp_error: Option<crate::error::ZeusdError>,
+    socket_recorded: bool,
+) {
+    match (hsmp_error, socket_recorded) {
+        (Some(error), true) => tracing::warn!(
+            "AMD HSMP reads failed for CPU {cpu_id}. The recorded original setting of its \
+             '{HSMP_SOCKET_CONSTRAINT}' constraint is kept, but power limit queries, \
+             '{HSMP_SOCKET_CONSTRAINT}' changes, and restoring '{HSMP_SOCKET_CONSTRAINT}' fail \
+             for this CPU until HSMP reads work. RAPL power limit changes and resets do not need \
+             HSMP. {error}"
+        ),
+        (Some(error), false) => tracing::warn!(
+            "AMD HSMP reads failed for CPU {cpu_id}, so the original setting of its \
+             '{HSMP_SOCKET_CONSTRAINT}' constraint is not recorded. Power limit queries fail for \
+             this CPU until HSMP reads work, and '{HSMP_SOCKET_CONSTRAINT}' changes fail until \
+             its original setting is recorded. RAPL power limit changes and resets do not need \
+             HSMP. {RECORD_ORIGINAL_HINT} {error}"
+        ),
+        (None, false) if hsmp_attached => tracing::warn!(
+            "The recorded original settings of CPU {cpu_id} have no \
+             '{HSMP_SOCKET_CONSTRAINT}' constraint because AMD HSMP was unavailable when they \
+             were recorded, so '{HSMP_SOCKET_CONSTRAINT}' changes fail. {RECORD_ORIGINAL_HINT} \
+             See {ORIGINAL_POWER_LIMITS_DOC_URL}"
+        ),
+        (None, _) => {}
+    }
 }
 
 /// Log whether the HSMP device grants the access CPU monitoring and control need.
@@ -470,7 +520,7 @@ fn log_hsmp_access(device: &HsmpDevice, control_enabled: bool) {
 #[cfg(not(target_os = "linux"))]
 pub fn start_cpu_device_tasks(
     _read_enabled: bool,
-    _original_storage: Option<&OriginalStorage>,
+    _original_storage: Option<&OriginalPowerLimitStorage>,
 ) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     anyhow::bail!(
         "CPU RAPL monitoring is only available on Linux. \

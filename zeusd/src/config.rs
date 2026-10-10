@@ -6,7 +6,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
-use crate::devices::cpu::original::OriginalStorage;
+use crate::devices::cpu::power_limit_snapshot::OriginalPowerLimitStorage;
 
 /// API groups that can be independently enabled or disabled.
 ///
@@ -247,11 +247,13 @@ impl ServeConfig {
     }
 
     /// Where the original CPU power limit settings are kept.
-    pub fn original_cpu_power_limit_storage(&self) -> OriginalStorage {
+    pub fn original_cpu_power_limit_storage(&self) -> OriginalPowerLimitStorage {
         if self.no_persistent_original_cpu_power_limit {
-            OriginalStorage::InMemory
+            OriginalPowerLimitStorage::InMemory
         } else {
-            OriginalStorage::Persistent(PathBuf::from(&self.original_cpu_power_limit_path))
+            OriginalPowerLimitStorage::Persistent(PathBuf::from(
+                &self.original_cpu_power_limit_path,
+            ))
         }
     }
 }
@@ -338,7 +340,9 @@ mod tests {
     fn original_is_persistent_under_var_by_default() {
         assert_eq!(
             serve(&[]).unwrap().original_cpu_power_limit_storage(),
-            OriginalStorage::Persistent(PathBuf::from("/var/zeusd/original_cpu_power_limit.json"))
+            OriginalPowerLimitStorage::Persistent(PathBuf::from(
+                "/var/zeusd/original_cpu_power_limit.json"
+            ))
         );
         assert_eq!(
             serve(&[
@@ -347,7 +351,7 @@ mod tests {
             ])
             .unwrap()
             .original_cpu_power_limit_storage(),
-            OriginalStorage::Persistent(PathBuf::from("/srv/zeusd/original.json"))
+            OriginalPowerLimitStorage::Persistent(PathBuf::from("/srv/zeusd/original.json"))
         );
     }
 
@@ -357,7 +361,7 @@ mod tests {
             serve(&["--no-persistent-original-cpu-power-limit"])
                 .unwrap()
                 .original_cpu_power_limit_storage(),
-            OriginalStorage::InMemory
+            OriginalPowerLimitStorage::InMemory
         );
         assert!(serve(&[
             "--no-persistent-original-cpu-power-limit",

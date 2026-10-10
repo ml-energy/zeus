@@ -9,12 +9,12 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 
-use crate::devices::cpu::hsmp::{HsmpError, HsmpSocket, HsmpTransport};
+use crate::devices::cpu::hsmp::{HsmpError, HsmpSocket, HsmpTransport, HSMP_DEVICE_PATH};
 use crate::devices::cpu::msr::{parse_package_zone_name, read_power_info, TimeWindows};
-use crate::devices::cpu::original::{ConstraintSetting, PackageSettings};
+use crate::devices::cpu::power_limit_snapshot::{ConstraintSetting, PackageSettings};
 use crate::devices::cpu::{
-    CpuDramPowerLimits, CpuManager, CpuPowerLimitConstraints, HsmpPowerInfo, PackageInfo,
-    PowerLimitConstraint, ZonePowerLimits,
+    missing_constraint_error, CpuDramPowerLimits, CpuManager, CpuPowerLimitConstraints,
+    HsmpPowerInfo, PackageInfo, PowerLimitConstraint, ZonePowerLimits,
 };
 use crate::error::{ZeusdError, PERMISSIONS_DOC_URL, RAPL_AVAILABILITY};
 
@@ -52,7 +52,7 @@ pub struct RaplCpu {
     /// HSMP access to this package's socket, if attached.
     hsmp: Option<HsmpSocket>,
     /// Original package zone constraint settings that `reset_power_limits` restores.
-    original: Option<Vec<ConstraintSetting>>,
+    original_power_limits: Option<Vec<ConstraintSetting>>,
 }
 
 /// Where a package zone constraint is read and written.
@@ -96,7 +96,7 @@ impl RaplCpu {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            original: None,
+            original_power_limits: None,
         })
     }
 
@@ -125,12 +125,25 @@ impl RaplCpu {
         Ok(())
     }
 
-    /// Read the current power limit and time window of every package zone constraint.
-    pub fn power_limit_settings(&self) -> Result<PackageSettings, ZeusdError> {
-        Ok(PackageSettings {
+    /// Read the current power limit and time window of every package zone
+    /// constraint to record them as the original settings.
+    ///
+    /// HSMP is optional, so a failed HSMP read leaves `socket` out of the
+    /// settings and is returned next to them instead of failing the read.
+    pub fn power_limit_settings(
+        &self,
+    ) -> Result<(PackageSettings, Option<ZeusdError>), ZeusdError> {
+        let mut constraints = read_raw_constraints(&self.cpu.zone_dir)?;
+        let mut hsmp_error = None;
+        if let Some(hsmp) = &self.hsmp {
+            match self.socket_constraint(hsmp) {
+                Ok(socket) => constraints.push(socket),
+                Err(error) => hsmp_error = Some(error),
+            }
+        }
+        let settings = PackageSettings {
             zone: self.cpu.name.clone(),
-            constraints: self
-                .package_constraints()?
+            constraints: constraints
                 .into_iter()
                 .map(|c| ConstraintSetting {
                     name: c.name,
@@ -138,12 +151,15 @@ impl RaplCpu {
                     time_window_us: c.time_window_us,
                 })
                 .collect(),
-        })
+        };
+        Ok((settings, hsmp_error))
     }
 
     /// Set the original settings that `reset_power_limits` restores.
-    pub fn set_original(&mut self, constraints: Vec<ConstraintSetting>) {
-        self.original = Some(constraints);
+    ///
+    /// Only constraints that have an original setting can be changed.
+    pub fn set_original_power_limits(&mut self, constraints: Vec<ConstraintSetting>) {
+        self.original_power_limits = Some(constraints);
     }
 
     /// Read the RAPL constraints of the package zone followed by the HSMP
@@ -151,17 +167,38 @@ impl RaplCpu {
     fn package_constraints(&self) -> Result<Vec<RawConstraint>, ZeusdError> {
         let mut constraints = read_raw_constraints(&self.cpu.zone_dir)?;
         if let Some(hsmp) = &self.hsmp {
-            constraints.push(RawConstraint {
-                target: ConstraintTarget::HsmpSocket,
-                name: HSMP_SOCKET_CONSTRAINT.to_string(),
-                power_limit_uw: u64::from(
-                    self.read_hsmp(hsmp.power_limit_mw(), "read the HSMP socket power limit")?,
-                ) * 1000,
-                max_power_uw: Some(self.read_hsmp_max_power_uw(hsmp)?),
-                time_window_us: None,
-            });
+            constraints.push(self.socket_constraint(hsmp)?);
         }
         Ok(constraints)
+    }
+
+    /// Read the HSMP `socket` constraint.
+    fn socket_constraint(&self, hsmp: &HsmpSocket) -> Result<RawConstraint, ZeusdError> {
+        Ok(RawConstraint {
+            target: ConstraintTarget::HsmpSocket,
+            name: HSMP_SOCKET_CONSTRAINT.to_string(),
+            power_limit_uw: u64::from(
+                self.read_hsmp(hsmp.power_limit_mw(), "read the HSMP socket power limit")?,
+            ) * 1000,
+            max_power_uw: Some(self.read_hsmp_max_power_uw(hsmp)?),
+            time_window_us: None,
+        })
+    }
+
+    /// Error unless `constraint` has an original setting that reset can restore.
+    fn check_original(&self, constraint: &str) -> Result<(), ZeusdError> {
+        let original = self
+            .original_power_limits
+            .as_ref()
+            .ok_or_else(|| ZeusdError::CpuOriginalPowerLimitsMissingError(self.cpu.index))?;
+        if original.iter().any(|setting| setting.name == constraint) {
+            Ok(())
+        } else {
+            Err(ZeusdError::CpuConstraintOriginalMissingError {
+                cpu: self.cpu.index,
+                constraint: constraint.to_string(),
+            })
+        }
     }
 
     fn read_hsmp_max_power_uw(&self, hsmp: &HsmpSocket) -> Result<u64, ZeusdError> {
@@ -189,16 +226,20 @@ impl RaplCpu {
             .collect()
     }
 
+    /// Read one package zone constraint through only the interface that provides it.
     fn find_package_constraint(&self, constraint: &str) -> Result<RawConstraint, ZeusdError> {
-        self.package_constraints()?
-            .into_iter()
-            .find(|c| c.name == constraint)
-            .ok_or_else(|| {
-                ZeusdError::InvalidRequest(format!(
-                    "Package zone of CPU {} has no power limit constraint '{constraint}'",
-                    self.cpu.index
-                ))
-            })
+        if let (HSMP_SOCKET_CONSTRAINT, Some(hsmp)) = (constraint, &self.hsmp) {
+            return self.socket_constraint(hsmp);
+        }
+        let rapl = read_raw_constraints(&self.cpu.zone_dir)?;
+        if let Some(found) = rapl.iter().find(|c| c.name == constraint) {
+            return Ok(found.clone());
+        }
+        let mut available: Vec<&str> = rapl.iter().map(|c| c.name.as_str()).collect();
+        if self.hsmp.is_some() {
+            available.push(HSMP_SOCKET_CONSTRAINT);
+        }
+        Err(missing_constraint_error(constraint, &available))
     }
 
     fn write_power_limit_uw(
@@ -493,6 +534,10 @@ impl CpuManager for RaplCpu {
         Ok(CpuPowerLimitConstraints { rapl, hsmp })
     }
 
+    fn get_package_constraint(&self, constraint: &str) -> Result<PowerLimitConstraint, ZeusdError> {
+        Ok(self.find_package_constraint(constraint)?.to_constraint())
+    }
+
     /// Reject an HSMP limit above the firmware's maximum, which the firmware
     /// would clamp, and a RAPL limit that does not fit the register field.
     ///
@@ -501,6 +546,7 @@ impl CpuManager for RaplCpu {
     /// previous limit is written back before rejecting the request.
     fn set_power_limit(&mut self, constraint: &str, power_limit_mw: u64) -> Result<(), ZeusdError> {
         let found = self.find_package_constraint(constraint)?;
+        self.check_original(&found.name)?;
         let power_limit_uw = power_limit_mw.checked_mul(1000).ok_or_else(|| {
             ZeusdError::InvalidRequest(format!("Power limit {power_limit_mw} mW is out of range"))
         })?;
@@ -548,6 +594,7 @@ impl CpuManager for RaplCpu {
         time_window_us: u64,
     ) -> Result<(), ZeusdError> {
         let found = self.find_package_constraint(constraint)?;
+        self.check_original(&found.name)?;
         if found.time_window_us.is_none() || time_window_us == 0 {
             return Err(ZeusdError::InvalidRequest(format!(
                 "Constraint '{constraint}' must have an adjustable time window, and time_window_us must be positive"
@@ -560,25 +607,56 @@ impl CpuManager for RaplCpu {
     ///
     /// Settings that already match are not written, so constraints the BIOS
     /// locked, which can never differ from their original settings, do not fail
-    /// the reset.
+    /// the reset. RAPL and HSMP are read separately, so a failed read of one
+    /// does not stop restoring the other.
     fn reset_power_limits(&mut self) -> Result<(), ZeusdError> {
         let original = self
-            .original
+            .original_power_limits
             .as_ref()
-            .ok_or_else(|| ZeusdError::CpuOriginalMissingError(self.cpu.index))?;
-        let current = self.package_constraints()?;
-        // Attempt every write so one failure does not leave the rest unrestored.
+            .ok_or_else(|| ZeusdError::CpuOriginalPowerLimitsMissingError(self.cpu.index))?;
+        // Attempt every read and write so one failure does not leave the rest unrestored.
         let mut errors = Vec::new();
+        let rapl = match read_raw_constraints(&self.cpu.zone_dir) {
+            Ok(rapl) => Some(rapl),
+            Err(error) => {
+                errors.push(error);
+                None
+            }
+        };
         for setting in original {
-            let Some(found) = current.iter().find(|c| c.name == setting.name) else {
-                errors.push(ZeusdError::IOError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!(
-                        "Constraint '{}' of CPU {} disappeared after its original setting was recorded",
-                        setting.name, self.cpu.index
-                    ),
-                )));
-                continue;
+            let found = if setting.name == HSMP_SOCKET_CONSTRAINT {
+                let socket = match &self.hsmp {
+                    Some(hsmp) => self.socket_constraint(hsmp),
+                    None => Err(ZeusdError::cpu_hsmp(
+                        self.cpu.index,
+                        "read the HSMP socket power limit",
+                        false,
+                        HsmpError::DeviceMissing(PathBuf::from(HSMP_DEVICE_PATH)),
+                    )),
+                };
+                match socket {
+                    Ok(socket) => socket,
+                    Err(error) => {
+                        errors.push(error);
+                        continue;
+                    }
+                }
+            } else {
+                // A failed RAPL read was reported above.
+                let Some(rapl) = &rapl else { continue };
+                match rapl.iter().find(|c| c.name == setting.name) {
+                    Some(found) => found.clone(),
+                    None => {
+                        errors.push(ZeusdError::IOError(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!(
+                                "Constraint '{}' of CPU {} disappeared after its original setting was recorded",
+                                setting.name, self.cpu.index
+                            ),
+                        )));
+                        continue;
+                    }
+                }
             };
             if found.power_limit_uw != setting.power_limit_uw {
                 if let Err(e) =
@@ -748,6 +826,7 @@ fn read_u64(path: &PathBuf) -> anyhow::Result<u64, std::io::Error> {
 mod tests {
     use super::*;
     use crate::devices::cpu::hsmp::tests::FakeHsmp;
+    use crate::devices::cpu::CpuCommand;
     use std::path::Path;
 
     /// Write a u64 value to a file, simulating a RAPL energy counter.
@@ -797,7 +876,7 @@ mod tests {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            original: None,
+            original_power_limits: None,
         };
 
         (cpu, cpu_energy_path, dram_path)
@@ -1005,7 +1084,7 @@ mod tests {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            original: None,
+            original_power_limits: None,
         }
     }
 
@@ -1268,10 +1347,18 @@ mod tests {
         cpu
     }
 
+    /// Record the current settings as the original settings, as startup does.
+    fn record_original(cpu: &mut RaplCpu) {
+        let (settings, hsmp_error) = cpu.power_limit_settings().unwrap();
+        assert!(hsmp_error.is_none(), "{hsmp_error:?}");
+        cpu.set_original_power_limits(settings.constraints);
+    }
+
     #[test]
     fn set_writes_powercap_files_in_kernel_units() {
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
+        record_original(&mut cpu);
 
         cpu.set_power_limit("short_term", 150_000).unwrap();
         assert!(cpu
@@ -1299,6 +1386,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let fake = FakeHsmp::new(vec![200_000], 280_000);
         let mut cpu = amd_package(tmp.path(), fake.clone());
+        record_original(&mut cpu);
 
         assert_eq!(
             cpu.get_power_limits().unwrap().cpu,
@@ -1354,7 +1442,8 @@ mod tests {
         let fake = FakeHsmp::new(vec![200_000], 280_000);
         let mut cpu = intel_package(tmp.path());
         cpu.attach_hsmp(fake.clone()).unwrap();
-        let original = cpu.power_limit_settings().unwrap();
+        let (original, hsmp_error) = cpu.power_limit_settings().unwrap();
+        assert!(hsmp_error.is_none());
         assert_eq!(original.zone, "package-0");
         assert_eq!(
             original.constraints,
@@ -1376,7 +1465,7 @@ mod tests {
                 },
             ]
         );
-        cpu.set_original(original.constraints);
+        cpu.set_original_power_limits(original.constraints);
 
         cpu.set_power_limit("long_term", 100_000).unwrap();
 
@@ -1403,7 +1492,7 @@ mod tests {
 
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
-        cpu.set_original(cpu.power_limit_settings().unwrap().constraints);
+        record_original(&mut cpu);
         cpu.set_power_limit("short_term", 100_000).unwrap();
 
         for file in ["constraint_0_power_limit_uw", "constraint_0_time_window_us"] {
@@ -1422,7 +1511,11 @@ mod tests {
         let mut cpu = intel_package(tmp.path());
         assert!(matches!(
             cpu.reset_power_limits(),
-            Err(ZeusdError::CpuOriginalMissingError(0))
+            Err(ZeusdError::CpuOriginalPowerLimitsMissingError(0))
+        ));
+        assert!(matches!(
+            cpu.set_power_limit("long_term", 100_000),
+            Err(ZeusdError::CpuOriginalPowerLimitsMissingError(0))
         ));
     }
 
@@ -1431,7 +1524,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
         Arc::get_mut(&mut cpu.cpu).unwrap().name = "psys".to_string();
-        cpu.set_original(cpu.power_limit_settings().unwrap().constraints);
+        record_original(&mut cpu);
         cpu.set_power_limit("long_term", 100_000).unwrap();
         cpu.set_power_limit("short_term", 100_000).unwrap();
         fs::write(tmp.path().join("constraint_0_time_window_us"), "2440").unwrap();
@@ -1463,7 +1556,7 @@ mod tests {
         }
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
-        cpu.set_original(cpu.power_limit_settings().unwrap().constraints);
+        record_original(&mut cpu);
         cpu.set_power_limit("long_term", 100_000).unwrap();
         cpu.set_power_limit("short_term", 100_000).unwrap();
 
@@ -1500,6 +1593,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let fake = FakeHsmp::new(vec![200_000], 280_000);
         let mut cpu = amd_package(tmp.path(), fake.clone());
+        record_original(&mut cpu);
 
         assert!(matches!(
             cpu.set_power_limit("socket", 280_001),
@@ -1536,6 +1630,7 @@ mod tests {
         let mut cpu = make_limits_cpu(tmp.path(), None);
         cpu.cpu = Arc::new(PackageInfo::new(tmp.path(), 0).unwrap());
         assert_eq!(cpu.get_power_limits().unwrap().cpu.constraints.len(), 1);
+        record_original(&mut cpu);
         cpu.set_power_limit("long_term", 150_000).unwrap();
 
         let mut access_errors = cpu.check_energy_access();
@@ -1580,6 +1675,8 @@ mod tests {
         for error in [
             cpu.get_power_limits().unwrap_err(),
             cpu.get_power_limit_constraints().unwrap_err(),
+            cpu.get_package_constraint("socket").unwrap_err(),
+            cpu.set_power_limit("socket", 150_000).unwrap_err(),
         ] {
             assert!(
                 matches!(error, ZeusdError::CpuHsmpError { write: false, .. }),
@@ -1588,10 +1685,112 @@ mod tests {
         }
     }
 
+    /// RAPL constraints are recorded and controlled without HSMP, and the
+    /// failed HSMP read is returned instead of dropped.
+    #[test]
+    fn failed_hsmp_reads_do_not_block_rapl() {
+        let tmp = tempfile::tempdir().unwrap();
+        // The fake firmware has no socket 0, so every message fails.
+        let fake = FakeHsmp::new(vec![], 280_000);
+        let mut cpu = intel_package(tmp.path());
+        cpu.attach_hsmp(fake.clone()).unwrap();
+
+        let (settings, hsmp_error) = cpu.power_limit_settings().unwrap();
+        assert!(
+            matches!(
+                hsmp_error,
+                Some(ZeusdError::CpuHsmpError { write: false, .. })
+            ),
+            "{hsmp_error:?}"
+        );
+        let names: Vec<&str> = settings
+            .constraints
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(names, ["long_term", "short_term"]);
+        cpu.set_original_power_limits(settings.constraints);
+        fake.sent.lock().unwrap().clear();
+
+        for command in [
+            CpuCommand::SetPowerLimit {
+                constraint: "short_term".to_string(),
+                power_limit_mw: 150_000,
+            },
+            CpuCommand::ResetPowerLimits,
+        ] {
+            command
+                .execute(&mut cpu, std::time::Instant::now())
+                .unwrap();
+        }
+        assert_eq!(
+            read_file(tmp.path(), "constraint_1_power_limit_uw"),
+            "246000000"
+        );
+        assert!(fake.sent.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn reset_restores_rapl_when_socket_cannot_be_read() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = FakeHsmp::new(vec![200_000], 280_000);
+        let mut cpu = intel_package(tmp.path());
+        cpu.attach_hsmp(fake.clone()).unwrap();
+        record_original(&mut cpu);
+
+        // The socket becomes unreadable after its original setting was recorded.
+        fake.limits_mw.lock().unwrap().clear();
+        cpu.set_power_limit("long_term", 100_000).unwrap();
+        let error = cpu.reset_power_limits().unwrap_err();
+        assert!(
+            matches!(error, ZeusdError::CpuHsmpError { write: false, .. }),
+            "{error}"
+        );
+        assert_eq!(
+            read_file(tmp.path(), "constraint_0_power_limit_uw"),
+            "205000000"
+        );
+
+        // The HSMP device was missing when this Zeusd started.
+        cpu.hsmp = None;
+        cpu.set_power_limit("long_term", 100_000).unwrap();
+        let error = cpu.reset_power_limits().unwrap_err();
+        assert!(error.to_string().contains("modprobe amd_hsmp"), "{error}");
+        assert_eq!(
+            read_file(tmp.path(), "constraint_0_power_limit_uw"),
+            "205000000"
+        );
+    }
+
+    #[test]
+    fn constraint_without_original_setting_is_not_changed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = FakeHsmp::new(vec![], 280_000);
+        let mut cpu = amd_package(tmp.path(), fake.clone());
+        let (settings, hsmp_error) = cpu.power_limit_settings().unwrap();
+        assert!(hsmp_error.is_some());
+        cpu.set_original_power_limits(settings.constraints);
+
+        // The socket becomes readable after the original settings were recorded.
+        fake.limits_mw.lock().unwrap().push(200_000);
+        let error = cpu.set_power_limit("socket", 150_000).unwrap_err();
+        assert!(
+            matches!(
+                &error,
+                ZeusdError::CpuConstraintOriginalMissingError { cpu: 0, constraint }
+                    if constraint == "socket"
+            ),
+            "{error}"
+        );
+        cpu.reset_power_limits().unwrap();
+        assert_eq!(*fake.limits_mw.lock().unwrap(), vec![200_000]);
+    }
+
     #[test]
     fn rapl_power_limit_above_tdp_is_accepted() {
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
+        record_original(&mut cpu);
 
         cpu.set_power_limit("long_term", 250_000).unwrap();
         assert_eq!(
@@ -1628,7 +1827,7 @@ mod platform_domain_tests {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            original: None,
+            original_power_limits: None,
         };
         assert!(cpu.get_power_limits().is_ok());
         assert_eq!(
