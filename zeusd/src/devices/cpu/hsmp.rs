@@ -169,6 +169,8 @@ pub struct HsmpSocket {
 }
 
 impl HsmpSocket {
+    /// Address the socket whose HSMP socket index is `sock_ind`, which is the
+    /// physical package ID and not necessarily the Zeusd CPU index.
     pub fn new(transport: Arc<dyn HsmpTransport>, sock_ind: u16) -> Self {
         Self {
             transport,

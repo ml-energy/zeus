@@ -370,6 +370,8 @@ async fn cpu_power_stream_handler(
     power_stream_response(cpu_ids, broadcast.get_ref())
 }
 
+/// Query parameters for `POST /cpu/set_power_limit`.
+/// `cpu_ids` is a required comma-separated list of CPU indices.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SetPowerLimit {
@@ -379,6 +381,8 @@ pub struct SetPowerLimit {
     pub power_limit_mw: u64,
 }
 
+/// Query parameters for `POST /cpu/set_power_limit_time_window`.
+/// `cpu_ids` is a required comma-separated list of CPU indices.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct SetPowerLimitTimeWindow {
@@ -388,6 +392,8 @@ pub struct SetPowerLimitTimeWindow {
     pub time_window_us: u64,
 }
 
+/// Query parameters for `POST /cpu/reset_power_limit`.
+/// `cpu_ids` is a required comma-separated list of CPU indices.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ResetPowerLimit {

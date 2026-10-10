@@ -184,6 +184,7 @@ impl TimeWindows {
         read_msr_file(&self.file, &self.path, MSR_PKG_POWER_LIMIT)
     }
 
+    /// Read the time window of `constraint` in microseconds.
     pub fn read(&self, constraint: &str) -> Result<u64, MsrError> {
         let shift = window_shift(constraint)?;
         Ok(decode_window(
