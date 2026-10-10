@@ -107,7 +107,7 @@ All endpoints are under `/cpu` (Linux only). `cpu_ids` is a comma-separated list
 | `GET` | `/cpu/get_power_limit` | power limit constraints |
 | `GET` | `/cpu/get_power_limit_constraints` | ranges the hardware reports for power limits |
 | `POST` | `/cpu/set_power_limit` | `constraint`, `power_limit_mw` |
-| `POST` | `/cpu/set_time_window` | `constraint`, `time_window_us` |
+| `POST` | `/cpu/set_power_limit_time_window` | `constraint`, `time_window_us` |
 | `POST` | `/cpu/reset_power_limit` | |
 
 `get_cumulative_energy` response (fields nullable):
@@ -171,11 +171,11 @@ AMD CPUs expose no RAPL power limits.
 On AMD EPYC CPUs with the `amd_hsmp` kernel module loaded (which creates `/dev/hsmp`), the package zone instead has a constraint named `socket`: the socket power limit enforced by the CPU's firmware, with its maximum in `max_power_mw` and `time_window_us` always `null`.
 `constraints` is empty when neither is available.
 
-`set_power_limit` and `set_time_window` change one constraint of each listed CPU's package zone, named as in `get_power_limit`.
+`set_power_limit` and `set_power_limit_time_window` change one constraint of each listed CPU's package zone, named as in `get_power_limit`.
 `set_power_limit` rejects a constraint the zone does not have, `0`, a `socket` limit above its `max_power_mw` (the firmware would clamp it), and a RAPL limit too large for the CPU's register, in which case the previous limit is restored.
 RAPL limits are not bounded by `max_power_mw`; for `long_term` it is the CPU's thermal design power (TDP), which the hardware allows exceeding.
 Neither interface reports the lowest power a CPU can hold under load, so a cap below it is accepted but not met.
-`set_time_window` requires [MSR read/write access](index.md#intel-msr-access) on supported Intel x86-64 packages and changes only the selected `long_term` or `short_term` window.
+`set_power_limit_time_window` requires [MSR read/write access](deployment.md#feature-requirements-and-permissions) on supported Intel x86-64 packages and changes only the selected `long_term` or `short_term` window.
 Before writing, it rejects constraints without a time window, zero windows, and values above the largest supported window.
 The maximum excludes encodings that older Linux kernels cannot read correctly; errors report the maximum for the CPU.
 It rounds down to an encodable value, with a minimum of one hardware time unit, and verifies the stored encoding.
@@ -201,12 +201,15 @@ Each listed CPU is changed independently, so CPUs that succeed keep the new valu
 
 `rapl` comes from Intel's `MSR_PKG_POWER_INFO` register and is `null` when the zone has no RAPL constraints or is not a CPU package, such as `psys` (platform power).
 `thermal_spec_power_mw` is the TDP; `min_power_mw`, `max_power_mw`, and `max_time_window_us` are the ranges Intel documents as allowed; and `power_limit_register_max_mw` is the largest `long_term` or `short_term` power limit the register can hold.
-Reading the register requires [MSR read access](index.md#intel-msr-access); without it, the request fails with an error explaining which operations remain available.
+Reading the register requires [MSR read access](deployment.md#feature-requirements-and-permissions); without it, the request fails with an error explaining which operations remain available.
 `hsmp` is `null` when the package zone has no `socket` constraint, and its `max_power_mw` is the largest socket limit the firmware applies.
 The hardware does not enforce the documented ranges: it can accept limits outside them, and whether it holds a limit depends on the load.
 
-`reset_power_limit` restores the power limit and time window of every package zone constraint to the values the daemon recorded when it first started after boot.
-Neither RAPL nor HSMP has a notion of a default limit, so the daemon records the current values in the file given by `--cpu-power-limit-baseline-path` (default `/run/zeusd/cpu_power_limit_baseline.json`) and loads that file when it restarts.
+`reset_power_limit` explicitly restores the power limit and time window of every package zone constraint to the daemon's saved baseline.
+Starting or stopping the daemon does not reset settings.
+Neither RAPL nor HSMP supplies default limits, so the baseline records current settings at the first start with CPU control in each host boot.
+Persistent storage under `/var/zeusd` preserves that baseline across daemon restarts; `--no-persistent-cpu-power-limit-baseline` instead records a new baseline for each process.
+See [CPU reset baseline](deployment.md#cpu-reset-baseline) for storage and deployment requirements.
 Values that already match are not written, and a failed write does not stop the remaining ones.
 Changed Intel time windows require MSR write access and are restored exactly, including fractional encodings.
 Without that access, reset still attempts power-limit restoration and reports errors for changed windows.

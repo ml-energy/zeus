@@ -253,7 +253,7 @@ def mock_zeusd(monkeypatch):
                     },
                 )
 
-            if path in ("/cpu/set_power_limit", "/cpu/set_time_window", "/cpu/reset_power_limit"):
+            if path in ("/cpu/set_power_limit", "/cpu/set_power_limit_time_window", "/cpu/reset_power_limit"):
                 return httpx.Response(200, text="OK")
 
             return httpx.Response(404, text=f"Not found: {path}")
@@ -857,13 +857,13 @@ class TestZeusdClientCpuControl:
         assert request.url.path == "/cpu/set_power_limit"
         assert server.last_params() == {"cpu_ids": "0,1", "constraint": "long_term", "power_limit_mw": "150000"}
 
-    def test_set_cpu_time_window(self, mock_zeusd):
+    def test_set_cpu_power_limit_time_window(self, mock_zeusd):
         server = mock_zeusd()
         client = ZeusdClient(server.config)
-        client.set_cpu_time_window([1], "short_term", 2440)
+        client.set_cpu_power_limit_time_window([1], "short_term", 2440)
         request = server.last_request()
         assert request.method == "POST"
-        assert request.url.path == "/cpu/set_time_window"
+        assert request.url.path == "/cpu/set_power_limit_time_window"
         assert server.last_params() == {"cpu_ids": "1", "constraint": "short_term", "time_window_us": "2440"}
 
     def test_reset_cpu_power_limit(self, mock_zeusd):
@@ -879,7 +879,7 @@ class TestZeusdClientCpuControl:
         "path, call",
         [
             ("/cpu/set_power_limit", lambda c: c.set_cpu_power_limit([0], "socket", 150000)),
-            ("/cpu/set_time_window", lambda c: c.set_cpu_time_window([0], "long_term", 0)),
+            ("/cpu/set_power_limit_time_window", lambda c: c.set_cpu_power_limit_time_window([0], "long_term", 0)),
             ("/cpu/reset_power_limit", lambda c: c.reset_cpu_power_limit([0])),
         ],
     )

@@ -341,7 +341,7 @@ mod tests {
             Some(ApiGroup::CpuControl)
         );
         assert_eq!(
-            required_scope("/cpu/set_time_window"),
+            required_scope("/cpu/set_power_limit_time_window"),
             Some(ApiGroup::CpuControl)
         );
         assert_eq!(

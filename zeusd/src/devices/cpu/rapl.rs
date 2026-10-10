@@ -10,13 +10,13 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 
 use crate::devices::cpu::baseline::{ConstraintSetting, PackageBaseline};
-use crate::devices::cpu::hsmp::{HsmpSocket, HsmpTransport};
+use crate::devices::cpu::hsmp::{HsmpError, HsmpSocket, HsmpTransport};
 use crate::devices::cpu::msr::{parse_package_zone_name, read_power_info, TimeWindows};
 use crate::devices::cpu::{
     CpuDramPowerLimits, CpuManager, CpuPowerLimitConstraints, HsmpPowerInfo, PackageInfo,
     PowerLimitConstraint, ZonePowerLimits,
 };
-use crate::error::ZeusdError;
+use crate::error::{ZeusdError, PERMISSIONS_DOC_URL, RAPL_AVAILABILITY};
 
 /// Name of the package zone constraint backed by the AMD HSMP socket power limit.
 pub const HSMP_SOCKET_CONSTRAINT: &str = "socket";
@@ -154,12 +154,39 @@ impl RaplCpu {
             constraints.push(RawConstraint {
                 target: ConstraintTarget::HsmpSocket,
                 name: HSMP_SOCKET_CONSTRAINT.to_string(),
-                power_limit_uw: u64::from(hsmp.power_limit_mw()?) * 1000,
-                max_power_uw: Some(u64::from(hsmp.power_limit_max_mw()?) * 1000),
+                power_limit_uw: u64::from(
+                    self.read_hsmp(hsmp.power_limit_mw(), "read the HSMP socket power limit")?,
+                ) * 1000,
+                max_power_uw: Some(self.read_hsmp_max_power_uw(hsmp)?),
                 time_window_us: None,
             });
         }
         Ok(constraints)
+    }
+
+    fn read_hsmp_max_power_uw(&self, hsmp: &HsmpSocket) -> Result<u64, ZeusdError> {
+        let max_mw = self.read_hsmp(
+            hsmp.power_limit_max_mw(),
+            "read the HSMP maximum socket power limit",
+        )?;
+        Ok(u64::from(max_mw) * 1000)
+    }
+
+    fn read_hsmp<T>(
+        &self,
+        result: Result<T, HsmpError>,
+        action: &'static str,
+    ) -> Result<T, ZeusdError> {
+        result.map_err(|source| ZeusdError::cpu_hsmp(self.cpu.index, action, false, source))
+    }
+
+    /// Return an error for each energy counter that cannot be read, without
+    /// changing the wraparound state.
+    pub fn check_energy_access(&self) -> Vec<ZeusdError> {
+        std::iter::once(&self.cpu)
+            .chain(&self.dram)
+            .filter_map(|zone| read_energy_uj(zone).err())
+            .collect()
     }
 
     fn find_package_constraint(&self, constraint: &str) -> Result<RawConstraint, ZeusdError> {
@@ -205,7 +232,7 @@ impl RaplCpu {
                     ))
                 })?;
                 hsmp.set_power_limit_mw(power_limit_mw)
-                    .map_err(|source| ZeusdError::cpu_control(action(), source))
+                    .map_err(|source| ZeusdError::cpu_hsmp(self.cpu.index, action(), true, source))
             }
         }
     }
@@ -247,12 +274,21 @@ impl RaplCpu {
     }
 
     /// Log Intel MSR availability without changing registers or requiring MSR for monitoring.
-    pub fn log_msr_availability(&self, control_enabled: bool) -> Result<(), ZeusdError> {
-        if read_raw_constraints(&self.cpu.zone_dir)?.is_empty() {
-            return Ok(());
+    pub fn log_msr_availability(&self, control_enabled: bool) {
+        match read_raw_constraints(&self.cpu.zone_dir) {
+            Ok(constraints) if constraints.is_empty() => return,
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    cpu = self.cpu.index,
+                    "Power limit queries and control of CPU {} will fail: {error}",
+                    self.cpu.index,
+                );
+                return;
+            }
         }
         let Some((package, die)) = parse_package_zone_name(&self.cpu.name) else {
-            return Ok(());
+            return;
         };
         match read_power_info(Path::new(SYS_CPU_DIR), Path::new(DEV_CPU_DIR), package, die) {
             Ok(_) => tracing::info!(
@@ -270,23 +306,38 @@ impl RaplCpu {
                 Err(source) => { ZeusdError::cpu_msr(self.cpu.index, "open Intel time-window control", source); }
             }
         }
-        Ok(())
     }
 }
 
 impl PackageInfo {
+    /// Read the zone at `base_path`.
+    ///
+    /// The energy counter is not read, so zones whose energy counter Zeusd
+    /// cannot read still support power limit queries and control.
     pub fn new(base_path: &Path, index: usize) -> anyhow::Result<Self, ZeusdError> {
         let cpu_name_path = base_path.join("name");
         let cpu_energy_path = base_path.join("energy_uj");
         let cpu_max_energy_path = base_path.join("max_energy_range_uj");
 
-        if !cpu_name_path.exists() || !cpu_max_energy_path.exists() || !cpu_energy_path.exists() {
-            return Err(ZeusdError::CpuInitializationError(index));
+        let init_error = |reason: String| ZeusdError::CpuInitializationError { cpu: index, reason };
+        for path in [&cpu_name_path, &cpu_max_energy_path, &cpu_energy_path] {
+            match path.try_exists() {
+                Ok(true) => {}
+                Ok(false) => return Err(init_error(format!("{} does not exist", path.display()))),
+                Err(e) => return Err(init_error(format!("cannot access {}: {e}", path.display()))),
+            }
         }
 
-        let cpu_name = fs::read_to_string(&cpu_name_path)?.trim_end().to_string();
-        read_u64(&cpu_energy_path)?;
-        let cpu_max_energy = read_u64(&cpu_max_energy_path)?;
+        let cpu_name = fs::read_to_string(&cpu_name_path)
+            .map_err(|e| init_error(format!("cannot read {}: {e}", cpu_name_path.display())))?
+            .trim_end()
+            .to_string();
+        let cpu_max_energy = read_u64(&cpu_max_energy_path).map_err(|e| {
+            init_error(format!(
+                "cannot read {}: {e}",
+                cpu_max_energy_path.display()
+            ))
+        })?;
         Ok(PackageInfo {
             index,
             name: cpu_name,
@@ -316,8 +367,12 @@ impl CpuManager for RaplCpu {
                     }
                 }
             }
-            Err(_) => {
-                tracing::error!("RAPL not available");
+            Err(e) => {
+                tracing::error!(
+                    "RAPL is not available: cannot read {}: {e}. CPU energy monitoring and RAPL \
+                     power limits need it. {RAPL_AVAILABILITY} See {PERMISSIONS_DOC_URL}",
+                    base_path.display(),
+                );
             }
         };
         Ok(index_count)
@@ -350,8 +405,11 @@ impl CpuManager for RaplCpu {
                     }
                 }
             }
-            Err(_) => {
-                return Err(ZeusdError::CpuInitializationError(index));
+            Err(e) => {
+                return Err(ZeusdError::CpuInitializationError {
+                    cpu: index,
+                    reason: format!("cannot read {}: {e}", base_path.display()),
+                });
             }
         };
 
@@ -359,7 +417,7 @@ impl CpuManager for RaplCpu {
     }
 
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
-        let raw = read_u64(&self.cpu.energy_uj_path)?;
+        let raw = read_energy_uj(&self.cpu)?;
         if let Some(last_raw) = self.last_cpu_raw_uj {
             if raw < last_raw {
                 self.cpu_wraparound_count += 1;
@@ -373,7 +431,7 @@ impl CpuManager for RaplCpu {
         match &self.dram {
             None => Err(ZeusdError::CpuManagementTaskTerminatedError(self.cpu.index)),
             Some(dram) => {
-                let raw = read_u64(&dram.energy_uj_path)?;
+                let raw = read_energy_uj(dram)?;
                 if let Some(last_raw) = self.last_dram_raw_uj {
                     if raw < last_raw {
                         self.dram_wraparound_count += 1;
@@ -428,7 +486,7 @@ impl CpuManager for RaplCpu {
         };
         let hsmp = match &self.hsmp {
             Some(hsmp) => Some(HsmpPowerInfo {
-                max_power_mw: u64::from(hsmp.power_limit_max_mw()?),
+                max_power_mw: self.read_hsmp_max_power_uw(hsmp)? / 1000,
             }),
             None => None,
         };
@@ -461,12 +519,12 @@ impl CpuManager for RaplCpu {
             }
             ConstraintTarget::Powercap(index) => {
                 self.write_power_limit_uw(found.target, &found.name, power_limit_uw)?;
-                let stored_uw = read_u64(
-                    &self
-                        .cpu
-                        .zone_dir
-                        .join(format!("constraint_{index}_power_limit_uw")),
-                )?;
+                let stored_path = self
+                    .cpu
+                    .zone_dir
+                    .join(format!("constraint_{index}_power_limit_uw"));
+                let stored_uw = read_u64(&stored_path)
+                    .map_err(|source| limit_read_error(&stored_path, source))?;
                 if stored_as_requested(power_limit_uw, stored_uw) {
                     return Ok(());
                 }
@@ -484,7 +542,11 @@ impl CpuManager for RaplCpu {
         }
     }
 
-    fn set_time_window(&mut self, constraint: &str, time_window_us: u64) -> Result<(), ZeusdError> {
+    fn set_power_limit_time_window(
+        &mut self,
+        constraint: &str,
+        time_window_us: u64,
+    ) -> Result<(), ZeusdError> {
         let found = self.find_package_constraint(constraint)?;
         if found.time_window_us.is_none() || time_window_us == 0 {
             return Err(ZeusdError::InvalidRequest(format!(
@@ -575,14 +637,17 @@ fn read_zone_enabled_with(
     zone_dir: &Path,
     read_file: impl Fn(&Path) -> std::io::Result<String>,
 ) -> Result<bool, ZeusdError> {
-    match parse_u64_with(&zone_dir.join("enabled"), &read_file)? {
+    let path = zone_dir.join("enabled");
+    match parse_u64_with(&path, &read_file).map_err(|source| limit_read_error(&path, source))? {
         0 => Ok(false),
         1 => Ok(true),
-        value => Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Unexpected value {value} in {}/enabled", zone_dir.display()),
-        )
-        .into()),
+        value => Err(limit_read_error(
+            &path,
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("unexpected value {value}"),
+            ),
+        )),
     }
 }
 
@@ -593,18 +658,22 @@ fn read_raw_constraints(zone_dir: &Path) -> Result<Vec<RawConstraint>, ZeusdErro
 /// Read the constraints of a RAPL powercap zone.
 ///
 /// The kernel numbers constraints from zero without gaps, so reading stops at
-/// the first index without a `constraint_K_name` file. A constraint attribute
-/// the kernel has no value for fails with `ENODATA` (e.g., the time window of
-/// `peak_power`) and is read as `None`.
+/// the first index whose `constraint_K_name` file does not exist. Any other
+/// failure to read that file, such as missing read permission, is an error.
+/// A constraint attribute the kernel has no value for fails with `ENODATA`
+/// (e.g., the time window of `peak_power`) and is read as `None`.
 fn read_raw_constraints_with(
     zone_dir: &Path,
     read_file: impl Fn(&Path) -> std::io::Result<String>,
 ) -> Result<Vec<RawConstraint>, ZeusdError> {
-    let parse_optional_u64 = |path: &Path| -> std::io::Result<Option<u64>> {
+    let parse_u64 = |path: &Path| -> Result<u64, ZeusdError> {
+        parse_u64_with(path, &read_file).map_err(|source| limit_read_error(path, source))
+    };
+    let parse_optional_u64 = |path: &Path| -> Result<Option<u64>, ZeusdError> {
         match parse_u64_with(path, &read_file) {
             Ok(value) => Ok(Some(value)),
             Err(e) if is_enodata(&e) => Ok(None),
-            Err(e) => Err(e),
+            Err(source) => Err(limit_read_error(path, source)),
         }
     };
 
@@ -612,18 +681,27 @@ fn read_raw_constraints_with(
     for index in 0.. {
         let file = |field: &str| zone_dir.join(format!("constraint_{index}_{field}"));
         let name_path = file("name");
-        if !name_path.exists() {
-            break;
-        }
+        let name = match read_file(&name_path) {
+            Ok(name) => name.trim_end().to_string(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+            Err(source) => return Err(limit_read_error(&name_path, source)),
+        };
         constraints.push(RawConstraint {
             target: ConstraintTarget::Powercap(index),
-            name: read_file(&name_path)?.trim_end().to_string(),
-            power_limit_uw: parse_u64_with(&file("power_limit_uw"), &read_file)?,
+            name,
+            power_limit_uw: parse_u64(&file("power_limit_uw"))?,
             max_power_uw: parse_optional_u64(&file("max_power_uw"))?,
             time_window_us: parse_optional_u64(&file("time_window_us"))?,
         });
     }
     Ok(constraints)
+}
+
+fn limit_read_error(path: &Path, source: std::io::Error) -> ZeusdError {
+    ZeusdError::CpuLimitReadError {
+        path: path.to_path_buf(),
+        source,
+    }
 }
 
 fn parse_u64_with(
@@ -646,6 +724,14 @@ fn is_enodata(error: &std::io::Error) -> bool {
         let _ = error;
         false
     }
+}
+
+fn read_energy_uj(zone: &PackageInfo) -> Result<u64, ZeusdError> {
+    read_u64(&zone.energy_uj_path).map_err(|source| ZeusdError::CpuEnergyReadError {
+        cpu: zone.index,
+        path: zone.energy_uj_path.clone(),
+        source,
+    })
 }
 
 fn read_u64(path: &PathBuf) -> anyhow::Result<u64, std::io::Error> {
@@ -1073,6 +1159,43 @@ mod tests {
         );
     }
 
+    /// A constraint name Zeusd cannot read fails the read with the path and
+    /// a read permission hint instead of ending the constraint list there.
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_constraint_name_is_a_permission_error() {
+        use actix_web::ResponseError;
+
+        let tmp = tempfile::tempdir().unwrap();
+        write_zone_limits(
+            tmp.path(),
+            "1",
+            &[
+                ("long_term", 205_000_000, 205_000_000, 999_424),
+                ("short_term", 246_000_000, 780_000_000, 2_440),
+            ],
+        );
+
+        for file in [
+            "enabled",
+            "constraint_1_name",
+            "constraint_1_power_limit_uw",
+        ] {
+            let error =
+                read_zone_limits_with(tmp.path(), failing_reader(file, nix::errno::Errno::EACCES))
+                    .unwrap_err();
+            assert!(
+                matches!(&error, ZeusdError::CpuLimitReadError { path, .. } if path.ends_with(file)),
+                "{error}"
+            );
+            assert_eq!(error.status_code(), actix_web::http::StatusCode::FORBIDDEN);
+            let message = error.to_string();
+            assert!(message.contains(file), "{message}");
+            assert!(message.contains("lacks read permission"), "{message}");
+            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+        }
+    }
+
     #[test]
     fn power_limits_with_dram() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1150,7 +1273,9 @@ mod tests {
         let mut cpu = intel_package(tmp.path());
 
         cpu.set_power_limit("short_term", 150_000).unwrap();
-        assert!(cpu.set_time_window("socket", 27_983_872).is_err());
+        assert!(cpu
+            .set_power_limit_time_window("socket", 27_983_872)
+            .is_err());
 
         assert_eq!(
             read_file(tmp.path(), "constraint_1_power_limit_uw"),
@@ -1165,7 +1290,7 @@ mod tests {
             "999424"
         );
         assert!(cpu.set_power_limit("socket", 150_000).is_err());
-        assert!(cpu.set_time_window("socket", 1_000).is_err());
+        assert!(cpu.set_power_limit_time_window("socket", 1_000).is_err());
     }
 
     #[test]
@@ -1189,7 +1314,7 @@ mod tests {
 
         cpu.set_power_limit("socket", 150_000).unwrap();
         assert_eq!(*fake.limits_mw.lock().unwrap(), vec![150_000]);
-        assert!(cpu.set_time_window("socket", 1_000).is_err());
+        assert!(cpu.set_power_limit_time_window("socket", 1_000).is_err());
     }
 
     #[test]
@@ -1382,6 +1507,84 @@ mod tests {
         assert_eq!(*fake.limits_mw.lock().unwrap(), vec![200_000]);
         cpu.set_power_limit("socket", 280_000).unwrap();
         assert_eq!(*fake.limits_mw.lock().unwrap(), vec![280_000]);
+    }
+
+    /// Power limit queries and control work without energy read access, and
+    /// energy reads explain the missing access.
+    #[cfg(unix)]
+    #[test]
+    fn init_and_limits_do_not_need_energy_read_access() {
+        use std::os::unix::fs::PermissionsExt;
+
+        if nix::unistd::geteuid().is_root() {
+            // Root ignores file permissions, so no read can be made to fail.
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        write_zone_limits(
+            tmp.path(),
+            "1",
+            &[("long_term", 205_000_000, 205_000_000, 999_424)],
+        );
+        fs::write(tmp.path().join("name"), "package-0\n").unwrap();
+        fs::write(tmp.path().join("max_energy_range_uj"), "262143328850\n").unwrap();
+        let energy_path = tmp.path().join("energy_uj");
+        fs::write(&energy_path, "1\n").unwrap();
+        fs::set_permissions(&energy_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let mut cpu = make_limits_cpu(tmp.path(), None);
+        cpu.cpu = Arc::new(PackageInfo::new(tmp.path(), 0).unwrap());
+        assert_eq!(cpu.get_power_limits().unwrap().cpu.constraints.len(), 1);
+        cpu.set_power_limit("long_term", 150_000).unwrap();
+
+        let mut access_errors = cpu.check_energy_access();
+        assert_eq!(access_errors.len(), 1);
+        for error in [access_errors.remove(0), cpu.get_cpu_energy().unwrap_err()] {
+            assert!(
+                matches!(error, ZeusdError::CpuEnergyReadError { cpu: 0, .. }),
+                "{error}"
+            );
+            let message = error.to_string();
+            assert!(message.contains("energy_uj"), "{message}");
+            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+        }
+    }
+
+    #[test]
+    fn missing_zone_file_explains_rapl_prerequisite() {
+        let tmp = tempfile::tempdir().unwrap();
+        let message = PackageInfo::new(tmp.path(), 3).err().unwrap().to_string();
+        assert!(message.contains("CPU 3"), "{message}");
+        assert!(message.contains("does not exist"), "{message}");
+        assert!(message.contains("intel_rapl_msr"), "{message}");
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+    }
+
+    #[test]
+    fn failed_hsmp_reads_are_hsmp_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = FakeHsmp::new(vec![200_000], 280_000);
+        write_zone_limits(tmp.path(), "0", &[]);
+        let mut cpu = make_limits_cpu(tmp.path(), None);
+        cpu.cpu = Arc::new(PackageInfo {
+            index: 0,
+            name: "package-1".to_string(),
+            zone_dir: tmp.path().to_path_buf(),
+            energy_uj_path: tmp.path().join("energy_uj"),
+            max_energy_uj: 1_000_000,
+        });
+        // The fake firmware has no socket 1, so every message fails.
+        cpu.attach_hsmp(fake).unwrap();
+
+        for error in [
+            cpu.get_power_limits().unwrap_err(),
+            cpu.get_power_limit_constraints().unwrap_err(),
+        ] {
+            assert!(
+                matches!(error, ZeusdError::CpuHsmpError { write: false, .. }),
+                "{error}"
+            );
+        }
     }
 
     #[test]

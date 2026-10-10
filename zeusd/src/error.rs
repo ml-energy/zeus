@@ -18,8 +18,22 @@ use actix_web::{HttpResponse, ResponseError};
 use nvml_wrapper::error::NvmlError;
 use tokio::sync::mpsc::error::SendError;
 
+use crate::devices::cpu::hsmp::HsmpError;
 use crate::devices::cpu::CpuCommandRequest;
 use crate::devices::gpu::GpuCommandRequest;
+
+/// Documentation of the prerequisites and permissions each Zeusd feature needs.
+pub const PERMISSIONS_DOC_URL: &str =
+    "https://ml.energy/zeus/zeusd/deployment/#feature-requirements-and-permissions";
+
+/// Documentation of the CPU power limit baseline that reset restores.
+pub const BASELINE_DOC_URL: &str = "https://ml.energy/zeus/zeusd/deployment/#cpu-reset-baseline";
+
+/// How to make the RAPL powercap interface available to Zeusd.
+pub const RAPL_AVAILABILITY: &str = "Ensure the host's RAPL powercap interface is available, \
+    typically provided by the intel_rapl_msr kernel module (`sudo modprobe intel_rapl_msr`). In \
+    a container, bind-mount the host's /sys/class/powercap at /zeus_sys/class/powercap and \
+    /sys/devices/virtual/powercap at /zeus_sys/devices/virtual/powercap.";
 
 #[derive(thiserror::Error, Debug)]
 pub enum ZeusdError {
@@ -30,10 +44,10 @@ pub enum ZeusdError {
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
     #[cfg(feature = "nvml")]
-    #[error("NVML error: {0}")]
+    #[error("NVML error: {0}{}", nvml_hint(.0))]
     NvmlError(#[from] NvmlError),
     #[cfg(feature = "amdsmi")]
-    #[error("AMDSMI error {status}: {msg}")]
+    #[error("AMDSMI error {status}: {msg}{}", amdsmi_hint(*.status))]
     AmdSmiError { status: u32, msg: String },
     #[cfg(feature = "amdsmi")]
     #[error("Failed to load AMD SMI: {0}")]
@@ -50,17 +64,49 @@ pub enum ZeusdError {
     CpuPowerMeasurementError(usize),
     #[error("Management task for CPU {0} returned a response of the wrong type.")]
     CpuUnexpectedResponseError(usize),
-    #[error("Initialization for CPU {0} unexpectedly errored.")]
-    CpuInitializationError(usize),
-    #[error("Failed to {action}: {source}")]
+    #[error(
+        "Cannot initialize RAPL for CPU {cpu}: {reason}. {RAPL_AVAILABILITY} \
+         See {PERMISSIONS_DOC_URL}"
+    )]
+    CpuInitializationError { cpu: usize, reason: String },
+    #[error(
+        "Cannot read the RAPL energy counter {path} of CPU {cpu}: {source}.{}",
+        energy_read_hint(.source)
+    )]
+    CpuEnergyReadError {
+        cpu: usize,
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[error(
+        "Cannot read the RAPL power limit file {path}: {source}.{} See {PERMISSIONS_DOC_URL}",
+        limit_read_hint(.source)
+    )]
+    CpuLimitReadError {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
+    #[error("Failed to {action}: {source}.{}", cpu_control_hint(.source))]
     CpuControlError {
         action: String,
         source: std::io::Error,
     },
-    #[error("No power limit baseline was recorded for CPU {0}.")]
+    #[error("Cannot {action} on CPU {cpu}: {source} See {PERMISSIONS_DOC_URL}")]
+    CpuHsmpError {
+        cpu: usize,
+        action: String,
+        /// Whether the failed operation changes a setting.
+        write: bool,
+        source: HsmpError,
+    },
+    #[error(
+        "No power limit baseline was recorded for CPU {0}, so its power limits cannot be reset. \
+         Zeusd records the baseline at startup when the cpu-control API group is enabled. \
+         See {BASELINE_DOC_URL}"
+    )]
     CpuBaselineMissingError(usize),
     #[error(
-        "Cannot {action} on CPU {cpu}: {source} {}",
+        "Cannot {action} on CPU {cpu}: {source} {} See {PERMISSIONS_DOC_URL}",
         crate::devices::cpu::msr::MSR_AVAILABILITY
     )]
     CpuMsrError {
@@ -110,9 +156,26 @@ impl ResponseError for ZeusdError {
             ZeusdError::CpuManagementTaskTerminatedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuPowerMeasurementError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ZeusdError::CpuUnexpectedResponseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            ZeusdError::CpuInitializationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuInitializationError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuEnergyReadError { source, .. }
+            | ZeusdError::CpuLimitReadError { source, .. } => match source.kind() {
+                std::io::ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
             ZeusdError::CpuControlError { source, .. } => cpu_control_status(source),
-            ZeusdError::CpuBaselineMissingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ZeusdError::CpuHsmpError { write, source, .. } => match source {
+                HsmpError::DeviceMissing(_) => StatusCode::SERVICE_UNAVAILABLE,
+                HsmpError::PermissionDenied { .. } => StatusCode::FORBIDDEN,
+                HsmpError::Open { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+                HsmpError::Request(source)
+                    if source.kind() == std::io::ErrorKind::PermissionDenied =>
+                {
+                    StatusCode::FORBIDDEN
+                }
+                HsmpError::Request(source) if *write => cpu_control_status(source),
+                HsmpError::Request(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            ZeusdError::CpuBaselineMissingError(_) => StatusCode::SERVICE_UNAVAILABLE,
             ZeusdError::CpuMsrError { source, .. } => {
                 use crate::devices::cpu::msr::MsrError;
                 match source {
@@ -155,9 +218,19 @@ impl ZeusdError {
         tracing::warn!("{error}");
         error
     }
-    /// A failed CPU power limit or time window write.
+    /// A failed RAPL power limit write through the powercap sysfs interface.
     pub fn cpu_control(action: String, source: std::io::Error) -> Self {
         ZeusdError::CpuControlError { action, source }
+    }
+
+    /// A failed HSMP read (`write` false) or setting change (`write` true).
+    pub fn cpu_hsmp(cpu: usize, action: impl Into<String>, write: bool, source: HsmpError) -> Self {
+        ZeusdError::CpuHsmpError {
+            cpu,
+            action: action.into(),
+            write,
+            source,
+        }
     }
 
     /// Succeed if `errors` is empty, and otherwise fail with all of them.
@@ -172,15 +245,16 @@ impl ZeusdError {
 
 /// Map the errno of a failed CPU control write to an HTTP status.
 ///
-/// The kernel answers `EACCES` for RAPL limits the BIOS locked and `EPERM` for
-/// HSMP writes through a read-only file. HSMP answers `EINVAL` for arguments
-/// the firmware rejects and `ENOMSG` for messages the firmware does not know.
+/// The kernel answers `EACCES` both for RAPL limits the BIOS locked and for
+/// missing file permissions, and `EROFS` when sysfs is mounted read-only.
+/// HSMP answers `EINVAL` for arguments the firmware rejects and `ENOMSG` for
+/// messages the firmware does not know.
 fn cpu_control_status(source: &std::io::Error) -> StatusCode {
     #[cfg(unix)]
     {
         use nix::errno::Errno;
         match source.raw_os_error().map(Errno::from_raw) {
-            Some(Errno::EACCES | Errno::EPERM) => StatusCode::FORBIDDEN,
+            Some(Errno::EACCES | Errno::EPERM | Errno::EROFS) => StatusCode::FORBIDDEN,
             Some(Errno::EINVAL | Errno::ENOMSG) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -189,6 +263,98 @@ fn cpu_control_status(source: &std::io::Error) -> StatusCode {
     {
         let _ = source;
         StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+/// Explain the possible causes of a failed RAPL powercap write.
+fn cpu_control_hint(source: &std::io::Error) -> String {
+    #[cfg(unix)]
+    {
+        use nix::errno::Errno;
+        match source.raw_os_error().map(Errno::from_raw) {
+            Some(Errno::EACCES | Errno::EPERM) => format!(
+                " The kernel denied the write. This happens when Zeusd lacks write permission on \
+                 the root-owned powercap sysfs file or when the BIOS locked the constraint; the \
+                 kernel does not report which. See {PERMISSIONS_DOC_URL}"
+            ),
+            Some(Errno::EROFS) => format!(
+                " sysfs is mounted read-only for Zeusd. Under systemd, ProtectKernelTunables=true \
+                 does this; in a container, mount the powercap directory read-write. \
+                 See {PERMISSIONS_DOC_URL}"
+            ),
+            _ => String::new(),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = source;
+        String::new()
+    }
+}
+
+/// Explain the prerequisites of reading a RAPL energy counter.
+fn energy_read_hint(source: &std::io::Error) -> String {
+    match source.kind() {
+        std::io::ErrorKind::PermissionDenied => format!(
+            " The kernel makes RAPL energy counters readable only by their owner, root \
+             (CVE-2020-8694). Run Zeusd as root, or give a non-root Zeusd read access to the \
+             file, for example through a permission change by the administrator or \
+             CAP_DAC_READ_SEARCH. See {PERMISSIONS_DOC_URL}"
+        ),
+        std::io::ErrorKind::NotFound => format!(
+            " The RAPL zone no longer exists, for example because the RAPL driver was \
+             unloaded. See {PERMISSIONS_DOC_URL}"
+        ),
+        _ => String::new(),
+    }
+}
+
+/// Explain a failed read of a RAPL powercap zone or constraint file.
+fn limit_read_hint(source: &std::io::Error) -> &'static str {
+    match source.kind() {
+        std::io::ErrorKind::PermissionDenied => {
+            " Zeusd lacks read permission on this file. Power limit queries and control read the \
+             zone's `enabled` and `constraint_*` files, so give the user Zeusd runs as read \
+             access to them."
+        }
+        std::io::ErrorKind::NotFound => {
+            " The RAPL zone or this file no longer exists, for example because the RAPL driver \
+             was unloaded."
+        }
+        _ => "",
+    }
+}
+
+#[cfg(feature = "nvml")]
+fn nvml_hint(error: &NvmlError) -> String {
+    match error {
+        NvmlError::NoPermission if cfg!(windows) => format!(
+            ". NVML reported that Zeusd lacks permission for this operation. NVIDIA GPU control \
+             requires administrator rights, so run Zeusd from an elevated shell. \
+             See {PERMISSIONS_DOC_URL}"
+        ),
+        NvmlError::NoPermission => format!(
+            ". NVML reported that Zeusd lacks permission for this operation. Check NVIDIA device \
+             permissions and container device access. NVIDIA GPU control \
+             generally requires root, and with a restricted capability set, such as under \
+             systemd or in a container, also CAP_SYS_ADMIN; NVML does not report which is \
+             missing. See {PERMISSIONS_DOC_URL}"
+        ),
+        _ => String::new(),
+    }
+}
+
+#[cfg(feature = "amdsmi")]
+fn amdsmi_hint(status: u32) -> String {
+    match status {
+        AMDSMI_STATUS_NO_PERM => format!(
+            ". AMD SMI reported that Zeusd lacks permission for this operation. Check GPU device \
+             access and read permission on GPU sysfs files. AMD GPU control \
+             writes sysfs files, which requires root and a writable /sys (under systemd, \
+             ProtectKernelTunables=false); AMD SMI does not report which is missing. \
+             See {PERMISSIONS_DOC_URL}"
+        ),
+        _ => String::new(),
     }
 }
 
@@ -225,6 +391,7 @@ mod tests {
         for (errno, status) in [
             (Errno::EACCES, StatusCode::FORBIDDEN),
             (Errno::EPERM, StatusCode::FORBIDDEN),
+            (Errno::EROFS, StatusCode::FORBIDDEN),
             (Errno::EINVAL, StatusCode::BAD_REQUEST),
             (Errno::ENOMSG, StatusCode::BAD_REQUEST),
             (Errno::EIO, StatusCode::INTERNAL_SERVER_ERROR),
@@ -232,6 +399,183 @@ mod tests {
         ] {
             assert_eq!(control_error(errno as i32).status_code(), status, "{errno}");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cpu_control_permission_errors_describe_possible_causes() {
+        use nix::errno::Errno;
+        let message = control_error(Errno::EACCES as i32).to_string();
+        assert!(message.contains("write permission"), "{message}");
+        assert!(message.contains("BIOS locked"), "{message}");
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+
+        let message = control_error(Errno::EROFS as i32).to_string();
+        assert!(message.contains("read-only"), "{message}");
+        assert!(message.contains("ProtectKernelTunables"), "{message}");
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+
+        let message = control_error(Errno::EINVAL as i32).to_string();
+        assert!(!message.contains(PERMISSIONS_DOC_URL), "{message}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hsmp_errors_map_to_status_and_explain_access() {
+        use nix::errno::Errno;
+        use std::path::PathBuf;
+        let denied = |write| HsmpError::PermissionDenied {
+            path: PathBuf::from("/dev/hsmp"),
+            write,
+            source: std::io::ErrorKind::PermissionDenied.into(),
+        };
+        let request =
+            || HsmpError::Request(std::io::Error::from_raw_os_error(Errno::EINVAL as i32));
+        for (source, write, status, text) in [
+            (
+                HsmpError::DeviceMissing(PathBuf::from("/dev/hsmp")),
+                false,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "modprobe amd_hsmp",
+            ),
+            (denied(false), false, StatusCode::FORBIDDEN, "for reading"),
+            (denied(true), true, StatusCode::FORBIDDEN, "for writing"),
+            (request(), true, StatusCode::BAD_REQUEST, "request failed"),
+            (
+                request(),
+                false,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "request failed",
+            ),
+        ] {
+            let error = ZeusdError::cpu_hsmp(0, "use HSMP", write, source);
+            assert_eq!(error.status_code(), status, "{error}");
+            let message = error.to_string();
+            assert!(message.contains(text), "{message}");
+            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn denied_hsmp_request_is_forbidden_and_explains_security_policy() {
+        use nix::errno::Errno;
+        let request =
+            |errno: Errno| HsmpError::Request(std::io::Error::from_raw_os_error(errno as i32));
+        for errno in [Errno::EACCES, Errno::EPERM] {
+            for write in [false, true] {
+                let error = ZeusdError::cpu_hsmp(0, "use HSMP", write, request(errno));
+                assert_eq!(error.status_code(), StatusCode::FORBIDDEN, "{error}");
+                let message = error.to_string();
+                assert!(message.contains("security policy"), "{message}");
+                assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+            }
+        }
+        let message =
+            ZeusdError::cpu_hsmp(0, "use HSMP", false, request(Errno::EINVAL)).to_string();
+        assert!(!message.contains("security policy"), "{message}");
+    }
+
+    #[test]
+    fn energy_read_permission_error_explains_access_options() {
+        let error = ZeusdError::CpuEnergyReadError {
+            cpu: 0,
+            path: "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj".into(),
+            source: std::io::ErrorKind::PermissionDenied.into(),
+        };
+        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
+        let message = error.to_string();
+        assert!(message.contains("energy_uj"), "{message}");
+        assert!(message.contains("Run Zeusd as root"), "{message}");
+        assert!(message.contains("non-root Zeusd"), "{message}");
+        assert!(message.contains("CAP_DAC_READ_SEARCH"), "{message}");
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+
+        let error = ZeusdError::CpuEnergyReadError {
+            cpu: 0,
+            path: "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj".into(),
+            source: std::io::ErrorKind::NotFound.into(),
+        };
+        assert_eq!(error.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn limit_read_errors_name_the_file_and_explain_read_access() {
+        let path = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_name";
+        let error = ZeusdError::CpuLimitReadError {
+            path: path.into(),
+            source: std::io::ErrorKind::PermissionDenied.into(),
+        };
+        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
+        let message = error.to_string();
+        assert!(message.contains(path), "{message}");
+        assert!(message.contains("lacks read permission"), "{message}");
+        assert!(!message.contains("write"), "{message}");
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+
+        let error = ZeusdError::CpuLimitReadError {
+            path: path.into(),
+            source: std::io::ErrorKind::InvalidData.into(),
+        };
+        assert_eq!(error.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        let message = error.to_string();
+        assert!(message.contains(path), "{message}");
+        assert!(!message.contains("read permission"), "{message}");
+    }
+
+    #[test]
+    fn rapl_initialization_error_explains_the_interface_and_container_mounts() {
+        let message = ZeusdError::CpuInitializationError {
+            cpu: 0,
+            reason: "/sys/class/powercap/intel-rapl does not exist".to_string(),
+        }
+        .to_string();
+        assert!(message.contains("typically provided by"), "{message}");
+        assert!(message.contains("intel_rapl_msr"), "{message}");
+        assert!(message.contains("/zeus_sys/class/powercap"), "{message}");
+        assert!(
+            message.contains("/zeus_sys/devices/virtual/powercap"),
+            "{message}"
+        );
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+    }
+
+    #[test]
+    fn missing_baseline_is_unavailable() {
+        let error = ZeusdError::CpuBaselineMissingError(0);
+        assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(error.to_string().contains(BASELINE_DOC_URL));
+    }
+
+    #[cfg(feature = "nvml")]
+    #[test]
+    fn nvml_no_permission_explains_privileges() {
+        let error = ZeusdError::from(NvmlError::NoPermission);
+        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
+        let message = error.to_string();
+        if cfg!(windows) {
+            assert!(message.contains("elevated shell"), "{message}");
+            assert!(!message.contains("CAP_SYS_ADMIN"), "{message}");
+        } else {
+            assert!(message.contains("CAP_SYS_ADMIN"), "{message}");
+        }
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+        assert!(!ZeusdError::from(NvmlError::NotSupported)
+            .to_string()
+            .contains(PERMISSIONS_DOC_URL));
+    }
+
+    #[cfg(feature = "amdsmi")]
+    #[test]
+    fn amdsmi_no_permission_explains_privileges() {
+        let error = ZeusdError::AmdSmiError {
+            status: AMDSMI_STATUS_NO_PERM,
+            msg: "set power cap".to_string(),
+        };
+        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
+        let message = error.to_string();
+        assert!(message.contains("writable /sys"), "{message}");
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
     }
 
     #[cfg(unix)]
@@ -296,6 +640,7 @@ mod tests {
                 message.contains("AMD HSMP control does not require MSR access"),
                 "{message}"
             );
+            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
         }
     }
 }

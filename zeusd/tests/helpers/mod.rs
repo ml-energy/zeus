@@ -165,6 +165,7 @@ impl GpuManager for TestGpu {
 }
 
 pub struct TestCpu {
+    index: usize,
     pub cpu: UnboundedReceiver<u64>,
     pub dram: UnboundedReceiver<u64>,
     next_cpu_energy_uj: u64,
@@ -173,6 +174,10 @@ pub struct TestCpu {
     limits: CpuDramPowerLimits,
     /// If set, control writes fail with this errno.
     pub write_errno: Option<i32>,
+    /// If set, CPU energy reads fail as if the counter were not readable.
+    pub cpu_energy_denied: bool,
+    /// If set, DRAM energy reads fail as if the counter were not readable.
+    pub dram_energy_denied: bool,
 }
 
 pub struct TestCpuInjector {
@@ -181,17 +186,20 @@ pub struct TestCpuInjector {
 }
 
 impl TestCpu {
-    fn init(_index: usize) -> Result<(Self, TestCpuInjector), ZeusdError> {
+    fn init(index: usize) -> Result<(Self, TestCpuInjector), ZeusdError> {
         let (cpu_sender, cpu_receiver) = tokio::sync::mpsc::unbounded_channel();
         let (dram_sender, dram_receiver) = tokio::sync::mpsc::unbounded_channel();
         Ok((
             TestCpu {
+                index,
                 cpu: cpu_receiver,
                 dram: dram_receiver,
                 next_cpu_energy_uj: 0,
                 next_dram_energy_uj: 0,
                 limits: test_power_limits(),
                 write_errno: None,
+                cpu_energy_denied: false,
+                dram_energy_denied: false,
             },
             TestCpuInjector {
                 cpu: cpu_sender,
@@ -234,6 +242,9 @@ impl CpuManager for TestCpu {
     }
 
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
+        if self.cpu_energy_denied {
+            return Err(self.energy_denied("intel-rapl:0/energy_uj"));
+        }
         match self.cpu.try_recv() {
             Ok(value) => Ok(value),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
@@ -248,6 +259,9 @@ impl CpuManager for TestCpu {
     }
 
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
+        if self.dram_energy_denied {
+            return Err(self.energy_denied("intel-rapl:0/intel-rapl:0:0/energy_uj"));
+        }
         match self.dram.try_recv() {
             Ok(value) => Ok(value),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
@@ -279,7 +293,11 @@ impl CpuManager for TestCpu {
         Ok(())
     }
 
-    fn set_time_window(&mut self, constraint: &str, time_window_us: u64) -> Result<(), ZeusdError> {
+    fn set_power_limit_time_window(
+        &mut self,
+        constraint: &str,
+        time_window_us: u64,
+    ) -> Result<(), ZeusdError> {
         self.check_write_errno()?;
         self.package_constraint(constraint)?.time_window_us = Some(time_window_us);
         Ok(())
@@ -293,6 +311,14 @@ impl CpuManager for TestCpu {
 }
 
 impl TestCpu {
+    fn energy_denied(&self, zone_file: &str) -> ZeusdError {
+        ZeusdError::CpuEnergyReadError {
+            cpu: self.index,
+            path: PathBuf::from("/sys/class/powercap/intel-rapl").join(zone_file),
+            source: std::io::ErrorKind::PermissionDenied.into(),
+        }
+    }
+
     fn check_write_errno(&self) -> Result<(), ZeusdError> {
         match self.write_errno {
             Some(errno) => Err(ZeusdError::cpu_control(
@@ -460,7 +486,7 @@ impl CpuManager for PowerTestCpu {
         unimplemented!("The power poller does not control power limits")
     }
 
-    fn set_time_window(
+    fn set_power_limit_time_window(
         &mut self,
         _constraint: &str,
         _time_window_us: u64,
@@ -564,7 +590,7 @@ macro_rules! impl_zeusd_request_cpu_control {
     };
 }
 impl_zeusd_request_cpu_control!(SetPowerLimit);
-impl_zeusd_request_cpu_control!(SetTimeWindow);
+impl_zeusd_request_cpu_control!(SetPowerLimitTimeWindow);
 impl_zeusd_request_cpu_control!(ResetPowerLimit);
 
 /// A test application that starts a server over TCP and provides helper methods
@@ -697,28 +723,50 @@ impl TestApp {
     /// `TestCpu` per entry of `write_errnos`, whose control writes fail with
     /// that errno if it is set.
     pub async fn start_with_cpu_write_errnos(write_errnos: &[Option<i32>]) -> Self {
+        Self::start_with_test_cpus(write_errnos.len(), |index, cpu| {
+            cpu.write_errno = write_errnos[index];
+        })
+        .await
+    }
+
+    /// Start a test server with only the CPU API groups enabled and
+    /// `num_cpus` `TestCpu`s, each changed by `configure` with its index.
+    pub async fn start_with_test_cpus(
+        num_cpus: usize,
+        configure: impl Fn(usize, &mut TestCpu),
+    ) -> Self {
         Lazy::force(&TRACING);
 
         let groups = [ApiGroup::CpuRead, ApiGroup::CpuControl];
-        let mut cpus = Vec::with_capacity(write_errnos.len());
-        let mut injectors = Vec::with_capacity(write_errnos.len());
-        for (index, &write_errno) in write_errnos.iter().enumerate() {
+        let mut cpus = Vec::with_capacity(num_cpus);
+        let mut injectors = Vec::with_capacity(num_cpus);
+        for index in 0..num_cpus {
             let (mut cpu, injector) = TestCpu::init(index).expect("Failed to create test CPU");
-            cpu.write_errno = write_errno;
+            configure(index, &mut cpu);
             cpus.push(cpu);
             injectors.push(injector);
         }
         let tasks = CpuManagementTasks::start(cpus).expect("Failed to start cpu test tasks");
+        let power_cpus: Vec<(usize, PowerTestCpu)> = (0..num_cpus)
+            .map(|index| {
+                (
+                    index,
+                    PowerTestCpu::new(POWER_TEST_CPU_INCREMENT_UJ, POWER_TEST_DRAM_INCREMENT_UJ),
+                )
+            })
+            .collect();
 
         let state = ServerState {
             gpu_device_tasks: None,
             cpu_device_tasks: Some(tasks),
             gpu_power_broadcast: None,
-            cpu_power_broadcast: None,
-            cpu_power_sampling_period: None,
+            cpu_power_broadcast: Some(start_cpu_poller(power_cpus, POWER_TEST_POLL_HZ)),
+            cpu_power_sampling_period: Some(CpuPowerSamplingPeriod::from_poll_hz(
+                POWER_TEST_POLL_HZ,
+            )),
             discovery_info: DiscoveryInfo {
                 gpus: vec![],
-                cpus: (0..write_errnos.len())
+                cpus: (0..num_cpus)
                     .map(|id| CpuDiscoveryInfo {
                         id,
                         dram_available: true,

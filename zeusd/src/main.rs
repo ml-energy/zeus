@@ -11,7 +11,7 @@ use zeusd::routes::DiscoveryInfo;
 #[cfg(windows)]
 use zeusd::startup::run_server_named_pipe;
 use zeusd::startup::{
-    check_privileges, init_tracing, resolve_gpu_backend, start_cpu_device_tasks,
+    check_platform_support, init_tracing, resolve_gpu_backend, start_cpu_device_tasks,
     start_cpu_power_poller, start_gpu_device_tasks, start_gpu_power_poller, start_server_tcp,
     EnabledGroups, ServerState,
 };
@@ -95,8 +95,7 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
         None
     };
 
-    // Validate privileges for the requested API groups.
-    check_privileges(&config.enable, gpu_command_overrides.as_deref())?;
+    check_platform_support(&config.enable)?;
 
     let enabled_groups = EnabledGroups(config.enable.iter().cloned().collect());
     tracing::info!(
@@ -145,10 +144,13 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
 
     // Conditionally initialize CPU devices.
     let (cpu_device_tasks, cpu_power_broadcast, cpus) = if config.needs_cpu() {
-        let control_baseline_path = config
+        let control_baseline = config
             .is_enabled(ApiGroup::CpuControl)
-            .then(|| std::path::Path::new(&config.cpu_power_limit_baseline_path));
-        let (tasks, cpus) = start_cpu_device_tasks(control_baseline_path)?;
+            .then(|| config.cpu_power_limit_baseline_storage());
+        let (tasks, cpus) = start_cpu_device_tasks(
+            config.is_enabled(ApiGroup::CpuRead),
+            control_baseline.as_ref(),
+        )?;
         let broadcast = if config.is_enabled(ApiGroup::CpuRead) {
             Some(start_cpu_power_poller(config.cpu_power_poll_hz)?)
         } else {

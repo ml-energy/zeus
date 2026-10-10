@@ -109,8 +109,10 @@ async fn get_cumulative_energy_handler(
     }
 }
 
-async fn read_cpu_energy_for_power(
+/// Read the CPU energy, and the DRAM energy if `dram` is set, of each CPU in `cpu_ids`.
+async fn read_cpu_energy(
     cpu_ids: &[usize],
+    dram: bool,
     device_tasks: &CpuManagementTasks,
 ) -> (HashMap<usize, RaplResponse>, HashMap<usize, ZeusdError>) {
     let now = Instant::now();
@@ -123,10 +125,7 @@ async fn read_cpu_energy_for_power(
                 tasks
                     .send_command_blocking(
                         cpu_id,
-                        CpuCommand::GetIndexEnergy {
-                            cpu: true,
-                            dram: true,
-                        },
+                        CpuCommand::GetIndexEnergy { cpu: true, dram },
                         now,
                     )
                     .await,
@@ -233,7 +232,7 @@ async fn get_cpu_power_handler(
         Err(resp) => return resp,
     };
 
-    let (first, mut errors) = read_cpu_energy_for_power(&cpu_ids, device_tasks.get_ref()).await;
+    let (first, mut errors) = read_cpu_energy(&cpu_ids, true, device_tasks.get_ref()).await;
     if !errors.is_empty() {
         return aggregate_error_response(errors);
     }
@@ -241,7 +240,7 @@ async fn get_cpu_power_handler(
     let first_read_done = Instant::now();
     sleep(Duration::from_micros(period.period_us)).await;
 
-    let (second, second_errors) = read_cpu_energy_for_power(&cpu_ids, device_tasks.get_ref()).await;
+    let (second, second_errors) = read_cpu_energy(&cpu_ids, true, device_tasks.get_ref()).await;
     let elapsed_us = first_read_done.elapsed().as_micros() as u64;
     errors.extend(second_errors);
     if !errors.is_empty() {
@@ -343,17 +342,32 @@ async fn get_power_limit_constraints_handler(
 
 /// SSE stream of CPU power readings.
 ///
+/// The poller sends no sample for a CPU whose energy counter it cannot read,
+/// so the CPU energy counters are read first, and a failed read is returned
+/// as an error instead of a stream without samples. DRAM energy is not
+/// checked, because the poller still sends samples when only DRAM energy
+/// cannot be read.
+///
 /// The subscriber guard keeps the poller active for the lifetime of the stream.
 #[actix_web::get("/stream_power")]
-#[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
+#[tracing::instrument(skip(broadcast, device_tasks), fields(cpu_ids = ?query.cpu_ids))]
 async fn cpu_power_stream_handler(
     query: web::Query<CpuReadQuery>,
     broadcast: web::Data<CpuPowerBroadcasts>,
+    device_tasks: web::Data<CpuManagementTasks>,
 ) -> HttpResponse {
-    match resolve_stream_device_ids(&query.cpu_ids, broadcast.get_ref(), "CPU") {
-        Ok(cpu_ids) => power_stream_response(cpu_ids, broadcast.get_ref()),
-        Err(response) => response,
+    let cpu_ids = match resolve_stream_device_ids(&query.cpu_ids, broadcast.get_ref(), "CPU") {
+        Ok(cpu_ids) => cpu_ids,
+        Err(response) => return response,
+    };
+    let (_, errors) = read_cpu_energy(&cpu_ids, false, device_tasks.get_ref()).await;
+    if !errors.is_empty() {
+        for (cpu_id, error) in &errors {
+            tracing::warn!("Rejected a power stream of CPU {cpu_id}: {error}");
+        }
+        return aggregate_error_response(errors);
     }
+    power_stream_response(cpu_ids, broadcast.get_ref())
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -367,7 +381,7 @@ pub struct SetPowerLimit {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct SetTimeWindow {
+pub struct SetPowerLimitTimeWindow {
     pub cpu_ids: String,
     /// Name of a package zone constraint reported by `GET /cpu/get_power_limit`.
     pub constraint: String,
@@ -456,7 +470,7 @@ async fn set_power_limit_handler(
 /// Rejects a constraint the package zone does not have, a constraint without a
 /// time window, and a zero time window. The hardware stores the window with
 /// limited precision, so reading it back may give a nearby value.
-#[actix_web::post("/set_time_window")]
+#[actix_web::post("/set_power_limit_time_window")]
 #[tracing::instrument(
     skip(query, device_tasks),
     fields(
@@ -465,12 +479,12 @@ async fn set_power_limit_handler(
         time_window_us = %query.time_window_us,
     )
 )]
-async fn set_time_window_handler(
-    query: web::Query<SetTimeWindow>,
+async fn set_power_limit_time_window_handler(
+    query: web::Query<SetPowerLimitTimeWindow>,
     device_tasks: web::Data<CpuManagementTasks>,
 ) -> Result<HttpResponse, ZeusdError> {
     let query = query.into_inner();
-    let command = CpuCommand::SetTimeWindow {
+    let command = CpuCommand::SetPowerLimitTimeWindow {
         constraint: query.constraint,
         time_window_us: query.time_window_us,
     };
@@ -478,7 +492,7 @@ async fn set_time_window_handler(
 }
 
 /// Restore the power limits and time windows of every package zone constraint
-/// on each requested CPU to the baseline recorded at the first start after boot.
+/// on each requested CPU to the saved baseline.
 #[actix_web::post("/reset_power_limit")]
 #[tracing::instrument(skip(query, device_tasks), fields(cpu_ids = %query.cpu_ids))]
 async fn reset_power_limit_handler(
@@ -505,6 +519,6 @@ pub fn cpu_read_routes(cfg: &mut web::ServiceConfig) {
 /// Register CPU control (write) routes.
 pub fn cpu_control_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(set_power_limit_handler)
-        .service(set_time_window_handler)
+        .service(set_power_limit_time_window_handler)
         .service(reset_power_limit_handler);
 }

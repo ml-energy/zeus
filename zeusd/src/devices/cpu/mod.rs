@@ -14,7 +14,8 @@ use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
 use tokio::time::{interval, Duration};
 use tracing::Span;
 
-use crate::error::ZeusdError;
+use crate::error::{ZeusdError, PERMISSIONS_DOC_URL};
+use hsmp::HSMP_DEVICE_PATH;
 pub use msr::RaplPowerInfo;
 
 pub struct PackageInfo {
@@ -121,7 +122,11 @@ pub trait CpuManager {
     /// Write the time window of a package zone constraint in microseconds.
     ///
     /// Callers validate the value against `get_power_limits` first.
-    fn set_time_window(&mut self, constraint: &str, time_window_us: u64) -> Result<(), ZeusdError>;
+    fn set_power_limit_time_window(
+        &mut self,
+        constraint: &str,
+        time_window_us: u64,
+    ) -> Result<(), ZeusdError>;
     /// Restore the power limits and time windows of the package zone
     /// constraints to their recorded baseline.
     fn reset_power_limits(&mut self) -> Result<(), ZeusdError>;
@@ -198,7 +203,7 @@ pub enum CpuCommand {
         power_limit_mw: u64,
     },
     /// Set the time window of a package zone constraint.
-    SetTimeWindow {
+    SetPowerLimitTimeWindow {
         constraint: String,
         time_window_us: u64,
     },
@@ -225,6 +230,9 @@ async fn cpu_management_task<T: CpuManager>(
             Some((command, response, start_time, span)) = rx.recv() => {
                 let _span_guard = span.enter();
                 let result = command.execute(&mut cpu, start_time);
+                if let Err(e) = &result {
+                    tracing::warn!("CPU command {command:?} failed: {e}");
+                }
                 if let Some(response) = response {
                     if response.send(result).await.is_err() {
                         tracing::error!("Failed to send response to caller");
@@ -281,13 +289,13 @@ impl CpuCommand {
                 device.set_power_limit(constraint, *power_limit_mw)?;
                 Ok(CpuResponse::Ok)
             }
-            Self::SetTimeWindow {
+            Self::SetPowerLimitTimeWindow {
                 constraint,
                 time_window_us,
             } => {
                 let limits = device.get_power_limits()?;
                 validate_time_window(&limits.cpu, constraint, *time_window_us)?;
-                device.set_time_window(constraint, *time_window_us)?;
+                device.set_power_limit_time_window(constraint, *time_window_us)?;
                 Ok(CpuResponse::Ok)
             }
             Self::ResetPowerLimits => {
@@ -307,8 +315,17 @@ fn find_constraint<'a>(
         .find(|c| c.name == constraint)
         .ok_or_else(|| {
             let available: Vec<&str> = zone.constraints.iter().map(|c| c.name.as_str()).collect();
+            let hint = if constraint == HSMP_SOCKET_CONSTRAINT {
+                format!(
+                    " The '{HSMP_SOCKET_CONSTRAINT}' constraint needs AMD HSMP: load the amd_hsmp \
+                     kernel module so that {HSMP_DEVICE_PATH} exists (in a container, also pass \
+                     the device) and restart Zeusd. See {PERMISSIONS_DOC_URL}"
+                )
+            } else {
+                String::new()
+            };
             ZeusdError::InvalidRequest(format!(
-                "Package zone has no power limit constraint '{constraint}' (available: {available:?})"
+                "Package zone has no power limit constraint '{constraint}' (available: {available:?}).{hint}"
             ))
         })
 }
@@ -374,5 +391,19 @@ mod tests {
         assert!(validate_power_limit(&zone(None), "long_term", 1).is_ok());
         assert!(validate_power_limit(&zone(None), "long_term", 0).is_err());
         assert!(validate_power_limit(&zone(None), "short_term", 1).is_err());
+    }
+
+    #[test]
+    fn missing_socket_constraint_explains_hsmp_prerequisite() {
+        let message = validate_power_limit(&zone(None), "socket", 1)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("amd_hsmp"), "{message}");
+        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+
+        let message = validate_power_limit(&zone(None), "short_term", 1)
+            .unwrap_err()
+            .to_string();
+        assert!(!message.contains("amd_hsmp"), "{message}");
     }
 }

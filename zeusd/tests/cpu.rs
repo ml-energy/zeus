@@ -286,6 +286,73 @@ async fn test_cpu_power_stream_receives_events() {
     assert!(body["dram_mw"].is_number());
 }
 
+/// A stream of a CPU whose energy counter Zeusd cannot read fails with the
+/// cause instead of starting a stream that never sends a sample.
+#[tokio::test]
+async fn test_cpu_power_stream_rejects_unreadable_energy_counter() {
+    // CPU 1 cannot read its CPU energy counter, CPU 2 only its DRAM counter.
+    let app = TestApp::start_with_test_cpus(3, |index, cpu| {
+        cpu.cpu_energy_denied = index == 1;
+        cpu.dram_energy_denied = index == 2;
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let stream_url = |query: &str| format!("http://127.0.0.1:{}/cpu/stream_power{query}", app.port);
+
+    for query in ["?cpu_ids=1", "?cpu_ids=0,1", ""] {
+        let resp = client
+            .get(stream_url(query))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 403, "{query}");
+        let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+        let errors = body["errors"].as_object().unwrap();
+        assert_eq!(errors.keys().collect::<Vec<_>>(), vec!["1"], "{query}");
+        let message = errors["1"].as_str().unwrap();
+        assert!(message.contains("energy_uj"), "{message}");
+        assert!(message.contains("Run Zeusd as root"), "{message}");
+        assert!(
+            message.contains(zeusd::error::PERMISSIONS_DOC_URL),
+            "{message}"
+        );
+    }
+
+    for query in ["?cpu_ids=0", "?cpu_ids=2"] {
+        let mut resp = client
+            .get(stream_url(query))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 200, "{query}");
+        tokio::time::timeout(tokio::time::Duration::from_secs(2), resp.chunk())
+            .await
+            .expect("Timed out waiting for CPU power event")
+            .expect("Failed to read CPU power event")
+            .expect("CPU power stream ended before first event");
+    }
+
+    // CPU-only energy requests work when only the DRAM counter is unreadable.
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=2&cpu=true&dram=false",
+            app.port
+        ))
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=2&cpu=false&dram=true",
+            app.port
+        ))
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 403);
+}
+
 struct PollCountingCpu {
     poll_count: Arc<AtomicUsize>,
     cpu_energy_uj: u64,
@@ -369,7 +436,7 @@ impl CpuManager for PollCountingCpu {
         unimplemented!("The power poller does not control power limits")
     }
 
-    fn set_time_window(
+    fn set_power_limit_time_window(
         &mut self,
         _constraint: &str,
         _time_window_us: u64,
@@ -616,12 +683,12 @@ async fn test_cpu_set_power_limit_invalid() {
 }
 
 #[tokio::test]
-async fn test_cpu_set_time_window() {
+async fn test_cpu_set_power_limit_time_window() {
     let app = TestApp::start().await;
 
     let status = post_cpu_control(
         &app,
-        "set_time_window?cpu_ids=0&constraint=short_term&time_window_us=2440",
+        "set_power_limit_time_window?cpu_ids=0&constraint=short_term&time_window_us=2440",
     )
     .await;
     assert_eq!(status, 200);
@@ -636,7 +703,7 @@ async fn test_cpu_set_time_window() {
         "cpu_ids=0&constraint=long_term&time_window_us=0",
         "cpu_ids=0&constraint=socket&time_window_us=1000",
     ] {
-        let status = post_cpu_control(&app, &format!("set_time_window?{query}")).await;
+        let status = post_cpu_control(&app, &format!("set_power_limit_time_window?{query}")).await;
         assert_eq!(status, 400, "{query} should be rejected");
     }
     assert_eq!(package_constraints(&app).await, expected);
@@ -649,7 +716,7 @@ async fn test_cpu_reset_power_limit() {
     for endpoint_and_query in [
         "set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=100000",
         "set_power_limit?cpu_ids=0&constraint=short_term&power_limit_mw=120000",
-        "set_time_window?cpu_ids=0&constraint=long_term&time_window_us=27983872",
+        "set_power_limit_time_window?cpu_ids=0&constraint=long_term&time_window_us=27983872",
     ] {
         assert_eq!(post_cpu_control(&app, endpoint_and_query).await, 200);
     }
@@ -699,7 +766,7 @@ async fn test_cpu_read_only_mode_rejects_control() {
 
     for endpoint_and_query in [
         "set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
-        "set_time_window?cpu_ids=0&constraint=long_term&time_window_us=999424",
+        "set_power_limit_time_window?cpu_ids=0&constraint=long_term&time_window_us=999424",
         "reset_power_limit?cpu_ids=0",
     ] {
         assert_eq!(post_cpu_control(&app, endpoint_and_query).await, 404);

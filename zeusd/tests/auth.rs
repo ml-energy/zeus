@@ -481,7 +481,7 @@ async fn encoded_control_paths_require_control_scopes() {
             "/cpu/%73et_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
             "/%63pu/set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
             "/cpu/%72eset_power_limit?cpu_ids=0",
-            "/cpu/%73et_time_window?cpu_ids=0&constraint=long_term&time_window_us=2440",
+            "/cpu/%73et_power_limit_time_window?cpu_ids=0&constraint=long_term&time_window_us=2440",
             "/gpu/%73et_power_limit?gpu_ids=0&power_limit_mw=150000&block=true",
             "/%67pu/reset_locked_clocks?gpu_ids=0&block=true",
         ] {

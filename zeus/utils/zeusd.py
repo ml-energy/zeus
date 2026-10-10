@@ -835,7 +835,7 @@ class ZeusdClient:
         )
         self._check(resp, "set_cpu_power_limit")
 
-    def set_cpu_time_window(self, cpu_ids: list[int], constraint: str, time_window_us: int) -> None:
+    def set_cpu_power_limit_time_window(self, cpu_ids: list[int], constraint: str, time_window_us: int) -> None:
         """Set the time window of a package zone constraint on the given CPUs.
 
         This requires read/write access to model-specific registers (MSRs) on supported Intel x86-64 packages.
@@ -849,19 +849,20 @@ class ZeusdClient:
             time_window_us: Time window in microseconds.
         """
         resp = self._client.post(
-            self._config.url("/cpu/set_time_window"),
+            self._config.url("/cpu/set_power_limit_time_window"),
             params={
                 "cpu_ids": ",".join(str(i) for i in cpu_ids),
                 "constraint": constraint,
                 "time_window_us": str(time_window_us),
             },
         )
-        self._check(resp, "set_cpu_time_window")
+        self._check(resp, "set_cpu_power_limit_time_window")
 
     def reset_cpu_power_limit(self, cpu_ids: list[int]) -> None:
         """Restore the power limits and time windows of the given CPUs' package zones.
 
-        The daemon restores the settings it recorded on its first start after boot.
+        The daemon restores its saved baseline, normally recorded at the first start with CPU control in each host boot.
+        With persistent baseline storage disabled, it restores settings recorded at the current daemon's start.
         Changed Intel time windows require write access to model-specific registers (MSRs) for exact restoration.
         A failed write does not stop the remaining settings from being restored, but the request reports the errors.
 
