@@ -7,12 +7,11 @@ Kernel modules and firmware support are **prerequisites**; file access, Linux ca
 ## Feature requirements and permissions
 
 Enable HTTP API groups with `--enable gpu-read,gpu-control,cpu-read,cpu-control`, omitting groups you do not need.
-Linux enables all four by default; Windows supports only the GPU groups through NVML.
+Linux enables all four by default.
 Enabling a group exposes its routes but does not grant device permissions.
 Unavailable operations report their missing requirements; independent features remain usable.
 
 CPU features use the Running Average Power Limit (RAPL) interface, Intel model-specific registers (MSRs), or AMD's Host System Management Port (HSMP).
-Each interface has separate access requirements.
 Linux exposes device attributes through *sysfs*, normally mounted at `/sys`.
 CPU resets restore the *original* CPU power limits and time windows, which `zeusd` records when it starts.
 
@@ -31,17 +30,13 @@ CPU resets restore the *original* CPU power limits and time windows, which `zeus
 | AMD EPYC socket power-limit changes | `cpu-control` | Same as socket-limit queries | Read/write access to `/dev/hsmp` |
 | CPU resets that keep the original settings across daemon restarts | `cpu-control` | Persistent storage of the original settings and the host boot identifier | Read/write access to `/var/zeusd` or the configured directory; restoring each setting also needs its control permissions |
 
-The [storage requirements](#original-cpu-power-limits) of the original settings are independent of socket transport and device access.
-GPU resets use the GPU backend's defaults and do not use this file.
+The [storage requirements](#original-cpu-power-limits) of the original settings apply whether clients connect through a Unix domain socket or TCP.
+GPU resets restore the GPU backend's defaults and do not need this storage.
 
-File access can come from ownership, group permissions, or an administrator-managed policy.
-Linux capabilities grant additional privileges: `CAP_SYS_RAWIO` permits MSR device access, while `CAP_SYS_ADMIN` permits NVIDIA control operations.
-Neither makes a read-only filesystem writable.
 An unprivileged process can read root-only RAPL energy files with `CAP_DAC_READ_SEARCH`, but that capability also bypasses read permissions elsewhere.
-Root inside a container still needs the device mounts and capabilities listed below.
+Root inside a container still needs the device mounts and capabilities listed under [Docker](#deployment-methods).
 
 If privileged GPU control is available only through approved commands, configure [GPU command overrides](command_overrides.md).
-The commands' permissions determine whether those operations succeed.
 
 ### CPU driver prerequisites
 
@@ -59,50 +54,43 @@ sudo modprobe amd_hsmp
 ```
 
 If `amd_hsmp` reports that HSMP is disabled, enable it in the firmware settings.
-The [Linux HSMP driver](https://kernel.org/doc/html/v6.2/x86/amd_hsmp.html) distinguishes read access for queries from write access for control.
 Missing HSMP access does not prevent RAPL energy monitoring, RAPL power-limit changes, or CPU control startup.
 
-Intel MSRs provide power ranges and precise time-window control.
-Expose `/dev/cpu/<core>/msr` for the lowest-numbered online core in each package, or each die for per-die RAPL zones.
+For Intel MSR access, expose `/dev/cpu/<core>/msr` for the lowest-numbered online core in each package, or each die for per-die RAPL zones.
 CPU topology under `/sys/devices/system/cpu` must also be readable.
-Time-window control supports package `long_term` and `short_term` constraints with exponential encoding; Silvermont and Airmont layouts are unsupported.
-Power-limit writes use RAPL sysfs and verify readback, allowing hardware rounding of less than 1 W.
-Time-window writes use MSRs so resets can restore fractional encodings precisely.
+Time-window control supports package `long_term` and `short_term` constraints; Silvermont and Airmont CPUs are unsupported.
 
 !!! warning "MSR writes affect the host kernel"
 
-    Userspace MSR writes taint the Linux kernel until reboot, including writes that restore earlier settings.
+    Userspace MSR writes set a kernel diagnostic flag (taint) until reboot, including writes that restore earlier settings.
     Kernel lockdown, `msr.allow_writes=off`, or a firmware register lock can reject writes even when reads work.
-    Without MSR access, energy monitoring, current-limit queries, and sysfs power-limit changes remain available.
-    Hardware-range queries and time-window changes return an error explaining the required access.
 
 ### Original CPU power limits
 
-`zeusd` changes CPU settings only through control requests.
-Starting, stopping, or restarting the daemon does not restore the original CPU settings.
+`zeusd` changes CPU settings only through control requests; starting, stopping, or restarting the daemon does not restore the original CPU settings.
 Call [`POST /cpu/reset_power_limit`](api.md#cpu) or [`ZeusdClient.reset_cpu_power_limit`][zeus.utils.zeusd.ZeusdClient.reset_cpu_power_limit] to restore the original settings explicitly.
-A failed write does not stop restoration of the remaining settings, and the request reports the errors.
 
-The original settings are the CPU power limits and time windows at the first daemon start with CPU control in each host boot, not firmware defaults or settings from before that start.
+The original settings are the CPU power limits and time windows at the first daemon start in each host boot that has CPU control and finds CPU packages, not firmware defaults.
 With `cpu-control` enabled, `zeusd` records them in a file, the *original snapshot*, at `--original-cpu-power-limit-path`, which defaults to `/var/zeusd/original_cpu_power_limit.json`.
 The actual filename includes the host boot identifier from `/proc/sys/kernel/random/boot_id`: `original_cpu_power_limit.<boot_id>.json`.
 Within one host boot, daemon restarts load this original snapshot instead of recording a limit that an application has already changed.
-After a host reboot, the first daemon start records new original settings.
+After a host reboot, the first daemon start that finds CPU packages records new original settings.
 Files from older boots are not reused and can be removed.
 
-Choose a different location with `--original-cpu-power-limit-path PATH`.
 The directory must be writable and survive daemon or container replacement; a container's writable layer does not survive replacement.
-The filesystem must support hard links (multiple filenames for one file), which allow concurrent starts to publish the original snapshot without overwriting one another.
+The filesystem must support hard links (multiple filenames for one file).
 An inaccessible directory or invalid original snapshot produces a startup error instead of silently recording different original settings.
 To keep the original settings only in memory, pass `--no-persistent-original-cpu-power-limit` explicitly.
 That mode records the settings at every daemon start as the original settings, so a restarted daemon cannot restore settings from before its start.
 
-If HSMP reads fail at startup, `zeusd` warns and excludes `socket` from any new original snapshot.
-Existing snapshots keep previously recorded `socket` settings, and resets still attempt the other settings.
-If a snapshot lacks `socket`, socket changes are rejected until an original setting is recorded.
-To record one after restoring HSMP access, reset the saved settings and stop `zeusd`.
-Verify that the current limits and time windows are the values you want resets to restore.
-Restart with a new `--original-cpu-power-limit-path`, or use `--no-persistent-original-cpu-power-limit` to record originals at each daemon start.
+??? warning "AMD HSMP unavailable at startup"
+
+    If HSMP reads fail at startup, `zeusd` warns and excludes `socket` from any new original snapshot.
+    Existing snapshots keep previously recorded `socket` settings, and resets still attempt the other settings.
+    If a snapshot lacks `socket`, socket changes are rejected until an original setting is recorded.
+    To record one after restoring HSMP access, restore the original settings with a reset and stop `zeusd`.
+    Verify that the current limits and time windows are the values you want resets to restore.
+    Restart with a new `--original-cpu-power-limit-path`, or use `--no-persistent-original-cpu-power-limit` to record originals at each daemon start.
 
 ## Deployment methods
 
@@ -127,9 +115,7 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
         --mode tcp --tcp-bind-address 127.0.0.1:4938
     ```
 
-    Add GPU groups as needed.
     For a restricted service account, grant only the file access and capabilities for its selected features.
-    CPU monitoring does not require writable sysfs, MSR access, HSMP access, or storage for the original CPU settings.
     CPU control without persistent storage requires `--no-persistent-original-cpu-power-limit`.
 
     For UDS, use `--socket-path /run/zeusd/zeusd.sock` instead of the TCP arguments.
@@ -177,7 +163,6 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
     When retaining selected capabilities, clear the list first, then add a second assignment with the required capabilities.
     If using `User=` for a service account, grant its device/file permissions separately; `CapabilityBoundingSet` alone does not grant capabilities to that account.
     Use `AmbientCapabilities=` for any capabilities that account requires.
-    Read logs with `journalctl -u zeusd -f` after restarting the service.
 
 === "Docker"
 
@@ -234,13 +219,11 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
 
     Binding the host boot identifier keeps the original settings until the host reboots, even when a runtime supplies a container-specific identifier.
     Omit the storage and boot-identifier mounts only when using `--no-persistent-original-cpu-power-limit` or disabling `cpu-control`.
-    TCP deployments need no `/run/zeusd` mount.
 
     AMD GPU control additionally needs writable amdgpu sysfs files.
     A broad configuration uses `-v /sys:/sys:rw` with a policy that permits those writes; a narrower deployment can bind only the required GPU sysfs paths.
     Docker's default AppArmor policy blocks sysfs writes; supply a custom policy, or use `--security-opt apparmor=unconfined` to remove that protection.
     SELinux deployments need a policy allowing device and sysfs access; `--security-opt label=disable` disables container labeling when that is acceptable to your deployment.
-    These policy changes apply independently of `--cap-add`.
 
     To use a host AMD SMI library, mount its installation and set `AMDSMI_LIB_DIR`, for example `-v /opt/rocm-7.2.0:/opt/rocm-7.2.0:ro -e AMDSMI_LIB_DIR=/opt/rocm-7.2.0/lib`.
 

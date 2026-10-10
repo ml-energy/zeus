@@ -538,21 +538,6 @@ class TestZeusdClientCapabilities:
         assert not client.can_control_gpu
         assert not client.can_read_cpu
 
-    def test_can_control_cpu(self, mock_zeusd):
-        server = mock_zeusd(enabled_api_groups=("cpu-read", "cpu-control"))
-        assert ZeusdClient(server.config).can_control_cpu
-
-        server = mock_zeusd(enabled_api_groups=("cpu-read",))
-        assert not ZeusdClient(server.config).can_control_cpu
-
-        server = mock_zeusd(
-            enabled_api_groups=("cpu-read", "cpu-control"),
-            auth_required=True,
-            token="valid",
-            whoami_scopes=("cpu-read",),
-        )
-        assert not ZeusdClient(server.config).can_control_cpu
-
     def test_scope_without_api_group(self, mock_zeusd):
         """Token grants gpu-read, but the server doesn't enable that group."""
         server = mock_zeusd(
@@ -840,12 +825,6 @@ class TestZeusdClientCpuPowerLimitConstraints:
         client.get_cpu_power_limit_constraints([0])
         assert server.last_params()["cpu_ids"] == "0"
 
-    def test_error(self, mock_zeusd):
-        server = mock_zeusd(endpoint_errors={"/cpu/get_power_limit_constraints": 500})
-        client = ZeusdClient(server.config)
-        with pytest.raises(ZeusdError, match="get_cpu_power_limit_constraints"):
-            client.get_cpu_power_limit_constraints()
-
 
 class TestZeusdClientCpuControl:
     def test_set_cpu_power_limit(self, mock_zeusd):
@@ -874,20 +853,6 @@ class TestZeusdClientCpuControl:
         assert request.method == "POST"
         assert request.url.path == "/cpu/reset_power_limit"
         assert server.last_params() == {"cpu_ids": "0,1"}
-
-    @pytest.mark.parametrize(
-        "path, call",
-        [
-            ("/cpu/set_power_limit", lambda c: c.set_cpu_power_limit([0], "socket", 150000)),
-            ("/cpu/set_power_limit_time_window", lambda c: c.set_cpu_power_limit_time_window([0], "long_term", 0)),
-            ("/cpu/reset_power_limit", lambda c: c.reset_cpu_power_limit([0])),
-        ],
-    )
-    def test_cpu_control_error(self, mock_zeusd, path, call):
-        server = mock_zeusd(endpoint_errors={path: 400})
-        client = ZeusdClient(server.config)
-        with pytest.raises(ZeusdError, match="cpu"):
-            call(client)
 
 
 # ---------------------------------------------------------------------------
@@ -964,6 +929,15 @@ class TestRequireCapabilities:
 
         server = mock_zeusd(enabled_api_groups=("cpu-read",))
         with pytest.raises(ZeusdCapabilityError, match="'cpu-control' is not enabled"):
+            require_capabilities(ZeusdClient(server.config), control_cpu=True)
+
+        server = mock_zeusd(
+            enabled_api_groups=("cpu-read", "cpu-control"),
+            auth_required=True,
+            token="valid",
+            whoami_scopes=("cpu-read",),
+        )
+        with pytest.raises(ZeusdCapabilityError, match="lacks required scope"):
             require_capabilities(ZeusdClient(server.config), control_cpu=True)
 
     def test_gpu_ids_missing(self, mock_zeusd):

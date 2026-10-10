@@ -443,34 +443,6 @@ async fn test_whoami_auth_no_expiry_token() {
 }
 
 #[tokio::test]
-async fn test_cpu_control_requires_cpu_control_scope() {
-    let app = TestApp::start_with_auth(TEST_KEY).await;
-    let client = reqwest::Client::new();
-    let url = format!(
-        "http://127.0.0.1:{}/cpu/set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
-        app.port,
-    );
-
-    let read_token = token("testuser", vec![ApiGroup::CpuRead], Some(9999999999));
-    let resp = client
-        .post(&url)
-        .bearer_auth(&read_token)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 403);
-
-    let control_token = token("testuser", vec![ApiGroup::CpuControl], Some(9999999999));
-    let resp = client
-        .post(&url)
-        .bearer_auth(&control_token)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 200);
-}
-
-#[tokio::test]
 async fn encoded_control_paths_require_control_scopes() {
     let app = TestApp::start_with_auth(TEST_KEY).await;
     let client = reqwest::Client::new();

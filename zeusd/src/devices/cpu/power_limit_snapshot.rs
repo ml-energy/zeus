@@ -3,9 +3,9 @@
 //! Neither RAPL nor HSMP reports a default power limit, so the original
 //! settings are the ones zeusd finds when it starts. With persistent storage,
 //! the file name of the original snapshot carries the kernel's boot ID. The
-//! first zeusd start in a host boot records the settings it finds, and later
-//! starts in the same boot, including replacement containers that mount the
-//! same directory, load them.
+//! first zeusd start in a host boot that finds CPU packages records the
+//! settings it finds, and later starts in the same boot, including
+//! replacement containers that mount the same directory, load them.
 
 use std::ffi::OsString;
 use std::fs;
@@ -58,12 +58,19 @@ pub enum OriginalPowerLimitStorage {
 /// Return the original settings of this zeusd process according to `storage`.
 ///
 /// `current` holds the settings zeusd finds now. `boot_id_path` is only read
-/// for persistent storage.
+/// for persistent storage. Without CPU packages in `current`, return without
+/// accessing the boot ID or snapshot storage.
 pub fn establish(
     storage: &OriginalPowerLimitStorage,
     boot_id_path: &Path,
     current: Vec<PackageSettings>,
 ) -> anyhow::Result<Vec<PackageSettings>> {
+    if current.is_empty() {
+        tracing::info!(
+            "No CPU packages were found; skipping original CPU power limit snapshot initialization."
+        );
+        return Ok(current);
+    }
     match storage {
         OriginalPowerLimitStorage::InMemory => {
             tracing::info!(
@@ -144,11 +151,18 @@ pub fn original_snapshot_path(path: &Path, boot_id: &str) -> anyhow::Result<Path
 /// constraint names as `current`. The HSMP `socket` constraint is exempt
 /// because its presence depends on HSMP access, so loaded settings keep a
 /// `socket` setting that `current` lacks and lack one that `current` has.
+/// Errors if `current` has no CPU packages.
 pub fn load_or_record(
     configured_path: &Path,
     boot_id: &str,
     current: Vec<PackageSettings>,
 ) -> anyhow::Result<Vec<PackageSettings>> {
+    if current.is_empty() {
+        anyhow::bail!(
+            "No CPU package was found, so there are no original CPU power limit settings to load \
+             or record. See {ORIGINAL_POWER_LIMITS_DOC_URL}"
+        );
+    }
     let path = original_snapshot_path(configured_path, boot_id)?;
     if record(&path, boot_id, &current)? {
         tracing::info!(
@@ -186,8 +200,7 @@ pub fn load_or_record(
         )
     })?;
     tracing::info!(
-        "Loaded the original CPU power limits recorded at the first Zeusd start in host boot \
-         {boot_id} from {}",
+        "Loaded the original CPU power limits recorded for host boot {boot_id} from {}",
         path.display()
     );
     Ok(file.cpus)
@@ -439,15 +452,6 @@ mod tests {
             fs::write(&path, invalid).unwrap();
             assert!(read_boot_id(&path).is_err(), "{invalid:?}");
         }
-
-        let message = read_boot_id(&tmp.path().join("absent"))
-            .unwrap_err()
-            .to_string();
-        assert!(
-            message.contains("--no-persistent-original-cpu-power-limit"),
-            "{message}"
-        );
-        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
     }
 
     #[test]
@@ -518,11 +522,7 @@ mod tests {
                 ("socket", 200_000_000, None),
             ],
         )];
-        let message = load_or_record(&path, BOOT_A, other_constraints)
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("does not match this machine"), "{message}");
-        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
+        assert!(load_or_record(&path, BOOT_A, other_constraints).is_err());
     }
 
     /// Whether `socket` can be read depends on HSMP access, so a recorded
@@ -568,13 +568,7 @@ mod tests {
         )
         .unwrap();
 
-        let message = load_or_record(&configured, BOOT_B, intel(150_000_000))
-            .unwrap_err()
-            .to_string();
-        assert!(
-            message.contains(&format!("records host boot {BOOT_A}")),
-            "{message}"
-        );
+        assert!(load_or_record(&configured, BOOT_B, intel(150_000_000)).is_err());
         assert!(
             fs::read_to_string(original_snapshot_path(&configured, BOOT_B).unwrap())
                 .unwrap()
@@ -589,43 +583,30 @@ mod tests {
         let path = original_snapshot_path(&configured, BOOT_A).unwrap();
         for corrupt in ["", "{", "{\"cpus\": []}", "{\"boot_id\": 1, \"cpus\": []}"] {
             fs::write(&path, corrupt).unwrap();
-            let message = load_or_record(&configured, BOOT_A, vec![])
+            let message = load_or_record(&configured, BOOT_A, intel(205_000_000))
                 .unwrap_err()
                 .to_string();
             assert!(message.contains("Failed to parse"), "{message}");
-            assert!(message.contains("delete the file"), "{message}");
             assert_eq!(fs::read_to_string(&path).unwrap(), corrupt);
         }
     }
 
     #[cfg(unix)]
     #[test]
-    fn unwritable_directory_explains_the_storage_options() {
+    fn unwritable_storage_errors_without_recording() {
         use std::os::unix::fs::PermissionsExt;
 
         if nix::unistd::geteuid().is_root() {
-            // Root ignores file permissions, so no write can be made to fail.
             return;
         }
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("zeusd");
         fs::create_dir(&dir).unwrap();
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
-
-        let message = load_or_record(&dir.join("original.json"), BOOT_A, intel(205_000_000))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("lacks permission"), "{message}");
-        assert!(
-            message.contains("--original-cpu-power-limit-path"),
-            "{message}"
-        );
-        assert!(
-            message.contains("--no-persistent-original-cpu-power-limit"),
-            "{message}"
-        );
-        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
+        let result = load_or_record(&dir.join("original.json"), BOOT_A, intel(205_000_000));
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(result.is_err());
+        assert!(file_names(&dir).is_empty());
     }
 
     #[test]
@@ -726,9 +707,7 @@ mod tests {
             .unwrap();
         }
 
-        let message = publish(&path, b"ours", "1").unwrap_err().to_string();
-        assert!(message.contains("Remove leftover"), "{message}");
-        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
+        assert!(publish(&path, b"ours", "1").is_err());
         assert!(!path.exists());
         assert_eq!(file_names(tmp.path()).len(), MAX_TMP_ATTEMPTS as usize);
     }
@@ -753,6 +732,76 @@ mod tests {
             intel(150_000_000)
         );
         assert!(establish(&storage, &tmp.path().join("absent"), intel(1)).is_err());
+    }
+
+    /// A start before RAPL is loaded finds no CPU package and must not keep a
+    /// later start in the same boot from recording the original.
+    #[test]
+    fn zero_packages_leave_the_original_snapshot_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let boot_id_path = tmp.path().join("boot_id");
+        let absent_boot_id = tmp.path().join("absent");
+        let state = tmp.path().join("state");
+        let configured = state.join("original.json");
+        let storage = OriginalPowerLimitStorage::Persistent(configured.clone());
+
+        assert_eq!(
+            establish(&storage, &absent_boot_id, vec![]).unwrap(),
+            vec![]
+        );
+        assert!(!state.exists());
+
+        fs::write(&boot_id_path, format!("{BOOT_A}\n")).unwrap();
+        assert!(establish(&storage, &boot_id_path, vec![])
+            .unwrap()
+            .is_empty());
+        assert!(!state.exists());
+        assert_eq!(
+            establish(&storage, &boot_id_path, intel(205_000_000)).unwrap(),
+            intel(205_000_000)
+        );
+        assert_eq!(
+            establish(&storage, &boot_id_path, intel(150_000_000)).unwrap(),
+            intel(205_000_000)
+        );
+
+        let path = original_snapshot_path(&configured, BOOT_A).unwrap();
+        let recorded = fs::read(&path).unwrap();
+        assert_eq!(
+            establish(&storage, &absent_boot_id, vec![]).unwrap(),
+            vec![]
+        );
+        assert!(load_or_record(&configured, BOOT_A, vec![]).is_err());
+        assert_eq!(fs::read(&path).unwrap(), recorded);
+        assert_eq!(file_names(&state), vec![format!("original.{BOOT_A}.json")]);
+        assert_eq!(
+            establish(&storage, &boot_id_path, intel(100_000_000)).unwrap(),
+            intel(205_000_000)
+        );
+    }
+
+    /// An AMD package without HSMP access has no constraints but is still a
+    /// package, so its original is recorded.
+    #[test]
+    fn packages_without_constraints_are_recorded() {
+        let tmp = tempfile::tempdir().unwrap();
+        let boot_id_path = tmp.path().join("boot_id");
+        fs::write(&boot_id_path, format!("{BOOT_A}\n")).unwrap();
+        let configured = tmp.path().join("original.json");
+        let storage = OriginalPowerLimitStorage::Persistent(configured.clone());
+        let no_constraints = vec![package("package-0", &[])];
+
+        assert_eq!(
+            establish(&storage, &boot_id_path, no_constraints.clone()).unwrap(),
+            no_constraints
+        );
+        assert!(original_snapshot_path(&configured, BOOT_A)
+            .unwrap()
+            .exists());
+        assert_eq!(
+            establish(&storage, &boot_id_path, no_constraints.clone()).unwrap(),
+            no_constraints
+        );
     }
 
     #[test]

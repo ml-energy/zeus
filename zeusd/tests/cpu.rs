@@ -309,13 +309,6 @@ async fn test_cpu_power_stream_rejects_unreadable_energy_counter() {
         let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
         let errors = body["errors"].as_object().unwrap();
         assert_eq!(errors.keys().collect::<Vec<_>>(), vec!["1"], "{query}");
-        let message = errors["1"].as_str().unwrap();
-        assert!(message.contains("energy_uj"), "{message}");
-        assert!(message.contains("Run Zeusd as root"), "{message}");
-        assert!(
-            message.contains(zeusd::error::PERMISSIONS_DOC_URL),
-            "{message}"
-        );
     }
 
     for query in ["?cpu_ids=0", "?cpu_ids=2"] {

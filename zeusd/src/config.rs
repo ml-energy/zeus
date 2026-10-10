@@ -204,21 +204,17 @@ pub struct ServeConfig {
     #[clap(long)]
     pub signing_key_path: Option<String>,
 
-    /// [cpu-control] Path from which Zeusd names the file of the original CPU
-    /// power limit settings that `POST /cpu/reset_power_limit` restores. The
-    /// host boot ID is inserted before the extension, e.g.,
-    /// `original_cpu_power_limit.<boot ID>.json`. The first Zeusd start in a
-    /// boot records the settings it finds in that file as the original
-    /// settings, and later starts in the same boot load them, so the directory
-    /// should persist across Zeusd restarts and container replacements.
+    /// [cpu-control] Path for the original CPU power limits and time windows
+    /// that reset restores. The host boot ID is inserted before the extension.
+    /// The first start with discovered CPU packages records the settings;
+    /// later starts in the same boot reuse them. Keep this directory across
+    /// daemon restarts and container replacements.
     #[clap(long, default_value = "/var/zeusd/original_cpu_power_limit.json")]
     pub original_cpu_power_limit_path: String,
 
-    /// [cpu-control] Keep the original CPU power limit settings that
-    /// `POST /cpu/reset_power_limit` restores in memory instead of in a file,
-    /// recording them at every Zeusd start. No writable storage is needed, but
-    /// a restarted Zeusd records the settings it finds then as the original
-    /// settings, including limits set before the restart.
+    /// [cpu-control] Record original CPU power settings in memory at each
+    /// start, without persistent storage. After a restart, reset cannot restore
+    /// settings from before that start.
     #[clap(long, conflicts_with = "original_cpu_power_limit_path")]
     pub no_persistent_original_cpu_power_limit: bool,
 }

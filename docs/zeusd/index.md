@@ -2,7 +2,6 @@
 
 CPU energy monitoring and GPU/CPU power configuration can require privileges that an ML application should not need.
 `zeusd` exposes a scoped HTTP API and holds the device permissions needed for the selected features.
-Written in Rust, it adds only microseconds of overhead.
 
 Reach for `zeusd` when you need privilege isolation for GPU configuration, CPU/DRAM energy from unprivileged code, or distributed power monitoring across nodes. For a local privileged process, [`ZeusMonitor`][zeus.monitor.ZeusMonitor] talks to NVML directly.
 
@@ -42,7 +41,6 @@ Select API groups with `--enable`; Linux enables all four by default, while Wind
 | `cpu-control` | CPU power limits, time windows, and explicit resets (Linux) |
 
 `/discover`, `/time`, and `/auth/whoami` are always available.
-Enabling an API group does not grant its device permissions; see [feature requirements](deployment.md#feature-requirements-and-permissions).
 
 ## Python integration
 
@@ -116,9 +114,9 @@ To pin a specific installation, set `ROCM_PATH` (a ROCm installation root, e.g.,
 
 - **Python doesn't pick up `zeusd`.** Confirm `ZEUSD_SOCK_PATH` or `ZEUSD_HOST_PORT` is in the *application's* environment (not just the shell that started the daemon). Then run `python -m zeus.show_env`.
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
-- **No CPU power limits on AMD.** AMD CPUs expose no RAPL power limits. On AMD EPYC CPUs, `sudo modprobe amd_hsmp` creates `/dev/hsmp`, which exposes the socket power limit; restart `zeusd` afterwards. If the module's kernel log says HSMP is disabled, enable it in the BIOS.
-- **Intel hardware-range queries or time-window changes fail.** Check [feature requirements](deployment.md#feature-requirements-and-permissions) and the daemon's startup and request logs; energy monitoring, current-limit queries, and power-limit changes do not require MSR access.
-- **Original CPU power limits unavailable or mismatched.** Check the [storage requirements](deployment.md#original-cpu-power-limits) and the error in the daemon logs before changing the stored original snapshot.
+- **No CPU power limits on AMD:** For AMD EPYC socket limits, load [`amd_hsmp`](deployment.md#cpu-driver-prerequisites), then restart `zeusd`.
+- **Intel hardware-range queries or time-window changes fail:** These need MSR access; check [feature requirements](deployment.md#feature-requirements-and-permissions) and the daemon logs.
+- **Original CPU power limits unavailable or mismatched:** Check the error in the daemon logs and [Original CPU power limits](deployment.md#original-cpu-power-limits) before deleting the stored file.
 - **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
 - **AMD SMI startup fails with `AMDSMI_STATUS_UNEXPECTED_DATA` (error 43).** The AMD SMI library is older than the GPU it is reading (e.g., ROCm 6.4 userspace on an MI300X). Point `ROCM_PATH` or `AMDSMI_LIB_DIR` at a ROCm release that supports the GPU.
 - **Logs.** `journalctl -u zeusd -f` under systemd; stderr otherwise.

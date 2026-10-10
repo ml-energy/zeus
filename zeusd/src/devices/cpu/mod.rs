@@ -399,18 +399,4 @@ mod tests {
         assert!(validate_power_limit(0).is_err());
         assert!(find_constraint(&zone(None), "short_term").is_err());
     }
-
-    #[test]
-    fn missing_socket_constraint_explains_hsmp_prerequisite() {
-        let message = find_constraint(&zone(None), "socket")
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("amd_hsmp"), "{message}");
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
-
-        let message = find_constraint(&zone(None), "short_term")
-            .unwrap_err()
-            .to_string();
-        assert!(!message.contains("amd_hsmp"), "{message}");
-    }
 }

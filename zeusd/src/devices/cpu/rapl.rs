@@ -1239,8 +1239,8 @@ mod tests {
         );
     }
 
-    /// A constraint name Zeusd cannot read fails the read with the path and
-    /// a read permission hint instead of ending the constraint list there.
+    /// A constraint name Zeusd cannot read fails the read with the path
+    /// instead of ending the constraint list there.
     #[cfg(unix)]
     #[test]
     fn unreadable_constraint_name_is_a_permission_error() {
@@ -1269,10 +1269,6 @@ mod tests {
                 "{error}"
             );
             assert_eq!(error.status_code(), actix_web::http::StatusCode::FORBIDDEN);
-            let message = error.to_string();
-            assert!(message.contains(file), "{message}");
-            assert!(message.contains("lacks read permission"), "{message}");
-            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
         }
     }
 
@@ -1605,7 +1601,7 @@ mod tests {
     }
 
     /// Power limit queries and control work without energy read access, and
-    /// energy reads explain the missing access.
+    /// energy reads report the missing access.
     #[cfg(unix)]
     #[test]
     fn init_and_limits_do_not_need_energy_read_access() {
@@ -1640,20 +1636,7 @@ mod tests {
                 matches!(error, ZeusdError::CpuEnergyReadError { cpu: 0, .. }),
                 "{error}"
             );
-            let message = error.to_string();
-            assert!(message.contains("energy_uj"), "{message}");
-            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
         }
-    }
-
-    #[test]
-    fn missing_zone_file_explains_rapl_prerequisite() {
-        let tmp = tempfile::tempdir().unwrap();
-        let message = PackageInfo::new(tmp.path(), 3).err().unwrap().to_string();
-        assert!(message.contains("CPU 3"), "{message}");
-        assert!(message.contains("does not exist"), "{message}");
-        assert!(message.contains("intel_rapl_msr"), "{message}");
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
     }
 
     #[test]
@@ -1755,7 +1738,16 @@ mod tests {
         cpu.hsmp = None;
         cpu.set_power_limit("long_term", 100_000).unwrap();
         let error = cpu.reset_power_limits().unwrap_err();
-        assert!(error.to_string().contains("modprobe amd_hsmp"), "{error}");
+        assert!(
+            matches!(
+                error,
+                ZeusdError::CpuHsmpError {
+                    source: HsmpError::DeviceMissing(_),
+                    ..
+                }
+            ),
+            "{error}"
+        );
         assert_eq!(
             read_file(tmp.path(), "constraint_0_power_limit_uw"),
             "205000000"

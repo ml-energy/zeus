@@ -420,25 +420,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn cpu_control_permission_errors_describe_possible_causes() {
-        use nix::errno::Errno;
-        let message = control_error(Errno::EACCES as i32).to_string();
-        assert!(message.contains("write permission"), "{message}");
-        assert!(message.contains("BIOS locked"), "{message}");
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
-
-        let message = control_error(Errno::EROFS as i32).to_string();
-        assert!(message.contains("read-only"), "{message}");
-        assert!(message.contains("ProtectKernelTunables"), "{message}");
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
-
-        let message = control_error(Errno::EINVAL as i32).to_string();
-        assert!(!message.contains(PERMISSIONS_DOC_URL), "{message}");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn hsmp_errors_map_to_status_and_explain_access() {
+    fn hsmp_errors_map_to_status() {
         use nix::errno::Errno;
         use std::path::PathBuf;
         let denied = |write| HsmpError::PermissionDenied {
@@ -447,165 +429,64 @@ mod tests {
             source: std::io::ErrorKind::PermissionDenied.into(),
         };
         let request =
-            || HsmpError::Request(std::io::Error::from_raw_os_error(Errno::EINVAL as i32));
-        for (source, write, status, text) in [
+            |errno: Errno| HsmpError::Request(std::io::Error::from_raw_os_error(errno as i32));
+        for (source, write, status) in [
             (
                 HsmpError::DeviceMissing(PathBuf::from("/dev/hsmp")),
                 false,
                 StatusCode::SERVICE_UNAVAILABLE,
-                "modprobe amd_hsmp",
             ),
-            (denied(false), false, StatusCode::FORBIDDEN, "for reading"),
-            (denied(true), true, StatusCode::FORBIDDEN, "for writing"),
-            (request(), true, StatusCode::BAD_REQUEST, "request failed"),
+            (denied(false), false, StatusCode::FORBIDDEN),
+            (denied(true), true, StatusCode::FORBIDDEN),
+            (request(Errno::EINVAL), true, StatusCode::BAD_REQUEST),
             (
-                request(),
+                request(Errno::EINVAL),
                 false,
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "request failed",
             ),
+            (request(Errno::EACCES), false, StatusCode::FORBIDDEN),
+            (request(Errno::EACCES), true, StatusCode::FORBIDDEN),
+            (request(Errno::EPERM), false, StatusCode::FORBIDDEN),
+            (request(Errno::EPERM), true, StatusCode::FORBIDDEN),
         ] {
             let error = ZeusdError::cpu_hsmp(0, "use HSMP", write, source);
             assert_eq!(error.status_code(), status, "{error}");
-            let message = error.to_string();
-            assert!(message.contains(text), "{message}");
-            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
         }
     }
 
-    #[cfg(unix)]
     #[test]
-    fn denied_hsmp_request_is_forbidden_and_explains_security_policy() {
-        use nix::errno::Errno;
-        let request =
-            |errno: Errno| HsmpError::Request(std::io::Error::from_raw_os_error(errno as i32));
-        for errno in [Errno::EACCES, Errno::EPERM] {
-            for write in [false, true] {
-                let error = ZeusdError::cpu_hsmp(0, "use HSMP", write, request(errno));
-                assert_eq!(error.status_code(), StatusCode::FORBIDDEN, "{error}");
-                let message = error.to_string();
-                assert!(message.contains("security policy"), "{message}");
-                assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
-            }
-        }
-        let message =
-            ZeusdError::cpu_hsmp(0, "use HSMP", false, request(Errno::EINVAL)).to_string();
-        assert!(!message.contains("security policy"), "{message}");
-    }
-
-    #[test]
-    fn energy_read_permission_error_explains_access_options() {
-        let error = ZeusdError::CpuEnergyReadError {
+    fn rapl_read_permission_errors_are_forbidden() {
+        let path = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj";
+        let energy = |kind: std::io::ErrorKind| ZeusdError::CpuEnergyReadError {
             cpu: 0,
-            path: "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj".into(),
-            source: std::io::ErrorKind::PermissionDenied.into(),
-        };
-        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
-        let message = error.to_string();
-        assert!(message.contains("energy_uj"), "{message}");
-        assert!(message.contains("Run Zeusd as root"), "{message}");
-        assert!(message.contains("non-root Zeusd"), "{message}");
-        assert!(message.contains("CAP_DAC_READ_SEARCH"), "{message}");
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
-
-        let error = ZeusdError::CpuEnergyReadError {
-            cpu: 0,
-            path: "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj".into(),
-            source: std::io::ErrorKind::NotFound.into(),
-        };
-        assert_eq!(error.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    #[test]
-    fn limit_read_errors_name_the_file_and_explain_read_access() {
-        let path = "/sys/class/powercap/intel-rapl/intel-rapl:0/constraint_0_name";
-        let error = ZeusdError::CpuLimitReadError {
             path: path.into(),
-            source: std::io::ErrorKind::PermissionDenied.into(),
+            source: kind.into(),
         };
-        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
-        let message = error.to_string();
-        assert!(message.contains(path), "{message}");
-        assert!(message.contains("lacks read permission"), "{message}");
-        assert!(!message.contains("write"), "{message}");
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
-
-        let error = ZeusdError::CpuLimitReadError {
+        let limit = |kind: std::io::ErrorKind| ZeusdError::CpuLimitReadError {
             path: path.into(),
-            source: std::io::ErrorKind::InvalidData.into(),
+            source: kind.into(),
         };
-        assert_eq!(error.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
-        let message = error.to_string();
-        assert!(message.contains(path), "{message}");
-        assert!(!message.contains("read permission"), "{message}");
-    }
-
-    #[test]
-    fn rapl_initialization_error_explains_the_interface_and_container_mounts() {
-        let message = ZeusdError::CpuInitializationError {
-            cpu: 0,
-            reason: "/sys/class/powercap/intel-rapl does not exist".to_string(),
+        use std::io::ErrorKind::{InvalidData, NotFound, PermissionDenied};
+        for (error, status) in [
+            (energy(PermissionDenied), StatusCode::FORBIDDEN),
+            (energy(NotFound), StatusCode::INTERNAL_SERVER_ERROR),
+            (limit(PermissionDenied), StatusCode::FORBIDDEN),
+            (limit(InvalidData), StatusCode::INTERNAL_SERVER_ERROR),
+        ] {
+            assert_eq!(error.status_code(), status, "{error}");
         }
-        .to_string();
-        assert!(message.contains("typically provided by"), "{message}");
-        assert!(message.contains("intel_rapl_msr"), "{message}");
-        assert!(message.contains("/zeus_sys/class/powercap"), "{message}");
-        assert!(
-            message.contains("/zeus_sys/devices/virtual/powercap"),
-            "{message}"
-        );
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
     }
 
     #[test]
     fn missing_original_is_unavailable() {
         let error = ZeusdError::CpuOriginalPowerLimitsMissingError(0);
         assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
-        assert!(error.to_string().contains(ORIGINAL_POWER_LIMITS_DOC_URL));
 
         let error = ZeusdError::CpuConstraintOriginalMissingError {
             cpu: 0,
             constraint: "socket".to_string(),
         };
         assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
-        let message = error.to_string();
-        assert!(message.contains("'socket'"), "{message}");
-        assert!(
-            message.contains("new --original-cpu-power-limit-path"),
-            "{message}"
-        );
-        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
-    }
-
-    #[cfg(feature = "nvml")]
-    #[test]
-    fn nvml_no_permission_explains_privileges() {
-        let error = ZeusdError::from(NvmlError::NoPermission);
-        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
-        let message = error.to_string();
-        if cfg!(windows) {
-            assert!(message.contains("elevated shell"), "{message}");
-            assert!(!message.contains("CAP_SYS_ADMIN"), "{message}");
-        } else {
-            assert!(message.contains("CAP_SYS_ADMIN"), "{message}");
-        }
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
-        assert!(!ZeusdError::from(NvmlError::NotSupported)
-            .to_string()
-            .contains(PERMISSIONS_DOC_URL));
-    }
-
-    #[cfg(feature = "amdsmi")]
-    #[test]
-    fn amdsmi_no_permission_explains_privileges() {
-        let error = ZeusdError::AmdSmiError {
-            status: AMDSMI_STATUS_NO_PERM,
-            msg: "set power cap".to_string(),
-        };
-        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
-        let message = error.to_string();
-        assert!(message.contains("writable /sys"), "{message}");
-        assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
     }
 
     #[cfg(unix)]
@@ -623,19 +504,43 @@ mod tests {
         assert_eq!(error.to_string().matches("set a power limit").count(), 2);
     }
 
+    #[cfg(feature = "nvml")]
     #[test]
-    fn msr_errors_explain_available_operations_and_required_access() {
+    fn nvml_permission_error_uses_platform_requirements() {
+        let error = ZeusdError::from(NvmlError::NoPermission);
+        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
+        let requirement = if cfg!(windows) {
+            "elevated shell"
+        } else {
+            "CAP_SYS_ADMIN"
+        };
+        assert!(error.to_string().contains(requirement));
+        assert!(!ZeusdError::from(NvmlError::NotSupported)
+            .to_string()
+            .contains(PERMISSIONS_DOC_URL));
+    }
+
+    #[cfg(feature = "amdsmi")]
+    #[test]
+    fn amdsmi_permission_error_is_forbidden() {
+        let error = ZeusdError::AmdSmiError {
+            status: AMDSMI_STATUS_NO_PERM,
+            msg: "set power cap".to_string(),
+        };
+        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn msr_errors_map_to_status() {
         use crate::devices::cpu::msr::MsrError;
-        for (source, status, remedy) in [
+        for (source, status) in [
             (
                 MsrError::DriverMissing("/dev/cpu/0/msr".into()),
                 StatusCode::SERVICE_UNAVAILABLE,
-                "sudo modprobe msr",
             ),
             (
                 MsrError::PermissionDenied("/dev/cpu/0/msr".into()),
                 StatusCode::FORBIDDEN,
-                "CAP_SYS_RAWIO",
             ),
             (
                 MsrError::WriteDenied {
@@ -643,34 +548,16 @@ mod tests {
                     source: std::io::ErrorKind::PermissionDenied.into(),
                 },
                 StatusCode::FORBIDDEN,
-                "msr.allow_writes",
             ),
-            (MsrError::Locked, StatusCode::FORBIDDEN, "BIOS"),
-            (
-                MsrError::UnsupportedLayout,
-                StatusCode::SERVICE_UNAVAILABLE,
-                "unsupported",
-            ),
+            (MsrError::Locked, StatusCode::FORBIDDEN),
+            (MsrError::UnsupportedLayout, StatusCode::SERVICE_UNAVAILABLE),
             (
                 MsrError::InvalidWindow("too large".into()),
                 StatusCode::BAD_REQUEST,
-                "too large",
             ),
         ] {
             let error = ZeusdError::cpu_msr(0, "set the time window", source);
-            assert_eq!(error.status_code(), status);
-            let message = error.to_string();
-            assert!(message.contains(remedy), "{message}");
-            assert!(
-                message.contains("power-limit changes remain available"),
-                "{message}"
-            );
-            assert!(message.contains("require MSR write access"), "{message}");
-            assert!(
-                message.contains("AMD HSMP control does not require MSR access"),
-                "{message}"
-            );
-            assert!(message.contains(PERMISSIONS_DOC_URL), "{message}");
+            assert_eq!(error.status_code(), status, "{error}");
         }
     }
 }

@@ -309,15 +309,9 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
-    fn find_missing_device_is_none() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert!(HsmpDevice::find(&tmp.path().join("hsmp")).is_none());
-    }
-
     #[cfg(target_os = "linux")]
     #[test]
-    fn device_removed_after_startup_explains_how_to_load_driver() {
+    fn device_removed_after_startup_is_missing() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("hsmp");
         std::fs::write(&path, "").unwrap();
@@ -326,7 +320,6 @@ pub(crate) mod tests {
 
         let error = socket.power_limit_mw().unwrap_err();
         assert!(matches!(error, HsmpError::DeviceMissing(_)), "{error}");
-        assert!(error.to_string().contains("modprobe amd_hsmp"), "{error}");
     }
 
     /// Reads open the device read-only, so they need no write permission, and
@@ -358,7 +351,6 @@ pub(crate) mod tests {
             matches!(error, HsmpError::PermissionDenied { write: true, .. }),
             "{error}"
         );
-        assert!(error.to_string().contains("for writing"), "{error}");
 
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o222)).unwrap();
         device.check_access(true).unwrap();

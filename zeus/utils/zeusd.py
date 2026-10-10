@@ -791,7 +791,6 @@ class ZeusdClient:
         """Get the power limit ranges each CPU package reports.
 
         On Intel CPUs, the daemon reads model-specific registers (MSRs), requiring the `msr` kernel module, device permissions, and `CAP_SYS_RAWIO`.
-        Energy monitoring, current-limit queries, and power-limit changes remain available without MSR access.
 
         Args:
             cpu_ids: CPU indices to query.  None means all.
@@ -861,7 +860,7 @@ class ZeusdClient:
     def reset_cpu_power_limit(self, cpu_ids: list[int]) -> None:
         """Restore the original power limits and time windows of the given CPUs' package zones.
 
-        The original settings are the ones at the daemon's first start with CPU control in each host boot.
+        The original settings are the ones at the first daemon start in each host boot that enables CPU control and discovers CPU packages.
         With persistent storage of the original settings disabled, they are the ones at the current daemon's start.
         Changed Intel time windows require write access to model-specific registers (MSRs) for exact restoration.
         A failed write does not stop the remaining settings from being restored, but the request reports the errors.

@@ -21,10 +21,9 @@ Default config: UDS mode on `/run/zeusd/zeusd.sock`, all API groups enabled.
 
 ## Original CPU power limits
 
-By default, `POST /cpu/reset_power_limit` restores the original CPU power limits, which `zeusd` records at its first start with CPU control in the current boot.
-The record is a file in `/var/zeusd`, whose name contains the host boot ID, so it survives service restarts and a reboot starts a new one.
+`POST /cpu/reset_power_limit` restores the [original CPU power limits](https://ml.energy/zeus/zeusd/deployment/#original-cpu-power-limits), which `zeusd` records in a file under `/var/zeusd` so they survive service restarts.
 The unit creates `/var/zeusd` and lists it in `ReadWritePaths=`, which `ProtectSystem=strict` otherwise makes read-only.
-To keep the record in memory instead, add `--no-persistent-original-cpu-power-limit` to `ZEUSD_ARGS`; each restart then records the limits it finds at that time.
+To keep them in memory instead, add `--no-persistent-original-cpu-power-limit` to `ZEUSD_ARGS`; each restart then records the limits it finds at that time.
 
 ## Customize
 

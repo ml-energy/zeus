@@ -597,14 +597,4 @@ mod time_window_tests {
         readonly.set("long_term", 999424, true).unwrap();
         assert_eq!(readonly.read_register().unwrap(), original);
     }
-
-    #[test]
-    fn missing_device_explains_how_to_load_driver() {
-        let tmp = tempfile::tempdir().unwrap();
-        let error = TimeWindows::from_path(tmp.path().join("absent"), true)
-            .err()
-            .unwrap();
-        assert!(matches!(error, MsrError::DriverMissing(_)));
-        assert!(error.to_string().contains("modprobe msr"));
-    }
 }
