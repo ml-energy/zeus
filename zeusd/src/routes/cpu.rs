@@ -7,11 +7,11 @@ use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use tokio::time::{sleep, Duration};
 
-use super::{power_stream_response, resolve_read_device_ids, resolve_stream_device_ids};
-use crate::devices::cpu::power::{CpuDramPower, CpuPowerBroadcasts, CpuPowerSnapshot};
-use crate::devices::cpu::{
-    CpuCommand, CpuManagementTasks, CpuResponse, RaplPowerLimits, RaplResponse,
+use super::{
+    parse_device_ids, power_stream_response, resolve_read_device_ids, resolve_stream_device_ids,
 };
+use crate::devices::cpu::power::{CpuDramPower, CpuPowerBroadcasts, CpuPowerSnapshot};
+use crate::devices::cpu::{CpuCommand, CpuManagementTasks, CpuResponse, RaplResponse};
 use crate::error::{aggregate_error_response, ZeusdError};
 use crate::power_streaming::unix_timestamp_ms;
 
@@ -109,8 +109,10 @@ async fn get_cumulative_energy_handler(
     }
 }
 
-async fn read_cpu_energy_for_power(
+/// Read the CPU energy, and the DRAM energy if `dram` is set, of each CPU in `cpu_ids`.
+async fn read_cpu_energy(
     cpu_ids: &[usize],
+    dram: bool,
     device_tasks: &CpuManagementTasks,
 ) -> (HashMap<usize, RaplResponse>, HashMap<usize, ZeusdError>) {
     let now = Instant::now();
@@ -123,10 +125,7 @@ async fn read_cpu_energy_for_power(
                 tasks
                     .send_command_blocking(
                         cpu_id,
-                        CpuCommand::GetIndexEnergy {
-                            cpu: true,
-                            dram: true,
-                        },
+                        CpuCommand::GetIndexEnergy { cpu: true, dram },
                         now,
                     )
                     .await,
@@ -233,7 +232,7 @@ async fn get_cpu_power_handler(
         Err(resp) => return resp,
     };
 
-    let (first, mut errors) = read_cpu_energy_for_power(&cpu_ids, device_tasks.get_ref()).await;
+    let (first, mut errors) = read_cpu_energy(&cpu_ids, true, device_tasks.get_ref()).await;
     if !errors.is_empty() {
         return aggregate_error_response(errors);
     }
@@ -241,7 +240,7 @@ async fn get_cpu_power_handler(
     let first_read_done = Instant::now();
     sleep(Duration::from_micros(period.period_us)).await;
 
-    let (second, second_errors) = read_cpu_energy_for_power(&cpu_ids, device_tasks.get_ref()).await;
+    let (second, second_errors) = read_cpu_energy(&cpu_ids, true, device_tasks.get_ref()).await;
     let elapsed_us = first_read_done.elapsed().as_micros() as u64;
     errors.extend(second_errors);
     if !errors.is_empty() {
@@ -254,19 +253,17 @@ async fn get_cpu_power_handler(
     }
 }
 
-/// Power limit constraints of each requested CPU's package and DRAM zones.
-///
-/// Reads sysfs on every request, so the response reflects limits changed at runtime.
-#[actix_web::get("/get_power_limit")]
-#[tracing::instrument(skip(device_tasks), fields(cpu_ids = ?query.cpu_ids))]
-async fn get_power_limit_handler(
-    query: web::Query<CpuReadQuery>,
-    device_tasks: web::Data<CpuManagementTasks>,
+/// Run a read command on each requested CPU and return the extracted
+/// responses as a JSON map keyed by CPU ID.
+async fn read_cpu_command<T: Serialize>(
+    raw_cpu_ids: &Option<String>,
+    command: CpuCommand,
+    device_tasks: &CpuManagementTasks,
+    extract: fn(CpuResponse) -> Option<T>,
 ) -> HttpResponse {
     let now = Instant::now();
 
-    let cpu_ids = match resolve_read_device_ids(&query.cpu_ids, device_tasks.device_count(), "CPU")
-    {
+    let cpu_ids = match resolve_read_device_ids(raw_cpu_ids, device_tasks.device_count(), "CPU") {
         Ok(ids) => ids,
         Err(resp) => return resp,
     };
@@ -274,25 +271,19 @@ async fn get_power_limit_handler(
     let mut handles = Vec::with_capacity(cpu_ids.len());
     for &cpu_id in &cpu_ids {
         let tasks = device_tasks.clone();
-        handles.push(async move {
-            (
-                cpu_id,
-                tasks
-                    .send_command_blocking(cpu_id, CpuCommand::GetPowerLimits, now)
-                    .await,
-            )
-        });
+        let cmd = command.clone();
+        handles.push(async move { (cpu_id, tasks.send_command_blocking(cpu_id, cmd, now).await) });
     }
     let results = futures::future::join_all(handles).await;
 
-    let mut response_map: BTreeMap<usize, RaplPowerLimits> = BTreeMap::new();
+    let mut response_map: BTreeMap<usize, T> = BTreeMap::new();
     let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
     for (cpu_id, result) in results {
-        match result {
-            Ok(CpuResponse::PowerLimits(limits)) => {
-                response_map.insert(cpu_id, limits);
+        match result.map(extract) {
+            Ok(Some(response)) => {
+                response_map.insert(cpu_id, response);
             }
-            Ok(_) => {
+            Ok(None) => {
                 errors.insert(cpu_id, ZeusdError::CpuUnexpectedResponseError(cpu_id));
             }
             Err(e) => {
@@ -308,24 +299,232 @@ async fn get_power_limit_handler(
     }
 }
 
+/// Power limit constraints of each requested CPU's package and DRAM zones.
+///
+/// Reads sysfs on every request, so the response reflects limits changed at runtime.
+#[actix_web::get("/get_power_limit")]
+#[tracing::instrument(skip(device_tasks), fields(cpu_ids = ?query.cpu_ids))]
+async fn get_power_limit_handler(
+    query: web::Query<CpuReadQuery>,
+    device_tasks: web::Data<CpuManagementTasks>,
+) -> HttpResponse {
+    read_cpu_command(
+        &query.cpu_ids,
+        CpuCommand::GetPowerLimits,
+        device_tasks.get_ref(),
+        |response| match response {
+            CpuResponse::PowerLimits(limits) => Some(limits),
+            _ => None,
+        },
+    )
+    .await
+}
+
+/// Power limit ranges each requested CPU package reports, from RAPL MSRs on
+/// Intel CPUs and from HSMP on AMD EPYC CPUs.
+#[actix_web::get("/get_power_limit_constraints")]
+#[tracing::instrument(skip(device_tasks), fields(cpu_ids = ?query.cpu_ids))]
+async fn get_power_limit_constraints_handler(
+    query: web::Query<CpuReadQuery>,
+    device_tasks: web::Data<CpuManagementTasks>,
+) -> HttpResponse {
+    read_cpu_command(
+        &query.cpu_ids,
+        CpuCommand::GetPowerLimitConstraints,
+        device_tasks.get_ref(),
+        |response| match response {
+            CpuResponse::PowerLimitConstraints(constraints) => Some(constraints),
+            _ => None,
+        },
+    )
+    .await
+}
+
 /// SSE stream of CPU power readings.
+///
+/// The poller sends no sample for a CPU whose energy counter it cannot read,
+/// so the CPU energy counters are read first, and a failed read is returned
+/// as an error instead of a stream without samples. DRAM energy is not
+/// checked, because the poller still sends samples when only DRAM energy
+/// cannot be read.
 ///
 /// The subscriber guard keeps the poller active for the lifetime of the stream.
 #[actix_web::get("/stream_power")]
-#[tracing::instrument(skip(broadcast), fields(cpu_ids = ?query.cpu_ids))]
+#[tracing::instrument(skip(broadcast, device_tasks), fields(cpu_ids = ?query.cpu_ids))]
 async fn cpu_power_stream_handler(
     query: web::Query<CpuReadQuery>,
     broadcast: web::Data<CpuPowerBroadcasts>,
+    device_tasks: web::Data<CpuManagementTasks>,
 ) -> HttpResponse {
-    match resolve_stream_device_ids(&query.cpu_ids, broadcast.get_ref(), "CPU") {
-        Ok(cpu_ids) => power_stream_response(cpu_ids, broadcast.get_ref()),
-        Err(response) => response,
+    let cpu_ids = match resolve_stream_device_ids(&query.cpu_ids, broadcast.get_ref(), "CPU") {
+        Ok(cpu_ids) => cpu_ids,
+        Err(response) => return response,
+    };
+    let (_, errors) = read_cpu_energy(&cpu_ids, false, device_tasks.get_ref()).await;
+    if !errors.is_empty() {
+        for (cpu_id, error) in &errors {
+            tracing::warn!("Rejected a power stream of CPU {cpu_id}: {error}");
+        }
+        return aggregate_error_response(errors);
+    }
+    power_stream_response(cpu_ids, broadcast.get_ref())
+}
+
+/// Query parameters for `POST /cpu/set_power_limit`.
+/// `cpu_ids` is a required comma-separated list of CPU indices.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SetPowerLimit {
+    pub cpu_ids: String,
+    /// Name of a package zone constraint reported by `GET /cpu/get_power_limit`.
+    pub constraint: String,
+    pub power_limit_mw: u64,
+}
+
+/// Query parameters for `POST /cpu/set_power_limit_time_window`.
+/// `cpu_ids` is a required comma-separated list of CPU indices.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct SetPowerLimitTimeWindow {
+    pub cpu_ids: String,
+    /// Name of a package zone constraint reported by `GET /cpu/get_power_limit`.
+    pub constraint: String,
+    pub time_window_us: u64,
+}
+
+/// Query parameters for `POST /cpu/reset_power_limit`.
+/// `cpu_ids` is a required comma-separated list of CPU indices.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ResetPowerLimit {
+    pub cpu_ids: String,
+}
+
+/// Run a CPU control command on each requested CPU and wait for all of them.
+async fn run_cpu_control_command(
+    raw_cpu_ids: &str,
+    command: CpuCommand,
+    device_tasks: &CpuManagementTasks,
+) -> Result<HttpResponse, ZeusdError> {
+    let now = Instant::now();
+
+    let cpu_ids = match parse_device_ids(raw_cpu_ids, "CPU") {
+        Ok(ids) => ids,
+        Err(resp) => return Ok(resp),
+    };
+    for &id in &cpu_ids {
+        if id >= device_tasks.device_count() {
+            return Err(ZeusdError::CpuNotFoundError(id));
+        }
+    }
+
+    let mut handles = Vec::with_capacity(cpu_ids.len());
+    for &cpu_id in &cpu_ids {
+        let cmd = command.clone();
+        let tasks = device_tasks.clone();
+        handles.push(async move { (cpu_id, tasks.send_command_blocking(cpu_id, cmd, now).await) });
+    }
+    let results = futures::future::join_all(handles).await;
+
+    let mut errors: HashMap<usize, ZeusdError> = HashMap::new();
+    for (cpu_id, result) in results {
+        match result {
+            Ok(CpuResponse::Ok) => {}
+            Ok(_) => {
+                errors.insert(cpu_id, ZeusdError::CpuUnexpectedResponseError(cpu_id));
+            }
+            Err(e) => {
+                errors.insert(cpu_id, e);
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(HttpResponse::Ok().finish())
+    } else {
+        Ok(aggregate_error_response(errors))
     }
 }
 
-pub fn cpu_routes(cfg: &mut web::ServiceConfig) {
+/// Set the power limit of a package zone constraint on each requested CPU.
+///
+/// Rejects a constraint the package zone does not have, a zero limit, an HSMP
+/// limit above its maximum, and a RAPL limit too large for the register.
+#[actix_web::post("/set_power_limit")]
+#[tracing::instrument(
+    skip(query, device_tasks),
+    fields(
+        cpu_ids = %query.cpu_ids,
+        constraint = %query.constraint,
+        power_limit_mw = %query.power_limit_mw,
+    )
+)]
+async fn set_power_limit_handler(
+    query: web::Query<SetPowerLimit>,
+    device_tasks: web::Data<CpuManagementTasks>,
+) -> Result<HttpResponse, ZeusdError> {
+    let query = query.into_inner();
+    let command = CpuCommand::SetPowerLimit {
+        constraint: query.constraint,
+        power_limit_mw: query.power_limit_mw,
+    };
+    run_cpu_control_command(&query.cpu_ids, command, device_tasks.get_ref()).await
+}
+
+/// Set the time window of a package zone constraint on each requested CPU.
+///
+/// Rejects a constraint the package zone does not have, a constraint without a
+/// time window, and a zero time window. The hardware stores the window with
+/// limited precision, so reading it back may give a nearby value.
+#[actix_web::post("/set_power_limit_time_window")]
+#[tracing::instrument(
+    skip(query, device_tasks),
+    fields(
+        cpu_ids = %query.cpu_ids,
+        constraint = %query.constraint,
+        time_window_us = %query.time_window_us,
+    )
+)]
+async fn set_power_limit_time_window_handler(
+    query: web::Query<SetPowerLimitTimeWindow>,
+    device_tasks: web::Data<CpuManagementTasks>,
+) -> Result<HttpResponse, ZeusdError> {
+    let query = query.into_inner();
+    let command = CpuCommand::SetPowerLimitTimeWindow {
+        constraint: query.constraint,
+        time_window_us: query.time_window_us,
+    };
+    run_cpu_control_command(&query.cpu_ids, command, device_tasks.get_ref()).await
+}
+
+/// Restore the original power limits and time windows, recorded at Zeusd start,
+/// of every package zone constraint on each requested CPU.
+#[actix_web::post("/reset_power_limit")]
+#[tracing::instrument(skip(query, device_tasks), fields(cpu_ids = %query.cpu_ids))]
+async fn reset_power_limit_handler(
+    query: web::Query<ResetPowerLimit>,
+    device_tasks: web::Data<CpuManagementTasks>,
+) -> Result<HttpResponse, ZeusdError> {
+    run_cpu_control_command(
+        &query.cpu_ids,
+        CpuCommand::ResetPowerLimits,
+        device_tasks.get_ref(),
+    )
+    .await
+}
+
+/// Register read-only CPU monitoring routes.
+pub fn cpu_read_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(get_cumulative_energy_handler)
         .service(get_cpu_power_handler)
         .service(get_power_limit_handler)
+        .service(get_power_limit_constraints_handler)
         .service(cpu_power_stream_handler);
+}
+
+/// Register CPU control (write) routes.
+pub fn cpu_control_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(set_power_limit_handler)
+        .service(set_power_limit_time_window_handler)
+        .service(reset_power_limit_handler);
 }

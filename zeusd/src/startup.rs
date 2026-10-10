@@ -24,11 +24,16 @@ use tracing_subscriber::{EnvFilter, Registry};
 use crate::auth::{AuthMiddleware, SigningKeyData};
 use crate::config::{ApiGroup, GpuBackend};
 #[cfg(target_os = "linux")]
+use crate::devices::cpu::hsmp::{HsmpDevice, HsmpTransport, HSMP_DEVICE_PATH};
+#[cfg(target_os = "linux")]
 use crate::devices::cpu::power::start_cpu_poller;
 use crate::devices::cpu::power::CpuPowerBroadcasts;
+use crate::devices::cpu::power_limit_snapshot::OriginalPowerLimitStorage;
+#[cfg(target_os = "linux")]
+use crate::devices::cpu::power_limit_snapshot::{establish, BOOT_ID_PATH};
 use crate::devices::cpu::CpuManagementTasks;
 #[cfg(target_os = "linux")]
-use crate::devices::cpu::{CpuManager, RaplCpu};
+use crate::devices::cpu::{CpuManager, RaplCpu, HSMP_SOCKET_CONSTRAINT};
 use crate::devices::gpu::command_override::GpuCommandOverrides;
 #[cfg(any(feature = "nvml", feature = "amdsmi"))]
 use crate::devices::gpu::command_override::OverriddenGpu;
@@ -42,7 +47,11 @@ use crate::devices::gpu::GpuManagementTasks;
 use crate::devices::gpu::GpuManager;
 #[cfg(feature = "nvml")]
 use crate::devices::gpu::NvmlGpu;
-use crate::routes::{cpu_routes, CpuPowerSamplingPeriod};
+#[cfg(unix)]
+use crate::error::PERMISSIONS_DOC_URL;
+#[cfg(target_os = "linux")]
+use crate::error::{ORIGINAL_POWER_LIMITS_DOC_URL, RECORD_ORIGINAL_HINT};
+use crate::routes::{cpu_control_routes, cpu_read_routes, CpuPowerSamplingPeriod};
 use crate::routes::{
     gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
     GpuDiscoveryInfo,
@@ -342,23 +351,61 @@ pub fn start_gpu_power_poller(
     }
 }
 
-/// Initialize RAPL and start CPU management tasks.
+/// Initialize RAPL and HSMP and start CPU management tasks.
 ///
+/// Uses the AMD HSMP device if it exists, opening it for each operation, so
+/// missing HSMP access fails only HSMP operations. `read_enabled` is set when
+/// CPU monitoring is enabled, which logs whether the energy counters are
+/// readable. `original_storage` is set when CPU control is enabled; the
+/// current power limits are then read, and the original settings are loaded
+/// from or recorded in that storage. Without CPU control, power limits are not read at startup.
 /// Returns the management tasks and per-CPU package discovery information.
 /// RAPL is Linux-specific; on other platforms this errors out.
 #[cfg(target_os = "linux")]
-pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
-    tracing::info!("Starting Rapl and CPU management tasks.");
+pub fn start_cpu_device_tasks(
+    read_enabled: bool,
+    original_storage: Option<&OriginalPowerLimitStorage>,
+) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
+    tracing::info!("Starting RAPL and CPU management tasks.");
+    let control_enabled = original_storage.is_some();
+    let hsmp: Option<Arc<dyn HsmpTransport>> = match HsmpDevice::find(Path::new(HSMP_DEVICE_PATH)) {
+        Some(device) => {
+            log_hsmp_access(&device, control_enabled);
+            Some(Arc::new(device))
+        }
+        None => None,
+    };
+
     let num_cpus = RaplCpu::device_count()?;
+    if num_cpus == 0 {
+        tracing::warn!(
+            "No RAPL package zones were found, so no CPU is monitored or controlled. \
+             See {PERMISSIONS_DOC_URL}"
+        );
+    }
     let mut cpus = Vec::with_capacity(num_cpus);
     let mut cpu_info = Vec::with_capacity(num_cpus);
     for cpu_id in 0..num_cpus {
-        let cpu = RaplCpu::init(cpu_id)?;
+        let mut cpu = RaplCpu::init(cpu_id)?;
+        if let Some(hsmp) = &hsmp {
+            cpu.attach_hsmp(hsmp.clone())?;
+        }
+        cpu.log_msr_availability(control_enabled);
+        if read_enabled {
+            for error in cpu.check_energy_access() {
+                tracing::warn!(
+                    "Requests that need the following energy counter will fail, while requests \
+                     that need only other counters still work: {error}"
+                );
+            }
+        }
         let dram_available = cpu.is_dram_available();
         tracing::info!(
-            "Initialized RAPL for CPU {} (DRAM: {})",
+            "Initialized RAPL for CPU {} ({}, DRAM: {}, HSMP: {})",
             cpu_id,
+            cpu.zone_name(),
             dram_available,
+            hsmp.is_some(),
         );
         cpu_info.push(CpuDiscoveryInfo {
             id: cpu_id,
@@ -366,11 +413,115 @@ pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDi
         });
         cpus.push(cpu);
     }
+
+    if let Some(storage) = original_storage {
+        let (current, hsmp_errors): (Vec<_>, Vec<_>) = cpus
+            .iter()
+            .map(RaplCpu::power_limit_settings)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "The cpu-control API group reads the current CPU power limits at startup to \
+                     record the original settings that reset restores, but reading them failed: \
+                     {error} \
+                     To start without CPU power control, remove cpu-control from --enable. \
+                     See {ORIGINAL_POWER_LIMITS_DOC_URL}"
+                )
+            })?
+            .into_iter()
+            .unzip();
+        if hsmp.is_none() && current.iter().all(|package| package.constraints.is_empty()) {
+            tracing::warn!(
+                "No CPU package exposes a power limit: RAPL reports no constraints and {} does \
+                 not exist. On AMD EPYC CPUs, load the amd_hsmp kernel module to expose the \
+                 socket power limit. See {PERMISSIONS_DOC_URL}",
+                HSMP_DEVICE_PATH,
+            );
+        }
+        let original = establish(storage, Path::new(BOOT_ID_PATH), current)?;
+        for (cpu_id, ((cpu, package), hsmp_error)) in
+            cpus.iter_mut().zip(original).zip(hsmp_errors).enumerate()
+        {
+            log_socket_original(
+                cpu_id,
+                hsmp.is_some(),
+                hsmp_error,
+                package
+                    .constraints
+                    .iter()
+                    .any(|c| c.name == HSMP_SOCKET_CONSTRAINT),
+            );
+            cpu.set_original_power_limits(package.constraints);
+        }
+    }
+
     Ok((CpuManagementTasks::start(cpus)?, cpu_info))
 }
 
+/// Warn about the consequences of an HSMP `socket` constraint that could not
+/// be read at startup or has no original setting.
+///
+/// `hsmp_error` is the failed read of the current `socket` setting, and
+/// `socket_recorded` is whether the original settings have one.
+#[cfg(target_os = "linux")]
+fn log_socket_original(
+    cpu_id: usize,
+    hsmp_attached: bool,
+    hsmp_error: Option<crate::error::ZeusdError>,
+    socket_recorded: bool,
+) {
+    match (hsmp_error, socket_recorded) {
+        (Some(error), true) => tracing::warn!(
+            "AMD HSMP reads failed for CPU {cpu_id}. The recorded original setting of its \
+             '{HSMP_SOCKET_CONSTRAINT}' constraint is kept, but power limit queries, \
+             '{HSMP_SOCKET_CONSTRAINT}' changes, and restoring '{HSMP_SOCKET_CONSTRAINT}' fail \
+             for this CPU until HSMP reads work. RAPL power limit changes and resets do not need \
+             HSMP. {error}"
+        ),
+        (Some(error), false) => tracing::warn!(
+            "AMD HSMP reads failed for CPU {cpu_id}, so the original setting of its \
+             '{HSMP_SOCKET_CONSTRAINT}' constraint is not recorded. Power limit queries fail for \
+             this CPU until HSMP reads work, and '{HSMP_SOCKET_CONSTRAINT}' changes fail until \
+             its original setting is recorded. RAPL power limit changes and resets do not need \
+             HSMP. {RECORD_ORIGINAL_HINT} {error}"
+        ),
+        (None, false) if hsmp_attached => tracing::warn!(
+            "The recorded original settings of CPU {cpu_id} have no \
+             '{HSMP_SOCKET_CONSTRAINT}' constraint because AMD HSMP was unavailable when they \
+             were recorded, so '{HSMP_SOCKET_CONSTRAINT}' changes fail. {RECORD_ORIGINAL_HINT} \
+             See {ORIGINAL_POWER_LIMITS_DOC_URL}"
+        ),
+        (None, _) => {}
+    }
+}
+
+/// Log whether the HSMP device grants the access CPU monitoring and control need.
+#[cfg(target_os = "linux")]
+fn log_hsmp_access(device: &HsmpDevice, control_enabled: bool) {
+    let path = device.path().display();
+    match device.check_access(false) {
+        Ok(()) => tracing::info!("{path} is readable for AMD HSMP socket power limit queries"),
+        Err(error) => tracing::warn!(
+            "AMD HSMP socket power limit queries will fail: {error} See {PERMISSIONS_DOC_URL}"
+        ),
+    }
+    if control_enabled {
+        match device.check_access(true) {
+            Ok(()) => {
+                tracing::info!("{path} is writable for AMD HSMP socket power limit changes")
+            }
+            Err(error) => tracing::warn!(
+                "AMD HSMP socket power limit changes will fail: {error} See {PERMISSIONS_DOC_URL}"
+            ),
+        }
+    }
+}
+
 #[cfg(not(target_os = "linux"))]
-pub fn start_cpu_device_tasks() -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
+pub fn start_cpu_device_tasks(
+    _read_enabled: bool,
+    _original_storage: Option<&OriginalPowerLimitStorage>,
+) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     anyhow::bail!(
         "CPU RAPL monitoring is only available on Linux. \
          Remove 'cpu-read' from --enable to start zeusd on this platform."
@@ -395,13 +546,12 @@ pub fn start_cpu_power_poller(_poll_hz: u32) -> anyhow::Result<CpuPowerBroadcast
     anyhow::bail!("CPU RAPL monitoring is only available on Linux.")
 }
 
-/// Reject API groups that aren't supported on this platform or that the
-/// daemon lacks the privileges for.
+/// Reject API groups that this platform or binary does not support.
+///
+/// Privileges are not checked here. Each operation needs its own device and
+/// kernel permissions and reports an error explaining them if they are missing.
 #[allow(unused_variables)]
-pub fn check_privileges(
-    enabled_groups: &[ApiGroup],
-    overrides: Option<&GpuCommandOverrides>,
-) -> anyhow::Result<()> {
+pub fn check_platform_support(enabled_groups: &[ApiGroup]) -> anyhow::Result<()> {
     #[cfg(all(
         not(target_os = "linux"),
         not(any(feature = "nvml", feature = "amdsmi"))
@@ -428,47 +578,29 @@ pub fn check_privileges(
 
     #[cfg(not(target_os = "linux"))]
     {
-        if enabled_groups.contains(&ApiGroup::CpuRead) {
-            tracing::error!(
-                "API group 'cpu-read' is only supported on Linux \
-                 (requires Intel RAPL via /sys/class/powercap)."
-            );
-            anyhow::bail!(
-                "API group 'cpu-read' is only supported on Linux. \
-                 Remove it from --enable to start zeusd on this platform."
-            );
+        for group in [ApiGroup::CpuRead, ApiGroup::CpuControl] {
+            if enabled_groups.contains(&group) {
+                tracing::error!(
+                    "API group '{}' is only supported on Linux \
+                     (requires RAPL via /sys/class/powercap).",
+                    group,
+                );
+                anyhow::bail!(
+                    "API group '{}' is only supported on Linux. \
+                     Remove it from --enable to start zeusd on this platform.",
+                    group,
+                );
+            }
         }
     }
 
     #[cfg(unix)]
     {
-        let is_root = nix::unistd::geteuid().is_root();
-        for &group in enabled_groups {
-            if group.requires_root() && !is_root {
-                if let Some(overrides) = overrides.filter(|value| !value.is_empty()) {
-                    if group == ApiGroup::GpuControl {
-                        tracing::info!(
-                            "API group 'gpu-control' is enabled without root because command \
-                             overrides are configured for: {}",
-                            overrides.overridden_operation_names().join(", "),
-                        );
-                        tracing::warn!(
-                            "GPU control operations without a command override will use the \
-                             native driver path and may fail with permission errors."
-                        );
-                        continue;
-                    }
-                }
-                tracing::error!(
-                    "API group '{}' requires root privileges. \
-                     Either run as root or remove it from --enable.",
-                    group,
-                );
-                anyhow::bail!(
-                    "API group '{}' requires root but Zeusd is not running as root",
-                    group,
-                );
-            }
+        if !nix::unistd::geteuid().is_root() {
+            tracing::info!(
+                "Zeusd is not running as root. Operations that need permissions Zeusd lacks \
+                 will fail with an error explaining them. See {PERMISSIONS_DOC_URL}"
+            );
         }
     }
 
@@ -530,8 +662,15 @@ macro_rules! build_app {
             app = app.app_data(web::Data::new(broadcast.clone()));
         }
 
-        if enabled.contains(&ApiGroup::CpuRead) {
-            app = app.service(web::scope("/cpu").configure(cpu_routes));
+        if enabled.contains(&ApiGroup::CpuRead) || enabled.contains(&ApiGroup::CpuControl) {
+            let mut cpu_scope = web::scope("/cpu");
+            if enabled.contains(&ApiGroup::CpuRead) {
+                cpu_scope = cpu_scope.configure(cpu_read_routes);
+            }
+            if enabled.contains(&ApiGroup::CpuControl) {
+                cpu_scope = cpu_scope.configure(cpu_control_routes);
+            }
+            app = app.service(cpu_scope);
         }
         if let Some(ref tasks) = state.cpu_device_tasks {
             app = app.app_data(web::Data::new(tasks.clone()));
@@ -740,6 +879,16 @@ pub async fn run_server_named_pipe(
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn supported_groups_start_regardless_of_user() {
+        let mut groups = vec![ApiGroup::CpuRead, ApiGroup::CpuControl];
+        if cfg!(any(feature = "nvml", feature = "amdsmi")) {
+            groups.extend([ApiGroup::GpuRead, ApiGroup::GpuControl]);
+        }
+        check_platform_support(&groups).unwrap();
+    }
 
     #[test]
     fn stale_socket_file_is_removed_and_rebound() {

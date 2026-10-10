@@ -16,6 +16,7 @@ use tokio::sync::{watch, Notify};
 use tokio::time::{interval, Duration, MissedTickBehavior};
 
 use crate::devices::cpu::CpuManager;
+use crate::error::ZeusdError;
 use crate::power_streaming::{unix_timestamp_ms, PowerBroadcast, PowerBroadcasts, PowerPoller};
 
 /// Per-CPU power reading (package + optional DRAM).
@@ -91,6 +92,16 @@ fn power_from_energy_delta(current_uj: u64, previous_uj: u64, elapsed: Duration)
     power_mw.min(u32::MAX as u128) as u32
 }
 
+/// Log a failed energy read unless it repeats the previous failure, so a
+/// lasting failure, such as missing read permission, is logged once.
+fn log_poll_error(last: &mut Option<String>, cpu_id: usize, what: &str, error: &ZeusdError) {
+    let message = error.to_string();
+    if last.as_deref() != Some(message.as_str()) {
+        tracing::warn!("Failed to read CPU {cpu_id} {what}: {message}");
+        *last = Some(message);
+    }
+}
+
 async fn cpu_power_poll_task<T: CpuManager>(
     cpu_id: usize,
     mut cpu: T,
@@ -114,20 +125,19 @@ async fn cpu_power_poll_task<T: CpuManager>(
         }
 
         tracing::info!("CPU power poller starting for CPU {}", cpu_id);
+        let mut last_cpu_error = None;
+        let mut last_dram_error = None;
 
         let mut state = loop {
             match cpu.get_cpu_energy() {
                 Ok(cpu_energy) => {
+                    last_cpu_error = None;
                     let cpu_sample_at = Instant::now();
                     let dram_energy = if cpu.is_dram_available() {
                         match cpu.get_dram_energy() {
                             Ok(energy) => Some((energy, Instant::now())),
                             Err(e) => {
-                                tracing::warn!(
-                                    "Failed to prime CPU {} DRAM energy baseline: {}",
-                                    cpu_id,
-                                    e
-                                );
+                                log_poll_error(&mut last_dram_error, cpu_id, "DRAM energy", &e);
                                 None
                             }
                         }
@@ -142,7 +152,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
                     };
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to prime CPU {} energy baseline: {}", cpu_id, e);
+                    log_poll_error(&mut last_cpu_error, cpu_id, "energy", &e);
                     if subscriber_count.load(Ordering::Relaxed) == 0 {
                         continue 'poller;
                     }
@@ -163,6 +173,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
 
             let cpu_power_mw = match cpu.get_cpu_energy() {
                 Ok(energy_uj) => {
+                    last_cpu_error = None;
                     let sample_at = Instant::now();
                     let (last_energy_uj, last_sample_at) = state.last_cpu_energy_uj;
                     let power_mw = power_from_energy_delta(
@@ -178,7 +189,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
                     power_mw
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to read CPU {} energy: {}", cpu_id, e);
+                    log_poll_error(&mut last_cpu_error, cpu_id, "energy", &e);
                     state.last_cpu_power_mw
                 }
             };
@@ -186,6 +197,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
             let dram_power_mw = if cpu.is_dram_available() {
                 match cpu.get_dram_energy() {
                     Ok(energy_uj) => {
+                        last_dram_error = None;
                         let sample_at = Instant::now();
                         let power_mw = match state.last_dram_energy_uj {
                             Some((last_energy_uj, last_sample_at)) => {
@@ -206,7 +218,7 @@ async fn cpu_power_poll_task<T: CpuManager>(
                         power_mw
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to read CPU {} DRAM energy: {}", cpu_id, e);
+                        log_poll_error(&mut last_dram_error, cpu_id, "DRAM energy", &e);
                         state.last_dram_power_mw
                     }
                 }

@@ -13,9 +13,14 @@ ZEUSD_ARGS="--num-workers 10"
 # TCP mode (all interfaces, port 4938). For production, also set --signing-key-path.
 #ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938"
 #
-# Monitoring-only (drop gpu-control). cpu-read still needs root for RAPL;
-# remove it too if you want a fully unprivileged daemon.
+# Monitoring only, without GPU or CPU control. Reading CPU energy counters
+# still needs root or read access delegated to the service account.
 #ZEUSD_ARGS="--num-workers 10 --enable gpu-read,cpu-read"
+#
+# CPU power control without /var/zeusd: keep the original CPU power limits that
+# reset restores in memory, so a restarted zeusd records the limits it finds at
+# that time as the original ones.
+#ZEUSD_ARGS="--num-workers 10 --no-persistent-original-cpu-power-limit"
 #
 # TCP with JWT auth.
 #ZEUSD_ARGS="--num-workers 10 --mode tcp --tcp-bind-address 0.0.0.0:4938 --signing-key-path /etc/zeusd/signing.key"

@@ -4,7 +4,7 @@ pub mod cpu;
 pub mod gpu;
 pub mod server;
 
-pub use cpu::{cpu_routes, CpuPowerSamplingPeriod};
+pub use cpu::{cpu_control_routes, cpu_read_routes, CpuPowerSamplingPeriod};
 pub use gpu::{gpu_control_routes, gpu_read_routes};
 pub use server::{server_routes, CpuDiscoveryInfo, DiscoveryInfo, GpuDiscoveryInfo};
 

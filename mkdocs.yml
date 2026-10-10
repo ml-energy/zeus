@@ -109,6 +109,7 @@ nav:
   - Measuring Energy: measure/index.md
   - Zeus Daemon:
     - zeusd/index.md
+    - Deployment: zeusd/deployment.md
     - GPU Command Overrides: zeusd/command_overrides.md
     - HTTP API Reference: zeusd/api.md
   - Optimizing Energy:

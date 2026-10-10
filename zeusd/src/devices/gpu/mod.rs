@@ -243,18 +243,17 @@ fn log_command_result<T>(
     ok_msg: &str,
     err_msg: &str,
 ) {
-    if result.is_ok() {
-        tracing::info!(
+    match result {
+        Ok(_) => tracing::info!(
             time_to_command_done = ?request_arrival_time.elapsed(),
             zeusd_overhead = ?command_start_time - request_arrival_time,
             "{ok_msg}",
-        );
-    } else {
-        tracing::warn!(
+        ),
+        Err(e) => tracing::warn!(
             time_to_command_done = ?request_arrival_time.elapsed(),
             zeusd_overhead = ?command_start_time - request_arrival_time,
-            "{err_msg}",
-        );
+            "{err_msg}: {e}",
+        ),
     }
 }
 

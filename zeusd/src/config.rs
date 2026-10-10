@@ -1,17 +1,22 @@
 //! Zeus daemon configuration.
 
+use std::path::PathBuf;
+
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
+use crate::devices::cpu::power_limit_snapshot::OriginalPowerLimitStorage;
+
 /// API groups that can be independently enabled or disabled.
 ///
-/// Each group maps to a set of HTTP endpoints. Groups that require root
-/// will cause the daemon to exit at startup if it is not running as root.
+/// Each group maps to a set of HTTP endpoints. Each operation needs its own
+/// device and kernel permissions, and fails with an explanation if Zeusd
+/// lacks them.
 ///
 /// Available groups:
 ///   - `gpu-control`: GPU control operations (set power limit, locked clocks,
-///     persistence mode). Requires root.
+///     persistence mode).
 ///     - `POST /gpu/set_persistence_mode`
 ///     - `POST /gpu/set_power_limit`
 ///     - `POST /gpu/set_gpu_locked_clocks`
@@ -20,7 +25,7 @@ use serde::{Deserialize, Serialize};
 ///     - `POST /gpu/reset_mem_locked_clocks`
 ///     - `POST /gpu/reset_locked_clocks`
 ///   - `gpu-read`: GPU monitoring (power readings, energy consumption, power
-///     limits, persistence mode). Does not require root.
+///     limits, persistence mode).
 ///     - `GET /gpu/get_power`
 ///     - `GET /gpu/stream_power`
 ///     - `GET /gpu/get_cumulative_energy`
@@ -28,11 +33,15 @@ use serde::{Deserialize, Serialize};
 ///     - `GET /gpu/get_power_limit_constraints`
 ///     - `GET /gpu/get_persistence_mode`
 ///   - `cpu-read`: CPU RAPL monitoring (energy, power readings, power limits).
-///     Requires root.
 ///     - `GET /cpu/get_cumulative_energy`
 ///     - `GET /cpu/get_power`
 ///     - `GET /cpu/stream_power`
 ///     - `GET /cpu/get_power_limit`
+///     - `GET /cpu/get_power_limit_constraints`
+///   - `cpu-control`: CPU power capping with RAPL or AMD HSMP.
+///     - `POST /cpu/set_power_limit`
+///     - `POST /cpu/set_power_limit_time_window`
+///     - `POST /cpu/reset_power_limit`
 ///
 /// The following endpoints are always available regardless of enabled groups:
 ///   - `GET /discover`
@@ -41,21 +50,14 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 pub enum ApiGroup {
     /// GPU control operations (set power limit, clocks, persistence mode).
-    /// Requires root.
     GpuControl,
     /// GPU read operations (power reading, energy consumption, power limits,
     /// persistence mode).
     GpuRead,
     /// CPU RAPL read operations (energy, power, power limits).
-    /// Requires root.
     CpuRead,
-}
-
-impl ApiGroup {
-    /// Whether this API group requires root privileges.
-    pub fn requires_root(&self) -> bool {
-        matches!(self, ApiGroup::GpuControl | ApiGroup::CpuRead)
-    }
+    /// CPU power capping (set and reset power limits and time windows).
+    CpuControl,
 }
 
 impl std::fmt::Display for ApiGroup {
@@ -64,6 +66,7 @@ impl std::fmt::Display for ApiGroup {
             ApiGroup::GpuControl => write!(f, "gpu-control"),
             ApiGroup::GpuRead => write!(f, "gpu-read"),
             ApiGroup::CpuRead => write!(f, "cpu-read"),
+            ApiGroup::CpuControl => write!(f, "cpu-control"),
         }
     }
 }
@@ -177,15 +180,14 @@ pub struct ServeConfig {
     #[clap(long, default_value = "10")]
     pub cpu_power_poll_hz: u32,
 
-    /// API groups to enable. Groups that require root cause the daemon to
-    /// exit at startup if not running as root. Defaults include the API groups
-    /// supported by the platform and compiled device backends.
+    /// API groups to enable. Defaults include the API groups supported by the
+    /// platform and compiled device backends.
     #[clap(long, value_delimiter = ',')]
     #[cfg_attr(all(target_os = "linux", any(feature = "nvml", feature = "amdsmi")), clap(
-        default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
+        default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead, ApiGroup::CpuControl],
     ))]
     #[cfg_attr(all(target_os = "linux", not(any(feature = "nvml", feature = "amdsmi"))), clap(
-        default_values_t = [ApiGroup::CpuRead],
+        default_values_t = [ApiGroup::CpuRead, ApiGroup::CpuControl],
     ))]
     #[cfg_attr(all(not(target_os = "linux"), feature = "nvml"), clap(
         default_values_t = [ApiGroup::GpuControl, ApiGroup::GpuRead],
@@ -193,8 +195,7 @@ pub struct ServeConfig {
     pub enable: Vec<ApiGroup>,
 
     /// Path to a TOML file mapping GPU control operations to external commands
-    /// that are executed instead of the native library call. When at least one
-    /// operation is overridden, the gpu-control API group no longer requires root.
+    /// that are executed instead of the native library call.
     #[clap(long)]
     pub gpu_command_overrides: Option<String>,
 
@@ -202,6 +203,20 @@ pub struct ServeConfig {
     /// If not provided, authentication is disabled.
     #[clap(long)]
     pub signing_key_path: Option<String>,
+
+    /// [cpu-control] Path for the original CPU power limits and time windows
+    /// that reset restores. The host boot ID is inserted before the extension.
+    /// The first start with discovered CPU packages records the settings;
+    /// later starts in the same boot reuse them. Keep this directory across
+    /// daemon restarts and container replacements.
+    #[clap(long, default_value = "/var/zeusd/original_cpu_power_limit.json")]
+    pub original_cpu_power_limit_path: String,
+
+    /// [cpu-control] Record original CPU power settings in memory at each
+    /// start, without persistent storage. After a restart, reset cannot restore
+    /// settings from before that start.
+    #[clap(long, conflicts_with = "original_cpu_power_limit_path")]
+    pub no_persistent_original_cpu_power_limit: bool,
 }
 
 impl ServeConfig {
@@ -224,7 +239,18 @@ impl ServeConfig {
 
     /// Whether any CPU API group is enabled (requiring RAPL initialization).
     pub fn needs_cpu(&self) -> bool {
-        self.is_enabled(ApiGroup::CpuRead)
+        self.is_enabled(ApiGroup::CpuRead) || self.is_enabled(ApiGroup::CpuControl)
+    }
+
+    /// Where the original CPU power limit settings are kept.
+    pub fn original_cpu_power_limit_storage(&self) -> OriginalPowerLimitStorage {
+        if self.no_persistent_original_cpu_power_limit {
+            OriginalPowerLimitStorage::InMemory
+        } else {
+            OriginalPowerLimitStorage::Persistent(PathBuf::from(
+                &self.original_cpu_power_limit_path,
+            ))
+        }
     }
 }
 
@@ -292,4 +318,52 @@ pub enum ConnectionMode {
 /// Parse command line arguments.
 pub fn get_cli() -> Cli {
     Cli::parse()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn serve(args: &[&str]) -> Result<ServeConfig, clap::Error> {
+        let cli = Cli::try_parse_from(["zeusd", "serve"].iter().chain(args))?;
+        match cli.command {
+            Command::Serve(config) => Ok(config),
+            Command::Token { .. } => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn original_is_persistent_under_var_by_default() {
+        assert_eq!(
+            serve(&[]).unwrap().original_cpu_power_limit_storage(),
+            OriginalPowerLimitStorage::Persistent(PathBuf::from(
+                "/var/zeusd/original_cpu_power_limit.json"
+            ))
+        );
+        assert_eq!(
+            serve(&[
+                "--original-cpu-power-limit-path",
+                "/srv/zeusd/original.json"
+            ])
+            .unwrap()
+            .original_cpu_power_limit_storage(),
+            OriginalPowerLimitStorage::Persistent(PathBuf::from("/srv/zeusd/original.json"))
+        );
+    }
+
+    #[test]
+    fn no_persistent_original_flag_keeps_the_original_in_memory() {
+        assert_eq!(
+            serve(&["--no-persistent-original-cpu-power-limit"])
+                .unwrap()
+                .original_cpu_power_limit_storage(),
+            OriginalPowerLimitStorage::InMemory
+        );
+        assert!(serve(&[
+            "--no-persistent-original-cpu-power-limit",
+            "--original-cpu-power-limit-path",
+            "/srv/zeusd/original.json",
+        ])
+        .is_err());
+    }
 }

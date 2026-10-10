@@ -69,6 +69,9 @@ fn required_scope(path: &str) -> Option<ApiGroup> {
     if path.starts_with("/gpu/") {
         return Some(ApiGroup::GpuRead);
     }
+    if path.starts_with("/cpu/set_") || path.starts_with("/cpu/reset_") {
+        return Some(ApiGroup::CpuControl);
+    }
     if path.starts_with("/cpu/") {
         return Some(ApiGroup::CpuRead);
     }
@@ -122,7 +125,9 @@ where
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let path = req.path().to_string();
+        // Use the router's decoded path so encoded bytes cannot change the
+        // scope classification without changing the handler selected.
+        let path = req.match_info().as_str().to_string();
 
         // If the path maps to a disabled API group, return 404 immediately
         // regardless of auth state.
@@ -326,6 +331,22 @@ mod tests {
         assert_eq!(
             required_scope("/cpu/get_cumulative_energy"),
             Some(ApiGroup::CpuRead)
+        );
+        assert_eq!(
+            required_scope("/cpu/get_power_limit"),
+            Some(ApiGroup::CpuRead)
+        );
+        assert_eq!(
+            required_scope("/cpu/set_power_limit"),
+            Some(ApiGroup::CpuControl)
+        );
+        assert_eq!(
+            required_scope("/cpu/set_power_limit_time_window"),
+            Some(ApiGroup::CpuControl)
+        );
+        assert_eq!(
+            required_scope("/cpu/reset_power_limit"),
+            Some(ApiGroup::CpuControl)
         );
     }
 

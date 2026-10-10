@@ -13,7 +13,7 @@ Energy optimizers in Zeus need to change GPU configuration (power limit, clocks,
 ## Platform support
 
 - **Linux:** UDS default. All API groups work with NVIDIA GPUs through NVML or AMD GPUs through AMD SMI, plus RAPL for CPUs.
-- **Windows:** named pipe default. NVML only; `cpu-read` is rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp`.
+- **Windows:** named pipe default. NVML only; `cpu-read` and `cpu-control` are rejected at startup since RAPL is Linux-only. Python clients must use `--mode tcp`.
 
 NVIDIA GPU support loads NVML at runtime.
 AMD GPU support loads AMD SMI at runtime, but the ABI is not stable across versions.
@@ -75,4 +75,4 @@ Both scripts require `aws` CLI v2 with valid credentials and `jq`. Resources are
 
 ## Documentation
 
-API groups (`gpu-control`, `gpu-read`, `cpu-read`), JWT authentication, Windows-specific behavior, the full HTTP API reference, troubleshooting, and Python client integration are all covered at <https://ml.energy/zeus/zeusd/>.
+API groups (`gpu-control`, `gpu-read`, `cpu-read`, `cpu-control`), JWT authentication, Windows-specific behavior, the full HTTP API reference, troubleshooting, and Python client integration are all covered at <https://ml.energy/zeus/zeusd/>.

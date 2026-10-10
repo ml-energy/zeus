@@ -1,0 +1,243 @@
+# Deployment
+
+Choose the features you need, then grant their combined requirements using the deployment method below.
+Kernel modules and firmware support are **prerequisites**; file access, Linux capabilities, and container policies are **permissions**.
+`zeusd` does not load modules or change host security settings.
+
+## Feature requirements and permissions
+
+Enable HTTP API groups with `--enable gpu-read,gpu-control,cpu-read,cpu-control`, omitting groups you do not need.
+Linux enables all four by default.
+Enabling a group exposes its routes but does not grant device permissions.
+Unavailable operations report their missing requirements; independent features remain usable.
+
+CPU features use the Running Average Power Limit (RAPL) interface, Intel model-specific registers (MSRs), or AMD's Host System Management Port (HSMP).
+Linux exposes device attributes through *sysfs*, normally mounted at `/sys`.
+CPU resets restore the *original* CPU power limits and time windows, which `zeusd` records when it starts.
+
+| Feature | API group | Host prerequisites | Daemon permissions |
+|---|---|---|---|
+| NVIDIA GPU monitoring and limit queries | `gpu-read` | NVIDIA driver and NVIDIA Management Library (NVML) | Access to NVIDIA device nodes; no control capability needed |
+| NVIDIA GPU power limits, clock limits, and persistence mode | `gpu-control` | Same as monitoring; operation supported by the GPU | Root/admin access required by NVML; Linux containers also need `CAP_SYS_ADMIN` |
+| AMD GPU monitoring and limit queries | `gpu-read` | `amdgpu` driver and a [compatible AMD SMI library](index.md#amd-gpu) | Access to GPU devices and readable GPU sysfs files |
+| AMD GPU power and clock limits | `gpu-control` | Same as monitoring; operation supported by the GPU | Root access required by AMD SMI, writable GPU sysfs files, and a security policy allowing those writes |
+| CPU/DRAM energy and power monitoring | `cpu-read` | Linux RAPL powercap interface | Read access to `energy_uj` and zone metadata; energy files are normally root-only |
+| Intel current CPU limits and time-window queries | `cpu-read` | Intel RAPL powercap constraints | Read access to constraint files; no MSR access needed |
+| Intel CPU power-limit changes | `cpu-control` | Intel RAPL powercap constraints | Read/write access to `constraint_*_power_limit_uw`; no MSR access needed |
+| Intel hardware power-range queries | `cpu-read` | Supported Intel x86-64 CPU and `msr` driver | MSR device read access and `CAP_SYS_RAWIO` |
+| Intel CPU time-window changes | `cpu-control` | Supported Intel x86-64 CPU and `msr` driver | MSR device read/write access, `CAP_SYS_RAWIO`, and kernel/firmware policy permitting MSR writes |
+| AMD EPYC current and maximum socket-limit queries | `cpu-read` | Firmware support for the `amd_hsmp` driver; RAPL zones for package discovery | Read access to `/dev/hsmp` |
+| AMD EPYC socket power-limit changes | `cpu-control` | Same as socket-limit queries | Read/write access to `/dev/hsmp` |
+| CPU resets that keep the original settings across daemon restarts | `cpu-control` | Persistent storage of the original settings and the host boot identifier | Read/write access to `/var/zeusd` or the configured directory; restoring each setting also needs its control permissions |
+
+The [storage requirements](#original-cpu-power-limits) of the original settings apply whether clients connect through a Unix domain socket or TCP.
+GPU resets restore the GPU backend's defaults and do not need this storage.
+
+An unprivileged process can read root-only RAPL energy files with `CAP_DAC_READ_SEARCH`, but that capability also bypasses read permissions elsewhere.
+Root inside a container still needs the device mounts and capabilities listed under [Docker](#deployment-methods).
+
+If privileged GPU control is available only through approved commands, configure [GPU command overrides](command_overrides.md).
+
+### CPU driver prerequisites
+
+Linux exposes RAPL energy counters and Intel power constraints through [powercap sysfs files](https://docs.kernel.org/power/powercap/powercap.html).
+Check that the host exposes package zones under `/sys/class/powercap/intel-rapl` before enabling CPU groups.
+AMD RAPL provides energy counters; AMD EPYC socket limits use HSMP.
+Load the relevant optional driver on the **host**, before starting `zeusd`:
+
+```sh
+# Intel hardware-range queries and time-window control
+sudo modprobe msr
+
+# AMD EPYC socket power-limit queries and control
+sudo modprobe amd_hsmp
+```
+
+If `amd_hsmp` reports that HSMP is disabled, enable it in the firmware settings.
+Missing HSMP access does not prevent RAPL energy monitoring, RAPL power-limit changes, or CPU control startup.
+
+For Intel MSR access, expose `/dev/cpu/<core>/msr` for the lowest-numbered online core in each package, or each die for per-die RAPL zones.
+CPU topology under `/sys/devices/system/cpu` must also be readable.
+Time-window control supports package `long_term` and `short_term` constraints; Silvermont and Airmont CPUs are unsupported.
+
+!!! warning "MSR writes affect the host kernel"
+
+    Userspace MSR writes set a kernel diagnostic flag (taint) until reboot, including writes that restore earlier settings.
+    Kernel lockdown, `msr.allow_writes=off`, or a firmware register lock can reject writes even when reads work.
+
+### Original CPU power limits
+
+`zeusd` changes CPU settings only through control requests; starting, stopping, or restarting the daemon does not restore the original CPU settings.
+Call [`POST /cpu/reset_power_limit`](api.md#cpu) or [`ZeusdClient.reset_cpu_power_limit`][zeus.utils.zeusd.ZeusdClient.reset_cpu_power_limit] to restore the original settings explicitly.
+
+The original settings are the CPU power limits and time windows at the first daemon start in each host boot that has CPU control and finds CPU packages, not firmware defaults.
+With `cpu-control` enabled, `zeusd` records them in a file, the *original snapshot*, at `--original-cpu-power-limit-path`, which defaults to `/var/zeusd/original_cpu_power_limit.json`.
+The actual filename includes the host boot identifier from `/proc/sys/kernel/random/boot_id`: `original_cpu_power_limit.<boot_id>.json`.
+Within one host boot, daemon restarts load this original snapshot instead of recording a limit that an application has already changed.
+After a host reboot, the first daemon start that finds CPU packages records new original settings.
+Files from older boots are not reused and can be removed.
+
+The directory must be writable and survive daemon or container replacement; a container's writable layer does not survive replacement.
+The filesystem must support hard links (multiple filenames for one file).
+An inaccessible directory or invalid original snapshot produces a startup error instead of silently recording different original settings.
+To keep the original settings only in memory, pass `--no-persistent-original-cpu-power-limit` explicitly.
+That mode records the settings at every daemon start as the original settings, so a restarted daemon cannot restore settings from before its start.
+
+??? warning "AMD HSMP unavailable at startup"
+
+    If HSMP reads fail at startup, `zeusd` warns and excludes `socket` from any new original snapshot.
+    Existing snapshots keep previously recorded `socket` settings, and resets still attempt the other settings.
+    If a snapshot lacks `socket`, socket changes are rejected until an original setting is recorded.
+    To record one after restoring HSMP access, restore the original settings with a reset and stop `zeusd`.
+    Verify that the current limits and time windows are the values you want resets to restore.
+    Restart with a new `--original-cpu-power-limit-path`, or use `--no-persistent-original-cpu-power-limit` to record originals at each daemon start.
+
+## Deployment methods
+
+The examples below target Linux and assume the [host prerequisites](#feature-requirements-and-permissions) are installed.
+Clients connect through a Unix domain socket (UDS) or a TCP port.
+For Windows, run native NVML deployments from an elevated shell for GPU control and use `--mode tcp` for Python clients.
+
+=== "Native"
+
+    Install [the binary](index.md#install), then select the API groups and transport.
+    GPU monitoring can run without root when the account can access the GPU devices:
+
+    ```sh
+    zeusd serve --enable gpu-read --mode tcp --tcp-bind-address 127.0.0.1:4938
+    ```
+
+    A root process can use the host's device permissions for CPU monitoring and control:
+
+    ```sh
+    sudo install -d -m 0755 /var/zeusd
+    sudo "$(command -v zeusd)" serve --enable cpu-read,cpu-control \
+        --mode tcp --tcp-bind-address 127.0.0.1:4938
+    ```
+
+    For a restricted service account, grant only the file access and capabilities for its selected features.
+    CPU control without persistent storage requires `--no-persistent-original-cpu-power-limit`.
+
+    For UDS, use `--socket-path /run/zeusd/zeusd.sock` instead of the TCP arguments.
+    The daemon needs a writable parent directory, and clients need write permission on the socket.
+    The default socket mode is `666`; use `--socket-permissions 660` and `--socket-gid GROUP_ID` to restrict clients to a group.
+    Assigning a different socket owner or group can require `CAP_CHOWN`.
+
+=== "systemd"
+
+    The [packaging directory](https://github.com/ml-energy/zeus/tree/master/zeusd/packaging/systemd) includes a root service and an environment file for daemon arguments.
+    With the binary installed at `/usr/local/bin/zeusd`, install these files from the repository:
+
+    ```sh
+    cd zeusd/packaging/systemd
+    sudo install -m 0644 zeusd.service /etc/systemd/system/zeusd.service
+    sudo install -m 0644 zeusd.defaults /etc/default/zeusd
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now zeusd
+    ```
+
+    Set `ZEUSD_ARGS` in `/etc/default/zeusd` to select API groups, transport, and where the original CPU settings are kept.
+    The unit creates `/run/zeusd` for sockets and permits persistent storage of the original CPU settings under `/var/zeusd`.
+    Load optional host drivers before starting the service; `ProtectKernelModules=true` prevents the service from loading them itself.
+
+    Use `sudo systemctl edit zeusd` to restrict the unit for your selected features:
+
+    | Feature | Unit requirement |
+    |---|---|
+    | NVIDIA control | Keep `CAP_SYS_ADMIN` in `CapabilityBoundingSet` |
+    | Intel MSR queries or control | Keep `CAP_SYS_RAWIO`; permit the required MSR device access |
+    | RAPL or AMD GPU sysfs control | Keep `ProtectKernelTunables=false`; allow writes through any added path restrictions |
+    | Persistent original CPU settings | Permit writes to the directory of `--original-cpu-power-limit-path` under `ProtectSystem=strict` |
+    | Custom socket ownership | Keep `CAP_CHOWN` when changing ownership |
+
+    A monitoring-only deployment can remove control capabilities and set `ProtectKernelTunables=true`.
+    For example, with `ZEUSD_ARGS="--enable gpu-read,cpu-read"`, a drop-in for the root service can use:
+
+    ```ini
+    [Service]
+    CapabilityBoundingSet=
+    ProtectKernelTunables=true
+    ```
+
+    The empty `CapabilityBoundingSet=` clears the capabilities from the packaged unit.
+    When retaining selected capabilities, clear the list first, then add a second assignment with the required capabilities.
+    If using `User=` for a service account, grant its device/file permissions separately; `CapabilityBoundingSet` alone does not grant capabilities to that account.
+    Use `AmbientCapabilities=` for any capabilities that account requires.
+
+=== "Docker"
+
+    [Images](https://hub.docker.com/r/mlenergy/zeusd) are available for amd64 and arm64.
+    Release tags and `latest` track releases; `master` tracks the master branch.
+    AMD SMI is bundled on amd64; NVIDIA deployments need the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/index.html).
+    These examples assume the Docker daemon runs as root and does not remap container user IDs.
+
+    Start with monitoring for your GPU vendor:
+
+    ```sh
+    # NVIDIA
+    docker run -d --gpus all -p 127.0.0.1:4938:4938 \
+        mlenergy/zeusd serve --enable gpu-read \
+        --mode tcp --tcp-bind-address 0.0.0.0:4938
+
+    # AMD
+    docker run -d --device /dev/dri --device /dev/kfd \
+        -p 127.0.0.1:4938:4938 \
+        mlenergy/zeusd serve --enable gpu-read \
+        --mode tcp --tcp-bind-address 0.0.0.0:4938
+    ```
+
+    Add these arguments **before the image name** for additional features, and enable the corresponding API groups after `serve`:
+
+    | Feature | Docker arguments |
+    |---|---|
+    | NVIDIA control | `--cap-add SYS_ADMIN` |
+    | CPU monitoring or Intel limit queries | `-v /sys/class/powercap:/zeus_sys/class/powercap:ro -v /sys/devices/virtual/powercap:/zeus_sys/devices/virtual/powercap:ro` |
+    | Intel power-limit changes | Use the two powercap mounts above with `:rw` instead of `:ro` |
+    | Intel hardware-range queries | `--cap-add SYS_RAWIO --device /dev/cpu/CORE/msr:/dev/cpu/CORE/msr:r` for each required core |
+    | Intel time-window changes | Use the same MSR arguments with `:rw` instead of `:r` |
+    | AMD EPYC socket-limit queries | `--device /dev/hsmp:/dev/hsmp:r`, plus the CPU monitoring mounts for package discovery |
+    | AMD EPYC socket-limit changes | Use the same HSMP argument with `:rw` instead of `:r` |
+    | Persistent original CPU settings | `-v /var/zeusd:/var/zeusd` and expose the host boot identifier as described below |
+    | Share a UDS socket | `-v /run/zeusd:/run/zeusd`; use `--socket-path /run/zeusd/zeusd.sock` instead of TCP arguments |
+
+    Replace `CORE` with the representative core number described under [CPU driver prerequisites](#cpu-driver-prerequisites).
+    The two powercap mounts preserve sysfs symlink targets under `/zeus_sys`, where `zeusd` looks when the normal sysfs path is masked.
+    Container security policies must also permit the selected sysfs writes; a writable bind mount alone cannot override AppArmor or SELinux restrictions.
+
+    For example, Intel power-limit control with resets that survive container replacement uses:
+
+    ```sh
+    sudo install -d -m 0755 /var/zeusd
+    docker run -d -p 127.0.0.1:4938:4938 \
+        -v /sys/class/powercap:/zeus_sys/class/powercap:rw \
+        -v /sys/devices/virtual/powercap:/zeus_sys/devices/virtual/powercap:rw \
+        -v /var/zeusd:/var/zeusd \
+        --mount type=bind,src=/proc/sys/kernel/random/boot_id,dst=/proc/sys/kernel/random/boot_id,readonly \
+        mlenergy/zeusd serve --enable cpu-read,cpu-control \
+        --mode tcp --tcp-bind-address 0.0.0.0:4938
+    ```
+
+    Binding the host boot identifier keeps the original settings until the host reboots, even when a runtime supplies a container-specific identifier.
+    Omit the storage and boot-identifier mounts only when using `--no-persistent-original-cpu-power-limit` or disabling `cpu-control`.
+
+    AMD GPU control additionally needs writable amdgpu sysfs files.
+    A broad configuration uses `-v /sys:/sys:rw` with a policy that permits those writes; a narrower deployment can bind only the required GPU sysfs paths.
+    Docker's default AppArmor policy blocks sysfs writes; supply a custom policy, or use `--security-opt apparmor=unconfined` to remove that protection.
+    SELinux deployments need a policy allowing device and sysfs access; `--security-opt label=disable` disables container labeling when that is acceptable to your deployment.
+
+    To use a host AMD SMI library, mount its installation and set `AMDSMI_LIB_DIR`, for example `-v /opt/rocm-7.2.0:/opt/rocm-7.2.0:ro -e AMDSMI_LIB_DIR=/opt/rocm-7.2.0/lib`.
+
+## Client access and troubleshooting
+
+Device permissions govern what the daemon can do; socket access and [JWT scopes](index.md#authentication-optional) govern who can request it.
+For remote TCP access, select the intended bind address and configure authentication before exposing the port.
+`/discover` lists detected devices and enabled API groups; it does not guarantee permission for every operation in a group.
+For GPU writes, use `block=true` to receive execution errors in the HTTP response; nonblocking writes report execution failures in daemon logs.
+
+??? tip "Diagnosing unavailable features"
+
+    Check both the HTTP error and the daemon logs for the failing path, device, or capability.
+    A missing device usually indicates a driver, firmware, or container-device requirement; `Permission denied` indicates denied access, and `Read-only file system` indicates a mount restriction.
+    After changing modules or device visibility, restart the daemon so it can discover the new interfaces.
+    If the original snapshot does not match the machine, make the package zones and constraints it records available again, or delete the file to record new original settings from the current ones.
+    Do not delete the original snapshot while a daemon is using it.

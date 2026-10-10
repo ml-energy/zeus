@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio_stream::StreamExt;
 use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::RaplResponse;
-use zeusd::devices::cpu::{CpuManager, PackageInfo, RaplPowerLimits};
+use zeusd::devices::cpu::{CpuDramPowerLimits, CpuManager, CpuPowerLimitConstraints, PackageInfo};
 use zeusd::error::ZeusdError;
 use zeusd::routes::cpu::GetCumulativeEnergy;
 
@@ -286,6 +286,66 @@ async fn test_cpu_power_stream_receives_events() {
     assert!(body["dram_mw"].is_number());
 }
 
+/// A stream of a CPU whose energy counter Zeusd cannot read fails with the
+/// cause instead of starting a stream that never sends a sample.
+#[tokio::test]
+async fn test_cpu_power_stream_rejects_unreadable_energy_counter() {
+    // CPU 1 cannot read its CPU energy counter, CPU 2 only its DRAM counter.
+    let app = TestApp::start_with_test_cpus(3, |index, cpu| {
+        cpu.cpu_energy_denied = index == 1;
+        cpu.dram_energy_denied = index == 2;
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let stream_url = |query: &str| format!("http://127.0.0.1:{}/cpu/stream_power{query}", app.port);
+
+    for query in ["?cpu_ids=1", "?cpu_ids=0,1", ""] {
+        let resp = client
+            .get(stream_url(query))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 403, "{query}");
+        let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+        let errors = body["errors"].as_object().unwrap();
+        assert_eq!(errors.keys().collect::<Vec<_>>(), vec!["1"], "{query}");
+    }
+
+    for query in ["?cpu_ids=0", "?cpu_ids=2"] {
+        let mut resp = client
+            .get(stream_url(query))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 200, "{query}");
+        tokio::time::timeout(tokio::time::Duration::from_secs(2), resp.chunk())
+            .await
+            .expect("Timed out waiting for CPU power event")
+            .expect("Failed to read CPU power event")
+            .expect("CPU power stream ended before first event");
+    }
+
+    // CPU-only energy requests work when only the DRAM counter is unreadable.
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=2&cpu=true&dram=false",
+            app.port
+        ))
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 200);
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/cpu/get_cumulative_energy?cpu_ids=2&cpu=false&dram=true",
+            app.port
+        ))
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 403);
+}
+
 struct PollCountingCpu {
     poll_count: Arc<AtomicUsize>,
     cpu_energy_uj: u64,
@@ -353,8 +413,32 @@ impl CpuManager for PollCountingCpu {
         true
     }
 
-    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError> {
+    fn get_power_limits(&self) -> Result<CpuDramPowerLimits, ZeusdError> {
         unimplemented!("The power poller does not read power limits")
+    }
+
+    fn get_power_limit_constraints(&self) -> Result<CpuPowerLimitConstraints, ZeusdError> {
+        unimplemented!("The power poller does not read power limits")
+    }
+
+    fn set_power_limit(
+        &mut self,
+        _constraint: &str,
+        _power_limit_mw: u64,
+    ) -> Result<(), ZeusdError> {
+        unimplemented!("The power poller does not control power limits")
+    }
+
+    fn set_power_limit_time_window(
+        &mut self,
+        _constraint: &str,
+        _time_window_us: u64,
+    ) -> Result<(), ZeusdError> {
+        unimplemented!("The power poller does not control power limits")
+    }
+
+    fn reset_power_limits(&mut self) -> Result<(), ZeusdError> {
+        unimplemented!("The power poller does not control power limits")
     }
 }
 
@@ -485,6 +569,286 @@ async fn test_deny_unknown_query_fields() {
     let url = format!("http://127.0.0.1:{}/gpu/get_power?cpu_ids=0", app.port);
     let resp = client
         .get(&url)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 400);
+}
+
+/// POST a CPU control endpoint and return the status code.
+async fn post_cpu_control(app: &TestApp, endpoint_and_query: &str) -> u16 {
+    reqwest::Client::new()
+        .post(format!(
+            "http://127.0.0.1:{}/cpu/{endpoint_and_query}",
+            app.port
+        ))
+        .send()
+        .await
+        .expect("Failed to send request")
+        .status()
+        .as_u16()
+}
+
+/// GET the package zone constraints of CPU 0 as `(name, power_limit_mw, time_window_us)`.
+async fn package_constraints(app: &TestApp) -> Vec<(String, u64, Option<u64>)> {
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{}/cpu/get_power_limit", app.port))
+        .send()
+        .await
+        .expect("Failed to send request")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    body["0"]["cpu"]["constraints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            (
+                c["name"].as_str().unwrap().to_string(),
+                c["power_limit_mw"].as_u64().unwrap(),
+                c["time_window_us"].as_u64(),
+            )
+        })
+        .collect()
+}
+
+fn initial_package_constraints() -> Vec<(String, u64, Option<u64>)> {
+    helpers::test_power_limits()
+        .cpu
+        .constraints
+        .into_iter()
+        .map(|c| (c.name, c.power_limit_mw, c.time_window_us))
+        .collect()
+}
+
+#[tokio::test]
+async fn test_cpu_set_power_limit() {
+    let app = TestApp::start().await;
+
+    let status = post_cpu_control(
+        &app,
+        "set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let mut expected = initial_package_constraints();
+    expected[0].1 = 150_000;
+    assert_eq!(package_constraints(&app).await, expected);
+
+    // RAPL does not bound limits by `max_power_mw`, which is TDP for `long_term`.
+    let status = post_cpu_control(
+        &app,
+        "set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=250000",
+    )
+    .await;
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn test_cpu_set_power_limit_invalid() {
+    let app = TestApp::start().await;
+
+    for query in [
+        // Unknown constraint.
+        "cpu_ids=0&constraint=socket&power_limit_mw=150000",
+        // Zero.
+        "cpu_ids=0&constraint=long_term&power_limit_mw=0",
+        // CPU that does not exist.
+        "cpu_ids=1&constraint=long_term&power_limit_mw=150000",
+        // Empty CPU list.
+        "cpu_ids=&constraint=long_term&power_limit_mw=150000",
+        // Missing and unknown fields.
+        "cpu_ids=0&constraint=long_term",
+        "cpu_ids=0&constraint=long_term&power_limit_mw=150000&block=true",
+        // Negative value.
+        "cpu_ids=0&constraint=long_term&power_limit_mw=-1",
+    ] {
+        let status = post_cpu_control(&app, &format!("set_power_limit?{query}")).await;
+        assert_eq!(status, 400, "{query} should be rejected");
+    }
+
+    assert_eq!(
+        package_constraints(&app).await,
+        initial_package_constraints()
+    );
+}
+
+#[tokio::test]
+async fn test_cpu_set_power_limit_time_window() {
+    let app = TestApp::start().await;
+
+    let status = post_cpu_control(
+        &app,
+        "set_power_limit_time_window?cpu_ids=0&constraint=short_term&time_window_us=2440",
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let mut expected = initial_package_constraints();
+    expected[1].2 = Some(2_440);
+    assert_eq!(package_constraints(&app).await, expected);
+
+    for query in [
+        // `peak_power` has no time window.
+        "cpu_ids=0&constraint=peak_power&time_window_us=1000",
+        "cpu_ids=0&constraint=long_term&time_window_us=0",
+        "cpu_ids=0&constraint=socket&time_window_us=1000",
+    ] {
+        let status = post_cpu_control(&app, &format!("set_power_limit_time_window?{query}")).await;
+        assert_eq!(status, 400, "{query} should be rejected");
+    }
+    assert_eq!(package_constraints(&app).await, expected);
+}
+
+#[tokio::test]
+async fn test_cpu_reset_power_limit() {
+    let app = TestApp::start().await;
+
+    for endpoint_and_query in [
+        "set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=100000",
+        "set_power_limit?cpu_ids=0&constraint=short_term&power_limit_mw=120000",
+        "set_power_limit_time_window?cpu_ids=0&constraint=long_term&time_window_us=27983872",
+    ] {
+        assert_eq!(post_cpu_control(&app, endpoint_and_query).await, 200);
+    }
+    assert_ne!(
+        package_constraints(&app).await,
+        initial_package_constraints()
+    );
+
+    assert_eq!(
+        post_cpu_control(&app, "reset_power_limit?cpu_ids=0").await,
+        200
+    );
+    assert_eq!(
+        package_constraints(&app).await,
+        initial_package_constraints()
+    );
+
+    assert_eq!(
+        post_cpu_control(&app, "reset_power_limit?cpu_ids=1").await,
+        400
+    );
+}
+
+#[tokio::test]
+async fn test_cpu_control_only_mode() {
+    let app = TestApp::start_with_groups(&[zeusd::config::ApiGroup::CpuControl]).await;
+    let client = reqwest::Client::new();
+
+    let status = post_cpu_control(
+        &app,
+        "set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let resp = client
+        .get(format!("http://127.0.0.1:{}/cpu/get_power_limit", app.port))
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_cpu_read_only_mode_rejects_control() {
+    let app = TestApp::start_with_groups(&[zeusd::config::ApiGroup::CpuRead]).await;
+
+    for endpoint_and_query in [
+        "set_power_limit?cpu_ids=0&constraint=long_term&power_limit_mw=150000",
+        "set_power_limit_time_window?cpu_ids=0&constraint=long_term&time_window_us=999424",
+        "reset_power_limit?cpu_ids=0",
+    ] {
+        assert_eq!(post_cpu_control(&app, endpoint_and_query).await, 404);
+    }
+    assert_eq!(
+        package_constraints(&app).await,
+        initial_package_constraints()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_cpu_control_partial_failure() {
+    // CPU 1 fails with EACCES (a BIOS-locked limit), CPU 2 with EIO.
+    let app = TestApp::start_with_cpu_write_errnos(&[None, Some(13), Some(5)]).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/cpu/set_power_limit?cpu_ids=0,1&constraint=long_term&power_limit_mw=150000",
+            app.port
+        ))
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), 403);
+    let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+    let errors = body["errors"].as_object().unwrap();
+    assert_eq!(errors.len(), 1);
+    assert!(errors.contains_key("1"));
+
+    // CPU 0 applied the limit despite CPU 1 failing.
+    let body: serde_json::Value = client
+        .get(format!(
+            "http://127.0.0.1:{}/cpu/get_power_limit?cpu_ids=0",
+            app.port
+        ))
+        .send()
+        .await
+        .expect("Failed to send request")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+    assert_eq!(
+        body["0"]["cpu"]["constraints"][0]["power_limit_mw"],
+        150_000
+    );
+
+    // The worst status across CPUs wins.
+    let status = post_cpu_control(&app, "reset_power_limit?cpu_ids=0,1,2").await;
+    assert_eq!(status, 500);
+}
+
+#[tokio::test]
+async fn test_get_power_limit_constraints() {
+    let app = TestApp::start().await;
+    let client = reqwest::Client::new();
+    let expected = serde_json::json!({
+        "0": {
+            "rapl": {
+                "thermal_spec_power_mw": 205000,
+                "min_power_mw": 113000,
+                "max_power_mw": 780000,
+                "max_time_window_us": 31981568,
+                "power_limit_register_max_mw": 4095875,
+            },
+            "hsmp": null,
+        },
+    });
+
+    for query in ["", "?cpu_ids=0"] {
+        let resp = client
+            .get(format!(
+                "http://127.0.0.1:{}/cpu/get_power_limit_constraints{query}",
+                app.port
+            ))
+            .send()
+            .await
+            .expect("Failed to send request");
+        assert_eq!(resp.status(), 200);
+        let body: serde_json::Value = resp.json().await.expect("Failed to parse JSON");
+        assert_eq!(body, expected);
+    }
+
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/cpu/get_power_limit_constraints?cpu_ids=1",
+            app.port
+        ))
         .send()
         .await
         .expect("Failed to send request");

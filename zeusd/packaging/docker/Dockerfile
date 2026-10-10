@@ -5,7 +5,7 @@
 #
 # NVML is injected at runtime by the NVIDIA Container Toolkit, and the AMD SMI
 # library is bundled on amd64 (no ROCm packages exist for arm64).
-# See https://ml.energy/zeus/zeusd/ for run recipes.
+# See https://ml.energy/zeus/zeusd/deployment/ for run recipes.
 
 ARG TARGETARCH
 
@@ -39,7 +39,10 @@ FROM amdlib-${TARGETARCH} AS amdlib
 FROM ubuntu:24.04
 COPY --from=amdlib /amdsmi/ /usr/local/lib/amdsmi/
 COPY --from=builder /zeusd/target/release/zeusd /usr/local/bin/zeusd
-RUN mkdir -p /run/zeusd
+# /var/zeusd holds the original CPU power limits that reset restores. Mount a
+# host directory there so that a replacement container in the same boot reuses
+# them instead of recording its own.
+RUN mkdir -p /run/zeusd /var/zeusd
 ENV AMDSMI_LIB_DIR=/usr/local/lib/amdsmi
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=utility

@@ -8,6 +8,9 @@ import pytest
 from zeus.device.exception import ZeusdError
 from zeus.utils.zeusd import (
     CpuDramPowerLimits,
+    CpuPowerLimitConstraints,
+    HsmpPowerInfo,
+    RaplPowerInfo,
     CpuInfo,
     PowerLimitConstraint,
     ZonePowerLimits,
@@ -230,6 +233,27 @@ def mock_zeusd(monkeypatch):
 
             # GPU control endpoints all return 200.
             if path.startswith("/gpu/"):
+                return httpx.Response(200, text="OK")
+
+            if path == "/cpu/get_power_limit_constraints":
+                rapl = {
+                    "thermal_spec_power_mw": 205000,
+                    "min_power_mw": 113000,
+                    "max_power_mw": 780000,
+                    "max_time_window_us": 31981568,
+                    "power_limit_register_max_mw": 4095875,
+                }
+                return httpx.Response(
+                    200,
+                    json={
+                        str(i): {"rapl": rapl, "hsmp": None}
+                        if j == 0
+                        else {"rapl": None, "hsmp": {"max_power_mw": 200000}}
+                        for j, i in enumerate(cpu_ids)
+                    },
+                )
+
+            if path in ("/cpu/set_power_limit", "/cpu/set_power_limit_time_window", "/cpu/reset_power_limit"):
                 return httpx.Response(200, text="OK")
 
             return httpx.Response(404, text=f"Not found: {path}")
@@ -776,6 +800,61 @@ class TestZeusdClientCpuRead:
             client.get_cpu_power_limit()
 
 
+class TestZeusdClientCpuPowerLimitConstraints:
+    def test_get_all(self, mock_zeusd):
+        server = mock_zeusd(cpu_ids=(0, 1), dram_available=(True, False))
+        client = ZeusdClient(server.config)
+        assert client.get_cpu_power_limit_constraints() == {
+            0: CpuPowerLimitConstraints(
+                rapl=RaplPowerInfo(
+                    thermal_spec_power_mw=205000,
+                    min_power_mw=113000,
+                    max_power_mw=780000,
+                    max_time_window_us=31981568,
+                    power_limit_register_max_mw=4095875,
+                ),
+                hsmp=None,
+            ),
+            1: CpuPowerLimitConstraints(rapl=None, hsmp=HsmpPowerInfo(max_power_mw=200000)),
+        }
+        assert "cpu_ids" not in server.last_params()
+
+    def test_get_filtered(self, mock_zeusd):
+        server = mock_zeusd()
+        client = ZeusdClient(server.config)
+        client.get_cpu_power_limit_constraints([0])
+        assert server.last_params()["cpu_ids"] == "0"
+
+
+class TestZeusdClientCpuControl:
+    def test_set_cpu_power_limit(self, mock_zeusd):
+        server = mock_zeusd()
+        client = ZeusdClient(server.config)
+        client.set_cpu_power_limit([0, 1], "long_term", 150000)
+        request = server.last_request()
+        assert request.method == "POST"
+        assert request.url.path == "/cpu/set_power_limit"
+        assert server.last_params() == {"cpu_ids": "0,1", "constraint": "long_term", "power_limit_mw": "150000"}
+
+    def test_set_cpu_power_limit_time_window(self, mock_zeusd):
+        server = mock_zeusd()
+        client = ZeusdClient(server.config)
+        client.set_cpu_power_limit_time_window([1], "short_term", 2440)
+        request = server.last_request()
+        assert request.method == "POST"
+        assert request.url.path == "/cpu/set_power_limit_time_window"
+        assert server.last_params() == {"cpu_ids": "1", "constraint": "short_term", "time_window_us": "2440"}
+
+    def test_reset_cpu_power_limit(self, mock_zeusd):
+        server = mock_zeusd()
+        client = ZeusdClient(server.config)
+        client.reset_cpu_power_limit([0, 1])
+        request = server.last_request()
+        assert request.method == "POST"
+        assert request.url.path == "/cpu/reset_power_limit"
+        assert server.last_params() == {"cpu_ids": "0,1"}
+
+
 # ---------------------------------------------------------------------------
 # ZeusdClient server utilities
 # ---------------------------------------------------------------------------
@@ -843,6 +922,23 @@ class TestRequireCapabilities:
         client = ZeusdClient(server.config)
         with pytest.raises(ZeusdCapabilityError, match="lacks required scope"):
             require_capabilities(client, read_gpu=True)
+
+    def test_control_cpu(self, mock_zeusd):
+        server = mock_zeusd(enabled_api_groups=("cpu-read", "cpu-control"))
+        require_capabilities(ZeusdClient(server.config), read_cpu=True, control_cpu=True)
+
+        server = mock_zeusd(enabled_api_groups=("cpu-read",))
+        with pytest.raises(ZeusdCapabilityError, match="'cpu-control' is not enabled"):
+            require_capabilities(ZeusdClient(server.config), control_cpu=True)
+
+        server = mock_zeusd(
+            enabled_api_groups=("cpu-read", "cpu-control"),
+            auth_required=True,
+            token="valid",
+            whoami_scopes=("cpu-read",),
+        )
+        with pytest.raises(ZeusdCapabilityError, match="lacks required scope"):
+            require_capabilities(ZeusdClient(server.config), control_cpu=True)
 
     def test_gpu_ids_missing(self, mock_zeusd):
         server = mock_zeusd(gpu_ids=(0, 1))

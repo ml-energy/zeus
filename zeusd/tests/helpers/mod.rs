@@ -17,7 +17,8 @@ use zeusd::auth::SigningKeyData;
 use zeusd::config::ApiGroup;
 use zeusd::devices::cpu::power::start_cpu_poller;
 use zeusd::devices::cpu::{
-    CpuManagementTasks, CpuManager, PackageInfo, RaplConstraint, RaplPowerLimits, RaplZoneLimits,
+    CpuDramPowerLimits, CpuManagementTasks, CpuManager, CpuPowerLimitConstraints, PackageInfo,
+    PowerLimitConstraint, RaplPowerInfo, ZonePowerLimits,
 };
 use zeusd::devices::gpu::power::start_gpu_poller;
 use zeusd::devices::gpu::{GpuManagementTasks, GpuManager};
@@ -164,10 +165,19 @@ impl GpuManager for TestGpu {
 }
 
 pub struct TestCpu {
+    index: usize,
     pub cpu: UnboundedReceiver<u64>,
     pub dram: UnboundedReceiver<u64>,
     next_cpu_energy_uj: u64,
     next_dram_energy_uj: u64,
+    /// Current power limits, changed by the control methods.
+    limits: CpuDramPowerLimits,
+    /// If set, control writes fail with this errno.
+    pub write_errno: Option<i32>,
+    /// If set, CPU energy reads fail as if the counter were not readable.
+    pub cpu_energy_denied: bool,
+    /// If set, DRAM energy reads fail as if the counter were not readable.
+    pub dram_energy_denied: bool,
 }
 
 pub struct TestCpuInjector {
@@ -176,15 +186,20 @@ pub struct TestCpuInjector {
 }
 
 impl TestCpu {
-    fn init(_index: usize) -> Result<(Self, TestCpuInjector), ZeusdError> {
+    fn init(index: usize) -> Result<(Self, TestCpuInjector), ZeusdError> {
         let (cpu_sender, cpu_receiver) = tokio::sync::mpsc::unbounded_channel();
         let (dram_sender, dram_receiver) = tokio::sync::mpsc::unbounded_channel();
         Ok((
             TestCpu {
+                index,
                 cpu: cpu_receiver,
                 dram: dram_receiver,
                 next_cpu_energy_uj: 0,
                 next_dram_energy_uj: 0,
+                limits: test_power_limits(),
+                write_errno: None,
+                cpu_energy_denied: false,
+                dram_energy_denied: false,
             },
             TestCpuInjector {
                 cpu: cpu_sender,
@@ -227,6 +242,9 @@ impl CpuManager for TestCpu {
     }
 
     fn get_cpu_energy(&mut self) -> Result<u64, ZeusdError> {
+        if self.cpu_energy_denied {
+            return Err(self.energy_denied("intel-rapl:0/energy_uj"));
+        }
         match self.cpu.try_recv() {
             Ok(value) => Ok(value),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
@@ -241,6 +259,9 @@ impl CpuManager for TestCpu {
     }
 
     fn get_dram_energy(&mut self) -> Result<u64, ZeusdError> {
+        if self.dram_energy_denied {
+            return Err(self.energy_denied("intel-rapl:0/intel-rapl:0:0/energy_uj"));
+        }
         match self.dram.try_recv() {
             Ok(value) => Ok(value),
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
@@ -258,30 +279,103 @@ impl CpuManager for TestCpu {
         true
     }
 
-    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError> {
-        Ok(test_power_limits())
+    fn get_power_limits(&self) -> Result<CpuDramPowerLimits, ZeusdError> {
+        Ok(self.limits.clone())
+    }
+
+    fn get_power_limit_constraints(&self) -> Result<CpuPowerLimitConstraints, ZeusdError> {
+        Ok(test_power_limit_constraints())
+    }
+
+    fn set_power_limit(&mut self, constraint: &str, power_limit_mw: u64) -> Result<(), ZeusdError> {
+        self.check_write_errno()?;
+        self.package_constraint(constraint)?.power_limit_mw = power_limit_mw;
+        Ok(())
+    }
+
+    fn set_power_limit_time_window(
+        &mut self,
+        constraint: &str,
+        time_window_us: u64,
+    ) -> Result<(), ZeusdError> {
+        self.check_write_errno()?;
+        self.package_constraint(constraint)?.time_window_us = Some(time_window_us);
+        Ok(())
+    }
+
+    fn reset_power_limits(&mut self) -> Result<(), ZeusdError> {
+        self.check_write_errno()?;
+        self.limits.cpu = test_power_limits().cpu;
+        Ok(())
     }
 }
 
-/// Power limits that `TestCpu` reports for every CPU.
-fn test_power_limits() -> RaplPowerLimits {
-    RaplPowerLimits {
-        cpu: RaplZoneLimits {
+impl TestCpu {
+    fn energy_denied(&self, zone_file: &str) -> ZeusdError {
+        ZeusdError::CpuEnergyReadError {
+            cpu: self.index,
+            path: PathBuf::from("/sys/class/powercap/intel-rapl").join(zone_file),
+            source: std::io::ErrorKind::PermissionDenied.into(),
+        }
+    }
+
+    fn check_write_errno(&self) -> Result<(), ZeusdError> {
+        match self.write_errno {
+            Some(errno) => Err(ZeusdError::cpu_control(
+                "write a test power limit".to_string(),
+                std::io::Error::from_raw_os_error(errno),
+            )),
+            None => Ok(()),
+        }
+    }
+
+    fn package_constraint(
+        &mut self,
+        constraint: &str,
+    ) -> Result<&mut PowerLimitConstraint, ZeusdError> {
+        self.limits
+            .cpu
+            .constraints
+            .iter_mut()
+            .find(|c| c.name == constraint)
+            .ok_or_else(|| ZeusdError::InvalidRequest(format!("No constraint '{constraint}'")))
+    }
+}
+
+/// Power limit ranges that `TestCpu` reports for every CPU.
+pub fn test_power_limit_constraints() -> CpuPowerLimitConstraints {
+    CpuPowerLimitConstraints {
+        rapl: Some(RaplPowerInfo {
+            thermal_spec_power_mw: 205_000,
+            min_power_mw: 113_000,
+            max_power_mw: 780_000,
+            max_time_window_us: 31_981_568,
+            power_limit_register_max_mw: 4_095_875,
+        }),
+        hsmp: None,
+    }
+}
+
+/// Power limits that `TestCpu` reports for every CPU before any control
+/// command, which are also the original settings that reset restores.
+pub fn test_power_limits() -> CpuDramPowerLimits {
+    CpuDramPowerLimits {
+        cpu: ZonePowerLimits {
             enabled: true,
             constraints: vec![
-                RaplConstraint {
+                PowerLimitConstraint {
                     name: "long_term".to_string(),
                     power_limit_mw: 205_000,
                     max_power_mw: Some(205_000),
                     time_window_us: Some(999_424),
                 },
-                RaplConstraint {
+                PowerLimitConstraint {
                     name: "short_term".to_string(),
                     power_limit_mw: 246_000,
                     max_power_mw: Some(780_000),
                     time_window_us: Some(999_424),
                 },
-                RaplConstraint {
+                PowerLimitConstraint {
                     name: "peak_power".to_string(),
                     power_limit_mw: 300_000,
                     max_power_mw: Some(1_560_000),
@@ -289,9 +383,9 @@ fn test_power_limits() -> RaplPowerLimits {
                 },
             ],
         },
-        dram: Some(RaplZoneLimits {
+        dram: Some(ZonePowerLimits {
             enabled: false,
-            constraints: vec![RaplConstraint {
+            constraints: vec![PowerLimitConstraint {
                 name: "long_term".to_string(),
                 power_limit_mw: 0,
                 max_power_mw: Some(121_000),
@@ -376,8 +470,32 @@ impl CpuManager for PowerTestCpu {
         true
     }
 
-    fn get_power_limits(&self) -> Result<RaplPowerLimits, ZeusdError> {
+    fn get_power_limits(&self) -> Result<CpuDramPowerLimits, ZeusdError> {
         unimplemented!("The power poller does not read power limits")
+    }
+
+    fn get_power_limit_constraints(&self) -> Result<CpuPowerLimitConstraints, ZeusdError> {
+        unimplemented!("The power poller does not read power limits")
+    }
+
+    fn set_power_limit(
+        &mut self,
+        _constraint: &str,
+        _power_limit_mw: u64,
+    ) -> Result<(), ZeusdError> {
+        unimplemented!("The power poller does not control power limits")
+    }
+
+    fn set_power_limit_time_window(
+        &mut self,
+        _constraint: &str,
+        _time_window_us: u64,
+    ) -> Result<(), ZeusdError> {
+        unimplemented!("The power poller does not control power limits")
+    }
+
+    fn reset_power_limits(&mut self) -> Result<(), ZeusdError> {
+        unimplemented!("The power poller does not control power limits")
     }
 }
 
@@ -457,6 +575,24 @@ impl_zeusd_request_gpu!(ResetLockedClocks);
 
 impl_zeusd_request_cpu!(GetCumulativeEnergy);
 
+macro_rules! impl_zeusd_request_cpu_control {
+    ($api:ident) => {
+        paste! {
+            impl ZeusdRequest for zeusd::routes::cpu::[<$api:camel>] {
+                fn build_url(app: &TestApp) -> String {
+                    format!(
+                        "http://127.0.0.1:{}/cpu/{}",
+                        app.port, stringify!([<$api:snake>]),
+                    )
+                }
+            }
+        }
+    };
+}
+impl_zeusd_request_cpu_control!(SetPowerLimit);
+impl_zeusd_request_cpu_control!(SetPowerLimitTimeWindow);
+impl_zeusd_request_cpu_control!(ResetPowerLimit);
+
 /// A test application that starts a server over TCP and provides helper methods
 /// for sending requests and fetching what happened to the fake GPUs.
 pub struct TestApp {
@@ -468,7 +604,13 @@ pub struct TestApp {
 impl TestApp {
     /// Start a test server with all API groups enabled.
     pub async fn start() -> Self {
-        Self::start_with_groups(&[ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead]).await
+        Self::start_with_groups(&[
+            ApiGroup::GpuControl,
+            ApiGroup::GpuRead,
+            ApiGroup::CpuRead,
+            ApiGroup::CpuControl,
+        ])
+        .await
     }
 
     /// Start a test server with the specified API groups enabled.
@@ -479,7 +621,9 @@ impl TestApp {
         let needs_gpu =
             groups.contains(&ApiGroup::GpuControl) || groups.contains(&ApiGroup::GpuRead);
         let needs_gpu_poller = groups.contains(&ApiGroup::GpuRead);
-        let needs_cpu = groups.contains(&ApiGroup::CpuRead);
+        let needs_cpu =
+            groups.contains(&ApiGroup::CpuRead) || groups.contains(&ApiGroup::CpuControl);
+        let needs_cpu_poller = groups.contains(&ApiGroup::CpuRead);
 
         // Conditionally start GPU tasks.
         let (gpu_test_tasks, test_gpu_observers, gpu_count) = if needs_gpu {
@@ -512,7 +656,7 @@ impl TestApp {
         };
 
         // Conditionally start CPU power poller.
-        let cpu_power_broadcast = if needs_cpu {
+        let cpu_power_broadcast = if needs_cpu_poller {
             let cpu_power_cpus: Vec<(usize, PowerTestCpu)> = (0..NUM_CPUS)
                 .map(|i| {
                     (
@@ -553,7 +697,7 @@ impl TestApp {
             cpu_device_tasks: cpu_test_tasks,
             gpu_power_broadcast,
             cpu_power_broadcast,
-            cpu_power_sampling_period: if needs_cpu {
+            cpu_power_sampling_period: if needs_cpu_poller {
                 Some(CpuPowerSamplingPeriod::from_poll_hz(POWER_TEST_POLL_HZ))
             } else {
                 None
@@ -575,12 +719,89 @@ impl TestApp {
         }
     }
 
+    /// Start a test server with only the CPU API groups enabled and one
+    /// `TestCpu` per entry of `write_errnos`, whose control writes fail with
+    /// that errno if it is set.
+    pub async fn start_with_cpu_write_errnos(write_errnos: &[Option<i32>]) -> Self {
+        Self::start_with_test_cpus(write_errnos.len(), |index, cpu| {
+            cpu.write_errno = write_errnos[index];
+        })
+        .await
+    }
+
+    /// Start a test server with only the CPU API groups enabled and
+    /// `num_cpus` `TestCpu`s, each changed by `configure` with its index.
+    pub async fn start_with_test_cpus(
+        num_cpus: usize,
+        configure: impl Fn(usize, &mut TestCpu),
+    ) -> Self {
+        Lazy::force(&TRACING);
+
+        let groups = [ApiGroup::CpuRead, ApiGroup::CpuControl];
+        let mut cpus = Vec::with_capacity(num_cpus);
+        let mut injectors = Vec::with_capacity(num_cpus);
+        for index in 0..num_cpus {
+            let (mut cpu, injector) = TestCpu::init(index).expect("Failed to create test CPU");
+            configure(index, &mut cpu);
+            cpus.push(cpu);
+            injectors.push(injector);
+        }
+        let tasks = CpuManagementTasks::start(cpus).expect("Failed to start cpu test tasks");
+        let power_cpus: Vec<(usize, PowerTestCpu)> = (0..num_cpus)
+            .map(|index| {
+                (
+                    index,
+                    PowerTestCpu::new(POWER_TEST_CPU_INCREMENT_UJ, POWER_TEST_DRAM_INCREMENT_UJ),
+                )
+            })
+            .collect();
+
+        let state = ServerState {
+            gpu_device_tasks: None,
+            cpu_device_tasks: Some(tasks),
+            gpu_power_broadcast: None,
+            cpu_power_broadcast: Some(start_cpu_poller(power_cpus, POWER_TEST_POLL_HZ)),
+            cpu_power_sampling_period: Some(CpuPowerSamplingPeriod::from_poll_hz(
+                POWER_TEST_POLL_HZ,
+            )),
+            discovery_info: DiscoveryInfo {
+                gpus: vec![],
+                cpus: (0..num_cpus)
+                    .map(|id| CpuDiscoveryInfo {
+                        id,
+                        dram_available: true,
+                    })
+                    .collect(),
+                enabled_api_groups: groups.iter().map(|g| g.to_string()).collect(),
+                auth_required: false,
+            },
+            enabled_groups: EnabledGroups(groups.iter().cloned().collect::<HashSet<_>>()),
+            signing_key: None,
+        };
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind TCP listener");
+        let port = listener.local_addr().unwrap().port();
+        let server = start_server_tcp(listener, state, 2).expect("Failed to start server");
+        drop(tokio::spawn(server));
+
+        TestApp {
+            port,
+            observers: Vec::new(),
+            cpu_injectors: injectors,
+        }
+    }
+
     /// Start a test server with auth enabled using the given signing key
     /// and all API groups enabled.
     pub async fn start_with_auth(signing_key: &[u8]) -> Self {
         Self::start_with_auth_and_groups(
             signing_key,
-            &[ApiGroup::GpuControl, ApiGroup::GpuRead, ApiGroup::CpuRead],
+            &[
+                ApiGroup::GpuControl,
+                ApiGroup::GpuRead,
+                ApiGroup::CpuRead,
+                ApiGroup::CpuControl,
+            ],
         )
         .await
     }
@@ -593,7 +814,9 @@ impl TestApp {
         let needs_gpu =
             groups.contains(&ApiGroup::GpuControl) || groups.contains(&ApiGroup::GpuRead);
         let needs_gpu_poller = groups.contains(&ApiGroup::GpuRead);
-        let needs_cpu = groups.contains(&ApiGroup::CpuRead);
+        let needs_cpu =
+            groups.contains(&ApiGroup::CpuRead) || groups.contains(&ApiGroup::CpuControl);
+        let needs_cpu_poller = groups.contains(&ApiGroup::CpuRead);
 
         let (gpu_test_tasks, test_gpu_observers, gpu_count) = if needs_gpu {
             let (tasks, observers) =
@@ -622,7 +845,7 @@ impl TestApp {
             (None, Vec::new(), 0, vec![])
         };
 
-        let cpu_power_broadcast = if needs_cpu {
+        let cpu_power_broadcast = if needs_cpu_poller {
             let cpu_power_cpus: Vec<(usize, PowerTestCpu)> = (0..NUM_CPUS)
                 .map(|i| {
                     (
@@ -667,7 +890,7 @@ impl TestApp {
             cpu_device_tasks: cpu_test_tasks,
             gpu_power_broadcast,
             cpu_power_broadcast,
-            cpu_power_sampling_period: if needs_cpu {
+            cpu_power_sampling_period: if needs_cpu_poller {
                 Some(CpuPowerSamplingPeriod::from_poll_hz(POWER_TEST_POLL_HZ))
             } else {
                 None
