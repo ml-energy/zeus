@@ -12,6 +12,7 @@ use std::net::TcpListener;
 use std::os::unix::fs::{chown, PermissionsExt};
 #[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
 use tracing::subscriber::set_global_default;

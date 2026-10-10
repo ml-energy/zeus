@@ -19,7 +19,7 @@ CPU resets restore a *baseline*, a saved set of CPU power limits and time window
 | Feature | API group | Host prerequisites | Daemon permissions |
 |---|---|---|---|
 | NVIDIA GPU monitoring and limit queries | `gpu-read` | NVIDIA driver and NVIDIA Management Library (NVML) | Access to NVIDIA device nodes; no control capability needed |
-| NVIDIA GPU power limits, clock limits, and persistence mode | `gpu-control` | Same as monitoring; operation supported by the GPU | [Root/admin access required by NVML](https://docs.nvidia.com/deploy/nvml-api/group__nvmlDeviceCommands.html); Linux containers also need `CAP_SYS_ADMIN` |
+| NVIDIA GPU power limits, clock limits, and persistence mode | `gpu-control` | Same as monitoring; operation supported by the GPU | Root/admin access required by NVML; Linux containers also need `CAP_SYS_ADMIN` |
 | AMD GPU monitoring and limit queries | `gpu-read` | `amdgpu` driver and a [compatible AMD SMI library](index.md#amd-gpu) | Access to GPU devices and readable GPU sysfs files |
 | AMD GPU power and clock limits | `gpu-control` | Same as monitoring; operation supported by the GPU | Root access required by AMD SMI, writable GPU sysfs files, and a security policy allowing those writes |
 | CPU/DRAM energy and power monitoring | `cpu-read` | Linux RAPL powercap interface | Read access to `energy_uj` and zone metadata; energy files are normally root-only |
