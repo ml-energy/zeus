@@ -144,12 +144,12 @@ async fn handle_serve(config: zeusd::config::ServeConfig) -> anyhow::Result<()> 
 
     // Conditionally initialize CPU devices.
     let (cpu_device_tasks, cpu_power_broadcast, cpus) = if config.needs_cpu() {
-        let control_baseline = config
+        let original_storage = config
             .is_enabled(ApiGroup::CpuControl)
-            .then(|| config.cpu_power_limit_baseline_storage());
+            .then(|| config.original_cpu_power_limit_storage());
         let (tasks, cpus) = start_cpu_device_tasks(
             config.is_enabled(ApiGroup::CpuRead),
-            control_baseline.as_ref(),
+            original_storage.as_ref(),
         )?;
         let broadcast = if config.is_enabled(ApiGroup::CpuRead) {
             Some(start_cpu_power_poller(config.cpu_power_poll_hz)?)

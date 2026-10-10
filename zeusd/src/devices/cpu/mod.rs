@@ -1,6 +1,6 @@
-pub mod baseline;
 pub mod hsmp;
 pub mod msr;
+pub mod original;
 mod rapl;
 pub use rapl::{RaplCpu, HSMP_SOCKET_CONSTRAINT};
 
@@ -127,8 +127,8 @@ pub trait CpuManager {
         constraint: &str,
         time_window_us: u64,
     ) -> Result<(), ZeusdError>;
-    /// Restore the power limits and time windows of the package zone
-    /// constraints to their recorded baseline.
+    /// Restore the original power limits and time windows of the package zone
+    /// constraints.
     fn reset_power_limits(&mut self) -> Result<(), ZeusdError>;
 }
 
@@ -207,7 +207,7 @@ pub enum CpuCommand {
         constraint: String,
         time_window_us: u64,
     },
-    /// Restore the package zone constraints to their recorded baseline.
+    /// Restore the original settings of the package zone constraints.
     ResetPowerLimits,
 }
 

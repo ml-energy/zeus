@@ -357,7 +357,7 @@ pub fn test_power_limit_constraints() -> CpuPowerLimitConstraints {
 }
 
 /// Power limits that `TestCpu` reports for every CPU before any control
-/// command, which are also its reset baseline.
+/// command, which are also the original settings that reset restores.
 pub fn test_power_limits() -> CpuDramPowerLimits {
     CpuDramPowerLimits {
         cpu: ZonePowerLimits {

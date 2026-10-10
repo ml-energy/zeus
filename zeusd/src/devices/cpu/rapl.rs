@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 
-use crate::devices::cpu::baseline::{ConstraintSetting, PackageBaseline};
 use crate::devices::cpu::hsmp::{HsmpError, HsmpSocket, HsmpTransport};
 use crate::devices::cpu::msr::{parse_package_zone_name, read_power_info, TimeWindows};
+use crate::devices::cpu::original::{ConstraintSetting, PackageSettings};
 use crate::devices::cpu::{
     CpuDramPowerLimits, CpuManager, CpuPowerLimitConstraints, HsmpPowerInfo, PackageInfo,
     PowerLimitConstraint, ZonePowerLimits,
@@ -51,8 +51,8 @@ pub struct RaplCpu {
     dram_wraparound_count: u64,
     /// HSMP access to this package's socket, if attached.
     hsmp: Option<HsmpSocket>,
-    /// Package zone constraint settings that `reset_power_limits` restores.
-    baseline: Option<Vec<ConstraintSetting>>,
+    /// Original package zone constraint settings that `reset_power_limits` restores.
+    original: Option<Vec<ConstraintSetting>>,
 }
 
 /// Where a package zone constraint is read and written.
@@ -96,7 +96,7 @@ impl RaplCpu {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            baseline: None,
+            original: None,
         })
     }
 
@@ -126,8 +126,8 @@ impl RaplCpu {
     }
 
     /// Read the current power limit and time window of every package zone constraint.
-    pub fn power_limit_settings(&self) -> Result<PackageBaseline, ZeusdError> {
-        Ok(PackageBaseline {
+    pub fn power_limit_settings(&self) -> Result<PackageSettings, ZeusdError> {
+        Ok(PackageSettings {
             zone: self.cpu.name.clone(),
             constraints: self
                 .package_constraints()?
@@ -141,9 +141,9 @@ impl RaplCpu {
         })
     }
 
-    /// Set the settings that `reset_power_limits` restores.
-    pub fn set_baseline(&mut self, constraints: Vec<ConstraintSetting>) {
-        self.baseline = Some(constraints);
+    /// Set the original settings that `reset_power_limits` restores.
+    pub fn set_original(&mut self, constraints: Vec<ConstraintSetting>) {
+        self.original = Some(constraints);
     }
 
     /// Read the RAPL constraints of the package zone followed by the HSMP
@@ -556,24 +556,25 @@ impl CpuManager for RaplCpu {
         self.write_time_window_us(found.target, &found.name, time_window_us, false)
     }
 
-    /// Write back each baseline setting that differs from the current one.
+    /// Restore each original setting that differs from the current one.
     ///
     /// Settings that already match are not written, so constraints the BIOS
-    /// locked, which can never differ from the baseline, do not fail the reset.
+    /// locked, which can never differ from their original settings, do not fail
+    /// the reset.
     fn reset_power_limits(&mut self) -> Result<(), ZeusdError> {
-        let baseline = self
-            .baseline
+        let original = self
+            .original
             .as_ref()
-            .ok_or_else(|| ZeusdError::CpuBaselineMissingError(self.cpu.index))?;
+            .ok_or_else(|| ZeusdError::CpuOriginalMissingError(self.cpu.index))?;
         let current = self.package_constraints()?;
         // Attempt every write so one failure does not leave the rest unrestored.
         let mut errors = Vec::new();
-        for setting in baseline {
+        for setting in original {
             let Some(found) = current.iter().find(|c| c.name == setting.name) else {
                 errors.push(ZeusdError::IOError(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!(
-                        "Constraint '{}' of CPU {} disappeared after the baseline was recorded",
+                        "Constraint '{}' of CPU {} disappeared after its original setting was recorded",
                         setting.name, self.cpu.index
                     ),
                 )));
@@ -796,7 +797,7 @@ mod tests {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            baseline: None,
+            original: None,
         };
 
         (cpu, cpu_energy_path, dram_path)
@@ -1004,7 +1005,7 @@ mod tests {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            baseline: None,
+            original: None,
         }
     }
 
@@ -1348,15 +1349,15 @@ mod tests {
     }
 
     #[test]
-    fn reset_restores_baseline() {
+    fn reset_restores_original() {
         let tmp = tempfile::tempdir().unwrap();
         let fake = FakeHsmp::new(vec![200_000], 280_000);
         let mut cpu = intel_package(tmp.path());
         cpu.attach_hsmp(fake.clone()).unwrap();
-        let baseline = cpu.power_limit_settings().unwrap();
-        assert_eq!(baseline.zone, "package-0");
+        let original = cpu.power_limit_settings().unwrap();
+        assert_eq!(original.zone, "package-0");
         assert_eq!(
-            baseline.constraints,
+            original.constraints,
             vec![
                 ConstraintSetting {
                     name: "long_term".to_string(),
@@ -1375,7 +1376,7 @@ mod tests {
                 },
             ]
         );
-        cpu.set_baseline(baseline.constraints);
+        cpu.set_original(original.constraints);
 
         cpu.set_power_limit("long_term", 100_000).unwrap();
 
@@ -1394,15 +1395,15 @@ mod tests {
     }
 
     /// A constraint locked by the BIOS cannot be written but also cannot
-    /// differ from the baseline, so reset leaves it alone.
+    /// differ from its original setting, so reset leaves it alone.
     #[cfg(unix)]
     #[test]
-    fn reset_skips_settings_that_match_the_baseline() {
+    fn reset_skips_settings_that_match_the_original() {
         use std::os::unix::fs::PermissionsExt;
 
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
-        cpu.set_baseline(cpu.power_limit_settings().unwrap().constraints);
+        cpu.set_original(cpu.power_limit_settings().unwrap().constraints);
         cpu.set_power_limit("short_term", 100_000).unwrap();
 
         for file in ["constraint_0_power_limit_uw", "constraint_0_time_window_us"] {
@@ -1416,12 +1417,12 @@ mod tests {
     }
 
     #[test]
-    fn reset_without_baseline_errors() {
+    fn reset_without_original_errors() {
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
         assert!(matches!(
             cpu.reset_power_limits(),
-            Err(ZeusdError::CpuBaselineMissingError(0))
+            Err(ZeusdError::CpuOriginalMissingError(0))
         ));
     }
 
@@ -1430,7 +1431,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
         Arc::get_mut(&mut cpu.cpu).unwrap().name = "psys".to_string();
-        cpu.set_baseline(cpu.power_limit_settings().unwrap().constraints);
+        cpu.set_original(cpu.power_limit_settings().unwrap().constraints);
         cpu.set_power_limit("long_term", 100_000).unwrap();
         cpu.set_power_limit("short_term", 100_000).unwrap();
         fs::write(tmp.path().join("constraint_0_time_window_us"), "2440").unwrap();
@@ -1462,7 +1463,7 @@ mod tests {
         }
         let tmp = tempfile::tempdir().unwrap();
         let mut cpu = intel_package(tmp.path());
-        cpu.set_baseline(cpu.power_limit_settings().unwrap().constraints);
+        cpu.set_original(cpu.power_limit_settings().unwrap().constraints);
         cpu.set_power_limit("long_term", 100_000).unwrap();
         cpu.set_power_limit("short_term", 100_000).unwrap();
 
@@ -1627,7 +1628,7 @@ mod platform_domain_tests {
             last_dram_raw_uj: None,
             dram_wraparound_count: 0,
             hsmp: None,
-            baseline: None,
+            original: None,
         };
         assert!(cpu.get_power_limits().is_ok());
         assert_eq!(

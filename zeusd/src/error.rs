@@ -26,8 +26,9 @@ use crate::devices::gpu::GpuCommandRequest;
 pub const PERMISSIONS_DOC_URL: &str =
     "https://ml.energy/zeus/zeusd/deployment/#feature-requirements-and-permissions";
 
-/// Documentation of the CPU power limit baseline that reset restores.
-pub const BASELINE_DOC_URL: &str = "https://ml.energy/zeus/zeusd/deployment/#cpu-reset-baseline";
+/// Documentation of the original CPU power limits that reset restores.
+pub const ORIGINAL_POWER_LIMITS_DOC_URL: &str =
+    "https://ml.energy/zeus/zeusd/deployment/#original-cpu-power-limits";
 
 /// How to make the RAPL powercap interface available to Zeusd.
 pub const RAPL_AVAILABILITY: &str = "Ensure the host's RAPL powercap interface is available, \
@@ -100,11 +101,11 @@ pub enum ZeusdError {
         source: HsmpError,
     },
     #[error(
-        "No power limit baseline was recorded for CPU {0}, so its power limits cannot be reset. \
-         Zeusd records the baseline at startup when the cpu-control API group is enabled. \
-         See {BASELINE_DOC_URL}"
+        "No original power limit settings were recorded for CPU {0}, so they cannot be restored. \
+         Zeusd records them at startup when the cpu-control API group is enabled. \
+         See {ORIGINAL_POWER_LIMITS_DOC_URL}"
     )]
-    CpuBaselineMissingError(usize),
+    CpuOriginalMissingError(usize),
     #[error(
         "Cannot {action} on CPU {cpu}: {source} {} See {PERMISSIONS_DOC_URL}",
         crate::devices::cpu::msr::MSR_AVAILABILITY
@@ -175,7 +176,7 @@ impl ResponseError for ZeusdError {
                 HsmpError::Request(source) if *write => cpu_control_status(source),
                 HsmpError::Request(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
-            ZeusdError::CpuBaselineMissingError(_) => StatusCode::SERVICE_UNAVAILABLE,
+            ZeusdError::CpuOriginalMissingError(_) => StatusCode::SERVICE_UNAVAILABLE,
             ZeusdError::CpuMsrError { source, .. } => {
                 use crate::devices::cpu::msr::MsrError;
                 match source {
@@ -541,10 +542,10 @@ mod tests {
     }
 
     #[test]
-    fn missing_baseline_is_unavailable() {
-        let error = ZeusdError::CpuBaselineMissingError(0);
+    fn missing_original_is_unavailable() {
+        let error = ZeusdError::CpuOriginalMissingError(0);
         assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
-        assert!(error.to_string().contains(BASELINE_DOC_URL));
+        assert!(error.to_string().contains(ORIGINAL_POWER_LIMITS_DOC_URL));
     }
 
     #[cfg(feature = "nvml")]

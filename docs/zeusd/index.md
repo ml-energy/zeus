@@ -118,7 +118,7 @@ To pin a specific installation, set `ROCM_PATH` (a ROCm installation root, e.g.,
 - **`Permission denied` on the UDS socket.** Clients need write access. The default `--socket-permissions 666` grants everyone; use `--socket-uid`/`--socket-gid` to scope tighter.
 - **No CPU power limits on AMD.** AMD CPUs expose no RAPL power limits. On AMD EPYC CPUs, `sudo modprobe amd_hsmp` creates `/dev/hsmp`, which exposes the socket power limit; restart `zeusd` afterwards. If the module's kernel log says HSMP is disabled, enable it in the BIOS.
 - **Intel hardware-range queries or time-window changes fail.** Check [feature requirements](deployment.md#feature-requirements-and-permissions) and the daemon's startup and request logs; energy monitoring, current-limit queries, and power-limit changes do not require MSR access.
-- **CPU reset baseline unavailable or mismatched.** Check the [baseline requirements](deployment.md#cpu-reset-baseline) and the error in the daemon logs before changing stored baselines.
+- **Original CPU power limits unavailable or mismatched.** Check the [storage requirements](deployment.md#original-cpu-power-limits) and the error in the daemon logs before changing the stored original snapshot.
 - **AMD GPUs not detected.** GPU backends are probed once at startup, so `zeusd` must start after the `amdgpu` driver is loaded (order the systemd unit accordingly, or restart the daemon).
 - **AMD SMI startup fails with `AMDSMI_STATUS_UNEXPECTED_DATA` (error 43).** The AMD SMI library is older than the GPU it is reading (e.g., ROCm 6.4 userspace on an MI300X). Point `ROCM_PATH` or `AMDSMI_LIB_DIR` at a ROCm release that supports the GPU.
 - **Logs.** `journalctl -u zeusd -f` under systemd; stderr otherwise.

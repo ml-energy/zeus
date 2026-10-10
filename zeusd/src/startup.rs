@@ -23,11 +23,11 @@ use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::auth::{AuthMiddleware, SigningKeyData};
 use crate::config::{ApiGroup, GpuBackend};
-use crate::devices::cpu::baseline::BaselineStorage;
-#[cfg(target_os = "linux")]
-use crate::devices::cpu::baseline::{establish, BOOT_ID_PATH};
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::hsmp::{HsmpDevice, HsmpTransport, HSMP_DEVICE_PATH};
+use crate::devices::cpu::original::OriginalStorage;
+#[cfg(target_os = "linux")]
+use crate::devices::cpu::original::{establish, BOOT_ID_PATH};
 #[cfg(target_os = "linux")]
 use crate::devices::cpu::power::start_cpu_poller;
 use crate::devices::cpu::power::CpuPowerBroadcasts;
@@ -48,7 +48,7 @@ use crate::devices::gpu::GpuManager;
 #[cfg(feature = "nvml")]
 use crate::devices::gpu::NvmlGpu;
 #[cfg(target_os = "linux")]
-use crate::error::BASELINE_DOC_URL;
+use crate::error::ORIGINAL_POWER_LIMITS_DOC_URL;
 #[cfg(unix)]
 use crate::error::PERMISSIONS_DOC_URL;
 use crate::routes::{cpu_control_routes, cpu_read_routes, CpuPowerSamplingPeriod};
@@ -356,18 +356,18 @@ pub fn start_gpu_power_poller(
 /// Uses the AMD HSMP device if it exists, opening it for each operation, so
 /// missing HSMP access fails only HSMP operations. `read_enabled` is set when
 /// CPU monitoring is enabled, which logs whether the energy counters are
-/// readable. `control_baseline` is set when CPU control is enabled; the
-/// current power limits are then read and the baseline is established in that
-/// storage. Without CPU control, power limits are not read at startup.
+/// readable. `original_storage` is set when CPU control is enabled; the
+/// current power limits are then read, and the original settings are loaded
+/// from or recorded in that storage. Without CPU control, power limits are not read at startup.
 /// Returns the management tasks and per-CPU package discovery information.
 /// RAPL is Linux-specific; on other platforms this errors out.
 #[cfg(target_os = "linux")]
 pub fn start_cpu_device_tasks(
     read_enabled: bool,
-    control_baseline: Option<&BaselineStorage>,
+    original_storage: Option<&OriginalStorage>,
 ) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     tracing::info!("Starting RAPL and CPU management tasks.");
-    let control_enabled = control_baseline.is_some();
+    let control_enabled = original_storage.is_some();
     let hsmp: Option<Arc<dyn HsmpTransport>> = match HsmpDevice::find(Path::new(HSMP_DEVICE_PATH)) {
         Some(device) => {
             log_hsmp_access(&device, control_enabled);
@@ -414,7 +414,7 @@ pub fn start_cpu_device_tasks(
         cpus.push(cpu);
     }
 
-    if let Some(storage) = control_baseline {
+    if let Some(storage) = original_storage {
         let current = cpus
             .iter()
             .map(RaplCpu::power_limit_settings)
@@ -422,9 +422,10 @@ pub fn start_cpu_device_tasks(
             .map_err(|error| {
                 anyhow::anyhow!(
                     "The cpu-control API group reads the current CPU power limits at startup to \
-                     record the baseline that reset restores, but reading them failed: {error} \
+                     record the original settings that reset restores, but reading them failed: \
+                     {error} \
                      To start without CPU power control, remove cpu-control from --enable. \
-                     See {BASELINE_DOC_URL}"
+                     See {ORIGINAL_POWER_LIMITS_DOC_URL}"
                 )
             })?;
         if current.iter().all(|package| package.constraints.is_empty()) {
@@ -435,9 +436,9 @@ pub fn start_cpu_device_tasks(
                 HSMP_DEVICE_PATH,
             );
         }
-        let baseline = establish(storage, Path::new(BOOT_ID_PATH), current)?;
-        for (cpu, package) in cpus.iter_mut().zip(baseline) {
-            cpu.set_baseline(package.constraints);
+        let original = establish(storage, Path::new(BOOT_ID_PATH), current)?;
+        for (cpu, package) in cpus.iter_mut().zip(original) {
+            cpu.set_original(package.constraints);
         }
     }
 
@@ -469,7 +470,7 @@ fn log_hsmp_access(device: &HsmpDevice, control_enabled: bool) {
 #[cfg(not(target_os = "linux"))]
 pub fn start_cpu_device_tasks(
     _read_enabled: bool,
-    _control_baseline: Option<&BaselineStorage>,
+    _original_storage: Option<&OriginalStorage>,
 ) -> anyhow::Result<(CpuManagementTasks, Vec<CpuDiscoveryInfo>)> {
     anyhow::bail!(
         "CPU RAPL monitoring is only available on Linux. \

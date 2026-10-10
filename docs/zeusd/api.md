@@ -205,11 +205,11 @@ Reading the register requires [MSR read access](deployment.md#feature-requiremen
 `hsmp` is `null` when the package zone has no `socket` constraint, and its `max_power_mw` is the largest socket limit the firmware applies.
 The hardware does not enforce the documented ranges: it can accept limits outside them, and whether it holds a limit depends on the load.
 
-`reset_power_limit` explicitly restores the power limit and time window of every package zone constraint to the daemon's saved baseline.
-Starting or stopping the daemon does not reset settings.
-Neither RAPL nor HSMP supplies default limits, so the baseline records current settings at the first start with CPU control in each host boot.
-Persistent storage under `/var/zeusd` preserves that baseline across daemon restarts; `--no-persistent-cpu-power-limit-baseline` instead records a new baseline for each process.
-See [CPU reset baseline](deployment.md#cpu-reset-baseline) for storage and deployment requirements.
+`reset_power_limit` explicitly restores the original power limit and time window of every package zone constraint.
+Starting or stopping the daemon does not restore settings.
+Neither RAPL nor HSMP supplies default limits, so the original settings are the ones at the first daemon start with CPU control in each host boot.
+Persistent storage under `/var/zeusd` keeps them across daemon restarts; `--no-persistent-original-cpu-power-limit` instead records them at every daemon start.
+See [Original CPU power limits](deployment.md#original-cpu-power-limits) for storage and deployment requirements.
 Values that already match are not written, and a failed write does not stop the remaining ones.
 Changed Intel time windows require MSR write access and are restored exactly, including fractional encodings.
 Without that access, reset still attempts power-limit restoration and reports errors for changed windows.

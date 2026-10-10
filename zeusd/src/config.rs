@@ -6,7 +6,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
-use crate::devices::cpu::baseline::BaselineStorage;
+use crate::devices::cpu::original::OriginalStorage;
 
 /// API groups that can be independently enabled or disabled.
 ///
@@ -204,23 +204,23 @@ pub struct ServeConfig {
     #[clap(long)]
     pub signing_key_path: Option<String>,
 
-    /// [cpu-control] Path from which Zeusd names the file of CPU power limit
-    /// settings that `POST /cpu/reset_power_limit` restores. The host boot ID
-    /// is inserted before the extension, e.g.,
-    /// `cpu_power_limit_baseline.<boot ID>.json`. The first Zeusd start in a
-    /// boot records the current settings there and later starts in the same
-    /// boot load them, so the directory should persist across Zeusd restarts
-    /// and container replacements.
-    #[clap(long, default_value = "/var/zeusd/cpu_power_limit_baseline.json")]
-    pub cpu_power_limit_baseline_path: String,
+    /// [cpu-control] Path from which Zeusd names the file of the original CPU
+    /// power limit settings that `POST /cpu/reset_power_limit` restores. The
+    /// host boot ID is inserted before the extension, e.g.,
+    /// `original_cpu_power_limit.<boot ID>.json`. The first Zeusd start in a
+    /// boot records the settings it finds in that file as the original
+    /// settings, and later starts in the same boot load them, so the directory
+    /// should persist across Zeusd restarts and container replacements.
+    #[clap(long, default_value = "/var/zeusd/original_cpu_power_limit.json")]
+    pub original_cpu_power_limit_path: String,
 
-    /// [cpu-control] Record the CPU power limit settings that
-    /// `POST /cpu/reset_power_limit` restores in memory at every Zeusd start
-    /// instead of in a file. No writable storage is needed, but a restarted
-    /// Zeusd records the settings it finds then, including limits set before
-    /// the restart.
-    #[clap(long, conflicts_with = "cpu_power_limit_baseline_path")]
-    pub no_persistent_cpu_power_limit_baseline: bool,
+    /// [cpu-control] Keep the original CPU power limit settings that
+    /// `POST /cpu/reset_power_limit` restores in memory instead of in a file,
+    /// recording them at every Zeusd start. No writable storage is needed, but
+    /// a restarted Zeusd records the settings it finds then as the original
+    /// settings, including limits set before the restart.
+    #[clap(long, conflicts_with = "original_cpu_power_limit_path")]
+    pub no_persistent_original_cpu_power_limit: bool,
 }
 
 impl ServeConfig {
@@ -246,12 +246,12 @@ impl ServeConfig {
         self.is_enabled(ApiGroup::CpuRead) || self.is_enabled(ApiGroup::CpuControl)
     }
 
-    /// Where the CPU power limit baseline is kept.
-    pub fn cpu_power_limit_baseline_storage(&self) -> BaselineStorage {
-        if self.no_persistent_cpu_power_limit_baseline {
-            BaselineStorage::InMemory
+    /// Where the original CPU power limit settings are kept.
+    pub fn original_cpu_power_limit_storage(&self) -> OriginalStorage {
+        if self.no_persistent_original_cpu_power_limit {
+            OriginalStorage::InMemory
         } else {
-            BaselineStorage::Persistent(PathBuf::from(&self.cpu_power_limit_baseline_path))
+            OriginalStorage::Persistent(PathBuf::from(&self.original_cpu_power_limit_path))
         }
     }
 }
@@ -335,34 +335,34 @@ mod tests {
     }
 
     #[test]
-    fn baseline_is_persistent_under_var_by_default() {
+    fn original_is_persistent_under_var_by_default() {
         assert_eq!(
-            serve(&[]).unwrap().cpu_power_limit_baseline_storage(),
-            BaselineStorage::Persistent(PathBuf::from("/var/zeusd/cpu_power_limit_baseline.json"))
+            serve(&[]).unwrap().original_cpu_power_limit_storage(),
+            OriginalStorage::Persistent(PathBuf::from("/var/zeusd/original_cpu_power_limit.json"))
         );
         assert_eq!(
             serve(&[
-                "--cpu-power-limit-baseline-path",
-                "/srv/zeusd/baseline.json"
+                "--original-cpu-power-limit-path",
+                "/srv/zeusd/original.json"
             ])
             .unwrap()
-            .cpu_power_limit_baseline_storage(),
-            BaselineStorage::Persistent(PathBuf::from("/srv/zeusd/baseline.json"))
+            .original_cpu_power_limit_storage(),
+            OriginalStorage::Persistent(PathBuf::from("/srv/zeusd/original.json"))
         );
     }
 
     #[test]
-    fn no_persistent_baseline_flag_keeps_the_baseline_in_memory() {
+    fn no_persistent_original_flag_keeps_the_original_in_memory() {
         assert_eq!(
-            serve(&["--no-persistent-cpu-power-limit-baseline"])
+            serve(&["--no-persistent-original-cpu-power-limit"])
                 .unwrap()
-                .cpu_power_limit_baseline_storage(),
-            BaselineStorage::InMemory
+                .original_cpu_power_limit_storage(),
+            OriginalStorage::InMemory
         );
         assert!(serve(&[
-            "--no-persistent-cpu-power-limit-baseline",
-            "--cpu-power-limit-baseline-path",
-            "/srv/zeusd/baseline.json",
+            "--no-persistent-original-cpu-power-limit",
+            "--original-cpu-power-limit-path",
+            "/srv/zeusd/original.json",
         ])
         .is_err());
     }

@@ -14,7 +14,7 @@ Unavailable operations report their missing requirements; independent features r
 CPU features use the Running Average Power Limit (RAPL) interface, Intel model-specific registers (MSRs), or AMD's Host System Management Port (HSMP).
 Each interface has separate access requirements.
 Linux exposes device attributes through *sysfs*, normally mounted at `/sys`.
-CPU resets restore a *baseline*, a saved set of CPU power limits and time windows.
+CPU resets restore the *original* CPU power limits and time windows, which `zeusd` records when it starts.
 
 | Feature | API group | Host prerequisites | Daemon permissions |
 |---|---|---|---|
@@ -29,9 +29,9 @@ CPU resets restore a *baseline*, a saved set of CPU power limits and time window
 | Intel CPU time-window changes | `cpu-control` | Supported Intel x86-64 CPU and `msr` driver | MSR device read/write access, `CAP_SYS_RAWIO`, and kernel/firmware policy permitting MSR writes |
 | AMD EPYC current and maximum socket-limit queries | `cpu-read` | Firmware support for the `amd_hsmp` driver; RAPL zones for package discovery | Read access to `/dev/hsmp` |
 | AMD EPYC socket power-limit changes | `cpu-control` | Same as socket-limit queries | Read/write access to `/dev/hsmp` |
-| CPU resets that retain the original baseline across daemon restarts | `cpu-control` | Persistent baseline storage and the host boot identifier | Read/write access to `/var/zeusd` or the configured baseline directory; restoring each setting also needs its control permissions |
+| CPU resets that keep the original settings across daemon restarts | `cpu-control` | Persistent storage of the original settings and the host boot identifier | Read/write access to `/var/zeusd` or the configured directory; restoring each setting also needs its control permissions |
 
-The baseline's [storage requirements](#cpu-reset-baseline) are independent of socket transport and device access.
+The [storage requirements](#original-cpu-power-limits) of the original settings are independent of socket transport and device access.
 GPU resets use the GPU backend's defaults and do not use this file.
 
 File access can come from ownership, group permissions, or an administrator-managed policy.
@@ -76,26 +76,26 @@ Time-window writes use MSRs so resets can restore fractional encodings precisely
     Without MSR access, energy monitoring, current-limit queries, and sysfs power-limit changes remain available.
     Hardware-range queries and time-window changes return an error explaining the required access.
 
-### CPU reset baseline
+### Original CPU power limits
 
 `zeusd` changes CPU settings only through control requests.
-Starting, stopping, or restarting the daemon does not reset CPU settings.
-Call [`POST /cpu/reset_power_limit`](api.md#cpu) or [`ZeusdClient.reset_cpu_power_limit`][zeus.utils.zeusd.ZeusdClient.reset_cpu_power_limit] to restore the baseline explicitly.
+Starting, stopping, or restarting the daemon does not restore the original CPU settings.
+Call [`POST /cpu/reset_power_limit`](api.md#cpu) or [`ZeusdClient.reset_cpu_power_limit`][zeus.utils.zeusd.ZeusdClient.reset_cpu_power_limit] to restore the original settings explicitly.
 A failed write does not stop restoration of the remaining settings, and the request reports the errors.
 
-With `cpu-control` enabled, `--cpu-power-limit-baseline-path` defaults to `/var/zeusd/cpu_power_limit_baseline.json`.
-The actual filename includes the host boot identifier from `/proc/sys/kernel/random/boot_id`: `cpu_power_limit_baseline.<boot_id>.json`.
-Within one host boot, daemon restarts reuse the saved baseline instead of recording a limit that an application has already changed.
-After a host reboot, `zeusd` records a new baseline from the current settings.
+The original settings are the CPU power limits and time windows at the first daemon start with CPU control in each host boot, not firmware defaults or settings from before that start.
+With `cpu-control` enabled, `zeusd` records them in a file, the *original snapshot*, at `--original-cpu-power-limit-path`, which defaults to `/var/zeusd/original_cpu_power_limit.json`.
+The actual filename includes the host boot identifier from `/proc/sys/kernel/random/boot_id`: `original_cpu_power_limit.<boot_id>.json`.
+Within one host boot, daemon restarts load this original snapshot instead of recording a limit that an application has already changed.
+After a host reboot, the first daemon start records new original settings.
 Files from older boots are not reused and can be removed.
-This baseline captures settings at the first daemon start with CPU control, not firmware defaults or settings from before that start.
 
-Choose a different location with `--cpu-power-limit-baseline-path PATH`.
+Choose a different location with `--original-cpu-power-limit-path PATH`.
 The directory must be writable and survive daemon or container replacement; a container's writable layer does not survive replacement.
-The filesystem must support hard links (multiple filenames for one file), which allow concurrent starts to publish a baseline without overwriting one another.
-An inaccessible directory or invalid baseline produces a startup error instead of silently selecting a different baseline.
-For a baseline kept only in memory, pass `--no-persistent-cpu-power-limit-baseline` explicitly.
-That mode records current settings on every daemon start, so it cannot restore a baseline from an earlier process.
+The filesystem must support hard links (multiple filenames for one file), which allow concurrent starts to publish the original snapshot without overwriting one another.
+An inaccessible directory or invalid original snapshot produces a startup error instead of silently recording different original settings.
+To keep the original settings only in memory, pass `--no-persistent-original-cpu-power-limit` explicitly.
+That mode records the settings at every daemon start as the original settings, so a restarted daemon cannot restore settings from before its start.
 
 ## Deployment methods
 
@@ -122,8 +122,8 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
 
     Add GPU groups as needed.
     For a restricted service account, grant only the file access and capabilities for its selected features.
-    CPU monitoring does not require writable sysfs, MSR access, HSMP access, or baseline storage.
-    CPU control without persistent storage requires `--no-persistent-cpu-power-limit-baseline`.
+    CPU monitoring does not require writable sysfs, MSR access, HSMP access, or storage for the original CPU settings.
+    CPU control without persistent storage requires `--no-persistent-original-cpu-power-limit`.
 
     For UDS, use `--socket-path /run/zeusd/zeusd.sock` instead of the TCP arguments.
     The daemon needs a writable parent directory, and clients need write permission on the socket.
@@ -143,8 +143,8 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
     sudo systemctl enable --now zeusd
     ```
 
-    Set `ZEUSD_ARGS` in `/etc/default/zeusd` to select API groups, transport, and baseline mode.
-    The unit creates `/run/zeusd` for sockets and permits persistent baseline storage under `/var/zeusd`.
+    Set `ZEUSD_ARGS` in `/etc/default/zeusd` to select API groups, transport, and where the original CPU settings are kept.
+    The unit creates `/run/zeusd` for sockets and permits persistent storage of the original CPU settings under `/var/zeusd`.
     Load optional host drivers before starting the service; `ProtectKernelModules=true` prevents the service from loading them itself.
 
     Use `sudo systemctl edit zeusd` to restrict the unit for your selected features:
@@ -154,7 +154,7 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
     | NVIDIA control | Keep `CAP_SYS_ADMIN` in `CapabilityBoundingSet` |
     | Intel MSR queries or control | Keep `CAP_SYS_RAWIO`; permit the required MSR device access |
     | RAPL or AMD GPU sysfs control | Keep `ProtectKernelTunables=false`; allow writes through any added path restrictions |
-    | Persistent CPU reset baseline | Permit writes to the configured baseline directory under `ProtectSystem=strict` |
+    | Persistent original CPU settings | Permit writes to the directory of `--original-cpu-power-limit-path` under `ProtectSystem=strict` |
     | Custom socket ownership | Keep `CAP_CHOWN` when changing ownership |
 
     A monitoring-only deployment can remove control capabilities and set `ProtectKernelTunables=true`.
@@ -205,7 +205,7 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
     | Intel time-window changes | Use the same MSR arguments with `:rw` instead of `:r` |
     | AMD EPYC socket-limit queries | `--device /dev/hsmp:/dev/hsmp:r`, plus the CPU monitoring mounts for package discovery |
     | AMD EPYC socket-limit changes | Use the same HSMP argument with `:rw` instead of `:r` |
-    | Persistent CPU reset baseline | `-v /var/zeusd:/var/zeusd` and expose the host boot identifier as described below |
+    | Persistent original CPU settings | `-v /var/zeusd:/var/zeusd` and expose the host boot identifier as described below |
     | Share a UDS socket | `-v /run/zeusd:/run/zeusd`; use `--socket-path /run/zeusd/zeusd.sock` instead of TCP arguments |
 
     Replace `CORE` with the representative core number described under [CPU driver prerequisites](#cpu-driver-prerequisites).
@@ -225,8 +225,8 @@ For Windows, run native NVML deployments from an elevated shell for GPU control 
         --mode tcp --tcp-bind-address 0.0.0.0:4938
     ```
 
-    Binding the host boot identifier ensures baseline reuse follows host reboots even when a runtime supplies a container-specific identifier.
-    Omit the storage and boot-identifier mounts only when using `--no-persistent-cpu-power-limit-baseline` or disabling `cpu-control`.
+    Binding the host boot identifier keeps the original settings until the host reboots, even when a runtime supplies a container-specific identifier.
+    Omit the storage and boot-identifier mounts only when using `--no-persistent-original-cpu-power-limit` or disabling `cpu-control`.
     TCP deployments need no `/run/zeusd` mount.
 
     AMD GPU control additionally needs writable amdgpu sysfs files.
@@ -249,5 +249,5 @@ For GPU writes, use `block=true` to receive execution errors in the HTTP respons
     Check both the HTTP error and the daemon logs for the failing path, device, or capability.
     A missing device usually indicates a driver, firmware, or container-device requirement; `Permission denied` indicates denied access, and `Read-only file system` indicates a mount restriction.
     After changing modules or device visibility, restart the daemon so it can discover the new interfaces.
-    A baseline mismatch requires the original package/constraint interfaces to be restored, or an explicit decision to record a new baseline from the current settings.
-    Do not remove a baseline while a daemon is using it.
+    If the original snapshot does not match the machine, make the package zones and constraints it records available again, or delete the file to record new original settings from the current ones.
+    Do not delete the original snapshot while a daemon is using it.

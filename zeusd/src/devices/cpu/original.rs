@@ -1,10 +1,11 @@
-//! Baseline CPU power limit settings that `reset_power_limit` restores.
+//! Original CPU power limit settings that `reset_power_limit` restores.
 //!
-//! Neither RAPL nor HSMP reports a default power limit, so zeusd records the
-//! settings it finds when it starts. With persistent storage, the baseline
-//! file name carries the kernel's boot ID. The first zeusd start in a host
-//! boot records the settings it finds, and later starts in the same boot,
-//! including replacement containers that mount the same directory, load them.
+//! Neither RAPL nor HSMP reports a default power limit, so the original
+//! settings are the ones zeusd finds when it starts. With persistent storage,
+//! the file name of the original snapshot carries the kernel's boot ID. The
+//! first zeusd start in a host boot records the settings it finds, and later
+//! starts in the same boot, including replacement containers that mount the
+//! same directory, load them.
 
 use std::ffi::OsString;
 use std::fs;
@@ -13,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::BASELINE_DOC_URL;
+use crate::error::ORIGINAL_POWER_LIMITS_DOC_URL;
 
 /// File in which the kernel reports a random ID that changes on every boot.
 pub const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
@@ -28,49 +29,50 @@ pub struct ConstraintSetting {
     pub time_window_us: Option<u64>,
 }
 
-/// Recorded constraint settings of one CPU package zone.
+/// Constraint settings of one CPU package zone.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct PackageBaseline {
+pub struct PackageSettings {
     /// Name of the package zone, such as `package-0`.
     pub zone: String,
     pub constraints: Vec<ConstraintSetting>,
 }
 
-/// On-disk format of the baseline file. `cpus` is indexed by CPU ID.
+/// On-disk format of the original snapshot file. `cpus` is indexed by CPU ID.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
-struct BaselineFile {
+struct OriginalFile {
     boot_id: String,
-    cpus: Vec<PackageBaseline>,
+    cpus: Vec<PackageSettings>,
 }
 
-/// Where the baseline is kept.
+/// Where the original settings are kept.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BaselineStorage {
-    /// A file per host boot, named by `boot_baseline_path` from this path.
+pub enum OriginalStorage {
+    /// A file per host boot, named by `original_snapshot_path` from this path.
     Persistent(PathBuf),
     /// Process memory, so every zeusd start records the settings it finds.
     InMemory,
 }
 
-/// Return the baseline of this zeusd process according to `storage`.
+/// Return the original settings of this zeusd process according to `storage`.
 ///
 /// `current` holds the settings zeusd finds now. `boot_id_path` is only read
 /// for persistent storage.
 pub fn establish(
-    storage: &BaselineStorage,
+    storage: &OriginalStorage,
     boot_id_path: &Path,
-    current: Vec<PackageBaseline>,
-) -> anyhow::Result<Vec<PackageBaseline>> {
+    current: Vec<PackageSettings>,
+) -> anyhow::Result<Vec<PackageSettings>> {
     match storage {
-        BaselineStorage::InMemory => {
+        OriginalStorage::InMemory => {
             tracing::info!(
-                "Recorded the current CPU power limit settings as the baseline in memory. \
-                 A restarted Zeusd records the settings it finds at that time instead."
+                "Recorded the current CPU power limit settings in memory as the original settings \
+                 that reset restores. A restarted Zeusd records the settings it finds at that \
+                 time instead."
             );
             Ok(current)
         }
-        BaselineStorage::Persistent(path) => {
+        OriginalStorage::Persistent(path) => {
             let boot_id = read_boot_id(boot_id_path)?;
             load_or_record(path, &boot_id, current)
         }
@@ -81,9 +83,9 @@ pub fn establish(
 pub fn read_boot_id(path: &Path) -> anyhow::Result<String> {
     let contents = fs::read_to_string(path).map_err(|e| {
         anyhow::anyhow!(
-            "Failed to read the host boot ID from {}: {e}. Persistent CPU power limit baseline \
-             storage needs it to tell host boots apart. {STORAGE_HINT} \
-             See {BASELINE_DOC_URL}",
+            "Failed to read the host boot ID from {}: {e}. Persistent storage of the original CPU \
+             power limits needs it to tell host boots apart. {STORAGE_HINT} \
+             See {ORIGINAL_POWER_LIMITS_DOC_URL}",
             path.display()
         )
     })?;
@@ -91,7 +93,7 @@ pub fn read_boot_id(path: &Path) -> anyhow::Result<String> {
     if !is_uuid(boot_id) {
         anyhow::bail!(
             "{} contains '{boot_id}', which is not a boot ID. {STORAGE_HINT} \
-             See {BASELINE_DOC_URL}",
+             See {ORIGINAL_POWER_LIMITS_DOC_URL}",
             path.display()
         );
     }
@@ -110,17 +112,17 @@ fn is_uuid(value: &str) -> bool {
         })
 }
 
-/// Path of the baseline file of the boot `boot_id`.
+/// Path of the original snapshot file of the boot `boot_id`.
 ///
 /// The boot ID goes before the extension of the configured file name, or
 /// after the file name if it has no extension. For example,
-/// `/var/zeusd/cpu_power_limit_baseline.json` becomes
-/// `/var/zeusd/cpu_power_limit_baseline.<boot_id>.json`.
-pub fn boot_baseline_path(path: &Path, boot_id: &str) -> anyhow::Result<PathBuf> {
+/// `/var/zeusd/original_cpu_power_limit.json` becomes
+/// `/var/zeusd/original_cpu_power_limit.<boot_id>.json`.
+pub fn original_snapshot_path(path: &Path, boot_id: &str) -> anyhow::Result<PathBuf> {
     let (Some(stem), Some(_)) = (path.file_stem(), path.file_name()) else {
         anyhow::bail!(
-            "The CPU power limit baseline path '{}' does not name a file. Pass a file path to \
-             --cpu-power-limit-baseline-path. See {BASELINE_DOC_URL}",
+            "The original CPU power limit path '{}' does not name a file. Pass a file path to \
+             --original-cpu-power-limit-path. See {ORIGINAL_POWER_LIMITS_DOC_URL}",
             path.display()
         );
     };
@@ -134,67 +136,69 @@ pub fn boot_baseline_path(path: &Path, boot_id: &str) -> anyhow::Result<PathBuf>
     Ok(path.with_file_name(name))
 }
 
-/// Load the baseline of the boot `boot_id`, or record `current` as that
-/// baseline if no zeusd process recorded one yet.
+/// Load the original settings of the boot `boot_id`, or record `current` as
+/// them if no zeusd process recorded them yet.
 ///
-/// Errors if the loaded baseline does not have the same package zones and
+/// Errors if the loaded settings do not have the same package zones and
 /// constraint names as `current`.
 pub fn load_or_record(
     configured_path: &Path,
     boot_id: &str,
-    current: Vec<PackageBaseline>,
-) -> anyhow::Result<Vec<PackageBaseline>> {
-    let path = boot_baseline_path(configured_path, boot_id)?;
+    current: Vec<PackageSettings>,
+) -> anyhow::Result<Vec<PackageSettings>> {
+    let path = original_snapshot_path(configured_path, boot_id)?;
     if record(&path, boot_id, &current)? {
         tracing::info!(
-            "Recorded the current CPU power limit settings as the baseline of host boot {boot_id} \
-             at {}. Later Zeusd starts in this boot load it if this directory persists across \
-             them, e.g., a host directory mounted into every Zeusd container.",
+            "Recorded the current CPU power limit settings as the original settings of host boot \
+             {boot_id} at {}. Later Zeusd starts in this boot load them if this directory \
+             persists across those starts, e.g., a host directory mounted into every Zeusd \
+             container.",
             path.display()
         );
         return Ok(current);
     }
 
     let contents = fs::read_to_string(&path)
-        .map_err(|e| storage_error("read the CPU power limit baseline", &path, e))?;
-    let file: BaselineFile = serde_json::from_str(&contents).map_err(|e| {
+        .map_err(|e| storage_error("read the original CPU power limit snapshot", &path, e))?;
+    let file: OriginalFile = serde_json::from_str(&contents).map_err(|e| {
         anyhow::anyhow!(
-            "Failed to parse the CPU power limit baseline at {}: {e}. {REPLACE_HINT} \
-             See {BASELINE_DOC_URL}",
+            "Failed to parse the original CPU power limit snapshot at {}: {e}. {REPLACE_HINT} \
+             See {ORIGINAL_POWER_LIMITS_DOC_URL}",
             path.display()
         )
     })?;
     if file.boot_id != boot_id {
         anyhow::bail!(
-            "The CPU power limit baseline at {} records host boot {}, but this is boot {boot_id}. \
-             {REPLACE_HINT} See {BASELINE_DOC_URL}",
+            "The original CPU power limit snapshot at {} records host boot {}, but this is boot {boot_id}. \
+             {REPLACE_HINT} See {ORIGINAL_POWER_LIMITS_DOC_URL}",
             path.display(),
             file.boot_id,
         );
     }
     check_matches(&file.cpus, &current).map_err(|e| {
         anyhow::anyhow!(
-            "The CPU power limit baseline at {} does not match this machine: {e}. \
-             {REPLACE_HINT} See {BASELINE_DOC_URL}",
+            "The original CPU power limit snapshot at {} does not match this machine: {e}. \
+             {REPLACE_HINT} See {ORIGINAL_POWER_LIMITS_DOC_URL}",
             path.display()
         )
     })?;
     tracing::info!(
-        "Loaded the CPU power limit baseline recorded earlier in host boot {boot_id} from {}",
+        "Loaded the original CPU power limits recorded at the first Zeusd start in host boot \
+         {boot_id} from {}",
         path.display()
     );
     Ok(file.cpus)
 }
 
-const STORAGE_HINT: &str = "To store the baseline elsewhere, pass \
-    --cpu-power-limit-baseline-path; to keep it in memory, which records the settings found at \
-    each Zeusd start, pass --no-persistent-cpu-power-limit-baseline.";
+const STORAGE_HINT: &str = "To store the original snapshot elsewhere, pass \
+    --original-cpu-power-limit-path; to keep the original settings in memory, which records the \
+    settings found at each Zeusd start, pass --no-persistent-original-cpu-power-limit.";
 
-const REPLACE_HINT: &str = "Zeusd does not overwrite the file. To record a new baseline, \
-    restore the CPU power limits to the values reset should restore and delete the file, or \
-    reboot.";
+const REPLACE_HINT: &str = "Zeusd does not overwrite the file. To record new original \
+    settings, set the CPU power limits to the values reset should restore and delete the file, \
+    or reboot.";
 
-/// An error from accessing the baseline storage, with its likely cause and fixes.
+/// An error from accessing the storage of the original snapshot, with its likely cause and fixes.
 fn storage_error(action: &str, path: &Path, error: std::io::Error) -> anyhow::Error {
     let cause = match error.kind() {
         ErrorKind::ReadOnlyFilesystem => {
@@ -209,28 +213,32 @@ fn storage_error(action: &str, path: &Path, error: std::io::Error) -> anyhow::Er
         _ => "",
     };
     anyhow::anyhow!(
-        "Failed to {action} at {}: {error}. {cause}{STORAGE_HINT} See {BASELINE_DOC_URL}",
+        "Failed to {action} at {}: {error}. {cause}{STORAGE_HINT} See {ORIGINAL_POWER_LIMITS_DOC_URL}",
         path.display()
     )
 }
 
-/// Publish the baseline at `path` unless one already exists there, and
+/// Publish the original snapshot at `path` unless one already exists there, and
 /// return whether this call published it.
-fn record(path: &Path, boot_id: &str, cpus: &[PackageBaseline]) -> anyhow::Result<bool> {
+fn record(path: &Path, boot_id: &str, cpus: &[PackageSettings]) -> anyhow::Result<bool> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent).map_err(|e| {
-                storage_error("create the CPU power limit baseline directory", parent, e)
+                storage_error(
+                    "create the directory of the original CPU power limit snapshot",
+                    parent,
+                    e,
+                )
             })?;
         }
     }
-    let contents = serde_json::to_string_pretty(&BaselineFile {
+    let contents = serde_json::to_string_pretty(&OriginalFile {
         boot_id: boot_id.to_string(),
         cpus: cpus.to_vec(),
     })
     .map_err(|e| {
         anyhow::anyhow!(
-            "Failed to serialize the CPU power limit baseline: {e}. See {BASELINE_DOC_URL}"
+            "Failed to serialize the original CPU power limit snapshot: {e}. See {ORIGINAL_POWER_LIMITS_DOC_URL}"
         )
     })?;
     // Processes in different containers can have the same PID, so the time
@@ -239,8 +247,8 @@ fn record(path: &Path, boot_id: &str, cpus: &[PackageBaseline]) -> anyhow::Resul
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| {
             anyhow::anyhow!(
-                "Failed to name a temporary CPU power limit baseline file after the current \
-                 time: {e}. Set the system clock to a time after 1970. See {BASELINE_DOC_URL}"
+                "Failed to name a temporary original CPU power limit snapshot file after the \
+                 current time: {e}. Set the system clock to a time after 1970. See {ORIGINAL_POWER_LIMITS_DOC_URL}"
             )
         })?
         .as_nanos();
@@ -262,7 +270,7 @@ const MAX_TMP_ATTEMPTS: u32 = 100;
 ///
 /// The contents go to a temporary file named after `writer_id` that is then
 /// hard-linked to `path`. Linking fails if `path` exists, so concurrent
-/// writers never replace a published baseline or expose a partially written
+/// writers never replace a published file or expose a partially written
 /// one. The temporary file is created exclusively, and a name another writer
 /// already created is skipped, so writers that share storage and `writer_id`
 /// never write to or remove each other's temporary files.
@@ -271,19 +279,19 @@ fn publish(path: &Path, contents: &[u8], writer_id: &str) -> anyhow::Result<bool
     let written = file
         .write_all(contents)
         .and_then(|()| file.sync_all())
-        .map_err(|e| storage_error("write the CPU power limit baseline", &tmp_path, e));
+        .map_err(|e| storage_error("write the original CPU power limit snapshot", &tmp_path, e));
     drop(file);
     let published = written.and_then(|()| match fs::hard_link(&tmp_path, path) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(false),
         Err(e) => Err(storage_error(
-            "publish the CPU power limit baseline with a hard link",
+            "publish the original CPU power limit snapshot with a hard link",
             path,
             e,
         )),
     });
     fs::remove_file(&tmp_path)
-        .map_err(|e| storage_error("remove the temporary baseline file", &tmp_path, e))?;
+        .map_err(|e| storage_error("remove the temporary original snapshot file", &tmp_path, e))?;
     published
 }
 
@@ -303,7 +311,7 @@ fn create_temporary(path: &Path, writer_id: &str) -> anyhow::Result<(PathBuf, fs
             Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
             Err(e) => {
                 return Err(storage_error(
-                    "create a temporary CPU power limit baseline file",
+                    "create a temporary original CPU power limit snapshot file",
                     &tmp_path,
                     e,
                 ))
@@ -311,15 +319,15 @@ fn create_temporary(path: &Path, writer_id: &str) -> anyhow::Result<(PathBuf, fs
         }
     }
     anyhow::bail!(
-        "Failed to create a temporary CPU power limit baseline file next to {}: the first \
-         {MAX_TMP_ATTEMPTS} names for this Zeusd process already exist. Remove leftover \
-         '{}.tmp.*' files that no running Zeusd is writing. See {BASELINE_DOC_URL}",
+        "Failed to create a temporary original CPU power limit snapshot file next to {}: the \
+         first {MAX_TMP_ATTEMPTS} names for this Zeusd process already exist. Remove leftover \
+         '{}.tmp.*' files that no running Zeusd is writing. See {ORIGINAL_POWER_LIMITS_DOC_URL}",
         path.display(),
         path.display(),
     )
 }
 
-fn check_matches(recorded: &[PackageBaseline], current: &[PackageBaseline]) -> anyhow::Result<()> {
+fn check_matches(recorded: &[PackageSettings], current: &[PackageSettings]) -> anyhow::Result<()> {
     if recorded.len() != current.len() {
         anyhow::bail!(
             "it has {} CPU package(s), but the machine has {}",
@@ -335,7 +343,7 @@ fn check_matches(recorded: &[PackageBaseline], current: &[PackageBaseline]) -> a
                 current.zone
             );
         }
-        let names = |package: &PackageBaseline| -> Vec<String> {
+        let names = |package: &PackageSettings| -> Vec<String> {
             package.constraints.iter().map(|c| c.name.clone()).collect()
         };
         if names(recorded) != names(current) {
@@ -356,8 +364,8 @@ mod tests {
     const BOOT_A: &str = "8f3e2c1a-5b6d-4e7f-9a0b-1c2d3e4f5a6b";
     const BOOT_B: &str = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
 
-    fn package(zone: &str, settings: &[(&str, u64, Option<u64>)]) -> PackageBaseline {
-        PackageBaseline {
+    fn package(zone: &str, settings: &[(&str, u64, Option<u64>)]) -> PackageSettings {
+        PackageSettings {
             zone: zone.to_string(),
             constraints: settings
                 .iter()
@@ -372,7 +380,7 @@ mod tests {
         }
     }
 
-    fn intel(long_term_uw: u64) -> Vec<PackageBaseline> {
+    fn intel(long_term_uw: u64) -> Vec<PackageSettings> {
         vec![package(
             "package-0",
             &[
@@ -394,22 +402,22 @@ mod tests {
     #[test]
     fn boot_id_goes_before_the_extension() {
         assert_eq!(
-            boot_baseline_path(
-                Path::new("/var/zeusd/cpu_power_limit_baseline.json"),
+            original_snapshot_path(
+                Path::new("/var/zeusd/original_cpu_power_limit.json"),
                 BOOT_A
             )
             .unwrap(),
-            PathBuf::from(format!("/var/zeusd/cpu_power_limit_baseline.{BOOT_A}.json"))
+            PathBuf::from(format!("/var/zeusd/original_cpu_power_limit.{BOOT_A}.json"))
         );
         assert_eq!(
-            boot_baseline_path(Path::new("/srv/baseline"), BOOT_A).unwrap(),
-            PathBuf::from(format!("/srv/baseline.{BOOT_A}"))
+            original_snapshot_path(Path::new("/srv/original"), BOOT_A).unwrap(),
+            PathBuf::from(format!("/srv/original.{BOOT_A}"))
         );
         assert_eq!(
-            boot_baseline_path(Path::new("baseline.v1.json"), BOOT_A).unwrap(),
-            PathBuf::from(format!("baseline.v1.{BOOT_A}.json"))
+            original_snapshot_path(Path::new("original.v1.json"), BOOT_A).unwrap(),
+            PathBuf::from(format!("original.v1.{BOOT_A}.json"))
         );
-        assert!(boot_baseline_path(Path::new("/"), BOOT_A).is_err());
+        assert!(original_snapshot_path(Path::new("/"), BOOT_A).is_err());
     }
 
     #[test]
@@ -428,16 +436,16 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(
-            message.contains("--no-persistent-cpu-power-limit-baseline"),
+            message.contains("--no-persistent-original-cpu-power-limit"),
             "{message}"
         );
-        assert!(message.contains(BASELINE_DOC_URL), "{message}");
+        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
     }
 
     #[test]
-    fn same_boot_reuses_the_recorded_baseline() {
+    fn same_boot_reuses_the_recorded_original() {
         let tmp = tempfile::tempdir().unwrap();
-        let configured = tmp.path().join("zeusd").join("baseline.json");
+        let configured = tmp.path().join("zeusd").join("original.json");
 
         assert_eq!(
             load_or_record(&configured, BOOT_A, intel(205_000_000)).unwrap(),
@@ -446,10 +454,10 @@ mod tests {
         assert!(!configured.exists());
         assert_eq!(
             file_names(configured.parent().unwrap()),
-            vec![format!("baseline.{BOOT_A}.json")]
+            vec![format!("original.{BOOT_A}.json")]
         );
 
-        // A restarted or replaced zeusd sees changed limits but keeps the recorded baseline.
+        // A restarted or replaced zeusd sees changed limits but keeps the recorded original.
         assert_eq!(
             load_or_record(&configured, BOOT_A, intel(150_000_000)).unwrap(),
             intel(205_000_000)
@@ -459,7 +467,7 @@ mod tests {
     #[test]
     fn new_boot_records_the_current_settings() {
         let tmp = tempfile::tempdir().unwrap();
-        let configured = tmp.path().join("baseline.json");
+        let configured = tmp.path().join("original.json");
         load_or_record(&configured, BOOT_A, intel(205_000_000)).unwrap();
 
         assert_eq!(
@@ -473,16 +481,16 @@ mod tests {
         assert_eq!(
             file_names(tmp.path()),
             vec![
-                format!("baseline.{BOOT_B}.json"),
-                format!("baseline.{BOOT_A}.json"),
+                format!("original.{BOOT_B}.json"),
+                format!("original.{BOOT_A}.json"),
             ]
         );
     }
 
     #[test]
-    fn mismatched_baseline_errors() {
+    fn mismatched_original_errors() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("baseline.json");
+        let path = tmp.path().join("original.json");
         let boot = vec![package("package-0", &[("socket", 200_000_000, None)])];
         load_or_record(&path, BOOT_A, boot).unwrap();
 
@@ -500,17 +508,17 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(message.contains("does not match this machine"), "{message}");
-        assert!(message.contains(BASELINE_DOC_URL), "{message}");
+        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
     }
 
     #[test]
-    fn baseline_of_another_boot_under_this_boots_name_errors() {
+    fn original_of_another_boot_under_this_boots_name_errors() {
         let tmp = tempfile::tempdir().unwrap();
-        let configured = tmp.path().join("baseline.json");
+        let configured = tmp.path().join("original.json");
         load_or_record(&configured, BOOT_A, intel(205_000_000)).unwrap();
         fs::rename(
-            boot_baseline_path(&configured, BOOT_A).unwrap(),
-            boot_baseline_path(&configured, BOOT_B).unwrap(),
+            original_snapshot_path(&configured, BOOT_A).unwrap(),
+            original_snapshot_path(&configured, BOOT_B).unwrap(),
         )
         .unwrap();
 
@@ -522,17 +530,17 @@ mod tests {
             "{message}"
         );
         assert!(
-            fs::read_to_string(boot_baseline_path(&configured, BOOT_B).unwrap())
+            fs::read_to_string(original_snapshot_path(&configured, BOOT_B).unwrap())
                 .unwrap()
                 .contains(BOOT_A)
         );
     }
 
     #[test]
-    fn corrupt_baseline_errors_and_is_kept() {
+    fn corrupt_original_errors_and_is_kept() {
         let tmp = tempfile::tempdir().unwrap();
-        let configured = tmp.path().join("baseline.json");
-        let path = boot_baseline_path(&configured, BOOT_A).unwrap();
+        let configured = tmp.path().join("original.json");
+        let path = original_snapshot_path(&configured, BOOT_A).unwrap();
         for corrupt in ["", "{", "{\"cpus\": []}", "{\"boot_id\": 1, \"cpus\": []}"] {
             fs::write(&path, corrupt).unwrap();
             let message = load_or_record(&configured, BOOT_A, vec![])
@@ -558,28 +566,28 @@ mod tests {
         fs::create_dir(&dir).unwrap();
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
 
-        let message = load_or_record(&dir.join("baseline.json"), BOOT_A, intel(205_000_000))
+        let message = load_or_record(&dir.join("original.json"), BOOT_A, intel(205_000_000))
             .unwrap_err()
             .to_string();
         assert!(message.contains("lacks permission"), "{message}");
         assert!(
-            message.contains("--cpu-power-limit-baseline-path"),
+            message.contains("--original-cpu-power-limit-path"),
             "{message}"
         );
         assert!(
-            message.contains("--no-persistent-cpu-power-limit-baseline"),
+            message.contains("--no-persistent-original-cpu-power-limit"),
             "{message}"
         );
-        assert!(message.contains(BASELINE_DOC_URL), "{message}");
+        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
     }
 
     #[test]
-    fn concurrent_starts_agree_on_one_baseline() {
+    fn concurrent_starts_agree_on_one_original() {
         let tmp = tempfile::tempdir().unwrap();
-        let configured = tmp.path().join("baseline.json");
+        let configured = tmp.path().join("original.json");
 
-        let results: Vec<Vec<PackageBaseline>> = std::thread::scope(|scope| {
+        let results: Vec<Vec<PackageSettings>> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..16u64)
                 .map(|i| {
                     let configured = &configured;
@@ -600,7 +608,7 @@ mod tests {
         );
         assert_eq!(
             file_names(tmp.path()),
-            vec![format!("baseline.{BOOT_A}.json")]
+            vec![format!("original.{BOOT_A}.json")]
         );
     }
 
@@ -609,19 +617,19 @@ mod tests {
     #[test]
     fn temporary_file_of_another_writer_with_the_same_id_is_kept() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("baseline.json");
-        let other = tmp.path().join("baseline.json.tmp.1.0");
-        fs::write(&other, "partial baseline of another container").unwrap();
+        let path = tmp.path().join("original.json");
+        let other = tmp.path().join("original.json.tmp.1.0");
+        fs::write(&other, "partial original snapshot of another container").unwrap();
 
         assert!(publish(&path, b"ours", "1").unwrap());
         assert_eq!(fs::read_to_string(&path).unwrap(), "ours");
         assert_eq!(
             fs::read_to_string(&other).unwrap(),
-            "partial baseline of another container"
+            "partial original snapshot of another container"
         );
         assert_eq!(
             file_names(tmp.path()),
-            vec!["baseline.json", "baseline.json.tmp.1.0"]
+            vec!["original.json", "original.json.tmp.1.0"]
         );
 
         assert!(!publish(&path, b"later", "1").unwrap());
@@ -629,9 +637,9 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_writers_with_the_same_id_publish_one_complete_baseline() {
+    fn concurrent_writers_with_the_same_id_publish_one_complete_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("baseline.json");
+        let path = tmp.path().join("original.json");
         let writers = 16;
         let barrier = std::sync::Barrier::new(writers);
 
@@ -657,16 +665,16 @@ mod tests {
             .collect();
         assert_eq!(winners.len(), 1, "{published:?}");
         assert_eq!(fs::read_to_string(&path).unwrap(), *winners[0]);
-        assert_eq!(file_names(tmp.path()), vec!["baseline.json"]);
+        assert_eq!(file_names(tmp.path()), vec!["original.json"]);
     }
 
     #[test]
     fn exhausted_temporary_names_error_without_touching_them() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("baseline.json");
+        let path = tmp.path().join("original.json");
         for attempt in 0..MAX_TMP_ATTEMPTS {
             fs::write(
-                tmp.path().join(format!("baseline.json.tmp.1.{attempt}")),
+                tmp.path().join(format!("original.json.tmp.1.{attempt}")),
                 "",
             )
             .unwrap();
@@ -674,7 +682,7 @@ mod tests {
 
         let message = publish(&path, b"ours", "1").unwrap_err().to_string();
         assert!(message.contains("Remove leftover"), "{message}");
-        assert!(message.contains(BASELINE_DOC_URL), "{message}");
+        assert!(message.contains(ORIGINAL_POWER_LIMITS_DOC_URL), "{message}");
         assert!(!path.exists());
         assert_eq!(file_names(tmp.path()).len(), MAX_TMP_ATTEMPTS as usize);
     }
@@ -683,7 +691,7 @@ mod tests {
     fn persistent_storage_reads_the_boot_id() {
         let tmp = tempfile::tempdir().unwrap();
         let boot_id_path = tmp.path().join("boot_id");
-        let storage = BaselineStorage::Persistent(tmp.path().join("state").join("baseline.json"));
+        let storage = OriginalStorage::Persistent(tmp.path().join("state").join("original.json"));
 
         fs::write(&boot_id_path, format!("{BOOT_A}\n")).unwrap();
         establish(&storage, &boot_id_path, intel(205_000_000)).unwrap();
@@ -708,7 +716,7 @@ mod tests {
         for long_term_uw in [205_000_000, 150_000_000] {
             assert_eq!(
                 establish(
-                    &BaselineStorage::InMemory,
+                    &OriginalStorage::InMemory,
                     &absent_boot_id,
                     intel(long_term_uw)
                 )

@@ -497,8 +497,8 @@ async fn set_power_limit_time_window_handler(
     run_cpu_control_command(&query.cpu_ids, command, device_tasks.get_ref()).await
 }
 
-/// Restore the power limits and time windows of every package zone constraint
-/// on each requested CPU to the saved baseline.
+/// Restore the original power limits and time windows, recorded at Zeusd start,
+/// of every package zone constraint on each requested CPU.
 #[actix_web::post("/reset_power_limit")]
 #[tracing::instrument(skip(query, device_tasks), fields(cpu_ids = %query.cpu_ids))]
 async fn reset_power_limit_handler(

@@ -12,9 +12,9 @@ RestartSec=5s
 
 RuntimeDirectory=zeusd
 RuntimeDirectoryMode=0755
-# /var/zeusd holds the CPU power limit baseline that reset restores. It
+# /var/zeusd holds the original CPU power limits that reset restores. It
 # persists across service restarts so that later starts in the same boot
-# reuse the baseline recorded at the first start. The `+` prefix runs mkdir
+# reuse the original limits recorded at the first start. The `+` prefix runs mkdir
 # outside the sandbox, because ReadWritePaths= requires an existing directory.
 ExecStartPre=+/bin/mkdir -p /var/zeusd
 ReadWritePaths=/var/zeusd

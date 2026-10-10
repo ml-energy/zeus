@@ -39,8 +39,9 @@ FROM amdlib-${TARGETARCH} AS amdlib
 FROM ubuntu:24.04
 COPY --from=amdlib /amdsmi/ /usr/local/lib/amdsmi/
 COPY --from=builder /zeusd/target/release/zeusd /usr/local/bin/zeusd
-# /var/zeusd holds the CPU power limit baseline. Mount a host directory there
-# so that a replacement container in the same boot reuses the baseline.
+# /var/zeusd holds the original CPU power limits that reset restores. Mount a
+# host directory there so that a replacement container in the same boot reuses
+# them instead of recording its own.
 RUN mkdir -p /run/zeusd /var/zeusd
 ENV AMDSMI_LIB_DIR=/usr/local/lib/amdsmi
 ENV NVIDIA_VISIBLE_DEVICES=all

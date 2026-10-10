@@ -274,7 +274,7 @@ fn decode_window(bits: u64, unit_us: u64) -> u64 {
 fn encode_window(window_us: u64, unit_us: u64, exact: bool) -> Result<u64, MsrError> {
     // Older powercap kernels decode with signed `1 << Y`, which overflows at
     // Y=31. New requests must remain readable through sysfs without MSR access.
-    // Exact restoration can still reproduce a baseline from a newer kernel.
+    // Exact restoration can still restore an original window a newer kernel set.
     let max_us = decode_window(if exact { 0x7f } else { 0x7e }, unit_us);
     if window_us == 0 || window_us > max_us {
         return Err(MsrError::InvalidWindow(format!(
