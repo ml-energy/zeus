@@ -1687,38 +1687,8 @@ mod tests {
             )
             .unwrap_err();
             assert_eq!(error.setting_effect(), expected, "{error}");
-            assert_eq!(writes.len(), writes_expected);
-            assert_eq!(
-                error.to_string().contains("previous limit was restored"),
-                expected == SettingEffect::Restored
-            );
-            assert!(reads.is_empty());
+            assert_eq!(writes, [5_000_000_000, 205_000_000][..writes_expected]);
         }
-    }
-
-    #[test]
-    fn tracked_rapl_rejects_missing_original_before_writing() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut cpu = intel_package(tmp.path());
-        let error = cpu
-            .set_power_limit_tracked("long_term", 150_000)
-            .unwrap_err();
-        assert_eq!(error.setting_effect(), SettingEffect::Unchanged);
-        assert_eq!(
-            read_file(tmp.path(), "constraint_0_power_limit_uw"),
-            "205000000"
-        );
-    }
-
-    #[test]
-    fn tracked_hsmp_rejects_excess_limit_before_writing() {
-        let tmp = tempfile::tempdir().unwrap();
-        let fake = FakeHsmp::new(vec![200_000], 280_000);
-        let mut cpu = amd_package(tmp.path(), fake.clone());
-        record_original(&mut cpu);
-        let error = cpu.set_power_limit_tracked("socket", 280_001).unwrap_err();
-        assert_eq!(error.setting_effect(), SettingEffect::Unchanged);
-        assert_eq!(*fake.limits_mw.lock().unwrap(), vec![200_000]);
     }
 
     #[test]

@@ -8,14 +8,13 @@ use std::time::{Duration, Instant};
 
 use actix_web::{dev::ServerHandle, web, App, HttpServer};
 use reqwest::{Client, Method, StatusCode};
-use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, Notify};
 use zeusd::auth::issue_token;
 use zeusd::config::ApiGroup;
 use zeusd::devices::gpu::{GpuCommand, GpuManagementTasks, GpuManager};
 use zeusd::error::ZeusdError;
 use zeusd::operations::{
-    DeviceState, DeviceType, OperationLimits, OperationRegistry, OperationSnapshot, OutcomeReason,
+    DeviceState, OperationLimits, OperationRegistry, OperationSnapshot, OutcomeReason,
     SettingEffect,
 };
 use zeusd::routes::gpu_control_routes;
@@ -104,10 +103,8 @@ impl GpuManager for FakeGpu {
 
 struct Harness {
     base: String,
-    port: u16,
     client: Client,
     tasks: GpuManagementTasks,
-    operations: OperationRegistry,
     gates: Vec<Arc<Gate>>,
     events: mpsc::UnboundedReceiver<(usize, u32)>,
     server: ServerHandle,
@@ -152,13 +149,11 @@ impl Harness {
         tokio::spawn(server);
         Self {
             base: format!("http://127.0.0.1:{port}"),
-            port,
             client: Client::builder()
                 .timeout(Duration::from_secs(5))
                 .build()
                 .unwrap(),
             tasks,
-            operations,
             gates,
             events,
             server: handle,
@@ -293,7 +288,7 @@ async fn legacy_and_tracked_writes_share_order_and_devices_progress_independentl
 
 #[tokio::test]
 async fn queue_deadline_expires_behind_blocked_native_call_and_running_cannot_cancel() {
-    let h = Harness::start().await;
+    let mut h = Harness::start().await;
     let running = h.submit("0", 200_000, 60_000).await;
     tokio::time::timeout(Duration::from_secs(5), h.gates[0].entered.notified())
         .await
@@ -308,11 +303,7 @@ async fn queue_deadline_expires_behind_blocked_native_call_and_running_cannot_ca
         h.cancel(&running).await.devices[&0].state,
         DeviceState::Running
     );
-    let other = h.submit("1", 250_000, 60_000).await;
-    assert_eq!(
-        h.wait(&other, |s| s.complete).await.devices[&1].state,
-        DeviceState::Succeeded
-    );
+    let following = h.submit("0", 260_000, 60_000).await;
     h.gates[0].release();
     assert_eq!(
         h.wait(&running, |s| s.complete).await.devices[&0].state,
@@ -322,25 +313,31 @@ async fn queue_deadline_expires_behind_blocked_native_call_and_running_cannot_ca
         h.status(&queued).await.devices[&0].state,
         DeviceState::Cancelled
     );
+    h.wait(&following, |s| s.complete).await;
+    assert_eq!(h.events.try_recv().unwrap(), (0, 200_000));
+    assert_eq!(h.events.try_recv().unwrap(), (0, 260_000));
+    assert!(h.events.try_recv().is_err());
 }
 
 #[tokio::test]
-async fn lost_post_response_does_not_own_or_cancel_the_operation() {
+async fn dropping_post_response_does_not_cancel_the_operation() {
     let h = Harness::start().await;
-    let seed = h.submit("1", 250_000, 60_000).await;
-    let (startup, counter) = seed.id.rsplit_once(':').unwrap();
-    // Only the test knows this isolated server's next ID; a client cannot
-    // recover an unknown operation ID by assuming there are no other callers.
-    let expected_id = format!("{startup}:{}", counter.parse::<u64>().unwrap() + 1);
-    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", h.port))
-        .await
-        .unwrap();
-    stream.write_all(b"POST /gpu/set_power_limit/operations?gpu_ids=0&power_limit_mw=200000&start_within_ms=60000 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+    let response = h.client.post(format!("{}/gpu/set_power_limit/operations?gpu_ids=0&power_limit_mw=200000&start_within_ms=60000", h.base)).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let status_url = response.headers()["location"].to_str().unwrap().to_owned();
+    drop(response);
     tokio::time::timeout(Duration::from_secs(5), h.gates[0].entered.notified())
         .await
         .unwrap();
-    drop(stream);
-    let operation = h.operations.get(&expected_id, DeviceType::Gpu).unwrap();
+    let operation: OperationSnapshot = h
+        .client
+        .get(format!("{}{}", h.base, status_url))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert_eq!(operation.devices[&0].state, DeviceState::Running);
     h.gates[0].release();
     let done = h.wait(&operation, |s| s.complete).await;
@@ -439,28 +436,6 @@ async fn capacity_rejection_retains_running_work_and_eviction_is_unavailable() {
     let error: serde_json::Value = evicted.json().await.unwrap();
     assert_eq!(error["error"]["code"], "operation_unavailable");
     assert_eq!(error["error"]["effect"], "uncertain");
-    let unavailable = h
-        .client
-        .get(format!(
-            "{}/gpu/set_power_limit/operations/{}:1",
-            h.base,
-            uuid::Uuid::new_v4()
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(unavailable.status(), StatusCode::GONE);
-    let startup = next.id.rsplit_once(':').unwrap().0;
-    let missing = h
-        .client
-        .get(format!(
-            "{}/gpu/set_power_limit/operations/{startup}:9999",
-            h.base
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

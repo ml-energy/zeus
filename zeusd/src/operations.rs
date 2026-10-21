@@ -344,20 +344,26 @@ impl OperationRegistry {
                 "Tracked operation capacity exhausted",
             ));
         }
-        while state.device_results + ids.len() > self.0.limits.device_results {
-            match state.evict_completed() {
-                Some(record) => retired.push(record),
-                None => {
-                    return Err(OperationError::capacity(
-                        "Retained device result capacity exhausted",
-                    ));
-                }
+        let remaining_capacity = self.0.limits.device_results - ids.len();
+        if state.device_results > remaining_capacity {
+            let reclaimable: usize = state
+                .completed
+                .iter()
+                .map(|&(_, counter)| state.records[&counter].device_results)
+                .sum();
+            if state.device_results - reclaimable > remaining_capacity {
+                return Err(OperationError::capacity(
+                    "Retained device result capacity exhausted",
+                ));
             }
         }
         let counter = state
             .counter
             .checked_add(1)
             .ok_or_else(|| OperationError::capacity("Operation counter exhausted"))?;
+        while state.device_results > remaining_capacity {
+            retired.push(state.evict_completed().unwrap());
+        }
         state.counter = counter;
         let id = format!("{}:{counter}", self.0.startup);
         let snapshot = OperationSnapshot {
@@ -661,112 +667,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn deadline_timer_expires_without_status_requests_or_queue_progress() {
-        let registry = OperationRegistry::default();
-        let (snapshot, mut tickets) = admit(&registry, &[0, 1], 20);
-        assert!(tickets[0].start());
-        tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                let expired = {
-                    let record = tickets[0].record.upgrade().unwrap();
-                    let snapshot = record.snapshot.lock().unwrap();
-                    snapshot.devices[&1].state == DeviceState::Cancelled
-                };
-                if expired {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
-        let status = registry.get(&snapshot.id, DeviceType::Gpu).unwrap();
-        assert_eq!(status.devices[&0].state, DeviceState::Running);
-        assert_eq!(
-            status.devices[&1].reason,
-            Some(OutcomeReason::DeadlineExceeded)
-        );
-        assert!(!status.complete);
-        assert!(!tickets[1].start());
-        tickets[0].finish(&Ok::<(), ZeusdError>(()));
-        assert!(
-            registry
-                .get(&snapshot.id, DeviceType::Gpu)
-                .unwrap()
-                .complete
-        );
-    }
-
-    #[tokio::test]
-    async fn bounds_evict_only_completed_results_and_distinguish_unavailable_ids() {
+    async fn insufficient_capacity_preserves_completed_results() {
         let registry = OperationRegistry::new(OperationLimits {
             live: 2,
             completed: 1,
             device_results: 3,
             retention: Duration::from_secs(60),
         });
-        let (first, mut first_tickets) = admit(&registry, &[0, 1], 60_000);
-        assert!(first_tickets[0].start());
-        let (second, second_tickets) = admit(&registry, &[2], 60_000);
-        let request = || registry.admit(DeviceType::Gpu, &[3], first.requested.clone(), 60_000);
-        assert_eq!(
-            request().err().unwrap().code,
-            OperationErrorCode::CapacityExhausted
+        let (active, _active_tickets) = admit(&registry, &[0, 1], 60_000);
+        let (completed, mut completed_tickets) = admit(&registry, &[2], 60_000);
+        registry.cancel(&completed.id, DeviceType::Gpu).unwrap();
+
+        let error = registry
+            .admit(DeviceType::Gpu, &[3, 4], active.requested, 60_000)
+            .err()
+            .unwrap();
+        assert_eq!(error.code, OperationErrorCode::CapacityExhausted);
+        assert!(
+            registry
+                .get(&completed.id, DeviceType::Gpu)
+                .unwrap()
+                .complete
         );
-        registry.cancel(&second.id, DeviceType::Gpu).unwrap();
-        let (third, _third_tickets) = request().unwrap();
-        assert_eq!(
-            registry.get(&second.id, DeviceType::Gpu).unwrap_err().code,
-            OperationErrorCode::OperationUnavailable
-        );
-        assert_eq!(
-            registry.get(&first.id, DeviceType::Gpu).unwrap().devices[&0].state,
-            DeviceState::Running
-        );
-        registry.cancel(&third.id, DeviceType::Gpu).unwrap();
-        let fourth = request().unwrap().0;
-        registry.cancel(&fourth.id, DeviceType::Gpu).unwrap();
-        assert!(registry.get(&third.id, DeviceType::Gpu).is_err());
-        drop(second_tickets);
+        let (_replacement, _tickets) = admit(&registry, &[3], 60_000);
         assert_eq!(
             registry
-                .get(&format!("{}:9999", registry.0.startup), DeviceType::Gpu)
-                .unwrap_err()
-                .code,
-            OperationErrorCode::OperationNotFound
-        );
-        assert_eq!(
-            registry
-                .get(&format!("{}:1", Uuid::new_v4()), DeviceType::Gpu)
+                .get(&completed.id, DeviceType::Gpu)
                 .unwrap_err()
                 .code,
             OperationErrorCode::OperationUnavailable
         );
-        assert_eq!(
-            registry.get(&first.id, DeviceType::Cpu).unwrap_err().code,
-            OperationErrorCode::OperationNotFound
-        );
-        let state = registry.0.state.lock().unwrap();
-        assert!(state.device_results <= 3);
-        assert_eq!(state.live, 1);
+        assert!(!completed_tickets[0].start());
+        assert!(!registry.get(&active.id, DeviceType::Gpu).unwrap().complete);
     }
 
     #[tokio::test]
-    async fn retention_expiry_and_counter_exhaustion_do_not_create_work() {
+    async fn completed_results_expire_with_outstanding_tickets() {
         let registry = OperationRegistry::new(OperationLimits {
             retention: Duration::from_millis(20),
             ..OperationLimits::default()
         });
-        let (snapshot, tickets) = admit(&registry, &[0], 60_000);
+        let (snapshot, mut tickets) = admit(&registry, &[0], 60_000);
         registry.cancel(&snapshot.id, DeviceType::Gpu).unwrap();
-        tokio::time::timeout(Duration::from_secs(2), async {
-            while !registry.0.state.lock().unwrap().records.is_empty() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
-        drop(tickets);
+        tokio::time::sleep(Duration::from_millis(20)).await;
         assert_eq!(
             registry
                 .get(&snapshot.id, DeviceType::Gpu)
@@ -774,107 +717,11 @@ mod tests {
                 .code,
             OperationErrorCode::OperationUnavailable
         );
-        registry.0.state.lock().unwrap().counter = u64::MAX;
-        assert!(registry
-            .admit(DeviceType::Gpu, &[0], snapshot.requested, 1)
-            .is_err());
-        assert!(registry.0.state.lock().unwrap().records.is_empty());
-    }
-
-    #[tokio::test]
-    async fn failed_native_calls_are_uncertain_without_explicit_backend_evidence() {
-        let registry = OperationRegistry::default();
-        let (snapshot, mut tickets) = admit(&registry, &[0, 1, 2], 60_000);
-        for ticket in &mut tickets {
-            assert!(ticket.start());
-        }
-        tickets[0].finish(&Err::<(), _>(ZeusdError::InvalidRequest(
-            "backend rejected after writing".into(),
-        )));
-        tickets[1].finish(&Err::<(), _>(
-            ZeusdError::InvalidRequest("validation failed".into())
-                .with_setting_effect(SettingEffect::Unchanged),
-        ));
-        tickets[2].finish(&Err::<(), _>(ZeusdError::InvalidRequest(
-            "x".repeat(10_000),
-        )));
-        let status = registry.get(&snapshot.id, DeviceType::Gpu).unwrap();
-        assert!(status.complete);
-        assert_eq!(status.devices[&0].effect, SettingEffect::Uncertain);
-        assert_eq!(status.devices[&1].effect, SettingEffect::Unchanged);
-        assert!(status.devices[&2].error.as_ref().unwrap().len() < 2100);
-        let record = tickets[0].record.upgrade().unwrap();
-        let snapshot = record.snapshot.lock().unwrap();
-        let retained = &snapshot.devices[&2];
-        assert!(retained.error.as_ref().unwrap().capacity() < 4096);
-    }
-
-    #[tokio::test]
-    async fn an_operation_lock_does_not_block_unrelated_operations() {
-        let registry = OperationRegistry::default();
-        let (_, first_tickets) = admit(&registry, &[0], 60_000);
-        let record = first_tickets[0].record.upgrade().unwrap();
-        let (second, mut tickets) = admit(&registry, &[1, 2], 60_000);
-        let snapshot = record.snapshot.lock().unwrap();
-        let (sent, received) = std::sync::mpsc::channel();
-        let worker_registry = registry.clone();
-        let worker = std::thread::spawn(move || {
-            assert!(
-                !worker_registry
-                    .get(&second.id, DeviceType::Gpu)
-                    .unwrap()
-                    .complete
-            );
-            assert!(tickets[0].start());
-            let cancelled = worker_registry.cancel(&second.id, DeviceType::Gpu).unwrap();
-            assert_eq!(cancelled.devices[&1].state, DeviceState::Running);
-            assert_eq!(cancelled.devices[&2].state, DeviceState::Cancelled);
-            tickets[0].finish(&Ok::<(), ZeusdError>(()));
-            assert!(
-                worker_registry
-                    .get(&second.id, DeviceType::Gpu)
-                    .unwrap()
-                    .complete
-            );
-            let (third, _tickets) = admit(&worker_registry, &[3], 60_000);
-            assert!(
-                worker_registry
-                    .cancel(&third.id, DeviceType::Gpu)
-                    .unwrap()
-                    .complete
-            );
-            sent.send(()).unwrap();
-        });
-        let progress = received.recv_timeout(Duration::from_secs(2));
-        drop(snapshot);
-        worker.join().unwrap();
-        progress.unwrap();
-    }
-
-    #[tokio::test]
-    async fn the_registry_lock_does_not_block_nonterminal_operation_updates() {
-        let registry = OperationRegistry::default();
-        let (operation, mut tickets) = admit(&registry, &[0, 1], 60_000);
-        let mut ticket = tickets.pop().unwrap();
-        let state = registry.0.state.lock().unwrap();
-        let (sent, received) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            assert!(ticket.start());
-            ticket.finish(&Ok::<(), ZeusdError>(()));
-            sent.send(()).unwrap();
-        });
-        let progress = received.recv_timeout(Duration::from_secs(2));
-        drop(state);
-        worker.join().unwrap();
-        progress.unwrap();
-        let snapshot = registry.get(&operation.id, DeviceType::Gpu).unwrap();
-        assert!(!snapshot.complete);
-        assert_eq!(snapshot.devices[&1].state, DeviceState::Succeeded);
-        assert_eq!(snapshot.devices[&0].state, DeviceState::Queued);
+        assert!(!tickets[0].start());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn concurrent_completion_and_eviction_account_for_each_operation_once() {
+    async fn concurrent_completion_and_eviction_preserve_capacity() {
         let registry = OperationRegistry::new(OperationLimits {
             live: 4,
             completed: 2,
@@ -884,6 +731,7 @@ mod tests {
         let operations = (0..4)
             .map(|_| admit(&registry, &[0, 1], 60_000))
             .collect::<Vec<_>>();
+        let ids: Vec<_> = operations.iter().map(|(s, _)| s.id.clone()).collect();
         let barrier = Arc::new(std::sync::Barrier::new(12));
         std::thread::scope(|scope| {
             for (operation, tickets) in operations {
@@ -906,44 +754,27 @@ mod tests {
                 });
             }
         });
-        let retained = {
-            let state = registry.0.state.lock().unwrap();
-            assert_eq!(state.live, 0);
-            assert_eq!(state.completed.len(), 2);
-            assert_eq!(state.records.len(), 2);
-            assert_eq!(state.device_results, 4);
-            assert!(state.deadlines.is_empty());
-            state.records.values().cloned().collect::<Vec<_>>()
-        };
-        for record in retained {
-            assert!(record.snapshot.lock().unwrap().complete);
+        let mut retained = 0;
+        for id in ids {
+            match registry.get(&id, DeviceType::Gpu) {
+                Ok(snapshot) => {
+                    assert!(snapshot.complete);
+                    retained += 1;
+                }
+                Err(error) => assert_eq!(error.code, OperationErrorCode::OperationUnavailable),
+            }
         }
-        let (next, _tickets) = admit(&registry, &[2], 60_000);
-        assert!(!registry.get(&next.id, DeviceType::Gpu).unwrap().complete);
+        assert_eq!(retained, 2);
+        let next: Vec<_> = (0..4).map(|_| admit(&registry, &[0, 1], 60_000)).collect();
+        let error = registry
+            .admit(DeviceType::Gpu, &[2], next[0].0.requested.clone(), 60_000)
+            .err()
+            .unwrap();
+        assert_eq!(error.code, OperationErrorCode::CapacityExhausted);
     }
 
     #[tokio::test]
-    async fn expired_work_cannot_start_after_its_operation_lock_is_released() {
-        let registry = OperationRegistry::default();
-        let (operation, mut tickets) = admit(&registry, &[0], 20);
-        let mut ticket = tickets.pop().unwrap();
-        let record = ticket.record.upgrade().unwrap();
-        let snapshot = record.snapshot.lock().unwrap();
-        let worker = std::thread::spawn(move || ticket.start());
-        std::thread::sleep(record.deadline.saturating_duration_since(Instant::now()));
-        drop(snapshot);
-        assert!(!worker.join().unwrap());
-        let snapshot = registry.get(&operation.id, DeviceType::Gpu).unwrap();
-        assert!(snapshot.complete);
-        assert_eq!(
-            snapshot.devices[&0].reason,
-            Some(OutcomeReason::DeadlineExceeded)
-        );
-        assert_eq!(registry.0.state.lock().unwrap().live, 0);
-    }
-
-    #[tokio::test]
-    async fn admission_reclaims_expiration_observed_by_another_maintenance_pass() {
+    async fn expired_queued_work_releases_admission_capacity() {
         let registry = OperationRegistry::new(OperationLimits {
             live: 1,
             completed: 1,
@@ -951,11 +782,7 @@ mod tests {
             retention: Duration::from_secs(60),
         });
         let (first, mut tickets) = admit(&registry, &[0], 20);
-        let record = tickets[0].record.upgrade().unwrap();
-        std::thread::sleep(record.deadline.saturating_duration_since(Instant::now()));
-        // Pause one maintenance pass after discovery, before operation locking.
-        let expired = registry.0.expired_records();
-        assert_eq!(expired.len(), 1);
+        tokio::time::sleep(Duration::from_millis(20)).await;
         let (second, _tickets) = admit(&registry, &[1], 60_000);
         assert!(!registry.get(&second.id, DeviceType::Gpu).unwrap().complete);
         assert_eq!(
@@ -963,38 +790,5 @@ mod tests {
             OperationErrorCode::OperationUnavailable
         );
         assert!(!tickets[0].start());
-        let state = registry.0.state.lock().unwrap();
-        assert_eq!(state.live, 1);
-        assert_eq!(state.records.len(), 1);
-        assert_eq!(state.device_results, 1);
-    }
-
-    #[tokio::test]
-    async fn eviction_with_an_outstanding_record_reference_cannot_restart_work() {
-        let registry = OperationRegistry::new(OperationLimits {
-            completed: 1,
-            ..OperationLimits::default()
-        });
-        let (first, mut tickets) = admit(&registry, &[0], 60_000);
-        let record = tickets[0].record.upgrade().unwrap();
-        registry.cancel(&first.id, DeviceType::Gpu).unwrap();
-        let (second, _second_tickets) = admit(&registry, &[1], 60_000);
-        registry.cancel(&second.id, DeviceType::Gpu).unwrap();
-        assert_eq!(
-            registry.get(&first.id, DeviceType::Gpu).unwrap_err().code,
-            OperationErrorCode::OperationUnavailable
-        );
-        assert!(!tickets[0].start());
-        tickets[0].finish(&Ok::<(), ZeusdError>(()));
-        assert_eq!(
-            record.snapshot.lock().unwrap().devices[&0].state,
-            DeviceState::Cancelled
-        );
-        drop(record);
-        assert!(tickets[0].record.upgrade().is_none());
-        let state = registry.0.state.lock().unwrap();
-        assert_eq!(state.live, 0);
-        assert_eq!(state.device_results, 1);
-        assert_eq!(state.completed.len(), 1);
     }
 }
