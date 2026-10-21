@@ -195,14 +195,14 @@ impl CpuManagementTasks {
         self.senders.len()
     }
 
-    pub(crate) fn reserve_operation(&self, cpu_id: usize) -> Result<QueuePermit, OperationError> {
+    pub fn reserve_operation(&self, cpu_id: usize) -> Result<QueuePermit, OperationError> {
         self.senders
             .get(cpu_id)
             .ok_or_else(|| OperationError::invalid(format!("CPU {cpu_id} does not exist")))?
             .reserve()
     }
 
-    pub(crate) fn send_operation(
+    pub fn send_operation(
         &self,
         cpu_id: usize,
         constraint: String,

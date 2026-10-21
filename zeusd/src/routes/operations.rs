@@ -148,7 +148,7 @@ async fn cancel(
 
 macro_rules! routes {
     ($name:ident, $device:ident, $submit:ident) => {
-        pub(super) fn $name(cfg: &mut web::ServiceConfig) {
+        pub fn $name(cfg: &mut web::ServiceConfig) {
             cfg.service(
                 web::scope("/set_power_limit/operations")
                     .wrap(DefaultHeaders::new().add(("Cache-Control", "no-store")))

@@ -146,14 +146,14 @@ impl GpuManagementTasks {
         self.senders.len()
     }
 
-    pub(crate) fn reserve_operation(&self, gpu_id: usize) -> Result<QueuePermit, OperationError> {
+    pub fn reserve_operation(&self, gpu_id: usize) -> Result<QueuePermit, OperationError> {
         self.senders
             .get(gpu_id)
             .ok_or_else(|| OperationError::invalid(format!("GPU {gpu_id} does not exist")))?
             .reserve()
     }
 
-    pub(crate) fn send_operation(
+    pub fn send_operation(
         &self,
         gpu_id: usize,
         power_limit_mw: u32,

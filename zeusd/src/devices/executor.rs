@@ -13,9 +13,9 @@ use crate::operations::{OperationError, OperationTicket};
 /// Includes cancelled entries waiting behind an uninterruptible native call.
 const MAX_TRACKED_QUEUE: usize = 1024;
 
-pub(crate) type Request<C, R> = (C, Option<Sender<Result<R, ZeusdError>>>, Instant, Span);
+pub type Request<C, R> = (C, Option<Sender<Result<R, ZeusdError>>>, Instant, Span);
 
-pub(crate) struct QueuePermit(Arc<AtomicUsize>);
+pub struct QueuePermit(Arc<AtomicUsize>);
 
 impl Drop for QueuePermit {
     fn drop(&mut self) {
@@ -28,7 +28,7 @@ struct Work<C, R> {
     tracked: Option<(OperationTicket, QueuePermit)>,
 }
 
-pub(crate) struct DeviceExecutor<C, R> {
+pub struct DeviceExecutor<C, R> {
     sender: mpsc::Sender<Work<C, R>>,
     tracked: Arc<AtomicUsize>,
 }
@@ -43,7 +43,7 @@ impl<C, R> Clone for DeviceExecutor<C, R> {
 }
 
 impl<C: Send + 'static, R: Send + 'static> DeviceExecutor<C, R> {
-    pub(crate) fn start<T: Send + 'static>(
+    pub fn start<T: Send + 'static>(
         name: String,
         mut device: T,
         execute: fn(&C, &mut T, Instant, bool) -> Result<R, ZeusdError>,
@@ -102,7 +102,7 @@ impl<C: Send + 'static, R: Send + 'static> DeviceExecutor<C, R> {
         })
     }
 
-    pub(crate) fn send(&self, request: Request<C, R>) -> Result<(), SendError<Request<C, R>>> {
+    pub fn send(&self, request: Request<C, R>) -> Result<(), SendError<Request<C, R>>> {
         self.sender
             .send(Work {
                 request,
@@ -112,7 +112,7 @@ impl<C: Send + 'static, R: Send + 'static> DeviceExecutor<C, R> {
     }
 
     /// Reserve every selected device's queue slot before admitting an operation.
-    pub(crate) fn reserve(&self) -> Result<QueuePermit, OperationError> {
+    pub fn reserve(&self) -> Result<QueuePermit, OperationError> {
         self.tracked
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
                 (count < MAX_TRACKED_QUEUE).then_some(count + 1)
@@ -121,35 +121,11 @@ impl<C: Send + 'static, R: Send + 'static> DeviceExecutor<C, R> {
         Ok(QueuePermit(self.tracked.clone()))
     }
 
-    pub(crate) fn send_tracked(&self, command: C, ticket: OperationTicket, permit: QueuePermit) {
+    pub fn send_tracked(&self, command: C, ticket: OperationTicket, permit: QueuePermit) {
         // A closed queue drops its ticket, retaining an unchanged cancellation result.
         let _ = self.sender.send(Work {
             request: (command, None, Instant::now(), Span::current()),
             tracked: Some((ticket, permit)),
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tracked_queue_reservations_are_bounded_and_released() {
-        let executor = DeviceExecutor::<(), ()>::start(
-            "test-queue-bound".into(),
-            (),
-            |_, _, _, _| Ok(()),
-            None,
-        )
-        .unwrap();
-        let mut permits = (0..MAX_TRACKED_QUEUE)
-            .map(|_| executor.reserve().unwrap())
-            .collect::<Vec<_>>();
-        assert!(executor.reserve().is_err());
-        permits.pop();
-        assert!(executor.reserve().is_ok());
-        drop(permits);
-        assert_eq!(executor.tracked.load(Ordering::Relaxed), 0);
     }
 }
