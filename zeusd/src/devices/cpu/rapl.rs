@@ -1566,6 +1566,14 @@ mod tests {
             cpu.set_power_limit("long_term", 100_000),
             Err(ZeusdError::CpuOriginalPowerLimitsMissingError(0))
         ));
+        let error = cpu
+            .set_power_limit_tracked("long_term", 100_000)
+            .unwrap_err();
+        assert_eq!(error.setting_effect(), SettingEffect::Unchanged);
+        assert_eq!(
+            read_file(tmp.path(), "constraint_0_power_limit_uw"),
+            "205000000"
+        );
     }
 
     #[test]
@@ -1702,6 +1710,8 @@ mod tests {
             cpu.set_power_limit("socket", 280_001),
             Err(ZeusdError::InvalidRequest(_))
         ));
+        let error = cpu.set_power_limit_tracked("socket", 280_001).unwrap_err();
+        assert_eq!(error.setting_effect(), SettingEffect::Unchanged);
         assert_eq!(*fake.limits_mw.lock().unwrap(), vec![200_000]);
         cpu.set_power_limit("socket", 280_000).unwrap();
         assert_eq!(*fake.limits_mw.lock().unwrap(), vec![280_000]);

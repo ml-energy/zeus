@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use actix_web::{dev::ServerHandle, web, App, HttpServer};
 use reqwest::{Client, Method, StatusCode};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, Notify};
 use zeusd::auth::issue_token;
 use zeusd::config::ApiGroup;
@@ -60,9 +61,10 @@ impl GpuManager for FakeGpu {
             panic!("simulated native wrapper panic");
         }
         if power == 999_000 {
-            return Err(ZeusdError::InvalidRequest(
-                "native error after a possible write".into(),
-            ));
+            return Err(ZeusdError::InvalidRequest(format!(
+                "native error: {}",
+                "\u{20ac}".repeat(1_000)
+            )));
         }
         Ok(())
     }
@@ -320,29 +322,25 @@ async fn queue_deadline_expires_behind_blocked_native_call_and_running_cannot_ca
 }
 
 #[tokio::test]
-async fn dropping_post_response_does_not_cancel_the_operation() {
-    let h = Harness::start().await;
-    let response = h.client.post(format!("{}/gpu/set_power_limit/operations?gpu_ids=0&power_limit_mw=200000&start_within_ms=60000", h.base)).send().await.unwrap();
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
-    let status_url = response.headers()["location"].to_str().unwrap().to_owned();
-    drop(response);
+async fn disconnecting_client_does_not_cancel_admitted_work() {
+    let mut h = Harness::start().await;
+    let mut stream = tokio::net::TcpStream::connect(h.base.strip_prefix("http://").unwrap())
+        .await
+        .unwrap();
+    stream.write_all(b"POST /gpu/set_power_limit/operations?gpu_ids=0&power_limit_mw=200000&start_within_ms=60000 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), h.gates[0].entered.notified())
         .await
         .unwrap();
-    let operation: OperationSnapshot = h
-        .client
-        .get(format!("{}{}", h.base, status_url))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(operation.devices[&0].state, DeviceState::Running);
+    drop(stream);
     h.gates[0].release();
-    let done = h.wait(&operation, |s| s.complete).await;
-    assert_eq!(done.devices[&0].effect, SettingEffect::Applied);
-    assert_eq!(done.requested.power_limit_mw, 200_000);
+    let following = h.submit("0", 250_000, 60_000).await;
+    assert_eq!(
+        h.wait(&following, |s| s.complete).await.devices[&0].state,
+        DeviceState::Succeeded
+    );
+    assert_eq!(h.events.try_recv().unwrap(), (0, 200_000));
+    assert_eq!(h.events.try_recv().unwrap(), (0, 250_000));
+    assert!(h.events.try_recv().is_err());
 }
 
 #[tokio::test]
@@ -446,11 +444,9 @@ async fn backend_rejection_during_execution_is_retained_as_uncertain() {
     assert_eq!(failed.devices[&0].state, DeviceState::Failed);
     assert_eq!(failed.devices[&0].effect, SettingEffect::Uncertain);
     assert_eq!(failed.devices[&0].reason, Some(OutcomeReason::BackendError));
-    assert!(failed.devices[&0]
-        .error
-        .as_ref()
-        .unwrap()
-        .contains("native error"));
+    let message = failed.devices[&0].error.as_ref().unwrap();
+    assert!(message.contains("native error"));
+    assert!(message.len() < 2100);
     assert_eq!(
         h.cancel(&operation).await.devices[&0].state,
         DeviceState::Failed
