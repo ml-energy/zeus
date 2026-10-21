@@ -322,23 +322,27 @@ async fn queue_deadline_expires_behind_blocked_native_call_and_running_cannot_ca
 }
 
 #[tokio::test]
-async fn disconnecting_client_does_not_cancel_admitted_work() {
+async fn disconnecting_client_does_not_cancel_queued_work() {
     let mut h = Harness::start().await;
+    h.block_legacy(0).await;
+    assert_eq!(h.events.try_recv().unwrap(), (0, 200_000));
     let mut stream = tokio::net::TcpStream::connect(h.base.strip_prefix("http://").unwrap())
         .await
         .unwrap();
-    stream.write_all(b"POST /gpu/set_power_limit/operations?gpu_ids=0&power_limit_mw=200000&start_within_ms=60000 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
-    tokio::time::timeout(Duration::from_secs(5), h.gates[0].entered.notified())
+    stream.write_all(b"POST /gpu/set_power_limit/operations?gpu_ids=0,1&power_limit_mw=230000&start_within_ms=60000 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+    let started = tokio::time::timeout(Duration::from_secs(5), h.events.recv())
         .await
+        .unwrap()
         .unwrap();
+    assert_eq!(started, (1, 230_000));
     drop(stream);
-    h.gates[0].release();
     let following = h.submit("0", 250_000, 60_000).await;
+    h.gates[0].release();
     assert_eq!(
         h.wait(&following, |s| s.complete).await.devices[&0].state,
         DeviceState::Succeeded
     );
-    assert_eq!(h.events.try_recv().unwrap(), (0, 200_000));
+    assert_eq!(h.events.try_recv().unwrap(), (0, 230_000));
     assert_eq!(h.events.try_recv().unwrap(), (0, 250_000));
     assert!(h.events.try_recv().is_err());
 }
