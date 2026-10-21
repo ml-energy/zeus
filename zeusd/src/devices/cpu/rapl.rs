@@ -17,6 +17,7 @@ use crate::devices::cpu::{
     HsmpPowerInfo, PackageInfo, PowerLimitConstraint, ZonePowerLimits,
 };
 use crate::error::{ZeusdError, PERMISSIONS_DOC_URL, RAPL_AVAILABILITY};
+use crate::operations::SettingEffect;
 
 /// Name of the package zone constraint backed by the AMD HSMP socket power limit.
 pub const HSMP_SOCKET_CONSTRAINT: &str = "socket";
@@ -545,45 +546,56 @@ impl CpuManager for RaplCpu {
     /// a RAPL limit is written and read back instead. If it did not fit, the
     /// previous limit is written back before rejecting the request.
     fn set_power_limit(&mut self, constraint: &str, power_limit_mw: u64) -> Result<(), ZeusdError> {
-        let found = self.find_package_constraint(constraint)?;
-        self.check_original(&found.name)?;
-        let power_limit_uw = power_limit_mw.checked_mul(1000).ok_or_else(|| {
-            ZeusdError::InvalidRequest(format!("Power limit {power_limit_mw} mW is out of range"))
-        })?;
+        self.set_power_limit_tracked(constraint, power_limit_mw)
+            .map_err(ZeusdError::into_setting_source)
+    }
+
+    fn set_power_limit_tracked(
+        &mut self,
+        constraint: &str,
+        power_limit_mw: u64,
+    ) -> Result<(), ZeusdError> {
+        let unchanged = |error: ZeusdError| error.with_setting_effect(SettingEffect::Unchanged);
+        let found = self
+            .find_package_constraint(constraint)
+            .map_err(unchanged)?;
+        self.check_original(&found.name).map_err(unchanged)?;
+        let power_limit_uw = power_limit_mw
+            .checked_mul(1000)
+            .ok_or_else(|| {
+                ZeusdError::InvalidRequest(format!(
+                    "Power limit {power_limit_mw} mW is out of range"
+                ))
+            })
+            .map_err(unchanged)?;
         match found.target {
             ConstraintTarget::HsmpSocket => {
                 if let Some(max_power_uw) = found.max_power_uw {
                     if power_limit_uw > max_power_uw {
-                        return Err(ZeusdError::InvalidRequest(format!(
+                        return Err(unchanged(ZeusdError::InvalidRequest(format!(
                             "Power limit {power_limit_mw} mW exceeds the maximum {} mW of constraint '{}'",
                             max_power_uw / 1000,
                             found.name
-                        )));
+                        ))));
                     }
                 }
                 self.write_power_limit_uw(found.target, &found.name, power_limit_uw)
             }
             ConstraintTarget::Powercap(index) => {
-                self.write_power_limit_uw(found.target, &found.name, power_limit_uw)?;
                 let stored_path = self
                     .cpu
                     .zone_dir
                     .join(format!("constraint_{index}_power_limit_uw"));
-                let stored_uw = read_u64(&stored_path)
-                    .map_err(|source| limit_read_error(&stored_path, source))?;
-                if stored_as_requested(power_limit_uw, stored_uw) {
-                    return Ok(());
-                }
-                let rejection = ZeusdError::InvalidRequest(format!(
-                    "Power limit {power_limit_mw} mW does not fit the RAPL register of constraint '{}' \
-                     (the kernel stored {} mW); the previous limit was restored",
-                    found.name,
-                    stored_uw / 1000
-                ));
-                match self.write_power_limit_uw(found.target, &found.name, found.power_limit_uw) {
-                    Ok(()) => Err(rejection),
-                    Err(restore_error) => Err(ZeusdError::Multiple(vec![rejection, restore_error])),
-                }
+                apply_rapl_power_limit(
+                    &found.name,
+                    power_limit_uw,
+                    found.power_limit_uw,
+                    |value| self.write_power_limit_uw(found.target, &found.name, value),
+                    || {
+                        read_u64(&stored_path)
+                            .map_err(|source| limit_read_error(&stored_path, source))
+                    },
+                )
             }
         }
     }
@@ -676,6 +688,47 @@ impl CpuManager for RaplCpu {
             }
         }
         ZeusdError::from_errors(errors)
+    }
+}
+
+/// Verify RAPL rounding and verify restoration if the register cannot hold the request.
+fn apply_rapl_power_limit(
+    name: &str,
+    requested_uw: u64,
+    previous_uw: u64,
+    mut write: impl FnMut(u64) -> Result<(), ZeusdError>,
+    mut read: impl FnMut() -> Result<u64, ZeusdError>,
+) -> Result<(), ZeusdError> {
+    let uncertain = |error: ZeusdError| error.with_setting_effect(SettingEffect::Uncertain);
+    write(requested_uw).map_err(uncertain)?;
+    let stored_uw = read().map_err(uncertain)?;
+    if stored_as_requested(requested_uw, stored_uw) {
+        return Ok(());
+    }
+    let message = format!(
+        "Power limit {} mW does not fit the RAPL register of constraint '{name}' (the kernel stored {} mW)",
+        requested_uw / 1000, stored_uw / 1000,
+    );
+    let restoration = write(previous_uw)
+        .and_then(|()| read())
+        .and_then(|restored| {
+            if restored == previous_uw {
+                Ok(())
+            } else {
+                Err(ZeusdError::InvalidRequest(format!(
+                "Restoration could not be verified: expected {previous_uw} uW, read {restored} uW"
+            )))
+            }
+        });
+    match restoration {
+        Ok(()) => Err(ZeusdError::InvalidRequest(format!(
+            "{message}; the previous limit was restored"
+        ))
+        .with_setting_effect(SettingEffect::Restored)),
+        Err(error) => Err(uncertain(ZeusdError::Multiple(vec![
+            ZeusdError::InvalidRequest(message),
+            error,
+        ]))),
     }
 }
 
@@ -1513,6 +1566,14 @@ mod tests {
             cpu.set_power_limit("long_term", 100_000),
             Err(ZeusdError::CpuOriginalPowerLimitsMissingError(0))
         ));
+        let error = cpu
+            .set_power_limit_tracked("long_term", 100_000)
+            .unwrap_err();
+        assert_eq!(error.setting_effect(), SettingEffect::Unchanged);
+        assert_eq!(
+            read_file(tmp.path(), "constraint_0_power_limit_uw"),
+            "205000000"
+        );
     }
 
     #[test]
@@ -1585,6 +1646,60 @@ mod tests {
     }
 
     #[test]
+    fn tracked_rapl_failures_require_evidence_for_restoration() {
+        use std::collections::VecDeque;
+
+        for (reads, fail_write, expected, writes_expected) in [
+            (
+                vec![Ok(100_000_000), Ok(205_000_000)],
+                None,
+                SettingEffect::Restored,
+                2,
+            ),
+            (vec![Ok(100_000_000)], Some(2), SettingEffect::Uncertain, 2),
+            (
+                vec![Ok(100_000_000), Ok(200_000_000)],
+                None,
+                SettingEffect::Uncertain,
+                2,
+            ),
+            (
+                vec![Ok(100_000_000), Err(())],
+                None,
+                SettingEffect::Uncertain,
+                2,
+            ),
+            (vec![Err(())], None, SettingEffect::Uncertain, 1),
+            (vec![], Some(1), SettingEffect::Uncertain, 1),
+        ] {
+            let mut reads = VecDeque::from(reads);
+            let mut writes = Vec::new();
+            let error = apply_rapl_power_limit(
+                "long_term",
+                5_000_000_000,
+                205_000_000,
+                |value| {
+                    writes.push(value);
+                    if Some(writes.len()) == fail_write {
+                        Err(ZeusdError::IOError(std::io::ErrorKind::Other.into()))
+                    } else {
+                        Ok(())
+                    }
+                },
+                || {
+                    reads
+                        .pop_front()
+                        .unwrap()
+                        .map_err(|()| ZeusdError::IOError(std::io::ErrorKind::Other.into()))
+                },
+            )
+            .unwrap_err();
+            assert_eq!(error.setting_effect(), expected, "{error}");
+            assert_eq!(writes, [5_000_000_000, 205_000_000][..writes_expected]);
+        }
+    }
+
+    #[test]
     fn socket_power_limit_above_maximum_is_rejected() {
         let tmp = tempfile::tempdir().unwrap();
         let fake = FakeHsmp::new(vec![200_000], 280_000);
@@ -1595,6 +1710,8 @@ mod tests {
             cpu.set_power_limit("socket", 280_001),
             Err(ZeusdError::InvalidRequest(_))
         ));
+        let error = cpu.set_power_limit_tracked("socket", 280_001).unwrap_err();
+        assert_eq!(error.setting_effect(), SettingEffect::Unchanged);
         assert_eq!(*fake.limits_mw.lock().unwrap(), vec![200_000]);
         cpu.set_power_limit("socket", 280_000).unwrap();
         assert_eq!(*fake.limits_mw.lock().unwrap(), vec![280_000]);

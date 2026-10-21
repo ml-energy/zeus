@@ -357,6 +357,7 @@ pub fn gpu_read_routes(cfg: &mut web::ServiceConfig) {
 
 /// Register GPU control (write) routes.
 pub fn gpu_control_routes(cfg: &mut web::ServiceConfig) {
+    cfg.configure(super::operations::gpu_operation_routes);
     cfg.service(set_persistence_mode_handler)
         .service(set_power_limit_handler)
         .service(set_gpu_locked_clocks_handler)

@@ -134,9 +134,11 @@ where
         if let Some(scope) = required_scope(&path) {
             if let Some(enabled) = req.app_data::<web::Data<EnabledGroups>>() {
                 if !enabled.0.contains(&scope) {
-                    let resp = HttpResponse::NotFound().json(serde_json::json!({
-                        "error": format!("API group '{}' is not enabled on this server.", scope)
-                    }));
+                    let resp = HttpResponse::NotFound()
+                        .insert_header(("Cache-Control", "no-store"))
+                        .json(serde_json::json!({
+                            "error": format!("API group '{}' is not enabled on this server.", scope)
+                        }));
                     return Box::pin(
                         async move { Ok(req.into_response(resp).map_into_right_body()) },
                     );
@@ -154,9 +156,11 @@ where
                 // No signing key. Auth disabled.
                 // /auth/* endpoints don't exist when auth is disabled.
                 if path.starts_with("/auth/") {
-                    let resp = HttpResponse::NotFound().json(serde_json::json!({
-                        "error": "Authentication is not enabled on this server."
-                    }));
+                    let resp = HttpResponse::NotFound()
+                        .insert_header(("Cache-Control", "no-store"))
+                        .json(serde_json::json!({
+                            "error": "Authentication is not enabled on this server."
+                        }));
                     return Box::pin(
                         async move { Ok(req.into_response(resp).map_into_right_body()) },
                     );
@@ -190,6 +194,7 @@ where
             Some(t) => t.to_string(),
             None => {
                 let resp = HttpResponse::Unauthorized()
+                    .insert_header(("Cache-Control", "no-store"))
                     .insert_header(("WWW-Authenticate", "Bearer realm=\"zeusd\""))
                     .json(serde_json::json!({"error": "Authentication required. Provide an Authorization: Bearer <token> header."}));
                 return Box::pin(async move { Ok(req.into_response(resp).map_into_right_body()) });
@@ -214,6 +219,7 @@ where
                     _ => format!("Invalid token: {e}"),
                 };
                 let resp = HttpResponse::Unauthorized()
+                    .insert_header(("Cache-Control", "no-store"))
                     .insert_header(("WWW-Authenticate", "Bearer realm=\"zeusd\""))
                     .json(serde_json::json!({"error": msg}));
                 return Box::pin(async move { Ok(req.into_response(resp).map_into_right_body()) });
@@ -225,12 +231,14 @@ where
             if !claims.scopes.contains(&scope) {
                 let scope_list: Vec<String> =
                     claims.scopes.iter().map(|s| format!("'{s}'")).collect();
-                let resp = HttpResponse::Forbidden().json(serde_json::json!({
-                    "error": format!(
-                        "Token for user '{}' lacks required scope '{}'. Token scopes: [{}]",
-                        claims.sub, scope, scope_list.join(", "),
-                    )
-                }));
+                let resp = HttpResponse::Forbidden()
+                    .insert_header(("Cache-Control", "no-store"))
+                    .json(serde_json::json!({
+                        "error": format!(
+                            "Token for user '{}' lacks required scope '{}'. Token scopes: [{}]",
+                            claims.sub, scope, scope_list.join(", "),
+                        )
+                    }));
                 return Box::pin(async move { Ok(req.into_response(resp).map_into_right_body()) });
             }
         }

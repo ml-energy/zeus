@@ -51,6 +51,7 @@ use crate::devices::gpu::NvmlGpu;
 use crate::error::PERMISSIONS_DOC_URL;
 #[cfg(target_os = "linux")]
 use crate::error::{ORIGINAL_POWER_LIMITS_DOC_URL, RECORD_ORIGINAL_HINT};
+use crate::operations::OperationRegistry;
 use crate::routes::{cpu_control_routes, cpu_read_routes, CpuPowerSamplingPeriod};
 use crate::routes::{
     gpu_control_routes, gpu_read_routes, server_routes, CpuDiscoveryInfo, DiscoveryInfo,
@@ -630,11 +631,12 @@ pub struct ServerState {
 /// Build an `App` with routes and data wired up from `$state`. Caller
 /// clones `$state` if the App is built more than once.
 macro_rules! build_app {
-    ($state:expr) => {{
+    ($state:expr, $operations:expr) => {{
         let state = $state;
         let enabled = &state.enabled_groups.0;
 
         let mut app = App::new()
+            .app_data($operations)
             .wrap(AuthMiddleware)
             .wrap(tracing_actix_web::TracingLogger::default())
             .configure(server_routes)
@@ -688,9 +690,10 @@ macro_rules! build_app {
 
 /// Build an `HttpServer` with routes and app data based on enabled API groups.
 macro_rules! configure_server {
-    ($state:expr, $workers:expr) => {
-        HttpServer::new(move || build_app!($state.clone())).workers($workers)
-    };
+    ($state:expr, $workers:expr) => {{
+        let operations = web::Data::new(OperationRegistry::default());
+        HttpServer::new(move || build_app!($state.clone(), operations.clone())).workers($workers)
+    }};
 }
 
 /// Set up routing and start the server on a unix domain socket.
@@ -813,7 +816,7 @@ pub async fn run_server_named_pipe(
             // `AppInit::new_service` (actix-web 4.9 app_service.rs:77)
             // drains its services Vec on first call, so a second call
             // yields an empty router. Share the service via `Rc`.
-            let app = build_app!(state);
+            let app = build_app!(state, web::Data::new(OperationRegistry::default()));
             let svc_factory = HttpService::build().h1(actix_service::map_config(
                 app.into_factory().map_err(|err| err.error_response()),
                 |_| AppConfig::default(),

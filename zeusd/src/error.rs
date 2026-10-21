@@ -21,6 +21,7 @@ use tokio::sync::mpsc::error::SendError;
 use crate::devices::cpu::hsmp::HsmpError;
 use crate::devices::cpu::CpuCommandRequest;
 use crate::devices::gpu::GpuCommandRequest;
+use crate::operations::SettingEffect;
 
 /// Documentation of the prerequisites and permissions each Zeusd feature needs.
 pub const PERMISSIONS_DOC_URL: &str =
@@ -44,6 +45,11 @@ pub const RAPL_AVAILABILITY: &str = "Ensure the host's RAPL powercap interface i
 
 #[derive(thiserror::Error, Debug)]
 pub enum ZeusdError {
+    #[error("{source}")]
+    SettingFailed {
+        effect: SettingEffect,
+        source: Box<ZeusdError>,
+    },
     #[error("GPU index {0} does not exist.")]
     GpuNotFoundError(usize),
     #[error("CPU index {0} does not exist.")]
@@ -146,6 +152,7 @@ pub enum ZeusdError {
 impl ResponseError for ZeusdError {
     fn status_code(&self) -> StatusCode {
         match self {
+            ZeusdError::SettingFailed { source, .. } => source.status_code(),
             ZeusdError::GpuNotFoundError(_) => StatusCode::BAD_REQUEST,
             ZeusdError::CpuNotFoundError(_) => StatusCode::BAD_REQUEST,
             ZeusdError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
@@ -221,6 +228,28 @@ impl ResponseError for ZeusdError {
 }
 
 impl ZeusdError {
+    /// Attach evidence from the backend without changing legacy error text or status.
+    pub fn with_setting_effect(self, effect: SettingEffect) -> Self {
+        Self::SettingFailed {
+            effect,
+            source: Box::new(self),
+        }
+    }
+
+    pub fn setting_effect(&self) -> SettingEffect {
+        match self {
+            Self::SettingFailed { effect, .. } => *effect,
+            _ => SettingEffect::Uncertain,
+        }
+    }
+
+    pub fn into_setting_source(self) -> Self {
+        match self {
+            Self::SettingFailed { source, .. } => *source,
+            error => error,
+        }
+    }
+
     /// Report an unavailable or failed MSR operation in the response and daemon log.
     pub fn cpu_msr(
         cpu: usize,

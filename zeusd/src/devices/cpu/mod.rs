@@ -10,11 +10,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
-use tokio::time::{interval, Duration};
+use tokio::sync::mpsc::Sender;
 use tracing::Span;
 
+use crate::devices::executor::{DeviceExecutor, QueuePermit};
 use crate::error::{ZeusdError, PERMISSIONS_DOC_URL};
+use crate::operations::{OperationError, OperationTicket, SettingEffect};
 use hsmp::HSMP_DEVICE_PATH;
 pub use msr::RaplPowerInfo;
 
@@ -126,6 +127,14 @@ pub trait CpuManager {
     /// Callers check that the constraint exists and the limit is positive.
     /// Implementations reject limits the hardware would not apply as given.
     fn set_power_limit(&mut self, constraint: &str, power_limit_mw: u64) -> Result<(), ZeusdError>;
+    /// Set a limit, attaching backend evidence about failed writes when available.
+    fn set_power_limit_tracked(
+        &mut self,
+        constraint: &str,
+        power_limit_mw: u64,
+    ) -> Result<(), ZeusdError> {
+        self.set_power_limit(constraint, power_limit_mw)
+    }
     /// Write the time window of a package zone constraint in microseconds.
     ///
     /// Callers validate the value against `get_package_constraint` first.
@@ -149,7 +158,7 @@ pub type CpuCommandRequest = (
 #[derive(Clone)]
 pub struct CpuManagementTasks {
     // Senders to the CPU management tasks. index is the CPU ID.
-    senders: Vec<UnboundedSender<CpuCommandRequest>>,
+    senders: Vec<DeviceExecutor<CpuCommand, CpuResponse>>,
 }
 
 impl CpuManagementTasks {
@@ -159,13 +168,24 @@ impl CpuManagementTasks {
     {
         let mut senders = Vec::with_capacity(cpus.len());
         for (cpu_id, cpu) in cpus.into_iter().enumerate() {
-            // Channel to send commands to the CPU management task.
-            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-            senders.push(tx);
-            // The CPU management task will automatically terminate
-            // when the server terminates and the last sender is dropped.
-            tokio::spawn(cpu_management_task(cpu, rx));
-            tracing::info!("Background task for CPU {} successfully spawned", cpu_id);
+            senders.push(DeviceExecutor::start(
+                format!("zeusd-cpu-{cpu_id}"),
+                cpu,
+                |command: &CpuCommand, cpu, accepted, tracked| {
+                    if tracked {
+                        command.execute_tracked(cpu)
+                    } else {
+                        command.execute(cpu, accepted)
+                    }
+                },
+                Some(|cpu| {
+                    let _ = cpu.get_cpu_energy();
+                    if cpu.is_dram_available() {
+                        let _ = cpu.get_dram_energy();
+                    }
+                }),
+            )?);
+            tracing::info!("Command thread for CPU {} started", cpu_id);
         }
         Ok(Self { senders })
     }
@@ -173,6 +193,31 @@ impl CpuManagementTasks {
     /// Return the number of CPUs managed by these tasks.
     pub fn device_count(&self) -> usize {
         self.senders.len()
+    }
+
+    pub fn reserve_operation(&self, cpu_id: usize) -> Result<QueuePermit, OperationError> {
+        self.senders
+            .get(cpu_id)
+            .ok_or_else(|| OperationError::invalid(format!("CPU {cpu_id} does not exist")))?
+            .reserve()
+    }
+
+    pub fn send_operation(
+        &self,
+        cpu_id: usize,
+        constraint: String,
+        power_limit_mw: u64,
+        ticket: OperationTicket,
+        permit: QueuePermit,
+    ) {
+        self.senders[cpu_id].send_tracked(
+            CpuCommand::SetPowerLimit {
+                constraint,
+                power_limit_mw,
+            },
+            ticket,
+            permit,
+        );
     }
 
     pub async fn send_command_blocking(
@@ -218,46 +263,24 @@ pub enum CpuCommand {
     ResetPowerLimits,
 }
 
-/// Tokio background task that handles requests to each CPU.
-///
-/// Between commands, a periodic keepalive reads the energy counters every 30
-/// seconds so that RAPL counter wraparounds are detected even during idle
-/// periods when no client is actively querying energy.
-async fn cpu_management_task<T: CpuManager>(
-    mut cpu: T,
-    mut rx: UnboundedReceiver<CpuCommandRequest>,
-) {
-    let mut keepalive = interval(Duration::from_secs(30));
-    // The first tick completes immediately; consume it so we don't
-    // do a spurious keepalive read right at startup.
-    keepalive.tick().await;
-
-    loop {
-        tokio::select! {
-            Some((command, response, start_time, span)) = rx.recv() => {
-                let _span_guard = span.enter();
-                let result = command.execute(&mut cpu, start_time);
-                if let Err(e) = &result {
-                    tracing::warn!("CPU command {command:?} failed: {e}");
-                }
-                if let Some(response) = response {
-                    if response.send(result).await.is_err() {
-                        tracing::error!("Failed to send response to caller");
-                    }
-                }
-            }
-            _ = keepalive.tick() => {
-                let _ = cpu.get_cpu_energy();
-                if cpu.is_dram_available() {
-                    let _ = cpu.get_dram_energy();
-                }
-            }
-            else => break,
-        }
-    }
-}
-
 impl CpuCommand {
+    fn execute_tracked<T: CpuManager>(&self, device: &mut T) -> Result<CpuResponse, ZeusdError> {
+        let Self::SetPowerLimit {
+            constraint,
+            power_limit_mw,
+        } = self
+        else {
+            unreachable!("Only power limit commands have tracked endpoints");
+        };
+        device
+            .get_package_constraint(constraint)
+            .map_err(|error| error.with_setting_effect(SettingEffect::Unchanged))?;
+        validate_power_limit(*power_limit_mw)
+            .map_err(|error| error.with_setting_effect(SettingEffect::Unchanged))?;
+        device.set_power_limit_tracked(constraint, *power_limit_mw)?;
+        Ok(CpuResponse::Ok)
+    }
+
     fn execute<T>(
         &self,
         device: &mut T,

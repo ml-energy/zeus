@@ -49,7 +49,8 @@ Authenticated user's identity and scopes. Requires a bearer token. Returns 404 w
 
 All endpoints are under `/gpu`. `gpu_ids` is a comma-separated list of GPU indices: required on writes; optional on reads (omit to apply to / read all GPUs).
 
-Writes (`POST`) also take `block` (bool): `true` waits for completion and reports per-GPU execution errors; `false` dispatches non-blocking and only reports MPSC send errors.
+The write endpoints in this table also take `block` (bool): `true` waits for completion and reports per-GPU execution errors; `false` dispatches non-blocking and only reports command send errors.
+For retained asynchronous power limit results, use [tracked power limit operations](#tracked-power-limit-operations).
 
 | Method | Path | Extra params / notes |
 |---|---|---|
@@ -173,7 +174,8 @@ On AMD EPYC CPUs with the `amd_hsmp` kernel module loaded (which creates `/dev/h
 
 `set_power_limit` and `set_power_limit_time_window` change one constraint of each listed CPU's package zone, named as in `get_power_limit`.
 Both reject a constraint without a recorded [original setting](deployment.md#original-cpu-power-limits).
-`set_power_limit` rejects a constraint the zone does not have, `0`, a `socket` limit above its `max_power_mw` (the firmware would clamp it), and a RAPL limit too large for the CPU's register, in which case the previous limit is restored.
+`set_power_limit` rejects a constraint the zone does not have, `0`, a `socket` limit above its `max_power_mw` (the firmware would clamp it), and a RAPL limit too large for the CPU's register.
+For a RAPL limit that does not fit, Zeusd attempts to restore the previous limit and reports whether restoration was verified.
 The hardware can round a RAPL limit down by less than 1 W.
 RAPL limits are not bounded by `max_power_mw`; for `long_term` it is the CPU's thermal design power (TDP), which the hardware allows exceeding.
 Neither interface reports the lowest power a CPU can hold under load, so a cap below it is accepted but not met.
@@ -214,3 +216,66 @@ Values that already match are not written, and a failed write does not stop the 
 Read failures in RAPL do not block HSMP restoration, and HSMP read failures do not block RAPL restoration.
 Changed Intel time windows require MSR write access and are restored exactly, including fractional encodings.
 Without that access, reset still attempts power-limit restoration and reports errors for changed windows.
+
+## Tracked operations
+
+A request to change, for instance, a device's power limit, can time out while the hardware command continues.
+The client then cannot tell whether the change succeeded.
+Tracked operations give each request an ID and retain its results, so clients can check progress after reconnecting instead of submitting the change again.
+As of now, tracked operations are supported only for power limit changes.
+
+| Method | GPU path | CPU path |
+|---|---|---|
+| `POST` | `/gpu/set_power_limit/operations` | `/cpu/set_power_limit/operations` |
+| `GET` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
+| `DELETE` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
+
+All three methods require the corresponding `gpu-control` or `cpu-control` permission.
+
+### Submit a change
+
+`POST` requires `gpu_ids` or `cpu_ids`, a positive `power_limit_mw`, and a positive `start_within_ms`.
+`start_within_ms` is the maximum queue waiting time in milliseconds; work that has not started within that time is cancelled.
+CPU requests also require a supported `constraint`, as with `/cpu/set_power_limit`.
+
+```text
+POST /gpu/set_power_limit/operations?gpu_ids=0,1&power_limit_mw=250000&start_within_ms=1000
+POST /cpu/set_power_limit/operations?cpu_ids=0&constraint=long_term&power_limit_mw=150000&start_within_ms=1000
+```
+
+An accepted request returns `202 Accepted` with a generated ID, a `status_url`, and the initial result:
+
+```json
+{
+  "id": "31415926-5358-4979-8323-846264338327:1",
+  "status_url": "/gpu/set_power_limit/operations/31415926-5358-4979-8323-846264338327:1",
+  "device_type": "gpu",
+  "requested": {"power_limit_mw": 250000},
+  "start_within_ms": 1000,
+  "complete": false,
+  "devices": {
+    "0": {"state": "queued", "effect": "unchanged", "reason": null, "error": null},
+    "1": {"state": "queued", "effect": "unchanged", "reason": null, "error": null}
+  }
+}
+```
+
+### Check or cancel a change
+
+Poll `status_url` with `GET` to check on the operation.
+The response schema is the same as that of the initial response above.
+
+The operation is complete when `complete` is `true`.
+Each device moves from `queued` to `running`, then `succeeded` or `failed`; work cancelled before execution becomes `cancelled`.
+Devices can finish independently, so check each result even when `complete` is `true`.
+
+`effect` is `applied` if the write succeeded, or `unchanged` if no write occurred.
+It is `restored` if the previous setting was restored and verified, or `uncertain` if the outcome is unknown.
+For failures, `reason` and `error` provide details.
+
+Send `DELETE` to the same `status_url` to cancel queued work and retrieve the current results.
+Running work continues: neither cancellation nor `start_within_ms` can interrupt a hardware call that has already started.
+`GET` and `DELETE` return `200 OK` with the same response structure as `POST`.
+
+Results are held in memory for up to one hour after completion and can be removed earlier to make room for newer results.
+A daemon restart also loses them; `410 Gone` means the result is unavailable and the outcome remains unknown.

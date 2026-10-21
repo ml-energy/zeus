@@ -19,6 +19,8 @@ use crate::devices::cpu::power_limit_snapshot::OriginalPowerLimitStorage;
 ///     persistence mode).
 ///     - `POST /gpu/set_persistence_mode`
 ///     - `POST /gpu/set_power_limit`
+///     - `POST /gpu/set_power_limit/operations`
+///     - `GET, DELETE /gpu/set_power_limit/operations/{id}`
 ///     - `POST /gpu/set_gpu_locked_clocks`
 ///     - `POST /gpu/reset_gpu_locked_clocks`
 ///     - `POST /gpu/set_mem_locked_clocks`
@@ -40,6 +42,8 @@ use crate::devices::cpu::power_limit_snapshot::OriginalPowerLimitStorage;
 ///     - `GET /cpu/get_power_limit_constraints`
 ///   - `cpu-control`: CPU power capping with RAPL or AMD HSMP.
 ///     - `POST /cpu/set_power_limit`
+///     - `POST /cpu/set_power_limit/operations`
+///     - `GET, DELETE /cpu/set_power_limit/operations/{id}`
 ///     - `POST /cpu/set_power_limit_time_window`
 ///     - `POST /cpu/reset_power_limit`
 ///
