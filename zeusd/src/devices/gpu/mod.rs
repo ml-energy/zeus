@@ -16,10 +16,12 @@ pub mod power;
 // As long as there is a struct that implements the GpuManager trait,
 // the code below will work with any GPU management library.
 use std::time::Instant;
-use tokio::sync::mpsc::{Sender, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::Sender;
 use tracing::Span;
 
+use crate::devices::executor::{DeviceExecutor, QueuePermit};
 use crate::error::ZeusdError;
+use crate::operations::{OperationError, OperationTicket};
 
 /// A trait for structs that manage one GPU.
 ///
@@ -109,7 +111,7 @@ pub type GpuCommandRequest = (
 #[derive(Clone)]
 pub struct GpuManagementTasks {
     // Senders to the GPU management tasks. index is the GPU ID.
-    senders: Vec<UnboundedSender<GpuCommandRequest>>,
+    senders: Vec<DeviceExecutor<GpuCommand, GpuResponse>>,
 }
 
 impl GpuManagementTasks {
@@ -128,13 +130,13 @@ impl GpuManagementTasks {
     {
         let mut senders = Vec::with_capacity(gpus.len());
         for (gpu_id, gpu) in gpus.into_iter().enumerate() {
-            // Channel to send commands to the GPU management task.
-            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-            senders.push(tx);
-            // The GPU management task will automatically terminate
-            // when the server terminates and the last sender is dropped.
-            tokio::spawn(gpu_management_task(gpu, rx));
-            tracing::info!("Background task for GPU {} successfully spawned", gpu_id);
+            senders.push(DeviceExecutor::start(
+                format!("zeusd-gpu-{gpu_id}"),
+                gpu,
+                |command: &GpuCommand, gpu, accepted, _tracked| command.execute(gpu, accepted),
+                None,
+            )?);
+            tracing::info!("Command thread for GPU {} started", gpu_id);
         }
         Ok(Self { senders })
     }
@@ -142,6 +144,27 @@ impl GpuManagementTasks {
     /// Return the number of GPUs managed by these tasks.
     pub fn device_count(&self) -> usize {
         self.senders.len()
+    }
+
+    pub(crate) fn reserve_operation(&self, gpu_id: usize) -> Result<QueuePermit, OperationError> {
+        self.senders
+            .get(gpu_id)
+            .ok_or_else(|| OperationError::invalid(format!("GPU {gpu_id} does not exist")))?
+            .reserve()
+    }
+
+    pub(crate) fn send_operation(
+        &self,
+        gpu_id: usize,
+        power_limit_mw: u32,
+        ticket: OperationTicket,
+        permit: QueuePermit,
+    ) {
+        self.senders[gpu_id].send_tracked(
+            GpuCommand::SetPowerLimit { power_limit_mw },
+            ticket,
+            permit,
+        );
     }
 
     /// Send a command to the corresponding GPU management task and immediately return
@@ -178,24 +201,6 @@ impl GpuManagementTasks {
         match rx.recv().await {
             Some(result) => result,
             None => Err(ZeusdError::GpuManagementTaskTerminatedError(gpu_id)),
-        }
-    }
-}
-
-/// A asynchronous Tokio background task that manages one GPU.
-///
-/// Listens for commands on a channel and executes them on the GPU it manages.
-async fn gpu_management_task<T: GpuManager>(
-    mut gpu: T,
-    mut rx: UnboundedReceiver<GpuCommandRequest>,
-) {
-    while let Some((command, response, start_time, span)) = rx.recv().await {
-        let _span_guard = span.enter();
-        let result = command.execute(&mut gpu, start_time);
-        if let Some(response) = response {
-            if response.send(result).await.is_err() {
-                tracing::error!("Failed to send response to caller");
-            }
         }
     }
 }

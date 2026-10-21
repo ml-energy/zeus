@@ -49,7 +49,8 @@ Authenticated user's identity and scopes. Requires a bearer token. Returns 404 w
 
 All endpoints are under `/gpu`. `gpu_ids` is a comma-separated list of GPU indices: required on writes; optional on reads (omit to apply to / read all GPUs).
 
-Writes (`POST`) also take `block` (bool): `true` waits for completion and reports per-GPU execution errors; `false` dispatches non-blocking and only reports MPSC send errors.
+The write endpoints in this table also take `block` (bool): `true` waits for completion and reports per-GPU execution errors; `false` dispatches non-blocking and only reports command send errors.
+For retained asynchronous power limit results, use [tracked power limit operations](#tracked-power-limit-operations).
 
 | Method | Path | Extra params / notes |
 |---|---|---|
@@ -173,7 +174,8 @@ On AMD EPYC CPUs with the `amd_hsmp` kernel module loaded (which creates `/dev/h
 
 `set_power_limit` and `set_power_limit_time_window` change one constraint of each listed CPU's package zone, named as in `get_power_limit`.
 Both reject a constraint without a recorded [original setting](deployment.md#original-cpu-power-limits).
-`set_power_limit` rejects a constraint the zone does not have, `0`, a `socket` limit above its `max_power_mw` (the firmware would clamp it), and a RAPL limit too large for the CPU's register, in which case the previous limit is restored.
+`set_power_limit` rejects a constraint the zone does not have, `0`, a `socket` limit above its `max_power_mw` (the firmware would clamp it), and a RAPL limit too large for the CPU's register.
+For a RAPL limit that does not fit, Zeusd attempts to restore the previous limit and reports whether restoration was verified.
 The hardware can round a RAPL limit down by less than 1 W.
 RAPL limits are not bounded by `max_power_mw`; for `long_term` it is the CPU's thermal design power (TDP), which the hardware allows exceeding.
 Neither interface reports the lowest power a CPU can hold under load, so a cap below it is accepted but not met.
@@ -214,3 +216,95 @@ Values that already match are not written, and a failed write does not stop the 
 Read failures in RAPL do not block HSMP restoration, and HSMP read failures do not block RAPL restoration.
 Changed Intel time windows require MSR write access and are restored exactly, including fractional encodings.
 Without that access, reset still attempts power-limit restoration and reports errors for changed windows.
+
+## Tracked power limit operations
+
+An operation is a power limit request with a retained result for each selected device.
+It continues after the submitting HTTP connection closes.
+These endpoints require `gpu-control` or `cpu-control`, including status and cancellation requests.
+
+| Method | GPU path | CPU path |
+|---|---|---|
+| `POST` | `/gpu/set_power_limit/operations` | `/cpu/set_power_limit/operations` |
+| `GET` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
+| `DELETE` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
+
+POST requires `gpu_ids` or `cpu_ids`, a positive `power_limit_mw`, and a positive `start_within_ms`.
+CPU requests also require `constraint`: `long_term`, `short_term`, `peak_power`, or `socket`.
+`start_within_ms` limits queue waiting from server admission until the device executor begins backend execution.
+It has no default and does not limit execution time.
+There is no `block` parameter or client-supplied ID.
+Duplicate device IDs, nonexistent devices, unknown fields, and unrepresentable values are rejected before any selected device is enqueued.
+Checks requiring hardware access run during execution and can fail independently on each device.
+
+```text
+POST /gpu/set_power_limit/operations?gpu_ids=0,1&power_limit_mw=250000&start_within_ms=1000
+POST /cpu/set_power_limit/operations?cpu_ids=0&constraint=long_term&power_limit_mw=150000&start_within_ms=1000
+```
+
+Accepted POST requests return `202`, a `Location` header containing the status URL, and a snapshot.
+GET and DELETE return the current snapshot with `200`.
+Operation responses use `Cache-Control: no-store`.
+
+```json
+{
+  "id": "31415926-5358-4979-8323-846264338327:1",
+  "status_url": "/gpu/set_power_limit/operations/31415926-5358-4979-8323-846264338327:1",
+  "device_type": "gpu",
+  "requested": {"power_limit_mw": 250000},
+  "start_within_ms": 1000,
+  "complete": false,
+  "devices": {
+    "0": {"state": "running", "effect": "uncertain", "reason": null, "error": null},
+    "1": {"state": "queued", "effect": "unchanged", "reason": null, "error": null}
+  }
+}
+```
+
+`requested` is immutable and includes `constraint` for CPU operations.
+`complete` becomes true when every device has a terminal state: `succeeded`, `failed`, or `cancelled`.
+Device states and evidence about the command's effect are separate:
+
+| State | Meaning | Effect |
+|---|---|---|
+| `queued` | Waiting for its device executor | `unchanged` |
+| `running` | Backend execution has begun; cancellation is unavailable | `uncertain` |
+| `succeeded` | The backend completed the setting command successfully | `applied` |
+| `failed` | Backend execution failed | `unchanged`, `restored`, or `uncertain`, according to backend evidence |
+| `cancelled` | Execution was prevented | `unchanged` |
+
+DELETE cancels each device that is still queued and retains its result.
+Repeated DELETE is safe; running and terminal results are unchanged.
+Cancellation and execution compete under one lock, so a cancelled device's setter cannot run later.
+`reason` identifies `cancellation_requested`, `deadline_exceeded`, `executor_unavailable`, `executor_panicked`, or `backend_error`; `error` contains a backend message when available.
+Queue deadlines remain observable even if an earlier native call is stuck.
+An HTTP timeout or an elapsed queue deadline cannot stop an executing native call.
+
+Existing and tracked commands share one ordered executor per device.
+Different devices have independent threads, but vendor locks can serialize backend calls across devices.
+In particular, older AMD SMI versions require a global lock.
+Backend validation and waiting for vendor locks are part of `running` execution.
+Background power polling retains separate handles and can overlap command execution where the backend permits it.
+Multiple-device operations can partially succeed or partially cancel; they are not atomic across devices.
+
+`unchanged` means this command did not write the setting.
+`restored` means the backend verified the previous setting after attempting a write.
+RAPL verifies its existing rounding and restoration behavior; tracking adds no universal GPU readback.
+Generic vendor errors after execution begins are `uncertain`.
+`applied` acknowledges the setting command; it does not guarantee workload power consumption or prevent later changes by another actor.
+
+IDs contain a random server startup UUID and a checked increasing counter; clients should treat the complete ID as opaque.
+Results are held in memory and are never replayed after restart.
+A different startup UUID or an expired or evicted result returns `410` with `error.code = "operation_unavailable"` and `effect = "uncertain"`.
+A well-formed, unknown current-startup ID returns `404` with `error.code = "operation_not_found"`.
+If the POST response is lost, the client may never learn the ID, and retrying can submit another operation.
+The API does not guarantee exactly-once submission across blind retries.
+
+The shared registry permits 1,024 live operations, 4,096 completed operations, and 16,384 retained device results.
+Completed results expire after one hour and can be evicted earlier for count or device-result capacity.
+Queued or running results are never evicted to admit another operation.
+Each device also permits 1,024 outstanding tracked queue entries, including cancelled entries waiting behind a blocked command.
+Admission fails with `503` and `error.code = "capacity_exhausted"` when these bounds prevent reserving every result and queue entry.
+Rejected admission enqueues no device work.
+Error messages retain at most 2,048 bytes plus a truncation marker, bounding message content to approximately 32 MiB across all device results, plus allocation overhead.
+Existing untracked queues retain their previous admission behavior and do not allocate retained operation results.

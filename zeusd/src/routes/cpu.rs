@@ -524,6 +524,7 @@ pub fn cpu_read_routes(cfg: &mut web::ServiceConfig) {
 
 /// Register CPU control (write) routes.
 pub fn cpu_control_routes(cfg: &mut web::ServiceConfig) {
+    cfg.configure(super::operations::cpu_operation_routes);
     cfg.service(set_power_limit_handler)
         .service(set_power_limit_time_window_handler)
         .service(reset_power_limit_handler);

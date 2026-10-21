@@ -2,6 +2,7 @@
 
 pub mod cpu;
 pub mod gpu;
+mod operations;
 pub mod server;
 
 pub use cpu::{cpu_control_routes, cpu_read_routes, CpuPowerSamplingPeriod};

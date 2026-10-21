@@ -40,6 +40,7 @@ humantime = "2"
 regex = "1"
 shell-words = "1"
 toml = "0.8"
+uuid = { version = "1", features = ["v4"] }
 
 [features]
 default = ["nvml", "amdsmi"]
