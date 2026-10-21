@@ -217,11 +217,12 @@ Read failures in RAPL do not block HSMP restoration, and HSMP read failures do n
 Changed Intel time windows require MSR write access and are restored exactly, including fractional encodings.
 Without that access, reset still attempts power-limit restoration and reports errors for changed windows.
 
-## Tracked power limit operations
+## Tracked operations
 
-An operation is a power limit request with a retained result for each selected device.
-It continues after the submitting HTTP connection closes.
-These endpoints require `gpu-control` or `cpu-control`, including status and cancellation requests.
+A request to change, for instance, a device's power limit, can time out while the hardware command continues.
+The client then cannot tell whether the change succeeded.
+Tracked operations give each request an ID and retain its results, so clients can check progress after reconnecting instead of submitting the change again.
+As of now, tracked operations are supported only for power limit changes.
 
 | Method | GPU path | CPU path |
 |---|---|---|
@@ -229,22 +230,20 @@ These endpoints require `gpu-control` or `cpu-control`, including status and can
 | `GET` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
 | `DELETE` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
 
-POST requires `gpu_ids` or `cpu_ids`, a positive `power_limit_mw`, and a positive `start_within_ms`.
-CPU requests also require `constraint`: `long_term`, `short_term`, `peak_power`, or `socket`.
-`start_within_ms` limits queue waiting from server admission until the device executor begins backend execution.
-It has no default and does not limit execution time.
-There is no `block` parameter or client-supplied ID.
-Duplicate device IDs, nonexistent devices, unknown fields, and unrepresentable values are rejected before any selected device is enqueued.
-Checks requiring hardware access run during execution and can fail independently on each device.
+All three methods require the corresponding `gpu-control` or `cpu-control` permission.
+
+### Submit a change
+
+`POST` requires `gpu_ids` or `cpu_ids`, a positive `power_limit_mw`, and a positive `start_within_ms`.
+`start_within_ms` is the maximum queue waiting time in milliseconds; work that has not started within that time is cancelled.
+CPU requests also require a supported `constraint`, as with `/cpu/set_power_limit`.
 
 ```text
 POST /gpu/set_power_limit/operations?gpu_ids=0,1&power_limit_mw=250000&start_within_ms=1000
 POST /cpu/set_power_limit/operations?cpu_ids=0&constraint=long_term&power_limit_mw=150000&start_within_ms=1000
 ```
 
-Accepted POST requests return `202`, a `Location` header containing the status URL, and a snapshot.
-GET and DELETE return the current snapshot with `200`.
-Operation responses use `Cache-Control: no-store`.
+An accepted request returns `202 Accepted` with a generated ID, a `status_url`, and the initial result:
 
 ```json
 {
@@ -255,56 +254,28 @@ Operation responses use `Cache-Control: no-store`.
   "start_within_ms": 1000,
   "complete": false,
   "devices": {
-    "0": {"state": "running", "effect": "uncertain", "reason": null, "error": null},
+    "0": {"state": "queued", "effect": "unchanged", "reason": null, "error": null},
     "1": {"state": "queued", "effect": "unchanged", "reason": null, "error": null}
   }
 }
 ```
 
-`requested` is immutable and includes `constraint` for CPU operations.
-`complete` becomes true when every device has a terminal state: `succeeded`, `failed`, or `cancelled`.
-Device states and evidence about the command's effect are separate:
+### Check or cancel a change
 
-| State | Meaning | Effect |
-|---|---|---|
-| `queued` | Waiting for its device executor | `unchanged` |
-| `running` | Backend execution has begun; cancellation is unavailable | `uncertain` |
-| `succeeded` | The backend completed the setting command successfully | `applied` |
-| `failed` | Backend execution failed | `unchanged`, `restored`, or `uncertain`, according to backend evidence |
-| `cancelled` | Execution was prevented | `unchanged` |
+Poll `status_url` with `GET` to check on the operation.
+The response schema is the same as that of the initial response above.
 
-DELETE cancels each device that is still queued and retains its result.
-Repeated DELETE is safe; running and terminal results are unchanged.
-Cancellation and execution compete under one lock, so a cancelled device's setter cannot run later.
-`reason` identifies `cancellation_requested`, `deadline_exceeded`, `executor_unavailable`, `executor_panicked`, or `backend_error`; `error` contains a backend message when available.
-Queue deadlines remain observable even if an earlier native call is stuck.
-An HTTP timeout or an elapsed queue deadline cannot stop an executing native call.
+The operation is complete when `complete` is `true`.
+Each device moves from `queued` to `running`, then `succeeded` or `failed`; work cancelled before execution becomes `cancelled`.
+Devices can finish independently, so check each result even when `complete` is `true`.
 
-Existing and tracked commands share one ordered executor per device.
-Different devices have independent threads, but vendor locks can serialize backend calls across devices.
-In particular, older AMD SMI versions require a global lock.
-Backend validation and waiting for vendor locks are part of `running` execution.
-Background power polling retains separate handles and can overlap command execution where the backend permits it.
-Multiple-device operations can partially succeed or partially cancel; they are not atomic across devices.
+`effect` is `applied` if the write succeeded, or `unchanged` if no write occurred.
+It is `restored` if the previous setting was restored and verified, or `uncertain` if the outcome is unknown.
+For failures, `reason` and `error` provide details.
 
-`unchanged` means this command did not write the setting.
-`restored` means the backend verified the previous setting after attempting a write.
-RAPL verifies its existing rounding and restoration behavior; tracking adds no universal GPU readback.
-Generic vendor errors after execution begins are `uncertain`.
-`applied` acknowledges the setting command; it does not guarantee workload power consumption or prevent later changes by another actor.
+Send `DELETE` to the same `status_url` to cancel queued work and retrieve the current results.
+Running work continues: neither cancellation nor `start_within_ms` can interrupt a hardware call that has already started.
+`GET` and `DELETE` return `200 OK` with the same response structure as `POST`.
 
-IDs contain a random server startup UUID and a checked increasing counter; clients should treat the complete ID as opaque.
-Results are held in memory and are never replayed after restart.
-A different startup UUID or an expired or evicted result returns `410` with `error.code = "operation_unavailable"` and `effect = "uncertain"`.
-A well-formed, unknown current-startup ID returns `404` with `error.code = "operation_not_found"`.
-If the POST response is lost, the client may never learn the ID, and retrying can submit another operation.
-The API does not guarantee exactly-once submission across blind retries.
-
-The shared registry permits 1,024 live operations, 4,096 completed operations, and 16,384 retained device results.
-Completed results expire after one hour and can be evicted earlier for count or device-result capacity.
-Queued or running results are never evicted to admit another operation.
-Each device also permits 1,024 outstanding tracked queue entries, including cancelled entries waiting behind a blocked command.
-Admission fails with `503` and `error.code = "capacity_exhausted"` when these bounds prevent reserving every result and queue entry.
-Rejected admission enqueues no device work.
-Error messages retain at most 2,048 bytes plus a truncation marker, bounding message content to approximately 32 MiB across all device results, plus allocation overhead.
-Existing untracked queues retain their previous admission behavior and do not allocate retained operation results.
+Results are held in memory for up to one hour after completion and can be removed earlier to make room for newer results.
+A daemon restart also loses them; `410 Gone` means the result is unavailable and the outcome remains unknown.

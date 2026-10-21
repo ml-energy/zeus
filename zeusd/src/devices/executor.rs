@@ -114,7 +114,7 @@ impl<C: Send + 'static, R: Send + 'static> DeviceExecutor<C, R> {
     /// Reserve every selected device's queue slot before admitting an operation.
     pub(crate) fn reserve(&self) -> Result<QueuePermit, OperationError> {
         self.tracked
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
                 (count < MAX_TRACKED_QUEUE).then_some(count + 1)
             })
             .map_err(|_| OperationError::capacity("Tracked device queue capacity exhausted"))?;
