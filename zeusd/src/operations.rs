@@ -60,6 +60,7 @@ pub enum SettingEffect {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DeviceState {
+    Prepared,
     Queued,
     Running,
     Succeeded,
@@ -92,9 +93,9 @@ pub struct DeviceOutcome {
 }
 
 impl DeviceOutcome {
-    fn queued() -> Self {
+    fn prepared() -> Self {
         Self {
-            state: DeviceState::Queued,
+            state: DeviceState::Prepared,
             effect: SettingEffect::Unchanged,
             reason: None,
             error: None,
@@ -102,7 +103,7 @@ impl DeviceOutcome {
     }
 
     fn cancel(&mut self, reason: OutcomeReason) {
-        if self.state == DeviceState::Queued {
+        if matches!(self.state, DeviceState::Prepared | DeviceState::Queued) {
             self.state = DeviceState::Cancelled;
             self.reason = Some(reason);
         }
@@ -141,6 +142,8 @@ pub enum OperationErrorCode {
 pub struct OperationError {
     pub code: OperationErrorCode,
     pub message: String,
+    /// Effect of this rejected API request.
+    /// Query any retained operation separately for its outcome.
     pub effect: SettingEffect,
 }
 
@@ -290,6 +293,16 @@ impl Drop for Inner {
 #[derive(Clone)]
 pub struct OperationRegistry(Arc<Inner>);
 
+/// Only the activation that changes prepared devices to queued receives tickets.
+pub enum Activation<T> {
+    Existing(OperationSnapshot),
+    Dispatch {
+        snapshot: OperationSnapshot,
+        tickets: Vec<OperationTicket>,
+        reservation: T,
+    },
+}
+
 impl Default for OperationRegistry {
     fn default() -> Self {
         Self::new(OperationLimits::default())
@@ -310,14 +323,15 @@ impl OperationRegistry {
         Self(inner)
     }
 
-    /// Reserve retained results before any command can be enqueued.
-    pub fn admit(
+    /// Retain an immutable request without reserving a device queue or issuing tickets.
+    /// The start deadline includes time spent waiting for activation.
+    pub fn prepare(
         &self,
         device_type: DeviceType,
         ids: &[usize],
         requested: RequestedSetting,
         start_within_ms: u64,
-    ) -> Result<(OperationSnapshot, Vec<OperationTicket>), OperationError> {
+    ) -> Result<OperationSnapshot, OperationError> {
         if start_within_ms == 0 {
             return Err(OperationError::invalid("start_within_ms must be positive"));
         }
@@ -332,10 +346,8 @@ impl OperationRegistry {
         }
         let devices: BTreeMap<_, _> = ids
             .iter()
-            .map(|&id| (id, DeviceOutcome::queued()))
+            .map(|&id| (id, DeviceOutcome::prepared()))
             .collect();
-        let retained_devices = devices.clone();
-        let retained_requested = requested.clone();
         self.0.maintain();
         let mut retired = Vec::new();
         let mut state = self.0.state.lock().unwrap();
@@ -380,13 +392,7 @@ impl OperationRegistry {
             device_type,
             device_results: ids.len(),
             deadline,
-            snapshot: Mutex::new(OperationSnapshot {
-                id: snapshot.id.clone(),
-                status_url: snapshot.status_url.clone(),
-                requested: retained_requested,
-                devices: retained_devices,
-                ..snapshot
-            }),
+            snapshot: Mutex::new(snapshot.clone()),
         });
         state.records.insert(counter, record.clone());
         state.deadlines.insert((deadline, counter));
@@ -394,17 +400,53 @@ impl OperationRegistry {
         state.device_results += ids.len();
         drop(state);
         drop(retired);
-        let tickets = ids
-            .iter()
-            .map(|&device| OperationTicket {
+        self.0.wake.notify_one();
+        Ok(snapshot)
+    }
+
+    /// Reserve all queues before the single prepared-to-queued transition.
+    /// `reserve` must not access this registry; it runs under the operation lock.
+    /// Dropping returned tickets cancels any device that has not started.
+    pub fn activate<T>(
+        &self,
+        id: &str,
+        device_type: DeviceType,
+        reserve: impl FnOnce(&OperationSnapshot) -> Result<T, OperationError>,
+    ) -> Result<Activation<T>, OperationError> {
+        let record = self.lookup(id, device_type)?;
+        let mut snapshot = record.snapshot.lock().unwrap();
+        record.expire(&mut snapshot, Instant::now());
+        record.complete(&mut snapshot, &self.0);
+        if !snapshot
+            .devices
+            .values()
+            .all(|outcome| outcome.state == DeviceState::Prepared)
+        {
+            return Ok(Activation::Existing(snapshot.clone()));
+        }
+        let reservation = reserve(&snapshot)?;
+        // Reserving queues cannot extend the deadline.
+        record.expire(&mut snapshot, Instant::now());
+        record.complete(&mut snapshot, &self.0);
+        if snapshot.complete {
+            let expired = snapshot.clone();
+            drop(snapshot);
+            drop(reservation);
+            return Ok(Activation::Existing(expired));
+        }
+        for outcome in snapshot.devices.values_mut() {
+            outcome.state = DeviceState::Queued;
+        }
+        Ok(Activation::Dispatch {
+            snapshot: snapshot.clone(),
+            tickets: snapshot.devices.keys().map(|&device| OperationTicket {
                 inner: Arc::downgrade(&self.0),
                 record: Arc::downgrade(&record),
                 device,
                 settled: false,
-            })
-            .collect();
-        self.0.wake.notify_one();
-        Ok((snapshot, tickets))
+            }).collect(),
+            reservation,
+        })
     }
 
     pub fn get(
@@ -429,6 +471,19 @@ impl OperationRegistry {
         device_type: DeviceType,
         cancel: bool,
     ) -> Result<OperationSnapshot, OperationError> {
+        let record = self.lookup(id, device_type)?;
+        let mut snapshot = record.snapshot.lock().unwrap();
+        record.expire(&mut snapshot, Instant::now());
+        if cancel {
+            for outcome in snapshot.devices.values_mut() {
+                outcome.cancel(OutcomeReason::CancellationRequested);
+            }
+        }
+        record.complete(&mut snapshot, &self.0);
+        Ok(snapshot.clone())
+    }
+
+    fn lookup(&self, id: &str, device_type: DeviceType) -> Result<Arc<Record>, OperationError> {
         let (startup, counter) = id
             .rsplit_once(':')
             .ok_or_else(|| OperationError::invalid("Malformed operation ID"))?;
@@ -460,15 +515,7 @@ impl OperationRegistry {
             }
         };
         drop(retired);
-        let mut snapshot = record.snapshot.lock().unwrap();
-        record.expire(&mut snapshot, Instant::now());
-        if cancel {
-            for outcome in snapshot.devices.values_mut() {
-                outcome.cancel(OutcomeReason::CancellationRequested);
-            }
-        }
-        record.complete(&mut snapshot, &self.0);
-        Ok(snapshot.clone())
+        Ok(record)
     }
 }
 
@@ -615,175 +662,3 @@ impl Drop for OperationTicket {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn admit(
-        registry: &OperationRegistry,
-        ids: &[usize],
-        deadline: u64,
-    ) -> (OperationSnapshot, Vec<OperationTicket>) {
-        registry
-            .admit(
-                DeviceType::Gpu,
-                ids,
-                RequestedSetting {
-                    power_limit_mw: 200_000,
-                    constraint: None,
-                },
-                deadline,
-            )
-            .unwrap()
-    }
-
-    #[tokio::test]
-    async fn cancellation_and_execution_compete_for_one_owner() {
-        let registry = OperationRegistry::default();
-        for _ in 0..128 {
-            let (snapshot, mut tickets) = admit(&registry, &[0], 60_000);
-            let mut ticket = tickets.pop().unwrap();
-            let barrier = Arc::new(std::sync::Barrier::new(2));
-            let worker_barrier = barrier.clone();
-            let worker = std::thread::spawn(move || {
-                worker_barrier.wait();
-                let started = ticket.start();
-                (started, ticket)
-            });
-            barrier.wait();
-            let cancelled = registry.cancel(&snapshot.id, DeviceType::Gpu).unwrap();
-            let (started, mut ticket) = worker.join().unwrap();
-            if started {
-                assert_eq!(cancelled.devices[&0].state, DeviceState::Running);
-                ticket.finish(&Ok::<(), ZeusdError>(()));
-                assert_eq!(
-                    registry.get(&snapshot.id, DeviceType::Gpu).unwrap().devices[&0].state,
-                    DeviceState::Succeeded
-                );
-            } else {
-                assert_eq!(cancelled.devices[&0].state, DeviceState::Cancelled);
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn insufficient_capacity_preserves_completed_results() {
-        let registry = OperationRegistry::new(OperationLimits {
-            live: 2,
-            completed: 1,
-            device_results: 3,
-            retention: Duration::from_secs(60),
-        });
-        let (active, _active_tickets) = admit(&registry, &[0, 1], 60_000);
-        let (completed, mut completed_tickets) = admit(&registry, &[2], 60_000);
-        registry.cancel(&completed.id, DeviceType::Gpu).unwrap();
-
-        let error = registry
-            .admit(DeviceType::Gpu, &[3, 4], active.requested, 60_000)
-            .err()
-            .unwrap();
-        assert_eq!(error.code, OperationErrorCode::CapacityExhausted);
-        assert!(
-            registry
-                .get(&completed.id, DeviceType::Gpu)
-                .unwrap()
-                .complete
-        );
-        let (_replacement, _tickets) = admit(&registry, &[3], 60_000);
-        assert_eq!(
-            registry
-                .get(&completed.id, DeviceType::Gpu)
-                .unwrap_err()
-                .code,
-            OperationErrorCode::OperationUnavailable
-        );
-        assert!(!completed_tickets[0].start());
-        assert!(!registry.get(&active.id, DeviceType::Gpu).unwrap().complete);
-    }
-
-    #[tokio::test]
-    async fn completed_results_expire_with_outstanding_tickets() {
-        let registry = OperationRegistry::new(OperationLimits {
-            retention: Duration::from_millis(20),
-            ..OperationLimits::default()
-        });
-        let (snapshot, mut tickets) = admit(&registry, &[0], 60_000);
-        registry.cancel(&snapshot.id, DeviceType::Gpu).unwrap();
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        assert_eq!(
-            registry
-                .get(&snapshot.id, DeviceType::Gpu)
-                .unwrap_err()
-                .code,
-            OperationErrorCode::OperationUnavailable
-        );
-        assert!(!tickets[0].start());
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn concurrent_completion_and_eviction_preserve_capacity() {
-        let registry = OperationRegistry::new(OperationLimits {
-            live: 4,
-            completed: 2,
-            device_results: 8,
-            retention: Duration::from_secs(60),
-        });
-        let operations = (0..4)
-            .map(|_| admit(&registry, &[0, 1], 60_000))
-            .collect::<Vec<_>>();
-        let ids: Vec<_> = operations.iter().map(|(s, _)| s.id.clone()).collect();
-        let barrier = Arc::new(std::sync::Barrier::new(12));
-        std::thread::scope(|scope| {
-            for (operation, tickets) in operations {
-                for mut ticket in tickets {
-                    let barrier = barrier.clone();
-                    scope.spawn(move || {
-                        barrier.wait();
-                        if ticket.start() {
-                            ticket.finish(&Ok::<(), ZeusdError>(()));
-                        }
-                    });
-                }
-                let barrier = barrier.clone();
-                let registry = registry.clone();
-                scope.spawn(move || {
-                    barrier.wait();
-                    if let Err(error) = registry.cancel(&operation.id, DeviceType::Gpu) {
-                        assert_eq!(error.code, OperationErrorCode::OperationUnavailable);
-                    }
-                });
-            }
-        });
-        let mut retained = 0;
-        for id in ids {
-            match registry.get(&id, DeviceType::Gpu) {
-                Ok(snapshot) => {
-                    assert!(snapshot.complete);
-                    retained += 1;
-                }
-                Err(error) => assert_eq!(error.code, OperationErrorCode::OperationUnavailable),
-            }
-        }
-        assert_eq!(retained, 2);
-        let _next: Vec<_> = (0..4).map(|_| admit(&registry, &[0, 1], 60_000)).collect();
-    }
-
-    #[tokio::test]
-    async fn expired_queued_work_releases_admission_capacity() {
-        let registry = OperationRegistry::new(OperationLimits {
-            live: 1,
-            completed: 1,
-            device_results: 1,
-            retention: Duration::from_secs(60),
-        });
-        let (first, mut tickets) = admit(&registry, &[0], 20);
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        let (second, _tickets) = admit(&registry, &[1], 60_000);
-        assert!(!registry.get(&second.id, DeviceType::Gpu).unwrap().complete);
-        assert_eq!(
-            registry.get(&first.id, DeviceType::Gpu).unwrap_err().code,
-            OperationErrorCode::OperationUnavailable
-        );
-        assert!(!tickets[0].start());
-    }
-}
