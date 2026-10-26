@@ -439,12 +439,16 @@ impl OperationRegistry {
         }
         Ok(Activation::Dispatch {
             snapshot: snapshot.clone(),
-            tickets: snapshot.devices.keys().map(|&device| OperationTicket {
-                inner: Arc::downgrade(&self.0),
-                record: Arc::downgrade(&record),
-                device,
-                settled: false,
-            }).collect(),
+            tickets: snapshot
+                .devices
+                .keys()
+                .map(|&device| OperationTicket {
+                    inner: Arc::downgrade(&self.0),
+                    record: Arc::downgrade(&record),
+                    device,
+                    settled: false,
+                })
+                .collect(),
             reservation,
         })
     }
@@ -661,4 +665,3 @@ impl Drop for OperationTicket {
         }
     }
 }
-

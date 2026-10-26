@@ -165,7 +165,9 @@ async fn activate_gpu(
     operations: web::Data<OperationRegistry>,
 ) -> Result<HttpResponse, OperationError> {
     let activation = operations.activate(&id, DeviceType::Gpu, |snapshot| {
-        snapshot.devices.keys()
+        snapshot
+            .devices
+            .keys()
             .map(|&id| tasks.reserve_operation(id))
             .collect::<Result<Vec<_>, _>>()
     })?;
@@ -200,7 +202,9 @@ async fn activate_cpu(
     operations: web::Data<OperationRegistry>,
 ) -> Result<HttpResponse, OperationError> {
     let activation = operations.activate(&id, DeviceType::Cpu, |snapshot| {
-        snapshot.devices.keys()
+        snapshot
+            .devices
+            .keys()
             .map(|&id| tasks.reserve_operation(id))
             .collect::<Result<Vec<_>, _>>()
     })?;
