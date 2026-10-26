@@ -226,24 +226,36 @@ As of now, tracked operations are supported only for power limit changes.
 
 | Method | GPU path | CPU path |
 |---|---|---|
-| `POST` | `/gpu/set_power_limit/operations` | `/cpu/set_power_limit/operations` |
+| `POST` | `/gpu/set_power_limit/operations/submit` | `/cpu/set_power_limit/operations/submit` |
+| `POST` | `/gpu/set_power_limit/operations/prepare` | `/cpu/set_power_limit/operations/prepare` |
+| `POST` | `/gpu/set_power_limit/operations/{id}/activate` | `/cpu/set_power_limit/operations/{id}/activate` |
 | `GET` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
 | `DELETE` | `/gpu/set_power_limit/operations/{id}` | `/cpu/set_power_limit/operations/{id}` |
 
-All three methods require the corresponding `gpu-control` or `cpu-control` permission.
+All endpoints require the corresponding `gpu-control` or `cpu-control` permission.
 
-### Submit a change
+### Submit an operation
 
-`POST` requires `gpu_ids` or `cpu_ids`, a positive `power_limit_mw`, and a positive `start_within_ms`.
-`start_within_ms` is the maximum queue waiting time in milliseconds; work that has not started within that time is cancelled.
-CPU requests also require a supported `constraint`, as with `/cpu/set_power_limit`.
+Both `/submit` and `/prepare` accept `gpu_ids` or `cpu_ids`, a positive `power_limit_mw`, and a positive `start_within_ms`.
+`start_within_ms` sets the deadline in milliseconds from preparation, including activation and queue waiting; unstarted work is cancelled when it expires.
+CPU requests also require a supported `constraint`, like `/cpu/set_power_limit`.
+
+There are two ways to start an operation:
+
+1. **Submit immediately:** `POST .../operations/submit` prepares and activates the command in one request.
+   Execution can start before the reply arrives; if that reply is lost, the client may have no ID to query.
+2. **Prepare, then activate:** `POST .../operations/prepare` stores the command without executing it.
+   Save the returned ID, then call `POST .../operations/{id}/activate` using only that ID.
+   The saved ID lets the client query or retry activation after a lost reply without repeating the write.
+
+For example, the GPU requests below are alternative ways to start the same change:
 
 ```text
-POST /gpu/set_power_limit/operations?gpu_ids=0,1&power_limit_mw=250000&start_within_ms=1000
-POST /cpu/set_power_limit/operations?cpu_ids=0&constraint=long_term&power_limit_mw=150000&start_within_ms=1000
+POST /gpu/set_power_limit/operations/submit?gpu_ids=0,1&power_limit_mw=250000&start_within_ms=1000
+POST /gpu/set_power_limit/operations/prepare?gpu_ids=0,1&power_limit_mw=250000&start_within_ms=1000
 ```
 
-An accepted request returns `202 Accepted` with a generated ID, a `status_url`, and the initial result:
+Both return `202 Accepted` with an ID and `status_url`; this is a preparation response:
 
 ```json
 {
@@ -254,26 +266,37 @@ An accepted request returns `202 Accepted` with a generated ID, a `status_url`, 
   "start_within_ms": 1000,
   "complete": false,
   "devices": {
-    "0": {"state": "queued", "effect": "unchanged", "reason": null, "error": null},
-    "1": {"state": "queued", "effect": "unchanged", "reason": null, "error": null}
+    "0": {"state": "prepared", "effect": "unchanged", "reason": null, "error": null},
+    "1": {"state": "prepared", "effect": "unchanged", "reason": null, "error": null}
   }
 }
 ```
 
-### Check or cancel a change
+After successful command preparation, activate it to queue the work for execution:
+
+```text
+POST /gpu/set_power_limit/operations/31415926-5358-4979-8323-846264338327:1/activate
+```
+
+Activation returns `202 Accepted` with the current state; retries neither repeat writes nor extend the deadline.
+Regardless of what the activation response is, its state can be queried or retried with that ID.
+Queue exhaustion returns `503 Service Unavailable` and leaves the operation prepared.
+
+### Check or cancel an operation
 
 Poll `status_url` with `GET` to check on the operation.
 The response schema is the same as that of the initial response above.
 
 The operation is complete when `complete` is `true`.
-Each device moves from `queued` to `running`, then `succeeded` or `failed`; work cancelled before execution becomes `cancelled`.
+A prepared device moves from `prepared` to `queued` on activation, then to `running`, and finally `succeeded` or `failed`.
+Work cancelled before execution becomes `cancelled`.
 Devices can finish independently, so check each result even when `complete` is `true`.
 
 `effect` is `applied` if the write succeeded, or `unchanged` if no write occurred.
 It is `restored` if the previous setting was restored and verified, or `uncertain` if the outcome is unknown.
 For failures, `reason` and `error` provide details.
 
-Send `DELETE` to the same `status_url` to cancel queued work and retrieve the current results.
+Send `DELETE` to `status_url` to cancel prepared or queued work, prevent delayed activation, and retrieve the current results.
 Running work continues: neither cancellation nor `start_within_ms` can interrupt a hardware call that has already started.
 `GET` and `DELETE` return `200 OK` with the same response structure as `POST`.
 
