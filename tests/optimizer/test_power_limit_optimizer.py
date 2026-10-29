@@ -6,11 +6,9 @@ import typing
 from typing import Generator, Iterable
 from unittest.mock import call
 
-import pynvml
 import pytest
 import pandas as pd
 
-from zeus.device.gpu import get_gpus
 from zeus.optimizer.power_limit import (
     GlobalPowerLimitOptimizer,
     HFGlobalPowerLimitOptimizer,
@@ -21,7 +19,7 @@ from zeus.optimizer.power_limit import (
     ZeusCost,
     MaxSlowdownConstraint,
 )
-from zeus.utils.testing import ReplayZeusMonitor
+from zeus.utils.testing import MockGPU, MockGPUs, ReplayZeusMonitor
 from zeus.utils.metric import zeus_cost
 
 if typing.TYPE_CHECKING:
@@ -117,25 +115,16 @@ def test_power_limit_optimizer(
     num_interrupts: int | str,
     tmp_path: Path,
 ):
-    # Mock PyNVML.
-    mocker.patch("zeus.device.gpu.nvml_is_available", return_value=True)
-    pynvml_mock = mocker.patch("zeus.device.gpu.nvidia.pynvml", autospec=True)
-    num_gpus = len(replay_log.gpu_indices)
-    pynvml_mock.nvmlDeviceGetCount.return_value = num_gpus
-    pynvml_mock.nvmlDeviceGetHandleByIndex.side_effect = lambda i: f"handle{i}"
-    pynvml_mock.nvmlDeviceGetArchitecture.return_value = pynvml.NVML_DEVICE_ARCH_VOLTA
-    pynvml_mock.NVML_DEVICE_ARCH_VOLTA = pynvml.NVML_DEVICE_ARCH_VOLTA
-    pynvml_mock.nvmlDeviceGetPowerManagementLimitConstraints.side_effect = lambda _: (
-        min(replay_log.power_limits) * 1000,
-        max(replay_log.power_limits) * 1000,
+    # Simulate the GPUs in the profiling log.
+    power_limit_constraints_mw = (min(replay_log.power_limits) * 1000, max(replay_log.power_limits) * 1000)
+    gpus = MockGPUs(
+        [MockGPU(i, power_limit_constraints_mw=power_limit_constraints_mw) for i in range(len(replay_log.gpu_indices))]
     )
+    mocker.patch("zeus.device.gpu._gpus", gpus)
+    set_power_limit = mocker.spy(gpus, "set_power_management_limit")
 
-    # Mock away the atexit hook, which raises an NVML error when testing finishes.
+    # Mock away the atexit hook, which runs at exit when `get_gpus` no longer returns the mock GPUs.
     mocker.patch("zeus.optimizer.power_limit.atexit", autospec=True)
-
-    # Disable missing `SYS_ADMIN` capability warning during testing.
-    for gpu in get_gpus().gpus:
-        gpu._disable_sys_admin_warning = True
 
     monitor = ReplayZeusMonitor(
         log_file=replay_log.log_file,
@@ -147,9 +136,6 @@ def test_power_limit_optimizer(
     ############################
     # Test JIT profiling
     ############################
-
-    # Disable `SYS_ADMIN` capability check.
-    get_gpus()._disable_sys_admin_warning = True
 
     plo = GlobalPowerLimitOptimizer(
         monitor,
@@ -190,7 +176,7 @@ def test_power_limit_optimizer(
     training_loop(plo, train_loader, num_epochs=num_epochs, wait_steps=1)
 
     # The PLO scans the power limit from the highest to the lowest, and finally
-    # sets the optimal power limit. The PLO automatically skips NVML calls when
+    # sets the optimal power limit. The PLO automatically skips setting the power limit when
     # the current power limit matches the target power limit, so we can just
     # assert unique power limit setting calls.
     call_list = []
@@ -208,20 +194,25 @@ def test_power_limit_optimizer(
             except IndexError:
                 break
             for i in sorted(monitor.gpu_indices):
-                call_list.append(call(f"handle{i}", power_limit * 1000))
+                call_list.append(call(i, power_limit * 1000))
         # The else clause runs if the for loop was not interrupted with `break`.
         else:
             # After being interrupted, the PLO will set the power limit to the max.
             for i in sorted(monitor.gpu_indices):
-                call_list.append(call(f"handle{i}", max(replay_log.power_limits) * 1000))
+                call_list.append(call(i, max(replay_log.power_limits) * 1000))
             # Return the power limit back to the list for retry.
             power_limits.insert(0, power_limit)
     # If the final power limit tried was the optimal one, the PLO will not set it again.
     if power_limit != optimal_pl:
         for i in sorted(monitor.gpu_indices):
-            call_list.append(call(f"handle{i}", optimal_pl * 1000))
-    pynvml_mock.nvmlDeviceSetPowerManagementLimit.assert_has_calls(call_list, any_order=False)
-    pynvml_mock.reset_mock()
+            call_list.append(call(i, optimal_pl * 1000))
+    set_power_limit.assert_has_calls(call_list, any_order=False)
+    set_power_limit.reset_mock()
+
+    # Profiling leaves every GPU in persistence mode at the optimal power limit.
+    for gpu in gpus.gpus:
+        assert gpu.get_persistence_mode()
+        assert gpu.get_power_management_limit() == optimal_pl * 1000
 
     # Print out the profile data for debugging purposes.
     with open(tmp_path / "power_limit_optimizer.json", "r") as f:
@@ -274,8 +265,8 @@ def test_power_limit_optimizer(
 
     training_loop(plo, train_loader, num_epochs=1)
 
-    pynvml_mock.nvmlDeviceSetPowerManagementLimit.assert_has_calls(
-        [call(f"handle{i}", optimal_pl * 1000) for i in sorted(monitor.gpu_indices)],
+    set_power_limit.assert_has_calls(
+        [call(i, optimal_pl * 1000) for i in sorted(monitor.gpu_indices)],
         any_order=False,
     )
 
