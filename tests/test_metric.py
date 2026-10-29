@@ -7,19 +7,14 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from zeus.metric import EnergyHistogram, EnergyCumulativeCounter, PowerGauge
+from zeus.utils.testing import MockCPU, MockCPUs
 
 
 @pytest.fixture
-def mock_get_cpus():
-    """Fixture to mock `get_cpus()` to avoid RAPL-related errors."""
-    with patch("zeus.metric.get_cpus", autospec=True) as mock_get_cpus:
-        mock_cpu_0 = MagicMock()
-        mock_cpu_0.supportsGetDramEnergyConsumption.return_value = True
-        mock_cpu_1 = MagicMock()
-        mock_cpu_1.supportsGetDramEnergyConsumption.return_value = False
-
-        mock_get_cpus.return_value.cpus = [mock_cpu_0, mock_cpu_1]
-        yield mock_get_cpus
+def mock_cpus():
+    """Fixture to simulate two CPU packages, only the first of which has DRAM."""
+    with patch("zeus.device.cpu._cpus", MockCPUs([MockCPU(0), MockCPU(1, dram_power_mw=None)])) as cpus:
+        yield cpus
 
 
 @pytest.fixture
@@ -62,7 +57,7 @@ def mock_histogram():
 
 
 def test_energy_histogram(
-    mock_get_cpus: MagicMock,
+    mock_cpus: MockCPUs,
     mock_zeus_monitor: MagicMock,
     mock_histogram: MagicMock,
 ) -> None:
@@ -72,18 +67,15 @@ def test_energy_histogram(
     pushgateway_url = "http://localhost:9091"
     window_name = "test_window"
 
-    # Ensure mocked CPUs have the required method
-    mock_get_cpus.return_value.cpus = [
-        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=True)),
-        MagicMock(supportsGetDramEnergyConsumption=MagicMock(return_value=False)),
-    ]
-
     histogram_metric = EnergyHistogram(
         cpu_indices=cpu_indices,
         gpu_indices=gpu_indices,
         pushgateway_url=pushgateway_url,
         job="test_energy_histogram",
     )
+
+    # CPU 0 has a DRAM zone, so a DRAM histogram is created.
+    assert "energy_monitor_dram_energy_joules" in [c.args[0] for c in mock_histogram.call_args_list]
 
     # Mock single Histogram objects for GPU, CPU, and DRAM
     gpu_mock_histogram = mock_histogram(
