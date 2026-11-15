@@ -24,6 +24,7 @@ fn bad_request(error: String) -> HttpResponse {
 /// Parse a comma-separated list of device indices, rejecting empty lists.
 ///
 /// `device` is the device-type name used in error messages (e.g. `"CPU"`).
+#[allow(clippy::result_large_err)]
 fn parse_device_ids(raw: &str, device: &str) -> Result<Vec<usize>, HttpResponse> {
     let param = format!("{}_ids", device.to_lowercase());
     if raw.trim().is_empty() {
@@ -52,6 +53,7 @@ fn parse_device_ids(raw: &str, device: &str) -> Result<Vec<usize>, HttpResponse>
 
 /// Resolve the optional device id list for a read endpoint: default to all
 /// devices if absent, reject empty lists or out-of-range indices.
+#[allow(clippy::result_large_err)]
 fn resolve_read_device_ids(
     query: &Option<String>,
     device_count: usize,
@@ -73,6 +75,7 @@ fn resolve_read_device_ids(
 
 /// Resolve the optional device id list for a stream endpoint against the
 /// set of monitored devices, defaulting to all of them if absent.
+#[allow(clippy::result_large_err)]
 fn resolve_stream_device_ids<T>(
     query: &Option<String>,
     broadcasts: &PowerBroadcasts<T>,
