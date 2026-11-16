@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import abc
+import math
 import queue
 import logging
 import requests
 import multiprocessing as mp
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Literal
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from collections import defaultdict
+from collections.abc import Mapping
+
+import pandas as pd
 
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
@@ -151,6 +156,149 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
     def history_length(self) -> int:
         """Returns number of carbon intensity values in history dict."""
         return 24
+
+
+class TraceCarbonIntensityProvider(CarbonIntensityProvider):
+    """Carbon intensity read from a recorded hourly trace, with no network access.
+
+    This makes carbon measurements reproducible and lets you ask what a job would
+    have emitted on a past day. The trace can come from public grid data, such as
+    the hourly CO2 estimates in the U.S. EIA-930 data or a grid operator's fuel mix.
+
+    The trace maps the start of each hour to the carbon intensity in gCO2eq/kWh
+    during that hour. Hours are UTC hours, which is how `CarbonEmissionMonitor`
+    keys its energy measurements. A lookup returns the value of the hour that
+    contains the requested time (a step function, no interpolation). Asking for an
+    hour that is not in the trace raises `ZeusCarbonIntensityNotFoundError`. There
+    is no extrapolation, so fill gaps in your data before building the provider.
+
+    By default, the trace is read at the current wall-clock time. To replay a past
+    period, pass `replay_start`: the hour in which the provider is created is mapped
+    to the hour that contains `replay_start`, and later hours follow one to one.
+
+    !!! Note
+        Do not mix direct (combustion) and lifecycle emission factors when you compare
+        results. EIA-930 CO2 estimates are direct emissions.
+    """
+
+    def __init__(self, intensities: Mapping[datetime, float], replay_start: datetime | None = None) -> None:
+        """Initialize the provider.
+
+        Args:
+            intensities: Maps the start of each hour (timezone-aware, on the hour) to the
+                carbon intensity in gCO2eq/kWh. Values must be finite and non-negative.
+            replay_start: A timezone-aware time inside the trace. If given, the current
+                wall-clock hour is mapped to the hour that contains this time.
+        """
+        if not intensities:
+            raise ValueError("The carbon intensity trace is empty.")
+        trace: dict[datetime, float] = {}
+        for hour, value in intensities.items():
+            if hour.tzinfo is None:
+                raise ValueError(f"Trace time {hour} has no timezone. Use timezone-aware times.")
+            if (hour.minute, hour.second, hour.microsecond) != (0, 0, 0):
+                raise ValueError(f"Trace time {hour} is not on the hour. Average your data to hours first.")
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"Carbon intensity {value} at {hour} is not a finite non-negative number.")
+            trace[hour.astimezone(timezone.utc)] = float(value)
+        self.trace = dict(sorted(trace.items()))
+
+        self.offset = timedelta(0)
+        if replay_start is not None:
+            if replay_start.tzinfo is None:
+                raise ValueError("`replay_start` must be timezone-aware.")
+            start = _hour_floor(replay_start)
+            if start not in self.trace:
+                raise ValueError(f"`replay_start` {replay_start} is not inside the trace.")
+            self.offset = start - _hour_floor(datetime.now(timezone.utc))
+
+    @classmethod
+    def from_csv(
+        cls,
+        path: str | Path,
+        time_column: str,
+        intensity_column: str,
+        time_zone: str | None = None,
+        time_label: Literal["start", "end"] = "start",
+        scale: float = 1.0,
+        replay_start: datetime | None = None,
+    ) -> TraceCarbonIntensityProvider:
+        """Build the provider from an hourly CSV file.
+
+        Args:
+            path: Path to the CSV file.
+            time_column: Column with the timestamp of each hour.
+            intensity_column: Column with the carbon intensity of each hour.
+            time_zone: IANA time zone (for example `"UTC"` or `"America/Chicago"`) for
+                timestamps that have no offset. Must be omitted if the timestamps carry
+                an offset. Prefer UTC timestamps, since local times are ambiguous
+                when daylight saving time ends.
+            time_label: Whether each timestamp marks the `"start"` or the `"end"` of its
+                hour. EIA-930 data uses the end of the hour.
+            scale: Factor that converts the column to gCO2eq/kWh. For example, 453.59237
+                for lb/kWh, or 1000 for t/MWh.
+            replay_start: Passed to the constructor.
+        """
+        df = pd.read_csv(path)
+        for column in (time_column, intensity_column):
+            if column not in df.columns:
+                raise ValueError(f"Column '{column}' is not in {path}.")
+        text = df[time_column].astype(str).str.strip()
+        has_offset = text.str.contains(r"(?:Z|[+-]\d{2}:?\d{2})$")
+        if has_offset.all():
+            if time_zone is not None:
+                raise ValueError(f"Column '{time_column}' already has UTC offsets. Do not pass `time_zone`.")
+            times = pd.to_datetime(text, utc=True)
+        elif not has_offset.any():
+            if time_zone is None:
+                raise ValueError(f"Column '{time_column}' has no UTC offsets. Pass `time_zone`.")
+            times = pd.to_datetime(text).dt.tz_localize(time_zone)
+        else:
+            raise ValueError(f"Column '{time_column}' mixes times with and without UTC offsets.")
+        if time_label == "end":
+            times = times - timedelta(hours=1)
+        values = df[intensity_column].astype(float) * scale
+        if times.duplicated().any():
+            raise ValueError(f"Column '{time_column}' has repeated hours.")
+        trace = {t.to_pydatetime(): v for t, v in zip(times, values)}
+        return cls(trace, replay_start=replay_start)
+
+    def carbon_intensity_at(self, when: datetime) -> float:
+        """Return the carbon intensity of the trace hour that contains `when` (a trace time, not wall-clock)."""
+        if when.tzinfo is None:
+            raise ValueError("`when` must be timezone-aware.")
+        hour = _hour_floor(when)
+        try:
+            return self.trace[hour]
+        except KeyError as e:
+            first, last = next(iter(self.trace)), next(reversed(self.trace))
+            raise ZeusCarbonIntensityNotFoundError(
+                f"No carbon intensity for the hour starting {hour.isoformat()}. "
+                f"The trace covers {first.isoformat()} to {last.isoformat()} (hour starts, UTC)."
+            ) from e
+
+    def get_current_carbon_intensity(self) -> float:
+        """Return the carbon intensity of the trace hour mapped to the current wall-clock hour."""
+        return self.carbon_intensity_at(datetime.now(timezone.utc) + self.offset)
+
+    def get_recent_carbon_intensity(self) -> dict[datetime, float]:
+        """Return every hour of the trace, keyed by the wall-clock hour it is mapped to."""
+        return {hour - self.offset: value for hour, value in self.trace.items()}
+
+    @property
+    def update_period(self) -> timedelta:
+        """Each trace value covers one hour."""
+        return timedelta(hours=1)
+
+    @property
+    def history_length(self) -> int:
+        """Number of hours in the trace, since `get_recent_carbon_intensity` returns all of them."""
+        return len(self.trace)
+
+
+def _hour_floor(when: datetime) -> datetime:
+    """Return the start of the UTC hour that contains `when`."""
+    return when.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
 
 
 @dataclass

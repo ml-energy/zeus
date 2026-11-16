@@ -173,6 +173,47 @@ Four functions are exposed:
 - [`profile_cooldown_duration`][zeus.profile.profile_cooldown_duration] -- Sweep cooldown durations with a fixed measurement duration.
 - [`measure`][zeus.profile.measure] -- Measure energy once with known measurement and cooldown durations.
 
+## Carbon Emissions from Recorded Grid Data
+
+[`CarbonEmissionMonitor`][zeus.monitor.carbon.CarbonEmissionMonitor] multiplies the energy of each hour by the carbon intensity of the grid in that hour.
+[`ElectrictyMapsClient`][zeus.monitor.carbon.ElectrictyMapsClient] fetches live values.
+[`TraceCarbonIntensityProvider`][zeus.monitor.carbon.TraceCarbonIntensityProvider] reads them from a recorded hourly trace instead, with no network access.
+Use it to make a carbon measurement reproducible, or to ask what the same job would have emitted on a past day.
+
+```python
+from datetime import datetime, timezone
+
+from zeus.monitor.carbon import CarbonEmissionMonitor, TraceCarbonIntensityProvider
+
+if __name__ == "__main__":
+    provider = TraceCarbonIntensityProvider.from_csv(
+        "ERCO_2024.csv",
+        time_column="UTC time",
+        intensity_column="CO2 Emissions Intensity for Consumed Electricity",
+        time_zone="UTC",       # the timestamps carry no offset and are in UTC
+        time_label="end",      # EIA-930 timestamps mark the end of each hour
+        scale=453.59237,       # lb/kWh to g/kWh
+        replay_start=datetime(2024, 7, 19, 0, tzinfo=timezone.utc),  # replay this day
+    )
+    monitor = CarbonEmissionMonitor(provider)
+    monitor.begin_window("training")
+    train()
+    result = monitor.end_window("training")
+    print(f"{sum(result.gpu_carbon_emission.values()):.1f} gCO2eq")
+```
+
+The rules are strict on purpose:
+
+- Each value covers one UTC hour, and a lookup returns the value of the hour that contains the requested time. Data finer than an hour must be averaged to hours first (for example, `df.resample("1h").mean()`).
+- Times must carry a time zone. Pass `time_zone` for timestamps without an offset, and `time_label="end"` for data that stamps the end of each hour.
+- An hour that is missing from the trace raises [`ZeusCarbonIntensityNotFoundError`][zeus.monitor.carbon.ZeusCarbonIntensityNotFoundError]. Nothing is extrapolated, so fill gaps before building the provider.
+- With `replay_start`, the hour in which the provider is created is replayed as the hour that contains `replay_start`. Without it, the trace is read at the current time.
+
+Two public sources work well:
+
+- **U.S. EIA-930** ([Hourly Electric Grid Monitor](https://www.eia.gov/electricity/gridmonitor/)): the balancing-authority downloads have hourly CO2 emission intensity for generated and consumed electricity. These are direct (combustion) emissions. EIA data is in the public domain, and EIA asks for a source line with the publication date. Save the `Published Hourly Data` sheet as CSV with `pandas.read_excel` before using `from_csv`.
+- **A grid operator's fuel mix** (for example, ERCOT's): weight each fuel's generation by an emission factor and divide by total generation, then average to hours. With lifecycle factors such as the IPCC AR5 medians, the result is lifecycle intensity. Do not compare it with direct intensity.
+
 ## Hardware Support
 
 For GPUs, we currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.3 or later).
