@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import multiprocessing as mp
 import dateutil
+import pandas as pd
 import pytest
 import requests
 
@@ -645,3 +646,120 @@ def test_trace_provider_in_polling_process(mock_zeus_monitor, mock_datetime):
     assert gpu_carbon_emission[2] == pytest.approx(40.0 / 3.6e6 * total_intensity)
     assert cpu_carbon_emission[0] == pytest.approx(20.0 / 3.6e6 * total_intensity)
     assert dram_carbon_emission[0] == pytest.approx(15.0 / 3.6e6 * total_intensity)
+
+
+def test_trace_provider_sub_hourly_period():
+    trace = {
+        datetime(2024, 7, 19, 0, 0, tzinfo=UTC): 112.0,
+        datetime(2024, 7, 19, 0, 30, tzinfo=UTC): 108.0,
+        datetime(2024, 7, 19, 1, 30, tzinfo=UTC): 106.0,  # 01:00 is a gap
+    }
+    provider = TraceCarbonIntensityProvider(trace)
+    assert provider.update_period == timedelta(minutes=30)
+    assert provider.carbon_intensity_at(datetime(2024, 7, 19, 0, 29, tzinfo=UTC)) == 112.0
+    assert provider.carbon_intensity_at(datetime(2024, 7, 19, 0, 45, tzinfo=UTC)) == 108.0
+    with pytest.raises(ZeusCarbonIntensityNotFoundError):
+        provider.carbon_intensity_at(datetime(2024, 7, 19, 1, 10, tzinfo=UTC))
+
+
+def test_trace_provider_rejects_off_grid_times():
+    # 30-minute spacing that does not start at :00 and :30.
+    trace = {datetime(2024, 7, 19, 0, 10, tzinfo=UTC): 1.0, datetime(2024, 7, 19, 0, 40, tzinfo=UTC): 2.0}
+    with pytest.raises(ValueError, match="does not start"):
+        TraceCarbonIntensityProvider(trace)
+
+
+def test_trace_provider_half_hour_periods_in_polling_process(mock_zeus_monitor, mock_datetime):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    provider = TraceCarbonIntensityProvider(
+        {datetime(2024, 11, 30, 7, 0, tzinfo=UTC): 400.0, datetime(2024, 11, 30, 7, 30, tzinfo=UTC): 100.0}
+    )
+
+    # One window across a half-hour boundary: energy is grouped by 30-minute period.
+    MockDateTime.times = [
+        MockDateTime(2024, 11, 30, 7, 0, tzinfo=UTC),  # window start
+        MockDateTime(2024, 11, 30, 7, 30, tzinfo=UTC),  # after BEGIN, crosses the half hour
+        MockDateTime(2024, 11, 30, 7, 30, tzinfo=UTC),  # window end
+    ]
+    MockDateTime.i = 0
+    command_q.put((Op.BEGIN, "test_window"))
+    command_q.put((Op.END, "test_window"))
+
+    _polling_process(command_q, finished_q, [0, 1, 2], [0, 1], provider)
+    gpu_carbon_emission, _, _ = finished_q.get()
+
+    # The mocked monitor reports 30 J for GPU 0 in each period.
+    assert gpu_carbon_emission[0] == pytest.approx(30.0 / 3.6e6 * (400.0 + 100.0))
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        # 2024 exports
+        "Datetime (UTC),Country,Zone name,Zone id,Carbon intensity gCO₂eq/kWh (direct),"
+        "Carbon intensity gCO₂eq/kWh (Life cycle),Carbon-free energy percentage (CFE%),"
+        "Renewable energy percentage (RE%),Data source",
+        # 2023 exports
+        "Datetime (UTC),Country,Zone Name,Zone Id,Carbon Intensity gCO₂eq/kWh (direct),"
+        "Carbon Intensity gCO₂eq/kWh (LCA),Low Carbon Percentage,Renewable Percentage,Data Source",
+    ],
+)
+def test_trace_provider_from_electricitymaps_csv(tmp_path, header):
+    path = tmp_path / "US-TEX-ERCO_2024_hourly.csv"
+    path.write_text(
+        header + "\n"
+        "2024-07-19 00:00:00,USA,Texas,US-TEX-ERCO,300.5,350.5,40.0,30.0,eia.gov\n"
+        "2024-07-19 01:00:00,USA,Texas,US-TEX-ERCO,310.5,360.5,40.0,30.0,eia.gov\n",
+        encoding="utf-8",
+    )
+    lifecycle = TraceCarbonIntensityProvider.from_electricitymaps_csv(path)
+    direct = TraceCarbonIntensityProvider.from_electricitymaps_csv(path, emission_factor_type="direct")
+    assert lifecycle.carbon_intensity_at(datetime(2024, 7, 19, 1, 15, tzinfo=UTC)) == 360.5
+    assert direct.carbon_intensity_at(datetime(2024, 7, 19, 0, 15, tzinfo=UTC)) == 300.5
+    assert lifecycle.update_period == timedelta(hours=1)
+
+    other = tmp_path / "other.csv"
+    other.write_text("time,ci\n2024-07-19 00:00:00,1\n")
+    with pytest.raises(ValueError, match="Electricity Maps"):
+        TraceCarbonIntensityProvider.from_electricitymaps_csv(other)
+
+
+def test_trace_provider_from_eia930_xlsx(mocker):
+    # The "Published Hourly Data" sheet: UTC time marks the end of each hour, intensity is in
+    # lb/kWh, and hours before CO2 estimates start (July 2018) are empty.
+    sheet = pd.DataFrame(
+        {
+            "UTC time": pd.to_datetime(["2018-07-01 05:00", "2018-07-01 06:00", "2018-07-01 07:00"]),
+            "CO2 Emissions Intensity for Consumed Electricity": [float("nan"), 0.5, 0.25],
+            "CO2 Emissions Intensity for Generated Electricity": [float("nan"), 0.4, 0.2],
+        }
+    )
+    read_excel = mocker.patch("zeus.monitor.carbon.pd.read_excel", return_value=sheet)
+    provider = TraceCarbonIntensityProvider.from_eia930_xlsx("ERCO.xlsx")
+    assert read_excel.call_args.kwargs["sheet_name"] == "Published Hourly Data"
+    assert provider.history_length == 2
+    assert provider.carbon_intensity_at(datetime(2018, 7, 1, 5, 30, tzinfo=UTC)) == pytest.approx(0.5 * 453.59237)
+    assert provider.carbon_intensity_at(datetime(2018, 7, 1, 6, 30, tzinfo=UTC)) == pytest.approx(0.25 * 453.59237)
+    with pytest.raises(ZeusCarbonIntensityNotFoundError):
+        provider.carbon_intensity_at(datetime(2018, 7, 1, 4, 30, tzinfo=UTC))
+    generated = TraceCarbonIntensityProvider.from_eia930_xlsx("ERCO.xlsx", electricity="generated")
+    assert generated.carbon_intensity_at(datetime(2018, 7, 1, 5, 30, tzinfo=UTC)) == pytest.approx(0.4 * 453.59237)
+
+
+def test_trace_provider_from_gb_carbon_intensity_json(tmp_path):
+    # A saved response from https://api.carbonintensity.org.uk/intensity/{from}/{to}
+    path = tmp_path / "gb.json"
+    path.write_text(
+        '{"data":['
+        '{"from":"2024-07-19T00:00Z","to":"2024-07-19T00:30Z","intensity":{"forecast":118,"actual":108,"index":"low"}},'
+        '{"from":"2024-07-19T00:30Z","to":"2024-07-19T01:00Z","intensity":{"forecast":108,"actual":103,"index":"low"}},'
+        '{"from":"2024-07-19T01:00Z","to":"2024-07-19T01:30Z","intensity":{"forecast":101,"actual":null,"index":"low"}}]}'
+    )
+    actual = TraceCarbonIntensityProvider.from_gb_carbon_intensity_json(path)
+    forecast = TraceCarbonIntensityProvider.from_gb_carbon_intensity_json(path, value="forecast")
+    assert actual.update_period == timedelta(minutes=30)
+    assert actual.carbon_intensity_at(datetime(2024, 7, 19, 0, 40, tzinfo=UTC)) == 103.0
+    assert forecast.carbon_intensity_at(datetime(2024, 7, 19, 1, 10, tzinfo=UTC)) == 101.0
+    with pytest.raises(ZeusCarbonIntensityNotFoundError):  # no actual value for 01:00
+        actual.carbon_intensity_at(datetime(2024, 7, 19, 1, 10, tzinfo=UTC))

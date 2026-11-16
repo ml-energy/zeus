@@ -175,10 +175,19 @@ Four functions are exposed:
 
 ## Carbon Emissions from Recorded Grid Data
 
-[`CarbonEmissionMonitor`][zeus.monitor.carbon.CarbonEmissionMonitor] multiplies the energy of each hour by the carbon intensity of the grid in that hour.
-[`ElectrictyMapsClient`][zeus.monitor.carbon.ElectrictyMapsClient] fetches live values.
-[`TraceCarbonIntensityProvider`][zeus.monitor.carbon.TraceCarbonIntensityProvider] reads them from a recorded hourly trace instead, with no network access.
+[`CarbonEmissionMonitor`][zeus.monitor.carbon.CarbonEmissionMonitor] multiplies the energy of each period by the carbon intensity of the grid in that period.
+[`ElectrictyMapsClient`][zeus.monitor.carbon.ElectrictyMapsClient] fetches live hourly values.
+[`TraceCarbonIntensityProvider`][zeus.monitor.carbon.TraceCarbonIntensityProvider] reads them from a downloaded file instead, with no network access.
 Use it to make a carbon measurement reproducible, or to ask what the same job would have emitted on a past day.
+
+Files from these sources load as they are downloaded:
+
+| Source | Loader | Period |
+|---|---|---|
+| [Electricity Maps](https://www.electricitymaps.com/) CSV export (hourly) | `from_electricitymaps_csv(path, emission_factor_type="lifecycle")` | 1 hour |
+| U.S. [EIA-930 Hourly Electric Grid Monitor](https://www.eia.gov/electricity/gridmonitor/) balancing-authority workbook (`.xlsx`) | `from_eia930_xlsx(path, electricity="consumed")` | 1 hour |
+| [GB Carbon Intensity API](https://carbonintensity.org.uk/) response saved as JSON | `from_gb_carbon_intensity_json(path, value="actual")` | 30 minutes |
+| Any CSV with a time column and an intensity column | `from_csv(path, time_column, intensity_column, ...)` | inferred |
 
 ```python
 from datetime import datetime, timezone
@@ -186,14 +195,9 @@ from datetime import datetime, timezone
 from zeus.monitor.carbon import CarbonEmissionMonitor, TraceCarbonIntensityProvider
 
 if __name__ == "__main__":
-    provider = TraceCarbonIntensityProvider.from_csv(
-        "ERCO_2024.csv",
-        time_column="UTC time",
-        intensity_column="CO2 Emissions Intensity for Consumed Electricity",
-        time_zone="UTC",       # the timestamps carry no offset and are in UTC
-        time_label="end",      # EIA-930 timestamps mark the end of each hour
-        scale=453.59237,       # lb/kWh to g/kWh
-        replay_start=datetime(2024, 7, 19, 0, tzinfo=timezone.utc),  # replay this day
+    provider = TraceCarbonIntensityProvider.from_eia930_xlsx(
+        "ERCO.xlsx",  # Download Data > Balancing Authority/Regional files
+        replay_start=datetime(2024, 7, 19, 19, tzinfo=timezone.utc),  # replay this afternoon
     )
     monitor = CarbonEmissionMonitor(provider)
     monitor.begin_window("training")
@@ -204,15 +208,11 @@ if __name__ == "__main__":
 
 The rules are strict on purpose:
 
-- Each value covers one UTC hour, and a lookup returns the value of the hour that contains the requested time. Data finer than an hour must be averaged to hours first (for example, `df.resample("1h").mean()`).
-- Times must carry a time zone. Pass `time_zone` for timestamps without an offset, and `time_label="end"` for data that stamps the end of each hour.
-- An hour that is missing from the trace raises [`ZeusCarbonIntensityNotFoundError`][zeus.monitor.carbon.ZeusCarbonIntensityNotFoundError]. Nothing is extrapolated, so fill gaps before building the provider.
-- With `replay_start`, the hour in which the provider is created is replayed as the hour that contains `replay_start`. Without it, the trace is read at the current time.
-
-Two public sources work well:
-
-- **U.S. EIA-930** ([Hourly Electric Grid Monitor](https://www.eia.gov/electricity/gridmonitor/)): the balancing-authority downloads have hourly CO2 emission intensity for generated and consumed electricity. These are direct (combustion) emissions. EIA data is in the public domain, and EIA asks for a source line with the publication date. Save the `Published Hourly Data` sheet as CSV with `pandas.read_excel` before using `from_csv`.
-- **A grid operator's fuel mix** (for example, ERCOT's): weight each fuel's generation by an emission factor and divide by total generation, then average to hours. With lifecycle factors such as the IPCC AR5 medians, the result is lifecycle intensity. Do not compare it with direct intensity.
+- Each value covers one period on a UTC grid: an hour for hourly data, 30 minutes for the GB API. The period is inferred from the data, and a lookup returns the value of the period that contains the requested time.
+- Periods missing from the file (for example, EIA-930 hours before CO2 estimates start in July 2018) raise [`ZeusCarbonIntensityNotFoundError`][zeus.monitor.carbon.ZeusCarbonIntensityNotFoundError] when they are needed. Nothing is filled in or extrapolated.
+- With `replay_start`, the period in which the provider is created is replayed as the period that contains `replay_start`. Without it, the file is read at the current time.
+- EIA-930 intensities are direct (combustion) emissions, and Electricity Maps offers both direct and lifecycle values. Do not compare one with the other.
+- Reading a full-history EIA-930 workbook takes about 10 seconds with `python-calamine` installed and about 35 seconds with `openpyxl`. One of them is needed for `.xlsx` files.
 
 ## Hardware Support
 
