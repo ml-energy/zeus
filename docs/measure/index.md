@@ -173,47 +173,6 @@ Four functions are exposed:
 - [`profile_cooldown_duration`][zeus.profile.profile_cooldown_duration] -- Sweep cooldown durations with a fixed measurement duration.
 - [`measure`][zeus.profile.measure] -- Measure energy once with known measurement and cooldown durations.
 
-## Carbon Emissions from Recorded Grid Data
-
-[`CarbonEmissionMonitor`][zeus.monitor.carbon.CarbonEmissionMonitor] multiplies the energy of each period by the carbon intensity of the grid in that period.
-[`ElectrictyMapsClient`][zeus.monitor.carbon.ElectrictyMapsClient] fetches live hourly values.
-[`TraceCarbonIntensityProvider`][zeus.monitor.carbon.TraceCarbonIntensityProvider] reads them from a downloaded file instead, with no network access.
-Use it to make a carbon measurement reproducible, or to ask what the same job would have emitted on a past day.
-
-Files from these sources load as they are downloaded:
-
-| Source | Loader | Period |
-|---|---|---|
-| [Electricity Maps](https://www.electricitymaps.com/) CSV export (hourly) | `from_electricitymaps_csv(path, emission_factor_type="lifecycle")` | 1 hour |
-| U.S. [EIA-930 Hourly Electric Grid Monitor](https://www.eia.gov/electricity/gridmonitor/) balancing-authority workbook (`.xlsx`) | `from_eia930_xlsx(path, electricity="consumed")` | 1 hour |
-| [GB Carbon Intensity API](https://carbonintensity.org.uk/) response saved as JSON | `from_gb_carbon_intensity_json(path, value="actual")` | 30 minutes |
-| Any CSV with a time column and an intensity column | `from_csv(path, time_column, intensity_column, ...)` | inferred |
-
-```python
-from datetime import datetime, timezone
-
-from zeus.monitor.carbon import CarbonEmissionMonitor, TraceCarbonIntensityProvider
-
-if __name__ == "__main__":
-    provider = TraceCarbonIntensityProvider.from_eia930_xlsx(
-        "ERCO.xlsx",  # Download Data > Balancing Authority/Regional files
-        replay_start=datetime(2024, 7, 19, 19, tzinfo=timezone.utc),  # replay this afternoon
-    )
-    monitor = CarbonEmissionMonitor(provider)
-    monitor.begin_window("training")
-    train()
-    result = monitor.end_window("training")
-    print(f"{sum(result.gpu_carbon_emission.values()):.1f} gCO2eq")
-```
-
-The rules are strict on purpose:
-
-- Each value covers one period on a UTC grid: an hour for hourly data, 30 minutes for the GB API. The period is inferred from the data, and a lookup returns the value of the period that contains the requested time.
-- Periods missing from the file (for example, EIA-930 hours before CO2 estimates start in July 2018) raise [`ZeusCarbonIntensityNotFoundError`][zeus.monitor.carbon.ZeusCarbonIntensityNotFoundError] when they are needed. Nothing is filled in or extrapolated.
-- With `replay_start`, the period in which the provider is created is replayed as the period that contains `replay_start`. Without it, the file is read at the current time.
-- EIA-930 intensities are direct (combustion) emissions, and Electricity Maps offers both direct and lifecycle values. Do not compare one with the other.
-- Reading a full-history EIA-930 workbook takes about 10 seconds with `python-calamine` installed and about 35 seconds with `openpyxl`. One of them is needed for `.xlsx` files.
-
 ## Hardware Support
 
 For GPUs, we currently support both NVIDIA (via NVML) and AMD GPUs (via AMDSMI, with ROCm 6.3 or later).
