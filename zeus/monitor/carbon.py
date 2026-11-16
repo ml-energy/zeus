@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import abc
-import atexit
 import queue
 import logging
 import requests
 import multiprocessing as mp
+from multiprocessing import util as mp_util
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
@@ -260,11 +260,7 @@ class CarbonEmissionMonitor:
         self.context = mp.get_context("spawn")
         self.command_q = self.context.Queue()
         self.finished_q = self.context.Queue()
-
-        # If user code raises inside a measurement window, the polling process keeps waiting for
-        # Op.END and Python's multiprocessing exit handler waits for it forever. This handler is
-        # registered after the queues above (which import that exit handler), so it runs first.
-        atexit.register(self._stop_polling_process)
+        self._stop_poller: mp_util.Finalize | None = None
 
     def begin_window(self, key: str, sync_execution: bool = True) -> None:
         """Begin a new measurement window.
@@ -299,15 +295,16 @@ class CarbonEmissionMonitor:
             )
             self.polling_process.start()
 
+            # If user code raises inside a window, Op.END never arrives and the poller blocks exit.
+            # exitpriority=0 runs this before multiprocessing joins child processes.
+            if self._stop_poller is not None:
+                self._stop_poller.cancel()  # the previous poller has exited
+            self._stop_poller = mp_util.Finalize(
+                self, _stop_polling_process, args=(self.polling_process,), exitpriority=0
+            )
+
         # start subwindows
         self.command_q.put((Op.BEGIN, key))
-
-    def _stop_polling_process(self) -> None:
-        """Stop the polling process if it is still running. Called at interpreter exit."""
-        process = getattr(self, "polling_process", None)
-        if process is not None and process.is_alive():
-            process.terminate()
-            process.join(timeout=5.0)
 
     def end_window(self, key: str, sync_execution: bool = True) -> CarbonEmissionMeasurement:
         """End a measurement window and return the time, energy consumption, and carbon emission.
@@ -346,6 +343,13 @@ class CarbonEmissionMonitor:
         )
 
         return measurement
+
+
+def _stop_polling_process(process: mp.process.BaseProcess) -> None:
+    """Stop a polling process that is still running."""
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=5.0)
 
 
 def _polling_process(
@@ -428,8 +432,7 @@ def _polling_process(
                     _update_energy_measurements(key, hour_floor)
                     _update_carbon_emissions(key)
                     # A window has no CPU or DRAM entry when those are not measured (for example,
-                    # no RAPL access), so pop with a default instead of raising KeyError, which
-                    # would kill this process and leave `end_window` waiting forever.
+                    # no RAPL access), so pop with a default instead of raising KeyError.
                     finished_q.put(
                         (
                             dict(gpu_carbon_emissions.pop(key, {})),

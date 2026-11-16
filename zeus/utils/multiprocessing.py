@@ -68,8 +68,8 @@ def warn_if_global_in_subprocess(self: Any) -> None:
 def get_or_raise_if_dead(result_q: Queue, process: BaseProcess, poll_interval: float = 1.0) -> Any:
     """Wait for one item from `result_q`, raising if `process` exits without sending it.
 
-    A plain `result_q.get()` waits forever when the helper process that should answer has
-    died, for example from an uncaught exception. That hangs the caller with no error.
+    `result_q.get()` alone blocks forever if the helper process dies first, for example from
+    an uncaught exception.
 
     Args:
         result_q: Queue the helper process puts its result on.

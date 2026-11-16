@@ -137,7 +137,7 @@ def _exit_without_result(q):
 
 
 class TestGetOrRaiseIfDead:
-    """A dead helper process must raise instead of hanging the caller."""
+    """Test get_or_raise_if_dead function."""
 
     def test_returns_result_sent_before_exit(self):
         ctx = multiprocessing.get_context("spawn")

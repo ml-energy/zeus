@@ -547,37 +547,59 @@ def test_single_window_without_cpu_measurement(mock_zeus_monitor_gpu_only, mock_
 
 
 EXIT_SCRIPT = """
+import multiprocessing
 import sys
 import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 # Add the project root to the path so the script imports this checkout of Zeus.
 sys.path.insert(0, {project_root!r})
 
-from zeus.monitor.carbon import CarbonEmissionMonitor
 
-
-def sleep_forever():
+def poller_that_never_ends(command_q, finished_q, *args):
+    finished_q.put("running")
     time.sleep(300)
 
 
-if __name__ == "__main__":
+def crash_in_window():
+    # Imported here so that the stand-in polling process starts without importing Zeus.
+    from zeus.monitor.carbon import CarbonEmissionMonitor
+
     with patch("zeus.monitor.carbon.ZeusMonitor"):
         monitor = CarbonEmissionMonitor(None)
-    # Stand-in for a polling process that is still waiting for Op.END.
-    monitor.polling_process = monitor.context.Process(target=sleep_forever)
-    monitor.polling_process.start()
+    monitor.zeus_monitor = SimpleNamespace(
+        gpu_indices=[], cpu_indices=[], begin_window=lambda *args, **kwargs: None
+    )
+    # Fake poller that never gets Op.END. Wait for it to start before raising.
+    with patch("zeus.monitor.carbon._polling_process", poller_that_never_ends):
+        monitor.begin_window("train", sync_execution=False)
+    assert monitor.finished_q.get(timeout=60) == "running"
+    # The first get_logger() call re-registers multiprocessing's exit handler with atexit,
+    # so it would run before any atexit hook registered earlier.
+    multiprocessing.get_logger()
     raise RuntimeError("training failed inside a measurement window")
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["child"]:
+        # The monitor lives in a multiprocessing child, which joins its own children when it exits.
+        child = multiprocessing.get_context("spawn").Process(target=crash_in_window)
+        child.start()
+        child.join()
+        sys.exit(child.exitcode)
+    crash_in_window()
 """
 
 
-def test_exception_inside_window_does_not_hang_exit(tmp_path):
+@pytest.mark.parametrize("where", ["main", "child"])
+def test_exception_inside_window_does_not_hang_exit(tmp_path, where):
     script = tmp_path / "crash_in_window.py"
     script.write_text(EXIT_SCRIPT.format(project_root=str(Path(__file__).parent.parent.parent)))
     stderr_path = tmp_path / "stderr.txt"
-    # stderr goes to a file, not a pipe, so a leftover child cannot block this test.
+    # Write stderr to a file so a leftover child cannot block this test on a full pipe.
     with open(stderr_path, "w") as stderr:
-        proc = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.DEVNULL, stderr=stderr)
+        proc = subprocess.Popen([sys.executable, str(script), where], stdout=subprocess.DEVNULL, stderr=stderr)
         try:
             returncode = proc.wait(timeout=120)
         finally:
