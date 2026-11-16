@@ -29,7 +29,7 @@ dependencies = [
     "rich",
     "tyro",
     "httpx",
-    "requests",  # used by zeus.monitor.carbon, zeus.monitor.price and zeus.utils.lat_lon
+    "requests",
     "amdsmi",
     "python-dateutil",
 ]
