@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import multiprocessing as mp
+from pathlib import Path
+import subprocess
+import sys
 import dateutil
 import pytest
 import requests
@@ -503,3 +506,81 @@ def test_multiple_windows_one_day(mock_zeus_monitor, mock_carbon_history, mock_d
     assert dram_carbon_emission2 is not None
     assert dram_carbon_emission2[0] == pytest.approx(expected_dram_values2[0])
     assert dram_carbon_emission2[1] == pytest.approx(expected_dram_values2[1])
+
+
+# Without CPU measurement (no RAPL), the monitor reports no CPU or DRAM energy.
+# The polling process must still return a result instead of raising KeyError.
+@pytest.fixture
+def mock_zeus_monitor_gpu_only():
+    patch_zeus_monitor = patch("zeus.monitor.carbon.ZeusMonitor", autospec=True)
+    zeus_monitor = patch_zeus_monitor.start()
+    mock_instance = zeus_monitor.return_value
+    mock_instance.end_window.return_value = MagicMock(gpu_energy={0: 30.0}, cpu_energy=None, dram_energy=None)
+    mock_instance.gpu_indices = [0]
+    mock_instance.cpu_indices = []
+
+    yield
+
+    patch_zeus_monitor.stop()
+
+
+def test_single_window_without_cpu_measurement(mock_zeus_monitor_gpu_only, mock_carbon_history, mock_datetime):
+    command_q = mp.Queue()
+    finished_q = mp.Queue()
+    provider = ElectrictyMapsClient((42.2776, -83.7409), estimate=True, emission_factor_type="lifecycle")
+
+    MockDateTime.times = [
+        MockDateTime(2024, 12, 1, 5, 30, tzinfo=timezone.utc),  # test_window start
+        MockDateTime(2024, 12, 1, 5, 45, tzinfo=timezone.utc),  # test_window end
+    ]
+    MockDateTime.i = 0
+    command_q.put((Op.BEGIN, "test_window"))
+    command_q.put((Op.END, "test_window"))
+
+    _polling_process(command_q, finished_q, [0], [], provider)
+
+    gpu_carbon_emission, cpu_carbon_emission, dram_carbon_emission = finished_q.get(timeout=5)
+    expected_gpu_values, _, _ = get_expected_cpu_gpu_carbon_emision(MockDateTime.times)
+    assert gpu_carbon_emission[0] == pytest.approx(expected_gpu_values[0])
+    assert cpu_carbon_emission == {}
+    assert dram_carbon_emission == {}
+
+
+EXIT_SCRIPT = """
+import sys
+import time
+from unittest.mock import patch
+
+# Add the project root to the path so the script imports this checkout of Zeus.
+sys.path.insert(0, {project_root!r})
+
+from zeus.monitor.carbon import CarbonEmissionMonitor
+
+
+def sleep_forever():
+    time.sleep(300)
+
+
+if __name__ == "__main__":
+    with patch("zeus.monitor.carbon.ZeusMonitor"):
+        monitor = CarbonEmissionMonitor(None)
+    # Stand-in for a polling process that is still waiting for Op.END.
+    monitor.polling_process = monitor.context.Process(target=sleep_forever)
+    monitor.polling_process.start()
+    raise RuntimeError("training failed inside a measurement window")
+"""
+
+
+def test_exception_inside_window_does_not_hang_exit(tmp_path):
+    script = tmp_path / "crash_in_window.py"
+    script.write_text(EXIT_SCRIPT.format(project_root=str(Path(__file__).parent.parent.parent)))
+    stderr_path = tmp_path / "stderr.txt"
+    # stderr goes to a file, not a pipe, so a leftover child cannot block this test.
+    with open(stderr_path, "w") as stderr:
+        proc = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.DEVNULL, stderr=stderr)
+        try:
+            returncode = proc.wait(timeout=120)
+        finally:
+            proc.kill()
+    assert returncode == 1
+    assert "training failed inside a measurement window" in stderr_path.read_text()

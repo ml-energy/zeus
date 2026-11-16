@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import atexit
 import queue
 import logging
 import requests
@@ -16,7 +17,7 @@ from collections import defaultdict
 
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
-from zeus.utils.multiprocessing import warn_if_global_in_subprocess
+from zeus.utils.multiprocessing import get_or_raise_if_dead, warn_if_global_in_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +261,11 @@ class CarbonEmissionMonitor:
         self.command_q = self.context.Queue()
         self.finished_q = self.context.Queue()
 
+        # If user code raises inside a measurement window, the polling process keeps waiting for
+        # Op.END and Python's multiprocessing exit handler waits for it forever. This handler is
+        # registered after the queues above (which import that exit handler), so it runs first.
+        atexit.register(self._stop_polling_process)
+
     def begin_window(self, key: str, sync_execution: bool = True) -> None:
         """Begin a new measurement window.
 
@@ -296,6 +302,13 @@ class CarbonEmissionMonitor:
         # start subwindows
         self.command_q.put((Op.BEGIN, key))
 
+    def _stop_polling_process(self) -> None:
+        """Stop the polling process if it is still running. Called at interpreter exit."""
+        process = getattr(self, "polling_process", None)
+        if process is not None and process.is_alive():
+            process.terminate()
+            process.join(timeout=5.0)
+
     def end_window(self, key: str, sync_execution: bool = True) -> CarbonEmissionMeasurement:
         """End a measurement window and return the time, energy consumption, and carbon emission.
 
@@ -317,7 +330,7 @@ class CarbonEmissionMonitor:
             gpu_carbon_emissions,
             cpu_carbon_emissions,
             dram_carbon_emissions,
-        ) = self.finished_q.get()
+        ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
         self.current_keys.remove(key)
 
         overall_measurement = self.zeus_monitor.end_window(key, sync_execution=sync_execution)
@@ -414,11 +427,14 @@ def _polling_process(
                     # update if has not been updated in a while
                     _update_energy_measurements(key, hour_floor)
                     _update_carbon_emissions(key)
+                    # A window has no CPU or DRAM entry when those are not measured (for example,
+                    # no RAPL access), so pop with a default instead of raising KeyError, which
+                    # would kill this process and leave `end_window` waiting forever.
                     finished_q.put(
                         (
-                            dict(gpu_carbon_emissions.pop(key)),
-                            dict(cpu_carbon_emissions.pop(key)),
-                            dict(dram_carbon_emissions.pop(key)),
+                            dict(gpu_carbon_emissions.pop(key, {})),
+                            dict(cpu_carbon_emissions.pop(key, {})),
+                            dict(dram_carbon_emissions.pop(key, {})),
                         )
                     )
                     keys.remove(key)
