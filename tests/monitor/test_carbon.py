@@ -583,6 +583,11 @@ def test_trace_provider_data_spacing():
         TraceCarbonIntensityProvider(sparse, period=HOUR)
     provider = TraceCarbonIntensityProvider(sparse, period=HOUR, data_spacing=HOUR)
     assert provider.history_length == 2
+    # A single timestamp says nothing about the spacing.
+    single = {datetime(2024, 7, 19, 0, tzinfo=UTC): 400.0}
+    with pytest.raises(ValueError, match="single timestamp"):
+        TraceCarbonIntensityProvider(single, period=HOUR)
+    assert TraceCarbonIntensityProvider(single, period=HOUR, data_spacing=HOUR).history_length == 1
     with pytest.raises(ZeusCarbonIntensityNotFoundError):
         provider.carbon_intensity_at(datetime(2024, 7, 19, 1, 30, tzinfo=UTC))
 
@@ -829,6 +834,10 @@ def test_trace_provider_from_eia930_xlsx(mocker):
         provider.carbon_intensity_at(datetime(2018, 7, 1, 4, 30, tzinfo=UTC))
     generated = TraceCarbonIntensityProvider.from_eia930_xlsx("ERCO.xlsx", period=HOUR, electricity="generated")
     assert generated.carbon_intensity_at(datetime(2018, 7, 1, 5, 30, tzinfo=UTC)) == pytest.approx(0.4 * 453.59237)
+    # One row is one hour of data, so it cannot fill a two-hour period.
+    read_excel.return_value = sheet.iloc[[1]]
+    with pytest.raises(ValueError, match="fully covered"):
+        TraceCarbonIntensityProvider.from_eia930_xlsx("ERCO.xlsx", period=2 * HOUR)
 
 
 def test_trace_provider_from_gb_carbon_intensity_json(tmp_path):
@@ -853,3 +862,12 @@ def test_trace_provider_from_gb_carbon_intensity_json(tmp_path):
     hourly = TraceCarbonIntensityProvider.from_gb_carbon_intensity_json(path, period=HOUR)
     assert hourly.history_length == 1
     assert hourly.carbon_intensity_at(datetime(2024, 7, 19, 0, 40, tzinfo=UTC)) == pytest.approx((108 + 103) / 2)
+
+    # A single 30-minute interval cannot fill an hour.
+    single = tmp_path / "single.json"
+    single.write_text(
+        '{"data":[{"from":"2024-07-19T00:00Z","to":"2024-07-19T00:30Z",'
+        '"intensity":{"forecast":118,"actual":108,"index":"low"}}]}'
+    )
+    with pytest.raises(ValueError, match="fully covered"):
+        TraceCarbonIntensityProvider.from_gb_carbon_intensity_json(single, period=HOUR)

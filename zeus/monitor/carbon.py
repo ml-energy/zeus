@@ -236,8 +236,10 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
 
         starts = sorted(points)
         if data_spacing is None:
+            if len(starts) < 2:
+                raise ValueError("Cannot tell the data's spacing from a single timestamp. Pass `data_spacing`.")
             gaps = Counter(b - a for a, b in zip(starts, starts[1:]))
-            data_spacing = gaps.most_common(1)[0][0] if gaps else period
+            data_spacing = gaps.most_common(1)[0][0]
         if data_spacing <= timedelta(0):
             raise ValueError("`data_spacing` must be positive.")
         spacing = data_spacing
@@ -296,25 +298,29 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
         scale: float = 1.0,
         time_label: Literal["start", "end"] = "start",
         replay_start: datetime | None = None,
+        data_spacing: timedelta | None = None,
     ) -> TraceCarbonIntensityProvider:
         """Build the provider from timezone-aware times and intensities, skipping empty values.
 
-        The data's spacing is taken from all rows, including those without a value, so missing
-        values do not change it.
+        Unless `data_spacing` is given, the data's spacing is the most common gap between all
+        rows, including those without a value, so missing values do not change it.
         """
         times = pd.Series(pd.to_datetime(times, utc=True)).reset_index(drop=True)
         values = pd.to_numeric(pd.Series(values), errors="coerce").reset_index(drop=True) * scale
-        gaps = times.drop_duplicates().sort_values().diff().dropna()
-        spacing = gaps.mode().iloc[0].to_pytimedelta() if len(gaps) else period
+        if data_spacing is None:
+            gaps = times.drop_duplicates().sort_values().diff().dropna()
+            data_spacing = gaps.mode().iloc[0].to_pytimedelta() if len(gaps) else None
         keep = values.notna()
         times, values = times[keep], values[keep]
         if times.duplicated().any():
             raise ValueError("The trace has repeated timestamps.")
+        if data_spacing is None:
+            raise ValueError("The file has a single timestamp, so the data's spacing is unknown.")
         if time_label == "end":
             # Each timestamp ends one data interval, so move it back by the data's spacing.
-            times = times - spacing
+            times = times - data_spacing
         trace = {t.to_pydatetime(): float(v) for t, v in zip(times, values)}
-        return cls(trace, period=period, data_spacing=spacing, replay_start=replay_start)
+        return cls(trace, period=period, data_spacing=data_spacing, replay_start=replay_start)
 
     @classmethod
     def from_csv(
@@ -326,6 +332,7 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
         time_zone: str | None = None,
         time_label: Literal["start", "end"] = "start",
         scale: float = 1.0,
+        data_spacing: timedelta | None = None,
         replay_start: datetime | None = None,
     ) -> TraceCarbonIntensityProvider:
         """Build the provider from a CSV file with one timestamp column and one intensity column.
@@ -399,6 +406,8 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
             time_label: Whether each timestamp marks the `"start"` or the `"end"` of its interval.
             scale: Factor that converts the column to gCO2eq/kWh. For example, 453.59237
                 for lb/kWh, or 1000 for t/MWh.
+            data_spacing: Time between rows, for example one hour for hourly data. Defaults to
+                the most common gap between the file's timestamps.
             replay_start: A timezone-aware time inside the trace. If given, the wall-clock
                 period in which the provider is created is mapped to the trace period that
                 contains this time, and later periods follow one to one.
@@ -420,7 +429,7 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
             times = pd.to_datetime(text).dt.tz_localize(time_zone)
         else:
             raise ValueError(f"Column '{time_column}' mixes times with and without UTC offsets.")
-        return cls._from_series(times, df[intensity_column], period, scale, time_label, replay_start)
+        return cls._from_series(times, df[intensity_column], period, scale, time_label, replay_start, data_spacing)
 
     @classmethod
     def from_electricitymaps_csv(
@@ -508,6 +517,7 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
             scale=453.59237,  # lb/kWh to g/kWh
             time_label="end",
             replay_start=replay_start,
+            data_spacing=timedelta(hours=1),
         )
 
     @classmethod
@@ -540,7 +550,13 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
             data = json.load(fh)["data"]
         times = pd.to_datetime([d["from"] for d in data], utc=True)
         values = [d["intensity"].get(value) for d in data]
-        return cls._from_series(pd.Series(times), pd.Series(values, dtype="float64"), period, replay_start=replay_start)
+        return cls._from_series(
+            pd.Series(times),
+            pd.Series(values, dtype="float64"),
+            period,
+            replay_start=replay_start,
+            data_spacing=timedelta(minutes=30),
+        )
 
     def carbon_intensity_at(self, when: datetime) -> float:
         """Return the carbon intensity of the trace period that contains `when`, in trace time."""
