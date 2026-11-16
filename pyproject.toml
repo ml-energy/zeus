@@ -29,6 +29,7 @@ dependencies = [
     "rich",
     "tyro",
     "httpx",
+    "requests",
     "amdsmi",
     "python-dateutil",
 ]
