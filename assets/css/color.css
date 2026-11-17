@@ -1,0 +1,30 @@
+/*
+ * Zeus colors:
+ * - Black:   #231F20
+ * - Orange:  #e79613
+ * - Mustard: #ebbc00
+ * - Yellow:  #f7e96d
+ */
+
+[data-md-color-primary="zeus"] {
+  --md-primary-fg-color:        #ebbc00;
+  --md-primary-fg-color--light: #ebbc00;
+  --md-primary-fg-color--dark:  #ebbc00;
+  --md-primary-bg-color:        #231F20;
+  --md-primary-bg-color--light: #231F20;
+}
+
+[data-md-color-accent="zeus"] {
+  --md-accent-fg-color:              #f7e96d;
+  --md-accent-fg-color--transparent: #f7e96e30;
+  --md-accent-bg-color:              #231F20;
+  --md-accent-bg-color--light:       #231F20;
+}
+
+[data-md-color-scheme="default"] .critic-dark {
+  --md-typeset-mark-color: #00000015;
+}
+
+[data-md-color-scheme="slate"] .critic-dark {
+  --md-typeset-mark-color: #231F20;
+}
