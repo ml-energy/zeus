@@ -415,11 +415,11 @@ class TraceCarbonIntensityProvider(CarbonIntensityProvider):
         if has_offset.all():
             if time_zone is not None:
                 raise ValueError(f"Column '{time_column}' already has UTC offsets. Do not pass `time_zone`.")
-            times = pd.to_datetime(text, utc=True)
+            times = _parse_times(text, utc=True)
         elif not has_offset.any():
             if time_zone is None:
                 raise ValueError(f"Column '{time_column}' has no UTC offsets. Pass `time_zone`.")
-            times = pd.to_datetime(text).dt.tz_localize(time_zone)
+            times = _parse_times(text).dt.tz_localize(time_zone)
         else:
             raise ValueError(f"Column '{time_column}' mixes times with and without UTC offsets.")
         return cls._from_series(times, df[intensity_column], period, data_spacing, scale, time_label, replay_start)
@@ -595,6 +595,17 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 def _period_floor(when: datetime, period: timedelta) -> datetime:
     """Return the start of the period of length `period` (on a UTC grid from the Unix epoch) that contains `when`."""
     return _EPOCH + ((when.astimezone(timezone.utc) - _EPOCH) // period) * period
+
+
+def _parse_times(text: pd.Series, utc: bool = False) -> pd.Series:
+    """Parse timestamps, also when ISO 8601 rows differ in precision.
+
+    pandas guesses one format from the first row, so `00:00:00Z` followed by `01:00:00.000Z` fails.
+    """
+    try:
+        return pd.to_datetime(text, utc=utc)
+    except ValueError:
+        return pd.to_datetime(text, utc=utc, format="ISO8601")
 
 
 @dataclass

@@ -648,6 +648,17 @@ def test_trace_provider_from_csv_offsets(tmp_path):
     provider = TraceCarbonIntensityProvider.from_csv(postgres, "time", "ci", period=HOUR, data_spacing=HOUR)
     assert provider.carbon_intensity_at(datetime(2026, 3, 8, 8, 0, tzinfo=UTC)) == 310.0
 
+    # Rows that differ only in precision, with and without offsets.
+    precision = tmp_path / "precision.csv"
+    precision.write_text("time,ci\n2024-07-19T00:00:00Z,300\n2024-07-19T01:00:00.000Z,310\n")
+    provider = TraceCarbonIntensityProvider.from_csv(precision, "time", "ci", period=HOUR, data_spacing=HOUR)
+    assert provider.carbon_intensity_at(datetime(2024, 7, 19, 1, 0, tzinfo=UTC)) == 310.0
+    precision.write_text("time,ci\n2024-07-19 00:00:00,300\n2024-07-19 01:00:00.000,310\n")
+    provider = TraceCarbonIntensityProvider.from_csv(
+        precision, "time", "ci", period=HOUR, data_spacing=HOUR, time_zone="UTC"
+    )
+    assert provider.carbon_intensity_at(datetime(2024, 7, 19, 1, 0, tzinfo=UTC)) == 310.0
+
     naive = tmp_path / "naive.csv"
     naive.write_text("time,ci\n2026-03-08 01:00:00,300\n")
     with pytest.raises(ValueError, match="Pass `time_zone`"):
