@@ -315,11 +315,21 @@ class EnergyCostMonitor:
 
         # end window
         self.command_q.put((Op.END, key))
-        (
-            gpu_energy_cost,
-            cpu_energy_cost,
-            dram_energy_cost,
-        ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
+        try:
+            (
+                gpu_energy_cost,
+                cpu_energy_cost,
+                dram_energy_cost,
+            ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
+        except ZeusBaseError:
+            # The polling process is gone, and with it the data of every open window. Drop them,
+            # and use new queues so the next poller doesn't read commands meant for this one.
+            for open_key in self.current_keys:
+                self.zeus_monitor.end_window(open_key, sync_execution=False, cancel=True)
+            self.current_keys.clear()
+            self.command_q = self.context.Queue()
+            self.finished_q = self.context.Queue()
+            raise
         self.current_keys.remove(key)
 
         overall_measurement = self.zeus_monitor.end_window(key, sync_execution=sync_execution)
@@ -401,9 +411,8 @@ def _polling_process(
 
                 try:
                     flat_rate = energy_rate_structure[tier][0]["rate"]
-                except (IndexError, KeyError, TypeError):
-                    logger.error("Failed to parse electricity rate structure.")
-                    return
+                except (IndexError, KeyError, TypeError) as e:
+                    raise ZeusBaseError("Failed to parse electricity rate structure.") from e
 
                 cost = (energy / 3.6e6) * flat_rate  # Convert Wh to kWh and multiply by rate
 

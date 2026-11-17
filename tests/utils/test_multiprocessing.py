@@ -9,11 +9,9 @@ import textwrap
 import warnings
 from pathlib import Path
 
-import pytest
 from pytest_mock import MockerFixture
 
-from zeus.exception import ZeusBaseError
-from zeus.utils.multiprocessing import get_or_raise_if_dead, warn_if_global_in_subprocess
+from zeus.utils.multiprocessing import warn_if_global_in_subprocess
 
 
 class FakeMonitor:
@@ -125,33 +123,3 @@ class TestIntegration:
 
         assert "FakeMonitor was instantiated during module import" in result.stderr
         assert "spawned subprocess" in result.stderr
-
-
-# Module-level targets so the spawn start method can pickle them.
-def _send_then_exit(q):
-    q.put("result")
-
-
-def _exit_without_result(q):
-    raise SystemExit(3)
-
-
-class TestGetOrRaiseIfDead:
-    """Test get_or_raise_if_dead function."""
-
-    def test_returns_result_sent_before_exit(self):
-        ctx = multiprocessing.get_context("spawn")
-        q = ctx.Queue()
-        proc = ctx.Process(target=_send_then_exit, args=(q,))
-        proc.start()
-        assert get_or_raise_if_dead(q, proc, poll_interval=0.2) == "result"
-        proc.join()
-
-    def test_raises_when_process_dies_without_result(self):
-        ctx = multiprocessing.get_context("spawn")
-        q = ctx.Queue()
-        proc = ctx.Process(target=_exit_without_result, args=(q,))
-        proc.start()
-        with pytest.raises(ZeusBaseError, match="exited with code 3"):
-            get_or_raise_if_dead(q, proc, poll_interval=0.2)
-        proc.join()

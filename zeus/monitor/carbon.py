@@ -323,11 +323,21 @@ class CarbonEmissionMonitor:
 
         # end window
         self.command_q.put((Op.END, key))
-        (
-            gpu_carbon_emissions,
-            cpu_carbon_emissions,
-            dram_carbon_emissions,
-        ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
+        try:
+            (
+                gpu_carbon_emissions,
+                cpu_carbon_emissions,
+                dram_carbon_emissions,
+            ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
+        except ZeusBaseError:
+            # The polling process is gone, and with it the data of every open window. Drop them,
+            # and use new queues so the next poller doesn't read commands meant for this one.
+            for open_key in self.current_keys:
+                self.zeus_monitor.end_window(open_key, sync_execution=False, cancel=True)
+            self.current_keys.clear()
+            self.command_q = self.context.Queue()
+            self.finished_q = self.context.Queue()
+            raise
         self.current_keys.remove(key)
 
         overall_measurement = self.zeus_monitor.end_window(key, sync_execution=sync_execution)
