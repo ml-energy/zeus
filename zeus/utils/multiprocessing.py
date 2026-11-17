@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import inspect
+import queue
 import warnings
+from multiprocessing.process import BaseProcess
+from multiprocessing.queues import Queue
 from typing import Any
 
 
@@ -58,3 +61,33 @@ def warn_if_global_in_subprocess(self: Any) -> None:
         "repeated imports and memory issues.",
         stacklevel=4,
     )
+
+
+def get_or_raise_if_dead(result_q: Queue, process: BaseProcess, poll_interval: float = 1.0) -> Any:
+    """Wait for one item from `result_q`, raising if `process` exits without sending it.
+
+    `result_q.get()` alone blocks forever if the helper process dies first, for example from
+    an uncaught exception.
+
+    Args:
+        result_q: Queue the helper process puts its result on.
+        process: The helper process.
+        poll_interval: Seconds between checks that the helper process is still alive.
+
+    Raises:
+        RuntimeError: If `process` exits without putting a result on `result_q`.
+    """
+    while True:
+        try:
+            return result_q.get(timeout=poll_interval)
+        except queue.Empty:
+            if process.is_alive():
+                continue
+            # The process may have sent its result just before exiting.
+            try:
+                return result_q.get(timeout=poll_interval)
+            except queue.Empty:
+                raise RuntimeError(
+                    f"The background process {process.name} exited with code {process.exitcode} "
+                    "before returning a result. Its traceback, if any, is printed above."
+                ) from None

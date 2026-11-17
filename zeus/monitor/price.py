@@ -8,6 +8,7 @@ import requests
 import json
 import logging
 import multiprocessing as mp
+from multiprocessing import util as mp_util
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
@@ -16,7 +17,7 @@ from collections import defaultdict
 
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
-from zeus.utils.multiprocessing import warn_if_global_in_subprocess
+from zeus.utils.multiprocessing import get_or_raise_if_dead, warn_if_global_in_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,7 @@ class EnergyCostMonitor:
         self.context = mp.get_context("spawn")
         self.command_q = self.context.Queue()
         self.finished_q = self.context.Queue()
+        self._stop_poller: mp_util.Finalize | None = None
 
     def begin_window(self, key: str, sync_execution: bool = True) -> None:
         """Begin a new measurement window.
@@ -285,6 +287,14 @@ class EnergyCostMonitor:
             )
             self.polling_process.start()
 
+            # If user code raises inside a window, Op.END never arrives and the poller blocks exit.
+            # exitpriority=0 runs this before multiprocessing joins child processes.
+            if self._stop_poller is not None:
+                self._stop_poller.cancel()  # the previous poller has exited
+            self._stop_poller = mp_util.Finalize(
+                self, _stop_polling_process, args=(self.polling_process,), exitpriority=0
+            )
+
         # start subwindows
         self.command_q.put((Op.BEGIN, key))
 
@@ -305,11 +315,21 @@ class EnergyCostMonitor:
 
         # end window
         self.command_q.put((Op.END, key))
-        (
-            gpu_energy_cost,
-            cpu_energy_cost,
-            dram_energy_cost,
-        ) = self.finished_q.get()
+        try:
+            (
+                gpu_energy_cost,
+                cpu_energy_cost,
+                dram_energy_cost,
+            ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
+        except RuntimeError:
+            # The polling process is gone, and with it the data of every open window. Drop them,
+            # and use new queues so the next poller doesn't read commands meant for this one.
+            for open_key in self.current_keys:
+                self.zeus_monitor.end_window(open_key, sync_execution=False, cancel=True)
+            self.current_keys.clear()
+            self.command_q = self.context.Queue()
+            self.finished_q = self.context.Queue()
+            raise
         self.current_keys.remove(key)
 
         overall_measurement = self.zeus_monitor.end_window(key, sync_execution=sync_execution)
@@ -325,6 +345,13 @@ class EnergyCostMonitor:
         )
 
         return measurement
+
+
+def _stop_polling_process(process: mp.process.BaseProcess) -> None:
+    """Stop a polling process that is still running."""
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=5.0)
 
 
 def _polling_process(
@@ -384,9 +411,8 @@ def _polling_process(
 
                 try:
                     flat_rate = energy_rate_structure[tier][0]["rate"]
-                except (IndexError, KeyError, TypeError):
-                    logger.error("Failed to parse electricity rate structure.")
-                    return
+                except (IndexError, KeyError, TypeError) as e:
+                    raise ValueError("Failed to parse electricity rate structure.") from e
 
                 cost = (energy / 3.6e6) * flat_rate  # Convert Wh to kWh and multiply by rate
 
@@ -422,11 +448,13 @@ def _polling_process(
                     # update if has not been updated in a while
                     _update_energy_measurements(key, hour_floor)
                     _update_energy_costs(key)
+                    # A window has no CPU or DRAM entry when those are not measured (for example,
+                    # no RAPL access), so pop with a default instead of raising KeyError.
                     finished_q.put(
                         (
-                            dict(gpu_energy_cost.pop(key)),
-                            dict(cpu_energy_cost.pop(key)),
-                            dict(dram_energy_cost.pop(key)),
+                            dict(gpu_energy_cost.pop(key, {})),
+                            dict(cpu_energy_cost.pop(key, {})),
+                            dict(dram_energy_cost.pop(key, {})),
                         )
                     )
                     keys.remove(key)
