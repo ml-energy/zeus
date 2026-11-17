@@ -329,7 +329,7 @@ class CarbonEmissionMonitor:
                 cpu_carbon_emissions,
                 dram_carbon_emissions,
             ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
-        except ZeusBaseError:
+        except RuntimeError:
             # The polling process is gone, and with it the data of every open window. Drop them,
             # and use new queues so the next poller doesn't read commands meant for this one.
             for open_key in self.current_keys:

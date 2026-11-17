@@ -321,7 +321,7 @@ class EnergyCostMonitor:
                 cpu_energy_cost,
                 dram_energy_cost,
             ) = get_or_raise_if_dead(self.finished_q, self.polling_process)
-        except ZeusBaseError:
+        except RuntimeError:
             # The polling process is gone, and with it the data of every open window. Drop them,
             # and use new queues so the next poller doesn't read commands meant for this one.
             for open_key in self.current_keys:
@@ -412,7 +412,7 @@ def _polling_process(
                 try:
                     flat_rate = energy_rate_structure[tier][0]["rate"]
                 except (IndexError, KeyError, TypeError) as e:
-                    raise ZeusBaseError("Failed to parse electricity rate structure.") from e
+                    raise ValueError("Failed to parse electricity rate structure.") from e
 
                 cost = (energy / 3.6e6) * flat_rate  # Convert Wh to kWh and multiply by rate
 

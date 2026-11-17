@@ -9,8 +9,6 @@ from multiprocessing.process import BaseProcess
 from multiprocessing.queues import Queue
 from typing import Any
 
-from zeus.exception import ZeusBaseError
-
 
 def _is_global_in_spawned_child() -> bool:
     """Return True if called from module-level code in a spawned child's main script.
@@ -75,6 +73,9 @@ def get_or_raise_if_dead(result_q: Queue, process: BaseProcess, poll_interval: f
         result_q: Queue the helper process puts its result on.
         process: The helper process.
         poll_interval: Seconds between checks that the helper process is still alive.
+
+    Raises:
+        RuntimeError: If `process` exits without putting a result on `result_q`.
     """
     while True:
         try:
@@ -86,7 +87,7 @@ def get_or_raise_if_dead(result_q: Queue, process: BaseProcess, poll_interval: f
             try:
                 return result_q.get(timeout=poll_interval)
             except queue.Empty:
-                raise ZeusBaseError(
+                raise RuntimeError(
                     f"The background process {process.name} exited with code {process.exitcode} "
                     "before returning a result. Its traceback, if any, is printed above."
                 ) from None
