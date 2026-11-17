@@ -1,18 +1,43 @@
-"""Carbon intensity providers used for carbon-aware optimizers."""
+"""Carbon intensity providers used for carbon-aware optimizers.
+
+[`ElectrictyMapsClient`][zeus.monitor.carbon.ElectrictyMapsClient] fetches live hourly carbon
+intensity from the Electricity Maps API.
+[`TraceCarbonIntensityProvider`][zeus.monitor.carbon.TraceCarbonIntensityProvider] reads carbon
+intensity from a downloaded file, which is useful for reproducing a
+[`CarbonEmissionMonitor`][zeus.monitor.carbon.CarbonEmissionMonitor] result or replaying a past
+day. Supported formats:
+
+- Electricity Maps CSV exports (hourly):
+  [`from_electricitymaps_csv`][zeus.monitor.carbon.TraceCarbonIntensityProvider.from_electricitymaps_csv].
+- U.S. EIA-930 Hourly Electric Grid Monitor balancing-authority workbooks (`.xlsx`, hourly):
+  [`from_eia930_xlsx`][zeus.monitor.carbon.TraceCarbonIntensityProvider.from_eia930_xlsx].
+- GB Carbon Intensity API responses saved as JSON (30-minute intervals, past data or
+  48-hour forecasts):
+  [`from_gb_carbon_intensity_json`][zeus.monitor.carbon.TraceCarbonIntensityProvider.from_gb_carbon_intensity_json].
+- Other CSV files with one timestamp column and one intensity column:
+  [`from_csv`][zeus.monitor.carbon.TraceCarbonIntensityProvider.from_csv].
+"""
 
 from __future__ import annotations
 
 import abc
+import importlib.util
+import json
+import math
 import queue
 import logging
 import requests
 import multiprocessing as mp
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Literal
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from collections import defaultdict
+from collections.abc import Mapping
+
+import pandas as pd
 
 from zeus.exception import ZeusBaseError
 from zeus.monitor import ZeusMonitor
@@ -151,6 +176,436 @@ class ElectrictyMapsClient(CarbonIntensityProvider):
     def history_length(self) -> int:
         """Returns number of carbon intensity values in history dict."""
         return 24
+
+
+class TraceCarbonIntensityProvider(CarbonIntensityProvider):
+    """Carbon intensity provider backed by a downloaded trace.
+
+    The trace is a time series of carbon intensity in gCO2eq/kWh. It is grouped into
+    periods of length `period` (for example one hour) on a UTC grid. A lookup returns the
+    value of the period that contains the requested time. Values are not interpolated or
+    filled in, and `carbon_intensity_at` and `get_current_carbon_intensity` raise
+    `ZeusCarbonIntensityNotFoundError` for periods without data.
+
+    To compute a run's emissions from past data, pass `replay_start`. Otherwise the trace
+    must cover the run itself, for example a GB Carbon Intensity 48-hour forecast
+    (`/intensity/{from}/fw48h`) saved just before the run and loaded with `value="forecast"`.
+
+    The `from_*` class methods load common file formats.
+
+    !!! Note
+        Do not mix direct (combustion) and lifecycle emission factors when you compare
+        results.
+    """
+
+    def __init__(
+        self,
+        intensities: Mapping[datetime, float],
+        period: timedelta,
+        data_spacing: timedelta,
+        replay_start: datetime | None = None,
+    ) -> None:
+        """Initialize the provider.
+
+        Args:
+            intensities: Maps the start of each data point (timezone-aware) to the carbon
+                intensity in gCO2eq/kWh. Values must be finite and non-negative. Every timestamp
+                must be on a UTC grid of `data_spacing` (for example, the top of each hour for
+                hourly data). Gaps are allowed.
+            period: Length of the periods carbon is accounted in. Must be a whole multiple
+                of the data's spacing, so the data can't be coarser than `period`. Each
+                period gets the mean of its data points, and periods missing any point are
+                left out.
+            data_spacing: Time between data points, for example one hour for hourly data.
+            replay_start: A timezone-aware time inside the trace. If given, the wall-clock
+                period in which the provider is created is mapped to the trace period that
+                contains this time, and later periods follow one to one.
+        """
+        if period <= timedelta(0):
+            raise ValueError("`period` must be positive.")
+        if data_spacing <= timedelta(0):
+            raise ValueError("`data_spacing` must be positive.")
+        if data_spacing > period:
+            raise ValueError(
+                f"The data is coarser than `period`: `data_spacing` is {data_spacing}, but `period` is {period}."
+            )
+        if period % data_spacing:
+            raise ValueError(f"`period` ({period}) must be a whole multiple of `data_spacing` ({data_spacing}).")
+        if not intensities:
+            raise ValueError("The carbon intensity trace is empty.")
+        points: dict[datetime, float] = {}
+        for start, value in intensities.items():
+            if start.tzinfo is None:
+                raise ValueError(f"Trace time {start} has no timezone. Use timezone-aware times.")
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"Carbon intensity {value} at {start} is not a finite non-negative number.")
+            points[start.astimezone(timezone.utc)] = float(value)
+
+        starts = sorted(points)
+        for start in starts:
+            if _period_floor(start, data_spacing) != start:
+                raise ValueError(
+                    f"Trace time {start} is not on the {data_spacing} grid (for example, the top of each hour "
+                    "for hourly data)."
+                )
+
+        per_period = period // data_spacing
+        grouped: dict[datetime, list[float]] = defaultdict(list)
+        for start in starts:
+            grouped[_period_floor(start, period)].append(points[start])
+        self.period = period
+        self.trace = {p: sum(v) / len(v) for p, v in sorted(grouped.items()) if len(v) == per_period}
+        if not self.trace:
+            raise ValueError(f"No {period} period is fully covered by the data.")
+        if len(self.trace) < len(grouped):
+            logger.warning(
+                "Left out %d of %d periods of length %s that the data covers only partly.",
+                len(grouped) - len(self.trace),
+                len(grouped),
+                period,
+            )
+
+        self.replay_start = replay_start
+        self.offset = timedelta(0)
+        if replay_start is None:
+            now = _period_floor(datetime.now(timezone.utc), period)
+            if now not in self.trace:
+                logger.warning(
+                    "The trace has no value for the current period (%s). Pass `replay_start` to replay past data.",
+                    now.isoformat(),
+                )
+        else:
+            if replay_start.tzinfo is None:
+                raise ValueError("`replay_start` must be timezone-aware.")
+            start = _period_floor(replay_start, period)
+            if start not in self.trace:
+                raise ValueError(f"`replay_start` {replay_start} is not inside the trace.")
+            self.offset = start - _period_floor(datetime.now(timezone.utc), period)
+
+    @classmethod
+    def _from_series(
+        cls,
+        times: pd.Series,
+        values: pd.Series,
+        period: timedelta,
+        data_spacing: timedelta,
+        scale: float = 1.0,
+        time_label: Literal["start", "end"] = "start",
+        replay_start: datetime | None = None,
+    ) -> TraceCarbonIntensityProvider:
+        """Build the provider from timezone-aware times and intensities, skipping empty values."""
+        times = pd.Series(pd.to_datetime(times, utc=True)).reset_index(drop=True)
+        values = pd.to_numeric(pd.Series(values), errors="coerce").reset_index(drop=True) * scale
+        keep = values.notna()
+        times, values = times[keep], values[keep]
+        if times.duplicated().any():
+            raise ValueError("The trace has repeated timestamps.")
+        if time_label == "end":
+            # Each timestamp ends one data interval, so move it back by `data_spacing`.
+            times = times - data_spacing
+        trace = {t.to_pydatetime(): float(v) for t, v in zip(times, values)}
+        return cls(trace, period=period, data_spacing=data_spacing, replay_start=replay_start)
+
+    @classmethod
+    def from_csv(
+        cls,
+        path: str | Path,
+        time_column: str,
+        intensity_column: str,
+        period: timedelta,
+        data_spacing: timedelta,
+        time_zone: str | None = None,
+        time_label: Literal["start", "end"] = "start",
+        scale: float = 1.0,
+        replay_start: datetime | None = None,
+    ) -> TraceCarbonIntensityProvider:
+        """Build the provider from a CSV file with one timestamp column and one intensity column.
+
+        The other columns are ignored.
+
+        A file with UTC offsets in its timestamps and values in gCO2eq/kWh, stamped at the
+        start of each hour:
+
+        ```
+        timestamp,carbon_intensity
+        2024-07-19T00:00:00+00:00,383.4
+        2024-07-19T01:00:00+00:00,379.6
+        ```
+
+        ```python
+        TraceCarbonIntensityProvider.from_csv(
+            "trace.csv",
+            "timestamp",
+            "carbon_intensity",
+            period=timedelta(hours=1),
+            data_spacing=timedelta(hours=1),
+        )
+        ```
+
+        A file with UTC times without offsets, every 15 minutes, accounted in hourly periods
+        (each hour gets the mean of its four values):
+
+        ```
+        datetime_utc,gco2_per_kwh
+        2024-07-19 00:00,383.4
+        2024-07-19 00:15,381.0
+        ...
+        ```
+
+        ```python
+        TraceCarbonIntensityProvider.from_csv(
+            "trace.csv",
+            "datetime_utc",
+            "gco2_per_kwh",
+            period=timedelta(hours=1),
+            data_spacing=timedelta(minutes=15),
+            time_zone="UTC",
+        )
+        ```
+
+        A file with local times without offsets and values in lb/kWh, stamped at the end of
+        each hour:
+
+        ```
+        Local time,CO2 intensity (lb/kWh)
+        2024-07-19 01:00:00,0.84
+        2024-07-19 02:00:00,0.83
+        ```
+
+        ```python
+        TraceCarbonIntensityProvider.from_csv(
+            "trace.csv",
+            "Local time",
+            "CO2 intensity (lb/kWh)",
+            period=timedelta(hours=1),
+            data_spacing=timedelta(hours=1),
+            time_zone="America/Chicago",
+            time_label="end",
+            scale=453.59237,  # lb/kWh to g/kWh
+        )
+        ```
+
+        Args:
+            path: Path to the CSV file.
+            time_column: Name of the timestamp column.
+            intensity_column: Name of the carbon intensity column.
+            period: Length of the periods carbon is accounted in. Must be a whole multiple
+                of the data's spacing, so the data can't be coarser than `period`. Each
+                period gets the mean of its data points, and periods missing any point are
+                left out.
+            data_spacing: Time between rows, for example one hour for hourly data.
+            time_zone: IANA time zone (for example `"UTC"` or `"America/Chicago"`) for
+                timestamps without an offset. Must be omitted if the timestamps have an
+                offset (such as `Z`, `+00:00` or ` UTC`). Prefer UTC timestamps, since local
+                times are ambiguous when daylight saving time ends.
+            time_label: Whether each timestamp marks the `"start"` or the `"end"` of its interval.
+            scale: Factor that converts the column to gCO2eq/kWh. For example, 453.59237
+                for lb/kWh, or 1000 for t/MWh.
+            replay_start: A timezone-aware time inside the trace. If given, the wall-clock
+                period in which the provider is created is mapped to the trace period that
+                contains this time, and later periods follow one to one.
+        """
+        df = pd.read_csv(path)
+        for column in (time_column, intensity_column):
+            if column not in df.columns:
+                raise ValueError(f"Column '{column}' is not in {path}.")
+        text = df[time_column].astype(str).str.strip()
+        # An offset after the time of day: Z, UTC, +00, +0530 or +05:30.
+        has_offset = text.str.contains(r"\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?\s*(?:Z|UTC|[+-]\d{2}(?::?\d{2})?)$")
+        if has_offset.all():
+            if time_zone is not None:
+                raise ValueError(f"Column '{time_column}' already has UTC offsets. Do not pass `time_zone`.")
+            times = _parse_times(text, utc=True)
+        elif not has_offset.any():
+            if time_zone is None:
+                raise ValueError(f"Column '{time_column}' has no UTC offsets. Pass `time_zone`.")
+            times = _parse_times(text).dt.tz_localize(time_zone)
+        else:
+            raise ValueError(f"Column '{time_column}' mixes times with and without UTC offsets.")
+        return cls._from_series(times, df[intensity_column], period, data_spacing, scale, time_label, replay_start)
+
+    @classmethod
+    def from_electricitymaps_csv(
+        cls,
+        path: str | Path,
+        period: timedelta,
+        data_spacing: timedelta,
+        emission_factor_type: Literal["direct", "lifecycle"] = "direct",
+        replay_start: datetime | None = None,
+    ) -> TraceCarbonIntensityProvider:
+        """Load a CSV file exported from Electricity Maps.
+
+        Reads `Datetime (UTC)` and the direct or lifecycle carbon intensity column. Both
+        the older headers (`Carbon Intensity gCO₂eq/kWh (LCA)`) and the newer headers
+        (`Carbon intensity gCO₂eq/kWh (Life cycle)`) work. Use the hourly exports, with
+        `data_spacing=timedelta(hours=1)`.
+
+        Args:
+            path: Path to the CSV file.
+            period: Length of the periods carbon is accounted in. Must be a whole multiple
+                of the data's spacing, so the data can't be coarser than `period`. Each
+                period gets the mean of its data points, and periods missing any point are
+                left out.
+            data_spacing: Time between rows, for example one hour for the hourly exports.
+            emission_factor_type: `"direct"` or `"lifecycle"`. The default is `"direct"`, as in
+                `ElectrictyMapsClient`.
+            replay_start: A timezone-aware time inside the trace. If given, the wall-clock
+                period in which the provider is created is mapped to the trace period that
+                contains this time, and later periods follow one to one.
+        """
+        df = pd.read_csv(path)
+        names = {
+            "direct": ("Carbon intensity gCO₂eq/kWh (direct)", "Carbon Intensity gCO₂eq/kWh (direct)"),
+            "lifecycle": ("Carbon intensity gCO₂eq/kWh (Life cycle)", "Carbon Intensity gCO₂eq/kWh (LCA)"),
+        }[emission_factor_type]
+        column = next((c for c in names if c in df.columns), None)
+        if column is None or "Datetime (UTC)" not in df.columns:
+            raise ValueError(
+                f"{path} does not look like an Electricity Maps CSV: expected 'Datetime (UTC)' and one of {names}."
+            )
+        times = pd.to_datetime(df["Datetime (UTC)"], utc=True)
+        return cls._from_series(times, df[column], period, data_spacing, replay_start=replay_start)
+
+    @classmethod
+    def from_eia930_xlsx(
+        cls,
+        path: str | Path,
+        period: timedelta,
+        electricity: Literal["consumed", "generated"] = "consumed",
+        replay_start: datetime | None = None,
+    ) -> TraceCarbonIntensityProvider:
+        """Load a balancing-authority workbook from the U.S. EIA Hourly Electric Grid Monitor.
+
+        These are the `.xlsx` files under Download Data, Balancing Authority/Regional
+        files (for example `ERCO.xlsx`). The `Published Hourly Data` sheet has `UTC time`
+        (the end of each hour) and the CO2 emissions intensity of consumed or generated
+        electricity in lb/kWh (direct emissions, from July 2018). Hours without a CO2
+        estimate are skipped. Reading `.xlsx` needs `python-calamine` (used if installed)
+        or `openpyxl`.
+
+        Args:
+            path: Path to the workbook.
+            period: Length of the periods carbon is accounted in. Must be a whole multiple
+                of the data's spacing, so the data can't be coarser than `period`. Each
+                period gets the mean of its data points, and periods missing any point are
+                left out.
+            electricity: `"consumed"` (accounts for imports and exports) or `"generated"`.
+            replay_start: A timezone-aware time inside the trace. If given, the wall-clock
+                period in which the provider is created is mapped to the trace period that
+                contains this time, and later periods follow one to one.
+        """
+        column = f"CO2 Emissions Intensity for {electricity.capitalize()} Electricity"
+        engine = "calamine" if importlib.util.find_spec("python_calamine") else None
+        try:
+            df = pd.read_excel(path, sheet_name="Published Hourly Data", engine=engine)
+        except ImportError as e:
+            raise ImportError("Reading EIA-930 workbooks needs `pip install python-calamine` (or openpyxl).") from e
+        if "UTC time" not in df.columns or column not in df.columns:
+            raise ValueError(
+                f"{path} does not look like an EIA-930 balancing-authority workbook: expected 'UTC time' and "
+                f"'{column}' in the 'Published Hourly Data' sheet."
+            )
+        return cls._from_series(
+            pd.to_datetime(df["UTC time"], utc=True),
+            df[column],
+            period,
+            scale=453.59237,  # lb/kWh to g/kWh
+            time_label="end",
+            replay_start=replay_start,
+            data_spacing=timedelta(hours=1),
+        )
+
+    @classmethod
+    def from_gb_carbon_intensity_json(
+        cls,
+        path: str | Path,
+        period: timedelta,
+        value: Literal["actual", "forecast"] = "actual",
+        replay_start: datetime | None = None,
+    ) -> TraceCarbonIntensityProvider:
+        """Load a saved response from the GB Carbon Intensity API (api.carbonintensity.org.uk).
+
+        Takes national `/intensity` responses, such as `/intensity/{from}/{to}` for past
+        data or `/intensity/{from}/fw48h` for a 48-hour forecast: 30-minute intervals with
+        `from`, `to` and `intensity.actual` / `intensity.forecast` in gCO2/kWh. Intervals
+        without the chosen value are skipped.
+
+        Args:
+            path: Path to the saved JSON response.
+            period: Length of the periods carbon is accounted in. Must be a whole multiple
+                of the data's spacing, so the data can't be coarser than `period`. Each
+                period gets the mean of its data points, and periods missing any point are
+                left out.
+            value: `"actual"` or `"forecast"`.
+            replay_start: A timezone-aware time inside the trace. If given, the wall-clock
+                period in which the provider is created is mapped to the trace period that
+                contains this time, and later periods follow one to one.
+        """
+        with open(path) as fh:
+            data = json.load(fh)["data"]
+        times = pd.to_datetime([d["from"] for d in data], utc=True)
+        values = [d["intensity"].get(value) for d in data]
+        return cls._from_series(
+            pd.Series(times),
+            pd.Series(values, dtype="float64"),
+            period,
+            replay_start=replay_start,
+            data_spacing=timedelta(minutes=30),
+        )
+
+    def carbon_intensity_at(self, when: datetime) -> float:
+        """Return the carbon intensity of the trace period that contains `when`, in trace time."""
+        if when.tzinfo is None:
+            raise ValueError("`when` must be timezone-aware.")
+        start = _period_floor(when, self.period)
+        try:
+            return self.trace[start]
+        except KeyError as e:
+            first, last = next(iter(self.trace)), next(reversed(self.trace))
+            message = (
+                f"No carbon intensity for the period starting {start.isoformat()}. "
+                f"The trace covers {first.isoformat()} to {last.isoformat()} (UTC) and may have gaps."
+            )
+            if self.replay_start is None:
+                message += " Pass `replay_start` to replay past data."
+            raise ZeusCarbonIntensityNotFoundError(message) from e
+
+    def get_current_carbon_intensity(self) -> float:
+        """Return the carbon intensity of the trace period mapped to the current wall-clock period."""
+        return self.carbon_intensity_at(datetime.now(timezone.utc) + self.offset)
+
+    def get_recent_carbon_intensity(self) -> dict[datetime, float]:
+        """Return every period of the trace, keyed by the wall-clock period it is mapped to."""
+        return {start - self.offset: value for start, value in self.trace.items()}
+
+    @property
+    def update_period(self) -> timedelta:
+        """Length of each period."""
+        return self.period
+
+    @property
+    def history_length(self) -> int:
+        """Number of periods in the trace."""
+        return len(self.trace)
+
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _period_floor(when: datetime, period: timedelta) -> datetime:
+    """Return the start of the period of length `period` (on a UTC grid from the Unix epoch) that contains `when`."""
+    return _EPOCH + ((when.astimezone(timezone.utc) - _EPOCH) // period) * period
+
+
+def _parse_times(text: pd.Series, utc: bool = False) -> pd.Series:
+    """Parse timestamps, also when ISO 8601 rows differ in precision.
+
+    pandas guesses one format from the first row, so `00:00:00Z` followed by `01:00:00.000Z` fails.
+    """
+    try:
+        return pd.to_datetime(text, utc=utc)
+    except ValueError:
+        return pd.to_datetime(text, utc=utc, format="ISO8601")
 
 
 @dataclass
@@ -394,7 +849,8 @@ def _polling_process(
     while True:
         # calculate current time
         now = datetime.now(timezone.utc)
-        hour_floor = now.replace(minute=0, second=0, microsecond=0)
+        # Periods of `update_period` on a UTC grid (whole hours for hourly providers).
+        hour_floor = _period_floor(now, carbon_intensity_provider.update_period)
         hour_ceil = hour_floor + carbon_intensity_provider.update_period
 
         # start windows
